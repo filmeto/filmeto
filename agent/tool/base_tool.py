@@ -137,7 +137,9 @@ class BaseTool(ABC):
         step_id: int = 0,
         sender_id: str = "",
         sender_name: str = "",
-        **kwargs
+        error: str = "",
+        ok: bool = True,
+        result: Any = None,
     ) -> "AgentEvent":
         """
         Create a ReactEvent for tool execution.
@@ -150,12 +152,50 @@ class BaseTool(ABC):
             step_id: Step ID
             sender_id: ID of the event sender
             sender_name: Display name of the event sender
-            **kwargs: Additional event-specific data
+            error: Error message (for error events)
+            ok: Whether operation succeeded (for tool_end events)
+            result: Operation result (for tool_end events)
 
         Returns:
             ReactEvent object
         """
-        from agent.event.agent_event import AgentEvent
+        from agent.event.agent_event import AgentEvent, AgentEventType
+        from agent.chat.structure_content import (
+            ToolResponseContent,
+            ProgressContent,
+            ErrorContent,
+        )
+
+        content = None
+
+        if event_type == AgentEventType.TOOL_END.value:
+            content = ToolResponseContent(
+                tool_name=self.name,
+                result=result,
+                error=None if ok else error,
+                tool_status="completed" if ok else "failed",
+                title=f"Tool Result: {self.name}",
+                description=f"Tool execution {'completed' if ok else 'failed'}"
+            )
+            if ok:
+                content.complete()
+            else:
+                content.fail()
+        elif event_type == AgentEventType.ERROR.value:
+            content = ErrorContent(
+                error_message=error,
+                title="Tool Error",
+                description=f"Error in {self.name}"
+            )
+        elif event_type == AgentEventType.TOOL_PROGRESS.value:
+            # For progress, result might contain the progress message
+            progress = result if isinstance(result, str) else str(error) if error else "Processing..."
+            content = ProgressContent(
+                progress=progress,
+                tool_name=self.name,
+                title="Tool Progress",
+                description=f"{self.name} in progress"
+            )
 
         return AgentEvent.create(
             event_type=event_type,
@@ -165,6 +205,5 @@ class BaseTool(ABC):
             step_id=step_id,
             sender_id=sender_id,
             sender_name=sender_name,
-            tool_name=self.name,
-            **kwargs
+            content=content
         )

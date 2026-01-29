@@ -37,3 +37,6 @@ class ContentType(Enum):
     METADATA = "metadata"
     SKILL = "skill"
     THINKING = "thinking"
+    TOOL_CALL = "tool_call"
+    TOOL_RESPONSE = "tool_response"
+    ERROR = "error"

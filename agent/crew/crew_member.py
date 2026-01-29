@@ -144,7 +144,7 @@ class CrewMember:
         async for event in react_instance.chat_stream(message):
             saw_event = True
 
-            # Enhance event with sender information
+            # Enhance event with sender information and add appropriate content
             enhanced_event = AgentEvent.create(
                 event_type=event.event_type,
                 project_name=event.project_name,
@@ -156,32 +156,18 @@ class CrewMember:
                 **event.payload
             )
 
-            # Send thinking events via AgentChatSignals for UI
-            if event.event_type == AgentEventType.LLM_THINKING:
-                thinking_structure = StructureContent(
-                    content_type=ContentType.THINKING,
-                    data=event.payload.get("message", ""),
-                    title="Thinking Process",
-                    description="Agent's thought process",
-                )
-                mid = getattr(self, "_current_message_id", None)
-                meta = {"session_id": getattr(self, "_session_id", "unknown")}
-                if mid:
-                    meta["message_id"] = mid
-                msg = AgentMessage(
-                    message_type=MessageType.THINKING,
-                    sender_id=self.config.name,
-                    sender_name=self.config.name,
-                    metadata=meta,
-                    structured_content=[thinking_structure],
-                    message_id=mid or None,
-                )
-                if mid:
-                    msg.message_id = mid
-                await self.signals.send_agent_message(msg)
-                yield enhanced_event
-            elif event.event_type == AgentEventType.FINAL:
-                final_response = event.payload.get("final_response", "")
+            # Add structured content based on event type
+            # Content creation will be handled by FilmetoAgent's event-to-message converter
+            # We just forward the event with sender information
+
+            if event.event_type == AgentEventType.FINAL:
+                # Extract from content or payload (backward compat)
+                if event.content and hasattr(event.content, 'text'):
+                    final_response = event.content.text
+                elif event.payload:
+                    final_response = event.payload.get("final_response", "")
+                else:
+                    final_response = ""
                 # Store conversation history
                 if final_response:
                     self.conversation_history.append({"role": "user", "content": message})
@@ -189,13 +175,19 @@ class CrewMember:
                 yield enhanced_event
                 break
             elif event.event_type == AgentEventType.ERROR:
-                error_message = event.payload.get("error", "Unknown error occurred")
+                # Extract from content or payload (backward compat)
+                if event.content and hasattr(event.content, 'error_message'):
+                    error_message = event.content.error_message
+                elif event.payload:
+                    error_message = event.payload.get("error", "Unknown error occurred")
+                else:
+                    error_message = "Unknown error occurred"
                 self.conversation_history.append({"role": "user", "content": message})
                 self.conversation_history.append({"role": "assistant", "content": error_message})
                 yield enhanced_event
                 break
             else:
-                # Yield all other events (tool_start, tool_progress, tool_end, etc.)
+                # Yield all other events (LLM_THINKING, TOOL_START, TOOL_PROGRESS, TOOL_END, etc.)
                 yield enhanced_event
 
         if not saw_event:

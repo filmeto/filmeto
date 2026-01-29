@@ -8,6 +8,16 @@ from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 from agent.llm.llm_service import LlmService
 from agent.tool.tool_service import ToolService
 from agent.tool.tool_context import ToolContext
+from agent.chat.structure_content import (
+    StructureContent,
+    TextContent,
+    ThinkingContent,
+    ToolCallContent,
+    ToolResponseContent,
+    ProgressContent,
+    MetadataContent,
+    ErrorContent,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -96,33 +106,24 @@ class React:
             if checkpoint.todo_state:
                 self.todo_state = TodoState.from_dict(checkpoint.todo_state)
 
-    def _create_event(self, event_type: str, payload=None, **payload_kwargs) -> AgentEvent:
+    def _create_event(self, event_type: str, content=None) -> AgentEvent:
         """
         Create an AgentEvent with instance context.
 
         Args:
             event_type: Type of event
-            payload: Optional dict of payload data (for backward compatibility)
-            **payload_kwargs: Additional payload data as keyword arguments
+            content: Optional StructureContent object for the event
 
         Returns:
             AgentEvent object
         """
-        # Merge payload dict and kwargs (kwargs take precedence)
-        if payload is None:
-            payload = {}
-        if isinstance(payload, dict):
-            merged = {**payload, **payload_kwargs}
-        else:
-            merged = payload_kwargs
-
         return AgentEvent.create(
             event_type=event_type,
             project_name=self.project_name,
             react_type=self.react_type,
             run_id=self.run_id,
             step_id=self.step_id,
-            **merged
+            content=content
         )
 
     def _update_checkpoint(self) -> None:
@@ -378,15 +379,25 @@ class React:
                     response_text = await self._call_llm(self.messages)
                     action = self._parse_action(response_text)
                     thinking = ReactActionParser.get_thinking_message(action, step + 1, self.max_steps)
-                    yield self._create_event(AgentEventType.LLM_THINKING, {
-                        "message": thinking,
-                        "step": step + 1,
-                        "total_steps": self.max_steps,
-                    })
+                    yield self._create_event(
+                        AgentEventType.LLM_THINKING,
+                        content=ThinkingContent(
+                            thought=thinking,
+                            step=step + 1,
+                            total_steps=self.max_steps,
+                            title="Thinking",
+                            description=f"Step {step + 1}/{self.max_steps}"
+                        )
+                    )
 
-                    yield self._create_event(AgentEventType.LLM_OUTPUT, {
-                        "content": response_text,
-                    })
+                    yield self._create_event(
+                        AgentEventType.LLM_OUTPUT,
+                        content=TextContent(
+                            text=response_text,
+                            title="LLM Output",
+                            description="Raw LLM response"
+                        )
+                    )
 
                     if action.is_tool():
                         assert isinstance(action, ToolAction), f"Expected ToolAction, got {type(action)}"
@@ -394,14 +405,28 @@ class React:
                         if not action.tool_name:
                             error_msg = "Tool name is empty - LLM returned a tool action without specifying which tool to use"
                             logger.warning(error_msg)
-                            yield self._create_event(AgentEventType.ERROR, {
-                                "error": error_msg,
-                                "details": f"Response: {response_text[:200]}"
-                            })
+                            yield self._create_event(
+                                AgentEventType.ERROR,
+                                content=ErrorContent(
+                                    error_message=error_msg,
+                                    error_type="ValidationError",
+                                    details=f"Response: {response_text[:200]}",
+                                    title="Tool Name Error",
+                                    description="LLM did not specify which tool to use"
+                                )
+                            )
                             self.messages.append({"role": "assistant", "content": response_text})
                             self.messages.append({"role": "user", "content": f"Error: {error_msg}. Please specify a valid tool name."})
                             continue
-                        yield self._create_event(AgentEventType.TOOL_START, action.to_start_payload())
+                        yield self._create_event(
+                            AgentEventType.TOOL_START,
+                            content=ToolCallContent(
+                                tool_name=action.tool_name,
+                                tool_input=action.tool_args,
+                                title=f"Tool: {action.tool_name}",
+                                description="Starting tool execution"
+                            )
+                        )
                         try:
                             tool_result = None
                             async for item in self._execute_tool(action.tool_name, action.tool_args):
@@ -409,7 +434,15 @@ class React:
                                 if isinstance(item, dict):
                                     # Legacy dict format
                                     if "progress" in item:
-                                        yield self._create_event(AgentEventType.TOOL_PROGRESS, action.to_progress_payload(item["progress"]))
+                                        yield self._create_event(
+                                            AgentEventType.TOOL_PROGRESS,
+                                            content=ProgressContent(
+                                                progress=item["progress"],
+                                                tool_name=action.tool_name,
+                                                title="Tool Progress",
+                                                description=f"Tool {action.tool_name} in progress"
+                                            )
+                                        )
                                     if "result" in item:
                                         tool_result = item["result"]
                                     if "error" in item:
@@ -420,24 +453,58 @@ class React:
                                     yield item
                                     # Extract result from tool_end event for final observation
                                     if item.event_type == AgentEventType.TOOL_END:
-                                        tool_result = item.payload.get("result")
+                                        # Extract from content or payload (backward compat)
+                                        if item.content and hasattr(item.content, 'result'):
+                                            tool_result = item.content.result
+                                        elif item.payload:
+                                            tool_result = item.payload.get("result")
                                     elif item.event_type == AgentEventType.ERROR:
-                                        tool_result = item.payload.get("error", "Unknown error")
+                                        # Extract from content or payload (backward compat)
+                                        if item.content and hasattr(item.content, 'error_message'):
+                                            tool_result = item.content.error_message
+                                        elif item.payload:
+                                            tool_result = item.payload.get("error", "Unknown error")
                                         break
                             if tool_result is None:
                                 tool_result = "Tool execution completed"
-                            yield self._create_event(AgentEventType.TOOL_END, action.to_end_payload(result=tool_result, ok=True))
+                            # Create ToolResponseContent
+                            tool_response = ToolResponseContent(
+                                tool_name=action.tool_name,
+                                result=tool_result,
+                                tool_status="completed",
+                                title=f"Tool Result: {action.tool_name}",
+                                description="Tool execution completed successfully"
+                            )
+                            tool_response.complete()
+                            yield self._create_event(AgentEventType.TOOL_END, content=tool_response)
 
                             # Check for pending TODO update and emit event
                             if self._pending_todo_update:
-                                yield self._create_event(AgentEventType.TODO_UPDATE, self._pending_todo_update)
+                                yield self._create_event(
+                                    AgentEventType.TODO_UPDATE,
+                                    content=MetadataContent(
+                                        metadata_type="todo_update",
+                                        metadata_data=self._pending_todo_update,
+                                        title="TODO Update",
+                                        description="TODO list has been updated"
+                                    )
+                                )
                                 self._pending_todo_update = None
 
                             self.messages.append({"role": "assistant", "content": response_text})
                             self.messages.append({"role": "user", "content": f"Observation: {tool_result}"})
                         except Exception as exc:
                             logger.error(f"Tool execution error: {exc}", exc_info=True)
-                            yield self._create_event(AgentEventType.TOOL_END, action.to_end_payload(ok=False, error=str(exc)))
+                            tool_error_response = ToolResponseContent(
+                                tool_name=action.tool_name,
+                                result=None,
+                                error=str(exc),
+                                tool_status="failed",
+                                title=f"Tool Error: {action.tool_name}",
+                                description="Tool execution failed"
+                            )
+                            tool_error_response.fail()
+                            yield self._create_event(AgentEventType.TOOL_END, content=tool_error_response)
                             self.messages.append({"role": "assistant", "content": response_text})
                             self.messages.append({"role": "user", "content": f"Error: {str(exc)}"})
                         continue
@@ -446,7 +513,15 @@ class React:
                         assert isinstance(action, FinalAction), f"Expected FinalAction, got {type(action)}"
                         self.status = ReactStatus.FINAL
                         self._update_checkpoint()
-                        yield self._create_event(AgentEventType.FINAL, action.to_final_payload())
+                        final_payload = action.to_final_payload()
+                        yield self._create_event(
+                            AgentEventType.FINAL,
+                            content=TextContent(
+                                text=final_payload.get("final_response", ""),
+                                title="Final Response",
+                                description=final_payload.get("summary", "ReAct process completed")
+                            )
+                        )
                         break
 
                 # Check if we've reached max steps
@@ -457,7 +532,15 @@ class React:
                     )
                     self.status = ReactStatus.FINAL
                     self._update_checkpoint()
-                    yield self._create_event(AgentEventType.FINAL, max_steps_action.to_final_payload())
+                    max_steps_payload = max_steps_action.to_final_payload()
+                    yield self._create_event(
+                        AgentEventType.FINAL,
+                        content=TextContent(
+                            text=max_steps_payload.get("final_response", ""),
+                            title="Final Response",
+                            description=max_steps_payload.get("summary", "ReAct process stopped")
+                        )
+                    )
 
                 # Check if there are more messages to process (iterative, not recursive!)
                 async with self._loop_lock:
@@ -473,10 +556,16 @@ class React:
             logger.error(f"React loop error: {exc}", exc_info=True)
             self.status = ReactStatus.FAILED
             self._update_checkpoint()
-            yield self._create_event(AgentEventType.ERROR, {
-                "error": ReactActionParser.get_error_summary(exc),
-                "details": repr(exc),
-            })
+            yield self._create_event(
+                AgentEventType.ERROR,
+                content=ErrorContent(
+                    error_message=ReactActionParser.get_error_summary(exc),
+                    error_type=type(exc).__name__,
+                    details=repr(exc),
+                    title="React Error",
+                    description="ReAct loop encountered an error"
+                )
+            )
         finally:
             async with self._loop_lock:
                 self._in_react_loop = False
@@ -485,10 +574,16 @@ class React:
     async def resume(self) -> AsyncGenerator[AgentEvent, None]:
         checkpoint = self.storage.load_checkpoint()
         if not checkpoint:
-            yield self._create_event(AgentEventType.ERROR, {
-                "error": "No checkpoint found to resume from",
-                "details": "Cannot resume ReAct process without a saved checkpoint",
-            })
+            yield self._create_event(
+                AgentEventType.ERROR,
+                content=ErrorContent(
+                    error_message="No checkpoint found to resume from",
+                    error_type="CheckpointError",
+                    details="Cannot resume ReAct process without a saved checkpoint",
+                    title="Resume Error",
+                    description="No checkpoint available"
+                )
+            )
             return
 
         self.run_id = checkpoint.run_id

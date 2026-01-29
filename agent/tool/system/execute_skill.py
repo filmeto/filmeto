@@ -168,10 +168,14 @@ class ExecuteSkillTool(BaseTool):
                 llm_service=None,  # Will use default LLM service
                 max_steps=max_steps,
             ):
-                # Forward the event directly, preserving original event type and payload
+                # Forward the event directly, preserving original event type and content
                 # The sender_id/sender_name will be added by CrewMember upstream
                 if event.event_type == AgentEventType.FINAL:
-                    final_response = event.payload.get("final_response")
+                    # Extract final_response from content or payload (backward compat)
+                    if event.content and hasattr(event.content, 'text'):
+                        final_response = event.content.text
+                    elif event.payload:
+                        final_response = event.payload.get("final_response")
                     # Convert FINAL to tool_end for tool completion
                     yield self._create_event(
                         "tool_end",
@@ -186,7 +190,13 @@ class ExecuteSkillTool(BaseTool):
                     )
                     return
                 elif event.event_type == AgentEventType.ERROR:
-                    error = event.payload.get("error", "Unknown error")
+                    # Extract error from content or payload (backward compat)
+                    if event.content and hasattr(event.content, 'error_message'):
+                        error = event.content.error_message
+                    elif event.payload:
+                        error = event.payload.get("error", "Unknown error")
+                    else:
+                        error = "Unknown error"
                     # Convert ERROR to tool error event
                     yield self._create_event(
                         "error",
@@ -201,7 +211,7 @@ class ExecuteSkillTool(BaseTool):
                     return
                 else:
                     # Forward all other events directly (LLM_THINKING, TOOL_START, TOOL_PROGRESS, TOOL_END, etc.)
-                    # These will be enhanced with sender info by CrewMember
+                    # Create new event with updated sender info, preserving content
                     yield AgentEvent.create(
                         event_type=event.event_type,
                         project_name=event.project_name or project_name,
@@ -210,7 +220,7 @@ class ExecuteSkillTool(BaseTool):
                         step_id=event.step_id or step_id,
                         sender_id=sender_id,
                         sender_name=sender_name,
-                        **event.payload
+                        content=event.content
                     )
 
             # If we get here without a FINAL event, return whatever we collected

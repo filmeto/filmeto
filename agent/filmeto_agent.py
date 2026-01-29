@@ -7,7 +7,12 @@ import logging
 import re
 import uuid
 from typing import AsyncIterator, AsyncGenerator, Callable, Dict, List, Optional, Any, TYPE_CHECKING
-from agent.chat.agent_chat_message import AgentMessage, StructureContent
+from agent.chat.agent_chat_message import AgentMessage
+from agent.chat.structure_content import (
+    StructureContent, TextContent, ThinkingContent, ToolCallContent,
+    ToolResponseContent, ProgressContent, MetadataContent, ErrorContent,
+    create_content
+)
 from agent.chat.agent_chat_types import ContentType, MessageType
 from agent.chat.agent_chat_signals import AgentChatSignals
 from agent.llm.llm_service import LlmService
@@ -260,6 +265,64 @@ class FilmetoAgent:
         else:
             # Agent not configured due to missing API key or base URL
             pass
+
+    def _convert_event_to_message(
+        self,
+        event: 'AgentEvent',
+        sender_id: str,
+        sender_name: str,
+        message_id: str
+    ) -> Optional[AgentMessage]:
+        """
+        Convert an AgentEvent to an AgentMessage for UI display.
+        This is the central conversion point for all event types.
+
+        Args:
+            event: The AgentEvent to convert (must have content field populated)
+            sender_id: ID of the message sender
+            sender_name: Display name of the sender
+            message_id: Message ID to use
+
+        Returns:
+            AgentMessage if conversion successful, None otherwise
+
+        Raises:
+            ValueError: If event.content is None
+        """
+        from agent.react import AgentEventType
+
+        # All events must have content now
+        if not event.content:
+            raise ValueError(
+                f"Event {event.event_type} must have content. "
+                f"Event content cannot be None."
+            )
+
+        # Determine message type from content type
+        content_type_to_message_type = {
+            ContentType.TEXT: MessageType.TEXT,
+            ContentType.THINKING: MessageType.THINKING,
+            ContentType.TOOL_CALL: MessageType.TOOL_CALL,
+            ContentType.TOOL_RESPONSE: MessageType.TOOL_RESPONSE,
+            ContentType.PROGRESS: MessageType.COMMAND,
+            ContentType.METADATA: MessageType.SYSTEM,
+            ContentType.ERROR: MessageType.ERROR,
+            ContentType.CODE_BLOCK: MessageType.CODE,
+        }
+
+        message_type = content_type_to_message_type.get(
+            event.content.content_type,
+            MessageType.TEXT
+        )
+
+        return AgentMessage(
+            message_type=message_type,
+            sender_id=sender_id,
+            sender_name=sender_name,
+            metadata={"message_id": message_id},
+            message_id=message_id,
+            structured_content=[event.content]
+        )
     
     def register_agent(self, agent_id: str, name: str, role_description: str, handler_func: Callable):
         """
@@ -504,18 +567,113 @@ class FilmetoAgent:
     ) -> AsyncGenerator["AgentEvent", None]:
         from agent.react import AgentEvent, AgentEventType
 
-        # Set the current message ID on the crew member for skill tracking
-        crew_member._current_message_id = str(uuid.uuid4())
+        # Set the current message ID on the crew member for content tracking
+        message_id = str(uuid.uuid4())
+        crew_member._current_message_id = message_id
+
+        # Track content IDs for hierarchical relationships (e.g., tool → progress updates)
+        content_tracking: Dict[str, str] = {}  # tool_name → content_id mapping
 
         async for event in crew_member.chat_stream(message, plan_id=plan_id):
-            # Add metadata to the event
+            # Add metadata to the event payload (kept for backward compatibility during transition)
             event_payload = dict(event.payload)
             if metadata:
                 event_payload.update(metadata)
             if plan_id:
                 event_payload["plan_id"] = plan_id
 
-            # Create a new event with enhanced metadata
+            # Create appropriate content based on event type
+            content = None
+
+            if event.event_type == AgentEventType.LLM_THINKING:
+                # Create ThinkingContent
+                content = ThinkingContent(
+                    thought=event.payload.get("message", ""),
+                    step=event.payload.get("step"),
+                    total_steps=event.payload.get("total_steps"),
+                    title="Thinking Process",
+                    description="Agent's thought process"
+                )
+
+            elif event.event_type == AgentEventType.LLM_OUTPUT:
+                # Create TextContent for LLM output
+                content = TextContent(
+                    text=event.payload.get("content", "")
+                )
+
+            elif event.event_type == AgentEventType.TOOL_START:
+                # Create ToolCallContent and track it
+                tool_name = event.payload.get("tool_name", "unknown")
+                content = ToolCallContent(
+                    tool_name=tool_name,
+                    tool_input=event.payload.get("input", {}),
+                    title=f"Tool: {tool_name}",
+                    description="Tool execution started"
+                )
+                content_tracking[tool_name] = content.content_id
+
+            elif event.event_type == AgentEventType.TOOL_PROGRESS:
+                # Create ProgressContent with parent reference
+                tool_name = event.payload.get("tool_name", "")
+                parent_id = content_tracking.get(tool_name)
+                content = ProgressContent(
+                    progress=event.payload.get("progress", ""),
+                    tool_name=tool_name,
+                    title="Tool Execution",
+                    description="Tool execution in progress",
+                    parent_id=parent_id
+                )
+
+            elif event.event_type == AgentEventType.TOOL_END:
+                # Create ToolResponseContent and mark as completed
+                tool_name = event.payload.get("tool_name", "")
+                result = event.payload.get("result")
+                error = event.payload.get("error")
+
+                content = ToolResponseContent(
+                    tool_name=tool_name,
+                    result=result if not error else None,
+                    error=error,
+                    tool_status="completed" if not error else "failed",
+                    title=f"Tool Result: {tool_name}",
+                    description=f"Tool execution {'completed' if not error else 'failed'}",
+                    parent_id=content_tracking.get(tool_name)
+                )
+                content.complete()
+
+                # Clean up tracking
+                if tool_name in content_tracking:
+                    del content_tracking[tool_name]
+
+            elif event.event_type == AgentEventType.FINAL:
+                # Create TextContent for final response
+                final_text = event.payload.get("final_response", "")
+                content = TextContent(
+                    text=final_text,
+                    title="Response",
+                    description="Final response from agent"
+                )
+
+            elif event.event_type == AgentEventType.ERROR:
+                # Create ErrorContent
+                content = ErrorContent(
+                    error_message=event.payload.get("error", "Unknown error"),
+                    error_type=event.payload.get("error_type"),
+                    details=event.payload.get("details"),
+                    title="Error",
+                    description="An error occurred"
+                )
+
+            elif event.event_type == AgentEventType.TODO_UPDATE:
+                # Create MetadataContent
+                content = MetadataContent(
+                    metadata_type="todo_update",
+                    metadata_data=event.payload.get("todo", {}),
+                    title="Task Update",
+                    description="Task list has been updated"
+                )
+
+            # Create enhanced event with content
             enhanced_event = AgentEvent.create(
                 event_type=event.event_type,
                 project_name=event.project_name,
@@ -524,135 +682,24 @@ class FilmetoAgent:
                 step_id=event.step_id,
                 sender_id=event.sender_id,
                 sender_name=event.sender_name,
-                **event_payload
+                content=content,  # Always provide content
             )
 
-            # Also send via AgentChatSignals for UI compatibility
-            if event.event_type == AgentEventType.FINAL:
-                final_text = event.payload.get("final_response", "")
-                if final_text:
-                    response = AgentMessage(
-                        message_type=MessageType.TEXT,
-                        sender_id=crew_member.config.name,
-                        sender_name=crew_member.config.name.capitalize(),
-                        metadata={"message_id": crew_member._current_message_id},
-                        message_id=crew_member._current_message_id,
-                        structured_content=[StructureContent(
-                            content_type=ContentType.TEXT,
-                            data=final_text
-                        )]
-                    )
-                    logger.info(f"📤 Sending agent message: id={response.message_id}, sender='{response.sender_id}', content_preview='{final_text[:50]}{'...' if len(final_text) > 50 else ''}'")
-                    await self.signals.send_agent_message(response)
-            elif event.event_type == AgentEventType.ERROR:
-                error_text = event.payload.get("error", "Unknown error")
-                response = AgentMessage(
-                    message_type=MessageType.ERROR,
-                    sender_id=crew_member.config.name,
-                    sender_name=crew_member.config.name.capitalize(),
-                    metadata={"message_id": crew_member._current_message_id},
-                    message_id=crew_member._current_message_id,
-                    structured_content=[StructureContent(
-                        content_type=ContentType.TEXT,
-                        data=error_text
-                    )]
-                )
-                logger.info(f"❌ Sending error message: id={response.message_id}, sender='{response.sender_id}', content_preview='{error_text[:50]}{'...' if len(error_text) > 50 else ''}'")
-                await self.signals.send_agent_message(response)
-            elif event.event_type == AgentEventType.TOOL_START:
-                tool_name = event.payload.get("tool_name", "unknown")
-                tool_input = event.payload.get("input", {})
-                response = AgentMessage(
-                    message_type=MessageType.TOOL_CALL,
-                    sender_id=crew_member.config.name,
-                    sender_name=crew_member.config.name.capitalize(),
-                    metadata={"message_id": crew_member._current_message_id},
-                    message_id=crew_member._current_message_id,
-                    structured_content=[StructureContent(
-                        content_type=ContentType.TOOL_CALL,
-                        data={
-                            "tool_name": tool_name,
-                            "tool_input": tool_input,
-                            "status": "started"
-                        },
-                        title=f"Tool: {tool_name}",
-                        description=f"Executing {tool_name}"
-                    )]
-                )
-                logger.info(f"🔧 Tool start: {tool_name}")
-                await self.signals.send_agent_message(response)
-            elif event.event_type == AgentEventType.TOOL_PROGRESS:
-                progress = event.payload.get("progress", "")
-                tool_name = event.payload.get("tool_name", "")
-                if progress or tool_name:
-                    progress_data = {"status": "in_progress"}
-                    if progress:
-                        progress_data["progress"] = progress
-                    if tool_name:
-                        progress_data["tool_name"] = tool_name
+            # Convert event to message and send via AgentChatSignals
+            agent_message = self._convert_event_to_message(
+                enhanced_event,
+                sender_id=crew_member.config.name,
+                sender_name=crew_member.config.name.capitalize(),
+                message_id=message_id
+            )
 
-                    response = AgentMessage(
-                        message_type=MessageType.COMMAND,
-                        sender_id=crew_member.config.name,
-                        sender_name=crew_member.config.name.capitalize(),
-                        metadata={"message_id": crew_member._current_message_id},
-                        message_id=crew_member._current_message_id,
-                        structured_content=[StructureContent(
-                            content_type=ContentType.PROGRESS,
-                            data=progress_data,
-                            title=f"Tool Execution",
-                            description=f"Tool execution in progress"
-                        )]
-                    )
-                    logger.debug(f"⏳ Tool progress: {progress}")
-                    await self.signals.send_agent_message(response)
-            elif event.event_type == AgentEventType.TOOL_END:
-                result = event.payload.get("result", "")
-                error = event.payload.get("error", None)
-                tool_name = event.payload.get("tool_name", "")
-                status = "completed" if error is None else "failed"
-
-                tool_response_data = {
-                    "status": status,
-                    "tool_name": tool_name
-                }
-                if result is not None:
-                    tool_response_data["result"] = result
-                if error:
-                    tool_response_data["error"] = error
-
-                response = AgentMessage(
-                    message_type=MessageType.TOOL_RESPONSE,
-                    sender_id=crew_member.config.name,
-                    sender_name=crew_member.config.name.capitalize(),
-                    metadata={"message_id": crew_member._current_message_id},
-                    message_id=crew_member._current_message_id,
-                    structured_content=[StructureContent(
-                        content_type=ContentType.TOOL_RESPONSE,
-                        data=tool_response_data,
-                        title=f"Tool Result: {tool_name}",
-                        description=f"Tool execution {status}"
-                    )]
+            if agent_message:
+                logger.info(
+                    f"📤 Sending message: type={agent_message.message_type.value}, "
+                    f"id={agent_message.message_id}, sender='{agent_message.sender_id}', "
+                    f"content_id={enhanced_event.content.content_id if enhanced_event.content else 'N/A'}"
                 )
-                logger.info(f"🔧 Tool end: {tool_name} - {status}")
-                await self.signals.send_agent_message(response)
-            elif event.event_type == AgentEventType.TODO_UPDATE:
-                todo_data = event.payload.get("todo", {})
-                response = AgentMessage(
-                    message_type=MessageType.SYSTEM,
-                    sender_id=crew_member.config.name,
-                    sender_name=crew_member.config.name.capitalize(),
-                    metadata={"message_id": crew_member._current_message_id},
-                    message_id=crew_member._current_message_id,
-                    structured_content=[StructureContent(
-                        content_type=ContentType.METADATA,
-                        data=todo_data,
-                        title="Task Update",
-                        description="Task list has been updated"
-                    )]
-                )
-                logger.info(f"📝 Todo update: {list(todo_data.keys())}")
-                await self.signals.send_agent_message(response)
+                await self.signals.send_agent_message(agent_message)
 
             # Yield the event for upstream
             yield enhanced_event

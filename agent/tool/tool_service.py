@@ -275,10 +275,20 @@ class ToolService:
                     step_id,
                 ):
                     if event.event_type == "tool_end":
-                        result = event.payload.get("result")
+                        # Extract from content or payload (backward compat)
+                        if event.content and hasattr(event.content, 'result'):
+                            result = event.content.result
+                        elif event.payload:
+                            result = event.payload.get("result")
                         return result
                     elif event.event_type == "error":
-                        error_msg = event.payload.get("error", "Unknown error")
+                        # Extract from content or payload (backward compat)
+                        if event.content and hasattr(event.content, 'error_message'):
+                            error_msg = event.content.error_message
+                        elif event.payload:
+                            error_msg = event.payload.get("error", "Unknown error")
+                        else:
+                            error_msg = "Unknown error"
                         raise RuntimeError(error_msg)
                 return result
 
@@ -389,10 +399,20 @@ class ToolService:
                     step_id,
                 ):
                     if event.event_type == "tool_end":
-                        result = event.payload.get("result")
+                        # Extract from content or payload (backward compat)
+                        if event.content and hasattr(event.content, 'result'):
+                            result = event.content.result
+                        elif event.payload:
+                            result = event.payload.get("result")
                         return result
                     elif event.event_type == "error":
-                        error_msg = event.payload.get("error", "Unknown error")
+                        # Extract from content or payload (backward compat)
+                        if event.content and hasattr(event.content, 'error_message'):
+                            error_msg = event.content.error_message
+                        elif event.payload:
+                            error_msg = event.payload.get("error", "Unknown error")
+                        else:
+                            error_msg = "Unknown error"
                         raise RuntimeError(error_msg)
                 return result
 
