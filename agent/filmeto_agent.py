@@ -54,7 +54,13 @@ class FilmetoAgent:
     """
     Class for managing agent capabilities in Filmeto.
     Provides streaming conversation interface and manages multiple agents.
+
+    Instances are managed statically and can be retrieved using get_instance().
     """
+
+    # Class-level instance storage: dict[(workspace_path, project_name)] -> FilmetoAgent
+    _instances: Dict[str, 'FilmetoAgent'] = {}
+    _lock = False  # Simple lock for thread safety (can be replaced with threading.Lock if needed)
 
     def __init__(
         self,
@@ -88,7 +94,162 @@ class FilmetoAgent:
 
         # Initialize the agent
         self._init_agent()
-        # Note: _ensure_crew_members_loaded will be called in the chat_stream method when needed
+        # Note: _ensure_crew_members_loaded will be called in the chat method when needed
+
+    @classmethod
+    def get_instance(
+        cls,
+        workspace: Any,
+        project_name: str,
+        model: str = 'gpt-4o-mini',
+        temperature: float = 0.7,
+        streaming: bool = True,
+    ) -> 'FilmetoAgent':
+        """
+        Get or create a FilmetoAgent instance for the given workspace and project.
+
+        Each unique (workspace_path, project_name) combination gets its own instance
+        that will be reused across multiple calls.
+
+        Args:
+            workspace: The workspace object
+            project_name: The name of the project
+            model: The LLM model to use (only used when creating new instance)
+            temperature: The temperature setting (only used when creating new instance)
+            streaming: Whether to use streaming (only used when creating new instance)
+
+        Returns:
+            FilmetoAgent: The agent instance for this workspace/project combination
+        """
+        # Extract workspace path for key generation
+        workspace_path = cls._get_workspace_path(workspace)
+
+        # Create instance key
+        instance_key = f"{workspace_path}:{project_name}"
+
+        # Check if instance already exists
+        if instance_key in cls._instances:
+            logger.debug(f"Reusing existing FilmetoAgent instance for {instance_key}")
+            return cls._instances[instance_key]
+
+        # Create new instance
+        logger.info(f"Creating new FilmetoAgent instance for {instance_key}")
+
+        # Get project object from workspace
+        project = cls._get_project_from_workspace(workspace, project_name)
+
+        agent = cls(
+            workspace=workspace,
+            project=project,
+            model=model,
+            temperature=temperature,
+            streaming=streaming,
+        )
+
+        # Store instance
+        cls._instances[instance_key] = agent
+        return agent
+
+    @classmethod
+    def remove_instance(cls, workspace: Any, project_name: str) -> bool:
+        """
+        Remove a FilmetoAgent instance from the cache.
+
+        Args:
+            workspace: The workspace object
+            project_name: The name of the project
+
+        Returns:
+            bool: True if instance was removed, False if it didn't exist
+        """
+        workspace_path = cls._get_workspace_path(workspace)
+        instance_key = f"{workspace_path}:{project_name}"
+
+        if instance_key in cls._instances:
+            del cls._instances[instance_key]
+            logger.info(f"Removed FilmetoAgent instance for {instance_key}")
+            return True
+        return False
+
+    @classmethod
+    def clear_all_instances(cls):
+        """Clear all cached FilmetoAgent instances."""
+        count = len(cls._instances)
+        cls._instances.clear()
+        logger.info(f"Cleared {count} FilmetoAgent instance(s)")
+
+    @classmethod
+    def list_instances(cls) -> List[str]:
+        """
+        List all cached instance keys.
+
+        Returns:
+            List of instance keys in format "workspace_path:project_name"
+        """
+        return list(cls._instances.keys())
+
+    @classmethod
+    def has_instance(cls, workspace: Any, project_name: str) -> bool:
+        """
+        Check if an instance exists for the given workspace and project.
+
+        Args:
+            workspace: The workspace object
+            project_name: The name of the project
+
+        Returns:
+            bool: True if instance exists, False otherwise
+        """
+        workspace_path = cls._get_workspace_path(workspace)
+        instance_key = f"{workspace_path}:{project_name}"
+        return instance_key in cls._instances
+
+    @staticmethod
+    def _get_workspace_path(workspace: Any) -> str:
+        """Extract workspace path from workspace object."""
+        if workspace is None:
+            return "none"
+        if hasattr(workspace, 'workspace_path'):
+            return workspace.workspace_path
+        if hasattr(workspace, 'path'):
+            return str(workspace.path)
+        return str(id(workspace))
+
+    @staticmethod
+    def _get_project_from_workspace(workspace: Any, project_name: str) -> Any:
+        """Get project object from workspace by name."""
+        if workspace is None:
+            return None
+
+        # Try to get project by name
+        if hasattr(workspace, 'get_project'):
+            # First try to get current project
+            project = workspace.get_project()
+            if project:
+                # Check if it matches the requested name
+                proj_name = None
+                if hasattr(project, 'project_name'):
+                    proj_name = project.project_name
+                elif hasattr(project, 'name'):
+                    proj_name = project.name
+                elif isinstance(project, str):
+                    proj_name = project
+
+                if proj_name == project_name:
+                    return project
+
+        # Try to get from project manager
+        if hasattr(workspace, 'project_manager') and workspace.project_manager:
+            if hasattr(workspace.project_manager, 'ensure_projects_loaded'):
+                workspace.project_manager.ensure_projects_loaded()
+
+            if hasattr(workspace, 'get_projects'):
+                projects = workspace.get_projects()
+                if projects and project_name in projects:
+                    return projects[project_name]
+
+        # Fallback: return None and let agent handle it
+        return None
     
     def _init_agent(self):
         """Initialize the agent using LlmService."""

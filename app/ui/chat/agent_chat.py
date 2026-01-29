@@ -5,7 +5,7 @@ into a single reusable component that can be used in both the agent panel
 and the startup window.
 """
 
-from typing import Optional
+from typing import Optional, Any
 import asyncio
 import logging
 from PySide6.QtWidgets import QVBoxLayout, QWidget, QSplitter
@@ -29,9 +29,7 @@ logger = logging.getLogger(__name__)
 class AgentChatWidget(BaseWidget):
     """Agent chat component combining prompt input and chat history."""
 
-    # Signals for async operations
-    response_token_received = Signal(str)
-    response_complete = Signal(str)
+    # Signal for error reporting
     error_occurred = Signal(str)
 
     def __init__(self, workspace: Workspace, parent=None):
@@ -40,29 +38,29 @@ class AgentChatWidget(BaseWidget):
         if parent:
             self.setParent(parent)
 
+        # Track current project for agent instance management
+        self._current_project_name = None
+        self._current_project = None
+
+        # Target project for delayed switching
+        self._target_project_name = None
+        self._agent_needs_sync = False
+
         # Initialize agent (will be set when project is available)
-        # Using forward reference to avoid import at class definition time
         self.agent = None
-        self._current_response = ""
-        self._current_message_id = None
         self._is_processing = False
         self._initialization_in_progress = False
 
         # Connect to AgentChatSignals for message handling
         self._signals = AgentChatSignals()
         self._signals.connect(self._on_agent_message_sent)
-        
+
         # Queue and task for processing messages sequentially
         self._message_queue = asyncio.Queue()
         self._message_processing_task = None
-        
-        # Defer starting the message processor until after the event loop is running
-        # We'll start it when the first message arrives
         self._message_processor_started = False
 
-        # Connect internal signals
-        self.response_token_received.connect(self._on_token_received)
-        self.response_complete.connect(self._on_response_complete)
+        # Connect internal signal
         self.error_occurred.connect(self._on_error)
 
         self._setup_ui()
@@ -141,130 +139,67 @@ class AgentChatWidget(BaseWidget):
         # TODO: Implement reference navigation (e.g., jump to timeline item, show task details)
 
     async def _process_message_async(self, message: str):
-        """Process message asynchronously, initializing agent if needed."""
-        # Check if agent is initialized, if not, initialize it first
-        if not self.agent:
-            if not self._initialization_in_progress:
-                # Show message that agent is initializing
-                init_message_id = self.chat_history_widget.start_streaming_message(tr("System"))
-                self.chat_history_widget.update_streaming_message(
-                    init_message_id,
-                    tr("Agent is initializing, please wait...")
-                )
-
-                # Initialize agent asynchronously
-                await self._initialize_agent_async()
-
-                # Update initialization message
-                if self.agent:
-                    self.chat_history_widget.update_streaming_message(
-                        init_message_id,
-                        tr("Agent initialization complete")
-                    )
-                else:
-                    self.chat_history_widget.update_streaming_message(
-                        init_message_id,
-                        tr("Error: Agent initialization failed. Please ensure project is loaded.")
-                    )
-                    return
-            else:
-                # Wait for ongoing initialization to complete
-                while self._initialization_in_progress:
-                    await asyncio.sleep(0.1)
-
-                if not self.agent:
-                    self.chat_history_widget.append_message(
-                        tr("System"),
-                        tr("Error: Agent initialization failed. Please ensure project is loaded.")
-                    )
-                    return
-
-        # In group chat mode, don't disable input to allow continuous messaging
-        self._is_processing = True
-
-        # Reset current response - don't create a message card yet
-        # The streaming events will create cards as agents start responding
-        self._current_response = ""
-        self._current_message_id = None
-
-        # Start streaming response
+        """Process message asynchronously, initializing and syncing agent if needed."""
         try:
+            # Sync agent to current workspace project (handles delayed switches)
+            self.sync_agent_instance()
+
+            # Ensure agent is initialized
+            await self._ensure_agent_initialized()
+
+            # Send message to agent
             await self._stream_response(message)
         except Exception as e:
-            # If streaming fails, show error
-            error_msg = f"{tr('Error')}: {str(e)}"
-            self.error_occurred.emit(error_msg)
-
-    async def _stream_response(self, message: str):
-        """Send message to agent, responses are delivered via AgentChatSignals."""
-        try:
-            # Simply call chat() - results will be delivered via signals
-            await self.agent.chat(message)
-        except Exception as e:
-            # Ensure error is displayed
             error_msg = f"{tr('Error')}: {str(e)}"
             self.error_occurred.emit(error_msg)
         finally:
-            # Reset processing state
             self._is_processing = False
-            # Note: In group chat mode, we don't re-enable the input widget
-            # since it was never disabled
 
-    @Slot(str)
-    def _on_token_received(self, token: str):
-        """Handle received token from agent (legacy API)."""
-        self._current_response += token
+    async def _ensure_agent_initialized(self) -> bool:
+        """Ensure agent is initialized, showing status messages to user."""
+        if self.agent:
+            return True
 
-        # If we have a current message ID (legacy mode), update it
-        if self._current_message_id and self.chat_history_widget:
+        if self._initialization_in_progress:
+            # Wait for ongoing initialization
+            while self._initialization_in_progress:
+                await asyncio.sleep(0.1)
+            return self.agent is not None
+
+        # Show initialization status
+        init_message_id = self.chat_history_widget.start_streaming_message(tr("System"))
+        self.chat_history_widget.update_streaming_message(
+            init_message_id,
+            tr("Agent is initializing, please wait...")
+        )
+
+        # Initialize agent
+        await self._initialize_agent_async()
+
+        # Update status
+        if self.agent:
             self.chat_history_widget.update_streaming_message(
-                self._current_message_id,
-                self._current_response
+                init_message_id,
+                tr("Agent initialization complete")
             )
-
-    @Slot(str)
-    def _on_response_complete(self, response: str):
-        """Handle complete response from agent."""
-        # Update the final message if in legacy mode
-        if self._current_message_id and self.chat_history_widget:
+            return True
+        else:
             self.chat_history_widget.update_streaming_message(
-                self._current_message_id,
-                response
+                init_message_id,
+                tr("Error: Agent initialization failed. Please ensure project is loaded.")
             )
+            return False
 
-        # Clear message ID
-        self._current_message_id = None
-
-        # Reset processing state
-        self._is_processing = False
-        # Note: In group chat mode, we don't re-enable the input widget
-        # since it was never disabled
+    async def _stream_response(self, message: str):
+        """Send message to agent, responses are delivered via AgentChatSignals."""
+        # Simply call chat() - results will be delivered via signals
+        await self.agent.chat(message)
 
     @Slot(str)
     def _on_error(self, error_message: str):
         """Handle error during agent processing."""
-        if not self.chat_history_widget:
-            logger.error(f"❌ Error but chat history widget not initialized: {error_message}")
-            return
-
-        # If there's a streaming message in progress, update it with error
-        if self._current_message_id:
-            self.chat_history_widget.update_streaming_message(
-                self._current_message_id,
-                error_message
-            )
-            self._current_message_id = None
-        else:
-            # Add error message as new system message
+        if self.chat_history_widget:
             self.chat_history_widget.append_message(tr("System"), error_message)
-
-        # Clear current response
-        self._current_response = ""
-
-        # Reset processing state
-        self._is_processing = False
-        # Note: In group chat mode, we don't re-enable the input widget
-        # since it was never disabled
 
     def _start_message_processor(self):
         """Start the message processing task if not already started."""
@@ -318,6 +253,90 @@ class AgentChatWidget(BaseWidget):
         # Start the processor if needed (first message triggers the task creation)
         self._start_message_processor()
 
+    def _extract_project_name(self, project: Any) -> str:
+        """
+        Extract project name from a project object.
+
+        Args:
+            project: Project object (can be object with project_name/name attribute, or string)
+
+        Returns:
+            Project name as string, or "default" if not found
+        """
+        if project:
+            if hasattr(project, 'project_name'):
+                return project.project_name
+            elif hasattr(project, 'name'):
+                return project.name
+            elif isinstance(project, str):
+                return project
+        return "default"
+
+    def _get_model_config(self) -> tuple:
+        """
+        Get model configuration from workspace settings.
+
+        Returns:
+            Tuple of (model_name, temperature)
+        """
+        settings = self.workspace.get_settings()
+        model = settings.get('ai_services.default_model', 'gpt-4o-mini') if settings else 'gpt-4o-mini'
+        temperature = 0.7
+        return model, temperature
+
+    def _ensure_agent_for_project(self, project_name: str, project_obj: Any = None) -> bool:
+        """
+        Ensure an agent instance exists for the specified project.
+
+        This is the core method that creates or retrieves agent instances.
+        It handles all the common logic for both initial creation and project switching.
+
+        Args:
+            project_name: Name of the project
+            project_obj: Optional project object for reference
+
+        Returns:
+            True if agent was created/retrieved successfully, False otherwise
+        """
+        from agent.filmeto_agent import FilmetoAgent
+
+        if not project_name:
+            project_name = "default"
+            logger.warning("⚠️ No project name provided, using 'default'")
+
+        # Check if we already have the right instance
+        if self._current_project_name == project_name and self.agent:
+            logger.debug(f"Agent already exists for project '{project_name}'")
+            return True
+
+        logger.info(f"🔧 Ensuring agent instance for project '{project_name}'")
+
+        # Get model configuration
+        model, temperature = self._get_model_config()
+
+        try:
+            # Get or create agent instance
+            self.agent = FilmetoAgent.get_instance(
+                workspace=self.workspace,
+                project_name=project_name,
+                model=model,
+                temperature=temperature,
+                streaming=True
+            )
+
+            # Update current tracking
+            self._current_project_name = project_name
+            self._current_project = project_obj
+
+            logger.info(f"✅ Agent ready for project '{project_name}'")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Failed to get agent instance for project '{project_name}': {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
     async def _initialize_agent_async(self):
         """Initialize the agent asynchronously with current workspace and project."""
         if self._initialization_in_progress or self.agent:
@@ -341,47 +360,158 @@ class AgentChatWidget(BaseWidget):
         import time
         init_start = time.time()
         logger.info("⏱️  [AgentChatComponent] Starting lazy agent initialization...")
-        try:
-            # Lazy import heavy agent module only when needed
-            from agent.filmeto_agent import FilmetoAgent
 
-            # Get current project from workspace
-            project = self.workspace.get_project()
+        # Get current project from workspace
+        project = self.workspace.get_project()
+        project_name = self._extract_project_name(project)
 
-            # Get settings (model from settings, let FilmetoAgent read api_key internally)
-            settings = self.workspace.get_settings()
-            model = settings.get('ai_services.default_model', 'gpt-4o-mini') if settings else 'gpt-4o-mini'
-            temperature = 0.7  # Could also make this configurable
+        # Ensure agent instance exists
+        success = self._ensure_agent_for_project(project_name, project)
 
-            # Create agent instance (it will handle project loading internally)
-            self.agent = FilmetoAgent(
-                workspace=self.workspace,
-                project=project,
-                model=model,
-                temperature=temperature,
-                streaming=True
-            )
-
+        if success:
             init_time = (time.time() - init_start) * 1000
             # Check if agent has a valid LLM initialized
             if not self.agent.llm_service.validate_config():
-                logger.warning(f"⚠️ Agent initialized in {init_time:.2f}ms but LLM is not configured (missing API key or base URL)")
+                logger.warning(f"⚠️ Agent initialized in {init_time:.2f}ms but LLM is not configured")
             else:
-                logger.info(f"✅ Agent initialized successfully in {init_time:.2f}ms")
-        except Exception as e:
-            logger.error(f"❌ Error initializing agent: {e}")
-            import traceback
-            traceback.print_exc()
+                logger.info(f"✅ Agent initialized successfully for project '{project_name}' in {init_time:.2f}ms")
+        else:
+            logger.error(f"❌ Agent initialization failed for project '{project_name}'")
 
-    def update_project(self, project):
-        """Update agent with new project context."""
-        if self.agent:
-            self.agent.update_context(project=project)
+    def on_project_switch(self, project: Any) -> None:
+        """
+        Handle project switching with delayed agent instance switching.
+
+        The agent instance switches lazily when next accessed, ensuring we use
+        the workspace's real current project rather than stale references.
+
+        Args:
+            project: The new project (object, name string, or None)
+        """
+        new_project_name = self._extract_project_name(project)
+
+        if self._target_project_name == new_project_name:
+            return
+
+        logger.info(f"🔄 Project switch requested: '{self._current_project_name}' → '{new_project_name}' (delayed)")
+
+        self._target_project_name = new_project_name
+        self._agent_needs_sync = True
+
+        # Update UI immediately
         if self.plan_widget:
             self.plan_widget.refresh_plan()
         if self.chat_history_widget:
-            # Reload the conversation history for the new project
             self.chat_history_widget._load_recent_conversation()
+
+    def sync_agent_instance(self) -> None:
+        """
+        Synchronize the agent instance with the workspace's current project.
+
+        This ensures the agent instance matches the workspace's real current project.
+        Called automatically before using the agent.
+
+        Key: we query workspace.get_project() to get the REAL current project.
+        """
+        # Early return if no sync needed and we have an agent
+        if not self._agent_needs_sync and self.agent:
+            return
+
+        # Get the REAL current project from workspace
+        current_workspace_project = self.workspace.get_project()
+        real_project_name = self._extract_project_name(current_workspace_project)
+
+        # Fall back to target if workspace has no project
+        if not current_workspace_project:
+            real_project_name = self._target_project_name or "default"
+
+        # Ensure agent instance for the real current project
+        if self._ensure_agent_for_project(real_project_name, current_workspace_project):
+            self._agent_needs_sync = False
+
+    def update_project(self, project):
+        """
+        Update agent with new project context (legacy method).
+
+        This method is kept for backward compatibility. New code should use
+        on_project_switch() which properly manages agent instances per project.
+
+        Args:
+            project: The new project object
+        """
+        # Delegate to on_project_switch
+        self.on_project_switch(project)
+
+    def get_current_project_name(self) -> Optional[str]:
+        """
+        Get the name of the current project (the agent instance's project).
+
+        Note: This returns the project of the currently loaded agent instance,
+        which may differ from the target project if a switch is pending.
+        Use get_target_project_name() to get the pending target project.
+
+        Returns:
+            The current agent instance's project name, or None if not set
+        """
+        return self._current_project_name
+
+    def get_target_project_name(self) -> Optional[str]:
+        """
+        Get the name of the target project (where we want to switch to).
+
+        Returns:
+            The target project name if a switch is pending, otherwise the current project name
+        """
+        if self._agent_needs_sync and self._target_project_name:
+            return self._target_project_name
+        return self._current_project_name
+
+    def get_current_project(self) -> Optional[Any]:
+        """
+        Get the current project object (the agent instance's project).
+
+        Note: This returns the project of the currently loaded agent instance,
+        which may differ from the target project if a switch is pending.
+
+        Returns:
+            The current agent instance's project object, or None if not set
+        """
+        return self._current_project
+
+    def get_agent_instance_key(self) -> Optional[str]:
+        """
+        Get the instance key for the current agent.
+
+        Returns:
+            The instance key in format "workspace_path:project_name", or None if no agent
+        """
+        if not self.agent or not self._current_project_name:
+            return None
+        from agent.filmeto_agent import FilmetoAgent
+        workspace_path = FilmetoAgent._get_workspace_path(self.workspace)
+        return f"{workspace_path}:{self._current_project_name}"
+
+    def is_agent_sync_needed(self) -> bool:
+        """
+        Check if agent instance synchronization is needed.
+
+        Returns:
+            True if a project switch is pending and agent needs to be synced
+        """
+        return self._agent_needs_sync
+
+    def get_workspace_current_project_name(self) -> Optional[str]:
+        """
+        Get the real current project name from the workspace.
+
+        This method queries the workspace directly to get the actual current project,
+        which is useful for debugging or verifying sync state.
+
+        Returns:
+            The workspace's current project name, or None if not available
+        """
+        project = self.workspace.get_project()
+        return self._extract_project_name(project) if project else None
 
     def set_enabled(self, enabled: bool):
         """Enable or disable the entire component."""

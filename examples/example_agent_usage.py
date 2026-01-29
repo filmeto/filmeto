@@ -12,30 +12,33 @@ from app.data.workspace import Workspace
 
 
 async def example_basic_chat():
-    """Example 1: Basic chat interaction."""
+    """Example 1: Basic chat interaction using static instance manager."""
     print("\n" + "="*60)
-    print("Example 1: Basic Chat")
+    print("Example 1: Basic Chat (using get_instance)")
     print("="*60)
-    
-    # Initialize workspace and get project
-    workspace = Workspace("/path/to/workspace", "project_name")  # Projects will be stored in /path/to/workspace/projects/project_name
-    project = workspace.get_project()
-    
-    if not project:
-        print("No project found. Please create a project first.")
-        return
-    
-    # Create agent
-    agent = FilmetoAgent(
+
+    # Initialize workspace
+    workspace = Workspace("/path/to/workspace", "project_name")
+
+    # Use get_instance to get or create agent for this project
+    # The instance will be reused for subsequent calls with the same workspace/project_name
+    agent = FilmetoAgent.get_instance(
         workspace=workspace,
-        project=project,
+        project_name="project_name",
         model="gpt-4o-mini",
         temperature=0.7
     )
-    
+
     # Simple chat
-    response = await agent.chat("What is the current project about?")
-    print(f"\nAgent: {response}")
+    await agent.chat("What is the current project about?")
+    print("\n✅ Message sent! Check signals for responses.")
+
+    # Subsequent calls with same parameters will return the same instance
+    agent_reused = FilmetoAgent.get_instance(
+        workspace=workspace,
+        project_name="project_name"
+    )
+    print(f"Same instance reused: {agent is agent_reused}")
 
 
 async def example_streaming_chat():
@@ -268,6 +271,47 @@ async def example_settings_configuration():
         print("\n⚠️ Agent LLM not initialized. Check your API key configuration.")
 
 
+async def example_instance_management():
+    """Example 9: Static instance management."""
+    print("\n" + "="*60)
+    print("Example 9: Instance Management")
+    print("="*60)
+
+    workspace = Workspace("/path/to/workspace", "project_name")
+
+    # Clear any existing instances for this demo
+    FilmetoAgent.clear_all_instances()
+
+    print("\n1. Creating instances for different projects...")
+    agent_a = FilmetoAgent.get_instance(workspace, "project_a")
+    agent_b = FilmetoAgent.get_instance(workspace, "project_b")
+
+    print(f"   agent_a and agent_b are different: {agent_a is not agent_b}")
+    print(f"   Total instances: {len(FilmetoAgent.list_instances())}")
+
+    print("\n2. Reusing instance for same project...")
+    agent_a_reused = FilmetoAgent.get_instance(workspace, "project_a")
+    print(f"   agent_a and agent_a_reused are same: {agent_a is agent_a_reused}")
+
+    print("\n3. Listing all instances...")
+    instances = FilmetoAgent.list_instances()
+    for instance_key in instances:
+        print(f"   - {instance_key}")
+
+    print("\n4. Checking if instance exists...")
+    print(f"   Has project_a: {FilmetoAgent.has_instance(workspace, 'project_a')}")
+    print(f"   Has project_c: {FilmetoAgent.has_instance(workspace, 'project_c')}")
+
+    print("\n5. Removing specific instance...")
+    removed = FilmetoAgent.remove_instance(workspace, "project_a")
+    print(f"   Removed project_a: {removed}")
+    print(f"   Remaining instances: {len(FilmetoAgent.list_instances())}")
+
+    print("\n6. Clearing all instances...")
+    FilmetoAgent.clear_all_instances()
+    print(f"   Total instances after clear: {len(FilmetoAgent.list_instances())}")
+
+
 async def main():
     """Run all examples."""
     examples = [
@@ -279,6 +323,7 @@ async def main():
         ("Custom Tools", example_custom_tool),
         ("Error Handling", example_error_handling),
         ("Settings Configuration", example_settings_configuration),
+        ("Instance Management", example_instance_management),
     ]
     
     print("\n" + "="*60)
