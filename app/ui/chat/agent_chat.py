@@ -196,27 +196,10 @@ class AgentChatWidget(BaseWidget):
             self.error_occurred.emit(error_msg)
 
     async def _stream_response(self, message: str):
-        """Stream response from agent using ReactEvent."""
-        from agent.react import AgentEventType
-
+        """Send message to agent, responses are delivered via AgentChatSignals."""
         try:
-            async for event in self.agent.chat_stream(message=message):
-                if event.event_type == AgentEventType.FINAL.value:
-                    final_response = event.payload.get("final_response", "")
-                    self.response_complete.emit(final_response)
-                elif event.event_type == AgentEventType.ERROR.value:
-                    error_message = event.payload.get("error", "Unknown error")
-                    self.error_occurred.emit(error_message)
-                elif event.event_type == AgentEventType.LLM_THINKING.value:
-                    # Thinking events are handled via AgentChatSignals
-                    pass
-                # Tool events could be handled here for progress indicators
-                elif event.event_type == AgentEventType.TOOL_START.value:
-                    pass
-                elif event.event_type == AgentEventType.TOOL_PROGRESS.value:
-                    pass
-                elif event.event_type == AgentEventType.TOOL_END.value:
-                    pass
+            # Simply call chat() - results will be delivered via signals
+            await self.agent.chat(message)
         except Exception as e:
             # Ensure error is displayed
             error_msg = f"{tr('Error')}: {str(e)}"

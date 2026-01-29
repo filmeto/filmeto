@@ -429,15 +429,15 @@ class FilmetoAgent:
         """Get the current streaming session."""
         return self.current_session
 
-    async def chat_stream(self, message: str) -> AsyncGenerator["AgentEvent", None]:
+    async def chat(self, message: str) -> None:
         """
-        Stream responses for a chat conversation with the agents.
+        Send a message to the agents and receive responses via signals.
+
+        This method does not return any value. Results are delivered through
+        the AgentChatSignals system (send_agent_message signal).
 
         Args:
             message: The message to process
-
-        Yields:
-            ReactEvent: Events from the ReAct execution process
         """
         # Ensure project is loaded if not provided but workspace exists
         if not self.project and self.workspace:
@@ -490,13 +490,13 @@ class FilmetoAgent:
                 crew_member_name=mentioned_crew_member.config.name,
                 message=message,
             )
-            async for event in self._stream_crew_member(
+            async for _ in self._stream_crew_member(
                 mentioned_crew_member,
                 message,
                 plan_id=None,
                 session_id=session_id,
             ):
-                yield event
+                pass
             return
 
         producer_agent = self._get_producer_crew_member()
@@ -507,12 +507,12 @@ class FilmetoAgent:
                 crew_member_name=producer_agent.config.name,
                 message=initial_prompt.get_text_content(),
             )
-            async for event in self._handle_producer_flow(
+            async for _ in self._handle_producer_flow(
                 initial_prompt=initial_prompt,
                 producer_agent=producer_agent,
                 session_id=session_id,
             ):
-                yield event
+                pass
             return
 
         mentioned_agent = self._resolve_mentioned_title(message)
@@ -523,14 +523,14 @@ class FilmetoAgent:
                 crew_member_name=mentioned_agent.config.name,
                 message=initial_prompt.get_text_content(),
             )
-            async for event in self._stream_crew_member(
+            async for _ in self._stream_crew_member(
                 mentioned_agent,
                 initial_prompt.get_text_content(),
                 plan_id=initial_prompt.metadata.get("plan_id") if initial_prompt.metadata else None,
                 session_id=session_id,
                 metadata=initial_prompt.metadata
             ):
-                yield event
+                pass
             return
 
         # Prioritize producer if available and no specific agent is mentioned
@@ -543,14 +543,14 @@ class FilmetoAgent:
                 message=initial_prompt.get_text_content(),
             )
             # Stream directly from the producer crew member
-            async for event in self._stream_crew_member(
+            async for _ in self._stream_crew_member(
                 producer_agent,
                 initial_prompt.get_text_content(),
                 plan_id=initial_prompt.metadata.get("plan_id") if initial_prompt.metadata else None,
                 session_id=session_id,
                 metadata=initial_prompt.metadata
             ):
-                yield event
+                pass
         else:
             responding_agent = await self._select_responding_agent(initial_prompt)
             if responding_agent:
@@ -560,20 +560,20 @@ class FilmetoAgent:
                     crew_member_name=responding_agent.config.name,
                     message=initial_prompt.get_text_content(),
                 )
-                async for event in self._stream_crew_member(
+                async for _ in self._stream_crew_member(
                     responding_agent,
                     initial_prompt.get_text_content(),
                     plan_id=initial_prompt.metadata.get("plan_id") if initial_prompt.metadata else None,
                     session_id=session_id,
                     metadata=initial_prompt.metadata
                 ):
-                    yield event
+                    pass
             else:
-                async for event in self._stream_error_message(
+                async for _ in self._stream_error_message(
                     "No suitable agent found to handle this request.",
                     session_id,
                 ):
-                    yield event
+                    pass
 
     async def _handle_producer_flow(
         self,

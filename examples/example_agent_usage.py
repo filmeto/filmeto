@@ -39,34 +39,29 @@ async def example_basic_chat():
 
 
 async def example_streaming_chat():
-    """Example 2: Streaming chat with callbacks."""
+    """Example 2: Signal-based chat with responses via signals."""
     print("\n" + "="*60)
-    print("Example 2: Streaming Chat")
+    print("Example 2: Signal-Based Chat")
     print("="*60)
-    
+
     workspace = Workspace("/path/to/workspace", "project_name")  # Projects will be stored in /path/to/workspace/projects/project_name
     project = workspace.get_project()
-    
+
     if not project:
         print("No project found.")
         return
-    
+
     agent = FilmetoAgent(
         workspace=workspace,
         project=project,
         streaming=True
     )
-    
+
     print("\nUser: List all characters in my project")
-    print("Agent: ", end='', flush=True)
-    
-    # Stream response with token callback
-    async for token in agent.chat_stream(
-        message="List all characters in my project",
-        on_token=lambda t: print(t, end='', flush=True),
-        on_complete=lambda r: print("\n✅ Response complete!")
-    ):
-        pass
+
+    # Responses are delivered via signals
+    await agent.chat("List all characters in my project")
+    print("\n✅ Message sent! Check signals for responses.")
 
 
 async def example_tool_usage():
@@ -102,27 +97,22 @@ async def example_complex_task():
     print("\n" + "="*60)
     print("Example 4: Complex Task")
     print("="*60)
-    
+
     workspace = Workspace("/path/to/workspace", "project_name")  # Projects will be stored in /path/to/workspace/projects/project_name
     project = workspace.get_project()
-    
+
     if not project:
         print("No project found.")
         return
-    
+
     agent = FilmetoAgent(workspace=workspace, project=project)
-    
+
     # Complex request that requires planning
     print("\nUser: Create a video scene with the first actor in my project")
-    print("Agent: ", end='', flush=True)
-    
-    async for token in agent.chat_stream(
-        message="Create a video scene with the first actor in my project",
-        on_token=lambda t: print(t, end='', flush=True)
-    ):
-        pass
-    
-    print()
+
+    # Responses are delivered via signals
+    await agent.chat("Create a video scene with the first actor in my project")
+    print("✅ Task submitted! Responses will be delivered via signals.")
 
 
 async def example_conversation_management():
@@ -282,7 +272,7 @@ async def main():
     """Run all examples."""
     examples = [
         ("Basic Chat", example_basic_chat),
-        ("Streaming Chat", example_streaming_chat),
+        ("Signal-Based Chat", example_streaming_chat),
         ("Tool Usage", example_tool_usage),
         ("Complex Task", example_complex_task),
         ("Conversation Management", example_conversation_management),
