@@ -498,7 +498,7 @@ class FilmetoAgent:
         session_id: str,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> AsyncGenerator["AgentEvent", None]:
-        from agent.react import AgentEventType
+        from agent.react import AgentEvent, AgentEventType
 
         # Set the current message ID on the crew member for skill tracking
         crew_member._current_message_id = str(uuid.uuid4())
