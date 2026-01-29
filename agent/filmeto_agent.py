@@ -481,6 +481,8 @@ class FilmetoAgent:
                     project_name=self._resolve_project_name() or "default",
                     react_type=response.sender_id,
                     run_id=getattr(self, "_run_id", ""),
+                    sender_id=response.sender_id,
+                    sender_name=response.sender_name,
                 )
             elif response.message_type == MessageType.ERROR:
                 yield AgentEvent.error(
@@ -488,6 +490,8 @@ class FilmetoAgent:
                     project_name=self._resolve_project_name() or "default",
                     react_type=response.sender_id,
                     run_id=getattr(self, "_run_id", ""),
+                    sender_id=response.sender_id,
+                    sender_name=response.sender_name,
                 )
 
     async def _stream_crew_member(
@@ -518,6 +522,8 @@ class FilmetoAgent:
                 react_type=event.react_type,
                 run_id=event.run_id,
                 step_id=event.step_id,
+                sender_id=event.sender_id,
+                sender_name=event.sender_name,
                 **event_payload
             )
 
@@ -553,6 +559,100 @@ class FilmetoAgent:
                 )
                 logger.info(f"❌ Sending error message: id={response.message_id}, sender='{response.sender_id}', content_preview='{error_text[:50]}{'...' if len(error_text) > 50 else ''}'")
                 await self.signals.send_agent_message(response)
+            elif event.event_type == AgentEventType.TOOL_START:
+                tool_name = event.payload.get("tool_name", "unknown")
+                tool_input = event.payload.get("input", {})
+                response = AgentMessage(
+                    message_type=MessageType.TOOL_CALL,
+                    sender_id=crew_member.config.name,
+                    sender_name=crew_member.config.name.capitalize(),
+                    metadata={"message_id": crew_member._current_message_id},
+                    message_id=crew_member._current_message_id,
+                    structured_content=[StructureContent(
+                        content_type=ContentType.TOOL_CALL,
+                        data={
+                            "tool_name": tool_name,
+                            "tool_input": tool_input,
+                            "status": "started"
+                        },
+                        title=f"Tool: {tool_name}",
+                        description=f"Executing {tool_name}"
+                    )]
+                )
+                logger.info(f"🔧 Tool start: {tool_name}")
+                await self.signals.send_agent_message(response)
+            elif event.event_type == AgentEventType.TOOL_PROGRESS:
+                progress = event.payload.get("progress", "")
+                tool_name = event.payload.get("tool_name", "")
+                if progress or tool_name:
+                    progress_data = {"status": "in_progress"}
+                    if progress:
+                        progress_data["progress"] = progress
+                    if tool_name:
+                        progress_data["tool_name"] = tool_name
+
+                    response = AgentMessage(
+                        message_type=MessageType.COMMAND,
+                        sender_id=crew_member.config.name,
+                        sender_name=crew_member.config.name.capitalize(),
+                        metadata={"message_id": crew_member._current_message_id},
+                        message_id=crew_member._current_message_id,
+                        structured_content=[StructureContent(
+                            content_type=ContentType.PROGRESS,
+                            data=progress_data,
+                            title=f"Tool Execution",
+                            description=f"Tool execution in progress"
+                        )]
+                    )
+                    logger.debug(f"⏳ Tool progress: {progress}")
+                    await self.signals.send_agent_message(response)
+            elif event.event_type == AgentEventType.TOOL_END:
+                result = event.payload.get("result", "")
+                error = event.payload.get("error", None)
+                tool_name = event.payload.get("tool_name", "")
+                status = "completed" if error is None else "failed"
+
+                tool_response_data = {
+                    "status": status,
+                    "tool_name": tool_name
+                }
+                if result is not None:
+                    tool_response_data["result"] = result
+                if error:
+                    tool_response_data["error"] = error
+
+                response = AgentMessage(
+                    message_type=MessageType.TOOL_RESPONSE,
+                    sender_id=crew_member.config.name,
+                    sender_name=crew_member.config.name.capitalize(),
+                    metadata={"message_id": crew_member._current_message_id},
+                    message_id=crew_member._current_message_id,
+                    structured_content=[StructureContent(
+                        content_type=ContentType.TOOL_RESPONSE,
+                        data=tool_response_data,
+                        title=f"Tool Result: {tool_name}",
+                        description=f"Tool execution {status}"
+                    )]
+                )
+                logger.info(f"🔧 Tool end: {tool_name} - {status}")
+                await self.signals.send_agent_message(response)
+            elif event.event_type == AgentEventType.TODO_UPDATE:
+                todo_data = event.payload.get("todo", {})
+                response = AgentMessage(
+                    message_type=MessageType.SYSTEM,
+                    sender_id=crew_member.config.name,
+                    sender_name=crew_member.config.name.capitalize(),
+                    metadata={"message_id": crew_member._current_message_id},
+                    message_id=crew_member._current_message_id,
+                    structured_content=[StructureContent(
+                        content_type=ContentType.METADATA,
+                        data=todo_data,
+                        title="Task Update",
+                        description="Task list has been updated"
+                    )]
+                )
+                logger.info(f"📝 Todo update: {list(todo_data.keys())}")
+                await self.signals.send_agent_message(response)
 
             # Yield the event for upstream
             yield enhanced_event
@@ -584,6 +684,8 @@ class FilmetoAgent:
             project_name=self._resolve_project_name() or "default",
             react_type="system",
             run_id=getattr(self, "_run_id", ""),
+            sender_id="system",
+            sender_name="System",
         )
 
     def get_current_session(self) -> Optional[AgentStreamSession]:

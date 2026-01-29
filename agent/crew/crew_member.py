@@ -117,6 +117,8 @@ class CrewMember:
                 project_name=self.project_name,
                 react_type=self.config.name,
                 run_id=getattr(self, "_run_id", ""),
+                sender_id=self.config.name,
+                sender_name=self.config.name,
             )
             return
 
@@ -141,6 +143,19 @@ class CrewMember:
 
         async for event in react_instance.chat_stream(message):
             saw_event = True
+
+            # Enhance event with sender information
+            enhanced_event = AgentEvent.create(
+                event_type=event.event_type,
+                project_name=event.project_name,
+                react_type=event.react_type,
+                run_id=event.run_id,
+                step_id=event.step_id,
+                sender_id=self.config.name,
+                sender_name=self.config.name,
+                **event.payload
+            )
+
             # Send thinking events via AgentChatSignals for UI
             if event.event_type == AgentEventType.LLM_THINKING:
                 thinking_structure = StructureContent(
@@ -164,24 +179,24 @@ class CrewMember:
                 if mid:
                     msg.message_id = mid
                 await self.signals.send_agent_message(msg)
-                yield event
+                yield enhanced_event
             elif event.event_type == AgentEventType.FINAL:
                 final_response = event.payload.get("final_response", "")
                 # Store conversation history
                 if final_response:
                     self.conversation_history.append({"role": "user", "content": message})
                     self.conversation_history.append({"role": "assistant", "content": final_response})
-                yield event
+                yield enhanced_event
                 break
             elif event.event_type == AgentEventType.ERROR:
                 error_message = event.payload.get("error", "Unknown error occurred")
                 self.conversation_history.append({"role": "user", "content": message})
                 self.conversation_history.append({"role": "assistant", "content": error_message})
-                yield event
+                yield enhanced_event
                 break
             else:
                 # Yield all other events (tool_start, tool_progress, tool_end, etc.)
-                yield event
+                yield enhanced_event
 
         if not saw_event:
             return
@@ -193,6 +208,8 @@ class CrewMember:
                 project_name=self.project_name,
                 react_type=self.config.name,
                 run_id=getattr(self, "_run_id", ""),
+                sender_id=self.config.name,
+                sender_name=self.config.name,
             )
             return
 

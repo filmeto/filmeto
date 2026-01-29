@@ -83,6 +83,8 @@ class BaseTool(ABC):
         react_type: str = "",
         run_id: str = "",
         step_id: int = 0,
+        sender_id: str = "",
+        sender_name: str = "",
     ) -> AsyncGenerator["AgentEvent", None]:
         """
         Execute the tool with given parameters and context.
@@ -96,6 +98,8 @@ class BaseTool(ABC):
             react_type: React type for event tracking
             run_id: Run ID for event tracking
             step_id: Step ID for event tracking
+            sender_id: ID of the event sender
+            sender_name: Display name of the event sender
 
         Yields:
             ReactEvent objects with types:
@@ -131,6 +135,8 @@ class BaseTool(ABC):
         react_type: str = "",
         run_id: str = "",
         step_id: int = 0,
+        sender_id: str = "",
+        sender_name: str = "",
         **kwargs
     ) -> "AgentEvent":
         """
@@ -142,6 +148,8 @@ class BaseTool(ABC):
             react_type: React type
             run_id: Run ID
             step_id: Step ID
+            sender_id: ID of the event sender
+            sender_name: Display name of the event sender
             **kwargs: Additional event-specific data
 
         Returns:
@@ -155,6 +163,8 @@ class BaseTool(ABC):
             react_type=react_type,
             run_id=run_id,
             step_id=step_id,
+            sender_id=sender_id,
+            sender_name=sender_name,
             tool_name=self.name,
             **kwargs
         )

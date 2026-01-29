@@ -98,6 +98,8 @@ class ToolService:
         react_type: str = "",
         run_id: str = "",
         step_id: int = 0,
+        sender_id: str = "",
+        sender_name: str = "",
         **kwargs
     ) -> Any:
         """
@@ -110,6 +112,8 @@ class ToolService:
             react_type: React type
             run_id: Run ID
             step_id: Step ID
+            sender_id: ID of the event sender
+            sender_name: Display name of the event sender
             **kwargs: Additional event-specific data
 
         Returns:
@@ -123,6 +127,8 @@ class ToolService:
             react_type=react_type,
             run_id=run_id,
             step_id=step_id,
+            sender_id=sender_id,
+            sender_name=sender_name,
             tool_name=tool_name,
             **kwargs
         )
@@ -136,6 +142,8 @@ class ToolService:
         react_type: str = "",
         run_id: str = "",
         step_id: int = 0,
+        sender_id: str = "",
+        sender_name: str = "",
     ) -> AsyncGenerator[Any, None]:
         """
         Execute a specific tool with given parameters.
@@ -150,6 +158,8 @@ class ToolService:
             react_type: React type for event tracking
             run_id: Run ID for event tracking
             step_id: Step ID for event tracking
+            sender_id: ID of the event sender
+            sender_name: Display name of the event sender
 
         Yields:
             ReactEvent objects with types: tool_start, tool_progress, tool_end, error
@@ -165,6 +175,8 @@ class ToolService:
                 react_type,
                 run_id,
                 step_id,
+                sender_id,
+                sender_name,
                 error=f"Tool '{tool_name}' not found"
             )
             return
@@ -179,6 +191,8 @@ class ToolService:
             react_type,
             run_id,
             step_id,
+            sender_id,
+            sender_name,
             parameters=parameters
         )
 
@@ -191,6 +205,8 @@ class ToolService:
                 react_type=react_type,
                 run_id=run_id,
                 step_id=step_id,
+                sender_id=sender_id,
+                sender_name=sender_name,
             ):
                 # Yield the event directly - tools now create proper ReactEvent objects
                 yield event
@@ -203,6 +219,8 @@ class ToolService:
                 react_type,
                 run_id,
                 step_id,
+                sender_id,
+                sender_name,
                 error=str(e)
             )
 

@@ -46,6 +46,8 @@ class AgentEvent:
         react_type: Type of ReAct process
         run_id: Unique identifier for the current run
         step_id: Step number in the current run
+        sender_id: ID of the event sender (e.g., crew member name, agent name)
+        sender_name: Display name of the event sender
         payload: Event-specific data (must be JSON serializable)
     """
     event_type: str
@@ -53,10 +55,16 @@ class AgentEvent:
     react_type: str
     run_id: str
     step_id: int
-    payload: Dict[str, Any]
+    sender_id: str = ""
+    sender_name: str = ""
+    payload: Dict[str, Any] = None
 
     def __post_init__(self):
         """Validate event fields."""
+        # Handle default value for payload
+        if self.payload is None:
+            self.payload = {}
+
         # Validate event_type
         valid_types = AgentEventType.get_valid_types()
         if self.event_type not in valid_types:
@@ -80,6 +88,8 @@ class AgentEvent:
         react_type: str,
         run_id: str,
         step_id: int,
+        sender_id: str = "",
+        sender_name: str = "",
         **payload_kwargs
     ) -> "AgentEvent":
         """
@@ -91,6 +101,8 @@ class AgentEvent:
             react_type: Type of ReAct process
             run_id: Unique identifier for the current run
             step_id: Step number in the current run
+            sender_id: ID of the event sender (e.g., crew member name, agent name)
+            sender_name: Display name of the event sender
             **payload_kwargs: Event-specific data for the payload
 
         Returns:
@@ -103,6 +115,8 @@ class AgentEvent:
                 react_type="crew",
                 run_id="run_123",
                 step_id=1,
+                sender_id="script_writer",
+                sender_name="Script Writer",
                 tool_name="my_tool",
                 parameters={"arg": "value"}
             )
@@ -113,6 +127,8 @@ class AgentEvent:
             react_type=react_type,
             run_id=run_id,
             step_id=step_id,
+            sender_id=sender_id,
+            sender_name=sender_name,
             payload=payload_kwargs
         )
 
@@ -123,6 +139,8 @@ class AgentEvent:
         react_type: str = "",
         run_id: str = "",
         step_id: int = 0,
+        sender_id: str = "",
+        sender_name: str = "",
         **details
     ) -> "AgentEvent":
         """
@@ -134,6 +152,8 @@ class AgentEvent:
             react_type: Type of ReAct process
             run_id: Unique identifier for the current run
             step_id: Step number in the current run
+            sender_id: ID of the event sender
+            sender_name: Display name of the event sender
             **details: Additional error details
 
         Returns:
@@ -145,6 +165,8 @@ class AgentEvent:
             react_type=react_type,
             run_id=run_id,
             step_id=step_id,
+            sender_id=sender_id,
+            sender_name=sender_name,
             error=error_message,
             **details
         )
@@ -156,6 +178,8 @@ class AgentEvent:
         react_type: str = "",
         run_id: str = "",
         step_id: int = 0,
+        sender_id: str = "",
+        sender_name: str = "",
         **details
     ) -> "AgentEvent":
         """
@@ -167,6 +191,8 @@ class AgentEvent:
             react_type: Type of ReAct process
             run_id: Unique identifier for the current run
             step_id: Step number in the current run
+            sender_id: ID of the event sender
+            sender_name: Display name of the event sender
             **details: Additional details
 
         Returns:
@@ -178,6 +204,8 @@ class AgentEvent:
             react_type=react_type,
             run_id=run_id,
             step_id=step_id,
+            sender_id=sender_id,
+            sender_name=sender_name,
             final_response=final_response,
             **details
         )
@@ -189,6 +217,8 @@ class AgentEvent:
         react_type: str = "",
         run_id: str = "",
         step_id: int = 0,
+        sender_id: str = "",
+        sender_name: str = "",
         **details
     ) -> "AgentEvent":
         """
@@ -200,6 +230,8 @@ class AgentEvent:
             react_type: Type of ReAct process
             run_id: Unique identifier for the current run
             step_id: Step number in the current run
+            sender_id: ID of the event sender
+            sender_name: Display name of the event sender
             **details: Additional details (e.g., parameters)
 
         Returns:
@@ -211,6 +243,8 @@ class AgentEvent:
             react_type=react_type,
             run_id=run_id,
             step_id=step_id,
+            sender_id=sender_id,
+            sender_name=sender_name,
             tool_name=tool_name,
             **details
         )
@@ -223,6 +257,8 @@ class AgentEvent:
         react_type: str = "",
         run_id: str = "",
         step_id: int = 0,
+        sender_id: str = "",
+        sender_name: str = "",
         **details
     ) -> "AgentEvent":
         """
@@ -235,6 +271,8 @@ class AgentEvent:
             react_type: Type of ReAct process
             run_id: Unique identifier for the current run
             step_id: Step number in the current run
+            sender_id: ID of the event sender
+            sender_name: Display name of the event sender
             **details: Additional details
 
         Returns:
@@ -246,6 +284,8 @@ class AgentEvent:
             react_type=react_type,
             run_id=run_id,
             step_id=step_id,
+            sender_id=sender_id,
+            sender_name=sender_name,
             tool_name=tool_name,
             progress=progress,
             **details
@@ -260,6 +300,8 @@ class AgentEvent:
         react_type: str = "",
         run_id: str = "",
         step_id: int = 0,
+        sender_id: str = "",
+        sender_name: str = "",
         **details
     ) -> "AgentEvent":
         """
@@ -273,6 +315,8 @@ class AgentEvent:
             react_type: Type of ReAct process
             run_id: Unique identifier for the current run
             step_id: Step number in the current run
+            sender_id: ID of the event sender
+            sender_name: Display name of the event sender
             **details: Additional details
 
         Returns:
@@ -291,5 +335,7 @@ class AgentEvent:
             react_type=react_type,
             run_id=run_id,
             step_id=step_id,
+            sender_id=sender_id,
+            sender_name=sender_name,
             **payload
         )
