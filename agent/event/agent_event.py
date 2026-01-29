@@ -8,29 +8,103 @@ if TYPE_CHECKING:
 
 
 class AgentEventType(str, Enum):
-    """Constants for ReAct event types."""
-    LLM_THINKING = "llm_thinking"
-    TOOL_START = "tool_start"
-    TOOL_PROGRESS = "tool_progress"
-    TOOL_END = "tool_end"
-    LLM_OUTPUT = "llm_output"
-    FINAL = "final"
-    ERROR = "error"
-    USER_MESSAGE = "user_message"
-    PAUSE = "pause"
-    RESUME = "resume"
-    STATUS_CHANGE = "status_change"
-    TODO_UPDATE = "todo_update"
+    """Constants for ReAct event types.
+
+    Events represent different stages in the agent group chat process,
+    including LLM thinking, crew member tasks, skill execution, and tool calls.
+    """
+    # === LLM相关 ===
+    LLM_THINKING = "llm_thinking"       # LLM思考过程
+    LLM_OUTPUT = "llm_output"           # LLM原始输出
+
+    # === Crew成员相关 ===
+    CREW_MEMBER_START = "crew_member_start"       # Crew成员开始处理任务
+    CREW_MEMBER_THINKING = "crew_member_thinking" # Crew成员思考过程
+    CREW_MEMBER_END = "crew_member_end"           # Crew成员完成处理
+
+    # === Skill相关 ===
+    SKILL_START = "skill_start"         # Skill开始执行
+    SKILL_PROGRESS = "skill_progress"   # Skill执行进度
+    SKILL_END = "skill_end"             # Skill执行完成
+    SKILL_ERROR = "skill_error"         # Skill执行错误
+
+    # === 工具相关 ===
+    TOOL_START = "tool_start"           # 工具开始执行
+    TOOL_PROGRESS = "tool_progress"     # 工具执行进度
+    TOOL_END = "tool_end"               # 工具执行完成
+
+    # === 计划相关 ===
+    PLAN_CREATED = "plan_created"       # 计划创建完成
+    PLAN_UPDATED = "plan_updated"       # 计划更新
+    PLAN_STEP_START = "plan_step_start" # 计划步骤开始
+    PLAN_STEP_END = "plan_step_end"     # 计划步骤完成
+    PLAN_STEP_FAILED = "plan_step_failed" # 计划步骤失败
+
+    # === 状态相关 ===
+    STEP_START = "step_start"           # 当前步骤开始
+    STEP_END = "step_end"               # 当前步骤结束
+    STATUS_CHANGE = "status_change"     # 状态变更
+    TODO_UPDATE = "todo_update"         # TODO更新
+
+    # === 终止相关 ===
+    FINAL = "final"                     # 最终响应
+    ERROR = "error"                     # 错误
+    INTERRUPTED = "interrupted"         # 用户中断
+    TIMEOUT = "timeout"                 # 超时
+
+    # === 控制相关 ===
+    USER_MESSAGE = "user_message"       # 用户消息
+    PAUSE = "pause"                     # 暂停
+    RESUME = "resume"                   # 恢复
 
     @classmethod
     def is_tool_event(cls, event_type: str) -> bool:
         """Check if event type is tool-related."""
-        return event_type in {cls.TOOL_START.value, cls.TOOL_PROGRESS.value, cls.TOOL_END.value}
+        return event_type in {
+            cls.TOOL_START.value,
+            cls.TOOL_PROGRESS.value,
+            cls.TOOL_END.value
+        }
+
+    @classmethod
+    def is_skill_event(cls, event_type: str) -> bool:
+        """Check if event type is skill-related."""
+        return event_type in {
+            cls.SKILL_START.value,
+            cls.SKILL_PROGRESS.value,
+            cls.SKILL_END.value,
+            cls.SKILL_ERROR.value
+        }
+
+    @classmethod
+    def is_crew_member_event(cls, event_type: str) -> bool:
+        """Check if event type is crew member-related."""
+        return event_type in {
+            cls.CREW_MEMBER_START.value,
+            cls.CREW_MEMBER_THINKING.value,
+            cls.CREW_MEMBER_END.value
+        }
+
+    @classmethod
+    def is_plan_event(cls, event_type: str) -> bool:
+        """Check if event type is plan-related."""
+        return event_type in {
+            cls.PLAN_CREATED.value,
+            cls.PLAN_UPDATED.value,
+            cls.PLAN_STEP_START.value,
+            cls.PLAN_STEP_END.value,
+            cls.PLAN_STEP_FAILED.value
+        }
 
     @classmethod
     def is_terminal_event(cls, event_type: str) -> bool:
         """Check if event type indicates termination."""
-        return event_type in {cls.FINAL.value, cls.ERROR.value}
+        return event_type in {
+            cls.FINAL.value,
+            cls.ERROR.value,
+            cls.INTERRUPTED.value,
+            cls.TIMEOUT.value
+        }
 
     @classmethod
     def get_valid_types(cls) -> Set[str]:

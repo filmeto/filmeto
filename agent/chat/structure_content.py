@@ -265,6 +265,227 @@ class FileAttachmentContent(StructureContent):
         return data
 
 
+@dataclass
+class AudioContent(StructureContent):
+    """Audio content."""
+    content_type: ContentType = ContentType.AUDIO
+    url: Optional[str] = None
+    thumbnail_url: Optional[str] = None
+    duration: Optional[int] = None  # in seconds
+    transcript: Optional[str] = None  # 转录文本
+
+    def _get_data(self) -> Dict[str, Any]:
+        data = {}
+        if self.url:
+            data["url"] = self.url
+        if self.thumbnail_url:
+            data["thumbnail_url"] = self.thumbnail_url
+        if self.duration is not None:
+            data["duration"] = self.duration
+        if self.transcript:
+            data["transcript"] = self.transcript
+        return data
+
+
+@dataclass
+class TableContent(StructureContent):
+    """Table content for displaying structured data."""
+    content_type: ContentType = ContentType.TABLE
+    headers: List[str] = field(default_factory=list)
+    rows: List[List[str]] = field(default_factory=list)
+    table_title: Optional[str] = None
+
+    def _get_data(self) -> Dict[str, Any]:
+        data = {
+            "headers": self.headers,
+            "rows": self.rows
+        }
+        if self.table_title:
+            data["title"] = self.table_title
+        return data
+
+
+@dataclass
+class ChartContent(StructureContent):
+    """Chart content for visualizing data."""
+    content_type: ContentType = ContentType.CHART
+    chart_type: str = ""  # bar, line, pie, scatter, etc.
+    data: Dict[str, Any] = field(default_factory=dict)
+    chart_title: Optional[str] = None
+    x_axis_label: Optional[str] = None
+    y_axis_label: Optional[str] = None
+
+    def _get_data(self) -> Dict[str, Any]:
+        data = {
+            "chart_type": self.chart_type,
+            "data": self.data
+        }
+        if self.chart_title:
+            data["title"] = self.chart_title
+        if self.x_axis_label:
+            data["x_axis_label"] = self.x_axis_label
+        if self.y_axis_label:
+            data["y_axis_label"] = self.y_axis_label
+        return data
+
+
+@dataclass
+class LinkContent(StructureContent):
+    """Link content for URLs."""
+    content_type: ContentType = ContentType.LINK
+    url: str = ""
+    link_title: Optional[str] = None
+    description: Optional[str] = None
+    favicon_url: Optional[str] = None
+
+    def _get_data(self) -> Dict[str, Any]:
+        data = {"url": self.url}
+        if self.link_title:
+            data["title"] = self.link_title
+        if self.description:
+            data["description"] = self.description
+        if self.favicon_url:
+            data["favicon_url"] = self.favicon_url
+        return data
+
+
+@dataclass
+class ButtonContent(StructureContent):
+    """Button content for interactive elements."""
+    content_type: ContentType = ContentType.BUTTON
+    label: str = ""
+    action: str = ""  # Action to perform when clicked
+    button_style: str = "primary"  # primary, secondary, danger, warning, success
+    disabled: bool = False
+    payload: Optional[Dict[str, Any]] = None  # Additional data for the action
+
+    def _get_data(self) -> Dict[str, Any]:
+        data = {
+            "label": self.label,
+            "action": self.action,
+            "style": self.button_style,
+            "disabled": self.disabled
+        }
+        if self.payload:
+            data["payload"] = self.payload
+        return data
+
+
+@dataclass
+class FormContent(StructureContent):
+    """Form content for interactive input."""
+    content_type: ContentType = ContentType.FORM
+    fields: List[Dict[str, Any]] = field(default_factory=list)
+    submit_action: str = ""
+    submit_label: str = "Submit"
+    form_title: Optional[str] = None
+
+    def _get_data(self) -> Dict[str, Any]:
+        data = {
+            "fields": self.fields,
+            "submit_action": self.submit_action,
+            "submit_label": self.submit_label
+        }
+        if self.form_title:
+            data["title"] = self.form_title
+        return data
+
+
+@dataclass
+class SkillContent(StructureContent):
+    """Skill information content."""
+    content_type: ContentType = ContentType.SKILL
+    skill_name: str = ""
+    skill_description: str = ""
+    parameters: List[Dict[str, Any]] = field(default_factory=list)
+    example_call: Optional[str] = None
+    usage_criteria: Optional[str] = None
+
+    def _get_data(self) -> Dict[str, Any]:
+        data = {
+            "skill_name": self.skill_name,
+            "description": self.skill_description,
+            "parameters": self.parameters
+        }
+        if self.example_call:
+            data["example_call"] = self.example_call
+        if self.usage_criteria:
+            data["usage_criteria"] = self.usage_criteria
+        return data
+
+
+@dataclass
+class PlanContent(StructureContent):
+    """Plan content for task planning."""
+    content_type: ContentType = ContentType.PLAN
+    plan_id: str = ""
+    plan_title: Optional[str] = None
+    steps: List[Dict[str, Any]] = field(default_factory=list)
+    current_step: int = 0
+    total_steps: int = 0
+    plan_status: str = "pending"  # pending, in_progress, completed, failed
+
+    def _get_data(self) -> Dict[str, Any]:
+        data = {
+            "plan_id": self.plan_id,
+            "steps": self.steps,
+            "current_step": self.current_step,
+            "total_steps": self.total_steps,
+            "status": self.plan_status
+        }
+        if self.plan_title:
+            data["title"] = self.plan_title
+        return data
+
+
+@dataclass
+class StepContent(StructureContent):
+    """Step content within a plan."""
+    content_type: ContentType = ContentType.STEP
+    step_id: str = ""
+    step_number: int = 0
+    description: str = ""
+    step_status: str = "pending"  # pending, in_progress, completed, failed
+    result: Optional[Any] = None
+    error: Optional[str] = None
+    estimated_duration: Optional[int] = None  # in seconds
+
+    def _get_data(self) -> Dict[str, Any]:
+        data = {
+            "step_id": self.step_id,
+            "step_number": self.step_number,
+            "description": self.description,
+            "status": self.step_status
+        }
+        if self.result is not None:
+            data["result"] = self.result
+        if self.error:
+            data["error"] = self.error
+        if self.estimated_duration is not None:
+            data["estimated_duration"] = self.estimated_duration
+        return data
+
+
+@dataclass
+class TaskListContent(StructureContent):
+    """Task list content for tracking multiple tasks."""
+    content_type: ContentType = ContentType.TASK_LIST
+    tasks: List[Dict[str, Any]] = field(default_factory=list)
+    completed_count: int = 0
+    total_count: int = 0
+    list_title: Optional[str] = None
+
+    def _get_data(self) -> Dict[str, Any]:
+        data = {
+            "tasks": self.tasks,
+            "completed_count": self.completed_count,
+            "total_count": self.total_count
+        }
+        if self.list_title:
+            data["title"] = self.list_title
+        return data
+
+
 # Mapping of ContentType to appropriate subclass
 _CONTENT_CLASS_MAP: Dict[ContentType, type] = {
     ContentType.TEXT: TextContent,
@@ -275,9 +496,19 @@ _CONTENT_CLASS_MAP: Dict[ContentType, type] = {
     ContentType.CODE_BLOCK: CodeBlockContent,
     ContentType.IMAGE: ImageContent,
     ContentType.VIDEO: VideoContent,
+    ContentType.AUDIO: AudioContent,
+    ContentType.TABLE: TableContent,
+    ContentType.CHART: ChartContent,
+    ContentType.LINK: LinkContent,
+    ContentType.BUTTON: ButtonContent,
+    ContentType.FORM: FormContent,
     ContentType.METADATA: MetadataContent,
     ContentType.ERROR: ErrorContent,
     ContentType.FILE_ATTACHMENT: FileAttachmentContent,
+    ContentType.SKILL: SkillContent,
+    ContentType.PLAN: PlanContent,
+    ContentType.STEP: StepContent,
+    ContentType.TASK_LIST: TaskListContent,
 }
 
 
