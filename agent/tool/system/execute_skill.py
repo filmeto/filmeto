@@ -136,6 +136,8 @@ class ExecuteSkillTool(BaseTool):
                 react_type,
                 run_id,
                 step_id,
+                sender_id,
+                sender_name,
                 error="skill_name is required"
             )
             return
@@ -148,12 +150,15 @@ class ExecuteSkillTool(BaseTool):
                 react_type,
                 run_id,
                 step_id,
+                sender_id,
+                sender_name,
                 error=f"Skill '{skill_name}' not found"
             )
             return
 
         try:
             # Use SkillService.chat_stream to execute the skill
+            # Forward events from skill_chat directly, preserving event types
             final_response = None
             async for event in skill_service.chat_stream(
                 skill=skill,
@@ -163,71 +168,50 @@ class ExecuteSkillTool(BaseTool):
                 llm_service=None,  # Will use default LLM service
                 max_steps=max_steps,
             ):
-                # Transform ReactEvent to tool_progress events for ToolService
-                if event.event_type == AgentEventType.LLM_THINKING:
-                    yield self._create_event(
-                        "tool_progress",
-                        project_name,
-                        react_type,
-                        run_id,
-                        step_id,
-                        progress=event.payload.get("message", "Thinking...")
-                    )
-                elif event.event_type == AgentEventType.TOOL_START:
-                    tool_name = event.payload.get("tool_name", "unknown")
-                    yield self._create_event(
-                        "tool_progress",
-                        project_name,
-                        react_type,
-                        run_id,
-                        step_id,
-                        progress=f"Executing tool: {tool_name}"
-                    )
-                elif event.event_type == AgentEventType.TOOL_PROGRESS:
-                    progress = event.payload.get("progress")
-                    if progress:
-                        yield self._create_event(
-                            "tool_progress",
-                            project_name,
-                            react_type,
-                            run_id,
-                            step_id,
-                            progress=str(progress)
-                        )
-                elif event.event_type == AgentEventType.TOOL_END:
-                    result = event.payload.get("result")
-                    if result:
-                        yield self._create_event(
-                            "tool_progress",
-                            project_name,
-                            react_type,
-                            run_id,
-                            step_id,
-                            progress=f"Tool result: {str(result)[:100]}..."
-                        )
-                elif event.event_type == AgentEventType.FINAL:
+                # Forward the event directly, preserving original event type and payload
+                # The sender_id/sender_name will be added by CrewMember upstream
+                if event.event_type == AgentEventType.FINAL:
                     final_response = event.payload.get("final_response")
+                    # Convert FINAL to tool_end for tool completion
                     yield self._create_event(
                         "tool_end",
                         project_name,
                         react_type,
                         run_id,
                         step_id,
+                        sender_id,
+                        sender_name,
                         ok=True,
                         result=final_response
                     )
                     return
                 elif event.event_type == AgentEventType.ERROR:
                     error = event.payload.get("error", "Unknown error")
+                    # Convert ERROR to tool error event
                     yield self._create_event(
                         "error",
                         project_name,
                         react_type,
                         run_id,
                         step_id,
+                        sender_id,
+                        sender_name,
                         error=error
                     )
                     return
+                else:
+                    # Forward all other events directly (LLM_THINKING, TOOL_START, TOOL_PROGRESS, TOOL_END, etc.)
+                    # These will be enhanced with sender info by CrewMember
+                    yield AgentEvent.create(
+                        event_type=event.event_type,
+                        project_name=event.project_name or project_name,
+                        react_type=event.react_type or react_type,
+                        run_id=event.run_id or run_id,
+                        step_id=event.step_id or step_id,
+                        sender_id=sender_id,
+                        sender_name=sender_name,
+                        **event.payload
+                    )
 
             # If we get here without a FINAL event, return whatever we collected
             if final_response:
@@ -237,6 +221,8 @@ class ExecuteSkillTool(BaseTool):
                     react_type,
                     run_id,
                     step_id,
+                    sender_id,
+                    sender_name,
                     ok=True,
                     result=final_response
                 )
@@ -247,6 +233,8 @@ class ExecuteSkillTool(BaseTool):
                     react_type,
                     run_id,
                     step_id,
+                    sender_id,
+                    sender_name,
                     ok=True,
                     result="Skill execution completed"
                 )
@@ -258,5 +246,7 @@ class ExecuteSkillTool(BaseTool):
                 react_type,
                 run_id,
                 step_id,
+                sender_id,
+                sender_name,
                 error=f"Error executing skill: {str(e)}"
             )

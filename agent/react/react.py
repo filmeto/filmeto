@@ -320,6 +320,11 @@ class React:
                     has_error = True
                     return
 
+                else:
+                    # Forward all other events directly (e.g., LLM_THINKING, nested TOOL_START/PROGRESS/END from skill_chat)
+                    # These will be converted to AgentEvent by chat_stream
+                    yield event
+
             # If we get here without a tool_end event, something went wrong
             if not has_error:
                 duration_ms = (time.time() - start_time) * 1000
@@ -400,13 +405,25 @@ class React:
                         try:
                             tool_result = None
                             async for item in self._execute_tool(action.tool_name, action.tool_args):
-                                if "progress" in item:
-                                    yield self._create_event(AgentEventType.TOOL_PROGRESS, action.to_progress_payload(item["progress"]))
-                                if "result" in item:
-                                    tool_result = item["result"]
-                                if "error" in item:
-                                    tool_result = item["error"]
-                                    break
+                                # Handle both dict items and AgentEvent objects
+                                if isinstance(item, dict):
+                                    # Legacy dict format
+                                    if "progress" in item:
+                                        yield self._create_event(AgentEventType.TOOL_PROGRESS, action.to_progress_payload(item["progress"]))
+                                    if "result" in item:
+                                        tool_result = item["result"]
+                                    if "error" in item:
+                                        tool_result = item["error"]
+                                        break
+                                elif hasattr(item, 'event_type'):
+                                    # AgentEvent object - forward directly
+                                    yield item
+                                    # Extract result from tool_end event for final observation
+                                    if item.event_type == AgentEventType.TOOL_END:
+                                        tool_result = item.payload.get("result")
+                                    elif item.event_type == AgentEventType.ERROR:
+                                        tool_result = item.payload.get("error", "Unknown error")
+                                        break
                             if tool_result is None:
                                 tool_result = "Tool execution completed"
                             yield self._create_event(AgentEventType.TOOL_END, action.to_end_payload(result=tool_result, ok=True))
