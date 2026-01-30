@@ -6,7 +6,7 @@ different states: start, progress, and end.
 """
 from typing import Any, Dict
 
-from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QProgressBar, QFrame, QSizePolicy
+from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QSizePolicy
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 
@@ -19,6 +19,7 @@ class SkillContentWidget(BaseStructuredContentWidget):
     Widget for displaying skill execution status with different states.
 
     Supports start, progress, and end states for skill execution.
+    Uses text-based progress display instead of progress bar for better performance.
     """
 
     def __init__(self, structure_content: SkillContent, parent=None, available_width=None):
@@ -87,6 +88,21 @@ class SkillContentWidget(BaseStructuredContentWidget):
         self.status_label.setWordWrap(True)
         self.status_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
+        # Progress label (text-based instead of progress bar)
+        self.progress_label = QLabel()
+        self.progress_label.setObjectName("skill_progress_label")
+        self.progress_label.setVisible(False)
+        self.progress_label.setStyleSheet("""
+            QLabel#skill_progress_label {
+                color: #4a90e2;
+                font-size: 12px;
+                font-weight: bold;
+            }
+        """)
+        self.progress_label.setAlignment(Qt.AlignLeft)
+        self.progress_label.setWordWrap(True)
+        self.progress_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+
         # Description label (skill_description from SkillContent)
         self.description_label = QLabel()
         self.description_label.setObjectName("skill_description_label")
@@ -101,29 +117,11 @@ class SkillContentWidget(BaseStructuredContentWidget):
         self.description_label.setWordWrap(True)
         self.description_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
-        # Progress bar (initially hidden)
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setObjectName("skill_progress_bar")
-        self.progress_bar.setVisible(False)
-        self.progress_bar.setStyleSheet("""
-            QProgressBar {
-                border: 1px solid #4a90e2;
-                border-radius: 3px;
-                text-align: center;
-                color: #ffffff;
-            }
-            QProgressBar::chunk {
-                background-color: #4a90e2;
-                border-radius: 2px;
-            }
-        """)
-        self.progress_bar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-
         # Add widgets to frame layout
         self.frame_layout.addWidget(self.title_label)
         self.frame_layout.addWidget(self.status_label)
+        self.frame_layout.addWidget(self.progress_label)
         self.frame_layout.addWidget(self.description_label)
-        self.frame_layout.addWidget(self.progress_bar)
 
         # Add frame to main layout
         self.main_layout.addWidget(self.container_frame)
@@ -156,7 +154,7 @@ class SkillContentWidget(BaseStructuredContentWidget):
                 }
             """)
             params_label.setWordWrap(True)
-            self.frame_layout.insertWidget(2, params_label)
+            self.frame_layout.insertWidget(3, params_label)
 
         # Set initial status
         self.update_content(self.structure_content)
@@ -198,10 +196,9 @@ class SkillContentWidget(BaseStructuredContentWidget):
         status_msg = structure_content.skill_description or "Skill execution"
         self.status_label.setText(status_msg)
 
-        # For skill content, we assume completed state
-        self.progress_bar.setVisible(True)
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(100)
+        # Show text-based progress instead of progress bar
+        self.progress_label.setVisible(True)
+        self.progress_label.setText("✓ Completed")
 
     def get_state(self) -> Dict[str, Any]:
         """
@@ -215,8 +212,8 @@ class SkillContentWidget(BaseStructuredContentWidget):
             "skill_description": self.structure_content.skill_description,
             "status": self.status,
             "status_message": self.status_message,
-            "progress_visible": self.progress_bar.isVisible() if self.progress_bar else False,
-            "progress_value": self.progress_bar.value() if self.progress_bar and self.progress_bar.isVisible() else None
+            "progress_visible": self.progress_label.isVisible() if self.progress_label else False,
+            "progress_text": self.progress_label.text() if self.progress_label and self.progress_label.isVisible() else None
         }
 
     def set_state(self, state: Dict[str, Any]):
@@ -238,10 +235,10 @@ class SkillContentWidget(BaseStructuredContentWidget):
             self.status_message = state["status_message"]
             self.status_label.setText(self.status_message)
 
-        if "progress_visible" in state and self.progress_bar:
-            self.progress_bar.setVisible(state["progress_visible"])
-        if "progress_value" in state and self.progress_bar and state["progress_value"] is not None:
-            self.progress_bar.setValue(state["progress_value"])
+        if "progress_visible" in state and self.progress_label:
+            self.progress_label.setVisible(state["progress_visible"])
+        if "progress_text" in state and self.progress_label:
+            self.progress_label.setText(state["progress_text"])
 
     def update_available_width(self, width: int):
         """Update the available width for this widget."""

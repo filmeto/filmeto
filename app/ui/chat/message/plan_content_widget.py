@@ -1,7 +1,7 @@
 """Widget for displaying plan content in chat messages."""
 
 from typing import Any, Dict
-from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QProgressBar, QScrollArea, QWidget
+from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QScrollArea, QWidget
 from PySide6.QtCore import Qt
 
 from agent.chat.structure_content import PlanContent
@@ -9,7 +9,11 @@ from app.ui.chat.message.base_structured_content_widget import BaseStructuredCon
 
 
 class PlanContentWidget(BaseStructuredContentWidget):
-    """Widget for displaying plan content."""
+    """
+    Widget for displaying plan content.
+
+    Uses text-based progress display instead of progress bar for better performance.
+    """
 
     def __init__(self, content: PlanContent, parent=None):
         """Initialize plan widget."""
@@ -80,7 +84,7 @@ class PlanContentWidget(BaseStructuredContentWidget):
 
         container_layout.addLayout(header_row)
 
-        # Progress
+        # Progress - text-based instead of progress bar
         current_step = self.structure_content.current_step or 0
         total_steps = self.structure_content.total_steps or 0
         if total_steps > 0:
@@ -88,24 +92,21 @@ class PlanContentWidget(BaseStructuredContentWidget):
         else:
             progress_percent = 0
 
-        progress_bar = QProgressBar(container)
-        progress_bar.setRange(0, 100)
-        progress_bar.setValue(progress_percent)
-        progress_bar.setFormat(f"{current_step}/{total_steps} steps (%p%)")
-        progress_bar.setStyleSheet("""
-            QProgressBar {
-                border: 1px solid #3f51b5;
+        # Text-based progress display
+        progress_text = f"📊 Progress: {current_step}/{total_steps} steps ({progress_percent}%)"
+        progress_label = QLabel(progress_text, container)
+        progress_label.setStyleSheet("""
+            QLabel {
+                color: #3f51b5;
+                font-size: 12px;
+                font-weight: bold;
+                padding: 4px 8px;
+                background-color: rgba(63, 81, 181, 0.1);
                 border-radius: 4px;
-                text-align: center;
-                color: #ffffff;
-                background-color: #1e1e1e;
-            }
-            QProgressBar::chunk {
-                background-color: #3f51b5;
-                border-radius: 3px;
             }
         """)
-        container_layout.addWidget(progress_bar)
+        progress_label.setAlignment(Qt.AlignLeft)
+        container_layout.addWidget(progress_label)
 
         # Steps list
         steps = self.structure_content.steps or []

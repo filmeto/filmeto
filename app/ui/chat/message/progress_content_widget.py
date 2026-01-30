@@ -1,7 +1,7 @@
 """Widget for displaying progress content in chat messages."""
 
 from typing import Any, Dict, Union
-from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QProgressBar
+from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame
 from PySide6.QtCore import Qt
 
 from agent.chat.structure_content import ProgressContent
@@ -9,12 +9,16 @@ from app.ui.chat.message.base_structured_content_widget import BaseStructuredCon
 
 
 class ProgressContentWidget(BaseStructuredContentWidget):
-    """Widget for displaying progress content."""
+    """
+    Widget for displaying progress content.
+
+    Uses text-based progress display instead of progress bar for better performance.
+    """
 
     def __init__(self, content: ProgressContent, parent=None):
         """Initialize progress widget."""
         super().__init__(structure_content=content, parent=parent)
-        self.progress_bar = None
+        self.progress_text_label = None
         self.status_label = None
 
     def _setup_ui(self):
@@ -53,46 +57,32 @@ class ProgressContentWidget(BaseStructuredContentWidget):
         self.status_label.setWordWrap(True)
         container_layout.addWidget(self.status_label)
 
-        # Progress bar
-        self.progress_bar = QProgressBar(container)
-        self.progress_bar.setStyleSheet("""
-            QProgressBar {
-                border: 1px solid #2196f3;
-                border-radius: 4px;
-                text-align: center;
-                color: #ffffff;
-                background-color: #1e1e1e;
-            }
-            QProgressBar::chunk {
-                background-color: #2196f3;
-                border-radius: 3px;
-            }
-        """)
-
-        # Set progress value
+        # Text-based progress display (instead of progress bar)
         percentage = self.structure_content.percentage
         if percentage is not None:
-            self.progress_bar.setRange(0, 100)
-            self.progress_bar.setValue(percentage)
-            self.progress_bar.setFormat(f"%p%")
-        else:
-            # Indeterminate progress
-            self.progress_bar.setRange(0, 0)
-
-        container_layout.addWidget(self.progress_bar)
-
-        # Percentage text label
-        if percentage is not None:
-            percent_label = QLabel(f"{percentage}% complete", container)
-            percent_label.setStyleSheet("""
+            # Show percentage as text
+            self.progress_text_label = QLabel(f"📊 {percentage}% complete", container)
+            self.progress_text_label.setStyleSheet("""
                 QLabel {
                     color: #2196f3;
-                    font-size: 11px;
+                    font-size: 12px;
                     font-weight: bold;
                 }
             """)
-            percent_label.setAlignment(Qt.AlignRight)
-            container_layout.addWidget(percent_label)
+            self.progress_text_label.setAlignment(Qt.AlignLeft)
+            container_layout.addWidget(self.progress_text_label)
+        else:
+            # Indeterminate progress - show loading text
+            self.progress_text_label = QLabel("⏳ In progress...", container)
+            self.progress_text_label.setStyleSheet("""
+                QLabel {
+                    color: #ff9800;
+                    font-size: 12px;
+                    font-style: italic;
+                }
+            """)
+            self.progress_text_label.setAlignment(Qt.AlignLeft)
+            container_layout.addWidget(self.progress_text_label)
 
         layout.addWidget(container)
 
@@ -112,14 +102,27 @@ class ProgressContentWidget(BaseStructuredContentWidget):
                 progress_text = f"Progress: {progress_text}%"
             self.status_label.setText(progress_text)
 
-        # Update progress bar
-        if self.progress_bar:
+        # Update progress text
+        if self.progress_text_label:
             percentage = self.structure_content.percentage
             if percentage is not None:
-                self.progress_bar.setRange(0, 100)
-                self.progress_bar.setValue(percentage)
+                self.progress_text_label.setText(f"📊 {percentage}% complete")
+                self.progress_text_label.setStyleSheet("""
+                    QLabel {
+                        color: #2196f3;
+                        font-size: 12px;
+                        font-weight: bold;
+                    }
+                """)
             else:
-                self.progress_bar.setRange(0, 0)  # Indeterminate
+                self.progress_text_label.setText("⏳ In progress...")
+                self.progress_text_label.setStyleSheet("""
+                    QLabel {
+                        color: #ff9800;
+                        font-size: 12px;
+                        font-style: italic;
+                    }
+                """)
 
     def get_state(self) -> Dict[str, Any]:
         """
