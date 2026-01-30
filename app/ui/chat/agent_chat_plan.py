@@ -19,10 +19,10 @@ from PySide6.QtGui import QColor, QPainter, QFont, QPen
 from agent import AgentMessage
 from app.ui.base_widget import BaseWidget
 from app.ui.components.avatar_widget import AvatarWidget
-from agent.plan.service import PlanService
-from agent.plan.models import Plan, PlanInstance, PlanStatus, PlanTask, TaskStatus
+from agent.plan.plan_service import PlanService
+from agent.plan.plan_models import Plan, PlanInstance, PlanStatus, PlanTask, TaskStatus
 from agent.crew.crew_service import CrewService
-from agent.plan.signals import plan_signal_manager
+from agent.plan.plan_signals import plan_signal_manager
 from utils.i18n_utils import tr
 
 
@@ -160,8 +160,10 @@ class AgentChatPlanWidget(BaseWidget):
         if parent:
             self.setParent(parent)
 
-        self.plan_service = PlanService()
-        self.plan_service.set_workspace(workspace)
+        # Get PlanService instance - will use default project name
+        project_name = getattr(workspace, 'get_project', lambda: None)()
+        project_name = project_name.project_name if project_name else "default"
+        self.plan_service = PlanService.get_instance(workspace, project_name)
         self.crew_service = CrewService()
 
         self._crew_member_metadata: Dict[str, object] = {}

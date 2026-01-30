@@ -15,8 +15,8 @@ from PySide6.QtGui import QFont
 
 from app.ui.panels.base_panel import BasePanel
 from app.data.workspace import Workspace
-from agent.plan.service import PlanService
-from agent.plan.models import Plan, PlanInstance, TaskStatus
+from agent.plan.plan_service import PlanService
+from agent.plan.plan_models import Plan, PlanInstance, TaskStatus
 from utils.i18n_utils import tr
 
 
@@ -33,10 +33,11 @@ class PlanPanel(BasePanel):
         """
         super().__init__(workspace, parent)
 
-        self.plan_service = PlanService()
-        # Set the workspace to ensure proper plan storage location
-        self.plan_service.set_workspace(workspace)
-        self.current_project_name = workspace.get_project().project_name if workspace.get_project() else None
+        # Get project name for PlanService instance management
+        project = workspace.get_project()
+        project_name = project.project_name if project else "default"
+        self.plan_service = PlanService.get_instance(workspace, project_name)
+        self.current_project_name = project_name
 
         # Store selected plan and instance for detail view
         self.selected_plan: Optional[Plan] = None

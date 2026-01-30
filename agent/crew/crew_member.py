@@ -8,7 +8,7 @@ from agent.chat.agent_chat_message import AgentMessage, StructureContent
 from agent.chat.agent_chat_signals import AgentChatSignals
 from agent.chat.agent_chat_types import ContentType, MessageType
 from agent.llm.llm_service import LlmService
-from agent.plan.service import PlanService
+from agent.plan.plan_service import PlanService
 from agent.skill.skill_service import SkillService, Skill
 from agent.soul import soul_service as soul_service_instance, SoulService
 from agent.prompt.prompt_service import prompt_service
@@ -86,10 +86,8 @@ class CrewMember:
         self.project_name = _resolve_project_name(project) or getattr(project, 'project_name', 'default_project')
         self.llm_service = llm_service or LlmService(workspace)
         self.skill_service = skill_service or SkillService(workspace)
-        self.plan_service = plan_service or PlanService()
-        # Set the workspace if available to ensure proper plan storage location
-        if workspace:
-            self.plan_service.set_workspace(workspace)
+        # Get PlanService instance for this workspace/project combination
+        self.plan_service = plan_service or PlanService.get_instance(workspace, self.project_name)
         self.soul_service = soul_service or self._build_soul_service(project)
         self.conversation_history: List[Dict[str, str]] = []
         self.signals = AgentChatSignals()

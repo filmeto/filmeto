@@ -1,5 +1,5 @@
-from .service import PlanService
-from .models import Plan, PlanInstance, PlanTask, PlanStatus, TaskStatus
+from .plan_service import PlanService
+from .plan_models import Plan, PlanInstance, PlanTask, PlanStatus, TaskStatus
 
 __all__ = [
     'PlanService',

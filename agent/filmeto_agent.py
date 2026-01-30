@@ -16,8 +16,8 @@ from agent.chat.structure_content import (
 from agent.chat.agent_chat_types import ContentType, MessageType
 from agent.chat.agent_chat_signals import AgentChatSignals
 from agent.llm.llm_service import LlmService
-from agent.plan.models import Plan, PlanInstance, PlanTask, TaskStatus
-from agent.plan.service import PlanService
+from agent.plan.plan_models import Plan, PlanInstance, PlanTask, TaskStatus
+from agent.plan.plan_service import PlanService
 from agent.crew.crew_member import CrewMember
 from agent.crew.crew_title import sort_crew_members_by_title_importance
 from agent.crew.crew_service import CrewService
@@ -89,10 +89,10 @@ class FilmetoAgent:
         self.current_session: Optional[AgentStreamSession] = None
         self.llm_service = llm_service or LlmService(workspace)
         self.crew_member_service = crew_member_service or CrewService()
-        self.plan_service = plan_service or PlanService()
-        # Set the workspace if available to ensure proper plan storage location
-        if self.workspace:
-            self.plan_service.set_workspace(self.workspace)
+
+        # Get project name for PlanService instance management
+        project_name = self._resolve_project_name() or "default"
+        self.plan_service = plan_service or PlanService.get_instance(workspace, project_name)
         self.crew_members: Dict[str, CrewMember] = {}
         self._crew_member_lookup: Dict[str, CrewMember] = {}
         self.signals = AgentChatSignals()

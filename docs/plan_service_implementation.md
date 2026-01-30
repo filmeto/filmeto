@@ -40,8 +40,9 @@ This implementation introduces a centralized plan service for creating and manag
 ## Usage Examples
 
 ### Creating a Plan
+
 ```python
-from utils.plan_service import create_execution_plan
+from agent.plan.plan_service_manager import create_execution_plan
 
 tasks = [
     {
@@ -71,8 +72,9 @@ plan_data = create_execution_plan(
 ```
 
 ### Executing a Plan Synchronously
+
 ```python
-from utils.plan_service import execute_plan_synchronously
+from agent.plan.plan_service_manager import execute_plan_synchronously
 
 result = execute_plan_synchronously(
     project_name='MyProject',

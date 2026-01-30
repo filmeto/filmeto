@@ -6,7 +6,7 @@ import uuid
 
 
 class PlanStatus(Enum):
-    """Enumeration of possible statuses for a PlanFlow"""
+    """Enumeration of possible statuses for a Plan"""
     CREATED = "created"
     RUNNING = "running"
     PAUSED = "paused"
@@ -16,7 +16,7 @@ class PlanStatus(Enum):
 
 
 class TaskStatus(Enum):
-    """Enumeration of possible statuses for a PlanFlowTask"""
+    """Enumeration of possible statuses for a PlanTask"""
     CREATED = "created"
     READY = "ready"
     RUNNING = "running"

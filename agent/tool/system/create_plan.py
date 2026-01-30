@@ -1,8 +1,8 @@
 from ..base_tool import BaseTool, ToolMetadata, ToolParameter
 from typing import Any, Dict, TYPE_CHECKING, Optional, AsyncGenerator
 import logging
-from ...plan.service import PlanService
-from ...plan.models import PlanTask
+from ...plan.plan_service import PlanService
+from ...plan.plan_models import PlanTask
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -120,12 +120,8 @@ class CreatePlanTool(BaseTool):
         workspace = context.workspace if context else None
         project_name = context.project_name if context else 'Unknown Project'
 
-        # Initialize PlanService
-        plan_service = PlanService()
-
-        # Set workspace if provided
-        if workspace:
-            plan_service.set_workspace(workspace)
+        # Get PlanService instance for this workspace/project combination
+        plan_service = PlanService.get_instance(workspace, project_name)
 
         # Convert raw tasks to PlanTask objects
         plan_tasks = []

@@ -1,51 +1,180 @@
 import os
 import json
+import logging
 import yaml
 import tempfile
 from pathlib import Path
 from threading import Lock
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import asdict
 from datetime import datetime
 import shutil
 
-from .models import Plan, PlanInstance, PlanTask, PlanStatus, TaskStatus
-from .signals import plan_signal_manager
+from .plan_models import Plan, PlanInstance, PlanTask, PlanStatus, TaskStatus
+from .plan_signals import plan_signal_manager
+
+logger = logging.getLogger(__name__)
 
 
 class PlanService:
     """
-    Singleton service for managing Plans and PlanInstances.
+    Service for managing Plans and PlanInstances.
 
-    This service handles the creation, storage, retrieval, and execution of plans.
+    Instances are managed statically and can be retrieved using get_instance().
+    Each unique (workspace_path, project_name) combination gets its own instance.
     """
 
-    _instance = None
+    # Class-level instance storage: dict[instance_key] -> PlanService
+    _instances: Dict[str, 'PlanService'] = {}
     _lock = Lock()
 
-    def __new__(cls):
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = super(PlanService, cls).__new__(cls)
-                    cls._instance._initialized = False
-        return cls._instance
+    def __init__(self, workspace: Any = None, project_name: str = ""):
+        """
+        Initialize a PlanService instance.
 
-    def __init__(self):
-        if not self._initialized:
-            # Default path for backward compatibility
-            self.flow_storage_dir = Path("workspace/agent/plan/flow")
-            self._initialized = True
+        Args:
+            workspace: The workspace object
+            project_name: The name of the project
+        """
+        self.workspace = workspace
+        self.project_name = project_name
 
-    def set_workspace(self, workspace):
-        """Set the workspace to determine the correct project-specific storage path."""
+        # Set up storage directory based on workspace
         if workspace and hasattr(workspace, 'workspace_path'):
-            # Use the workspace path to create the proper directory structure
             self.flow_storage_dir = Path(workspace.workspace_path) / "agent" / "plan" / "flow"
         else:
             # Default path for backward compatibility
             self.flow_storage_dir = Path("workspace/agent/plan/flow")
         self.flow_storage_dir.mkdir(parents=True, exist_ok=True)
+
+    @classmethod
+    def get_instance(
+        cls,
+        workspace: Any,
+        project_name: str,
+    ) -> 'PlanService':
+        """
+        Get or create a PlanService instance for the given workspace and project.
+
+        Each unique (workspace_path, project_name) combination gets its own instance
+        that will be reused across multiple calls.
+
+        Args:
+            workspace: The workspace object
+            project_name: The name of the project
+
+        Returns:
+            PlanService: The service instance for this workspace/project combination
+        """
+        # Extract workspace path for key generation
+        workspace_path = cls._get_workspace_path(workspace)
+
+        # Create instance key
+        instance_key = f"{workspace_path}:{project_name}"
+
+        # Check if instance already exists
+        if instance_key in cls._instances:
+            logger.debug(f"Reusing existing PlanService instance for {instance_key}")
+            return cls._instances[instance_key]
+
+        # Create new instance
+        with cls._lock:
+            # Double-check after acquiring lock
+            if instance_key in cls._instances:
+                return cls._instances[instance_key]
+
+            logger.info(f"Creating new PlanService instance for {instance_key}")
+            service = cls(workspace, project_name)
+
+            # Store instance
+            cls._instances[instance_key] = service
+            return service
+
+    @classmethod
+    def remove_instance(cls, workspace: Any, project_name: str) -> bool:
+        """
+        Remove a PlanService instance from the cache.
+
+        Args:
+            workspace: The workspace object
+            project_name: The name of the project
+
+        Returns:
+            True if the instance was removed, False if it didn't exist
+        """
+        workspace_path = cls._get_workspace_path(workspace)
+        instance_key = f"{workspace_path}:{project_name}"
+
+        if instance_key in cls._instances:
+            del cls._instances[instance_key]
+            logger.info(f"Removed PlanService instance for {instance_key}")
+            return True
+        return False
+
+    @classmethod
+    def clear_all_instances(cls):
+        """Clear all cached PlanService instances."""
+        count = len(cls._instances)
+        cls._instances.clear()
+        logger.info(f"Cleared {count} PlanService instance(s)")
+
+    @classmethod
+    def list_instances(cls) -> List[str]:
+        """
+        List all cached instance keys.
+
+        Returns:
+            List of instance keys in format "workspace_path:project_name"
+        """
+        return list(cls._instances.keys())
+
+    @classmethod
+    def has_instance(cls, workspace: Any, project_name: str) -> bool:
+        """
+        Check if an instance exists for the given workspace and project.
+
+        Args:
+            workspace: The workspace object
+            project_name: The name of the project
+
+        Returns:
+            True if an instance exists, False otherwise
+        """
+        workspace_path = cls._get_workspace_path(workspace)
+        instance_key = f"{workspace_path}:{project_name}"
+        return instance_key in cls._instances
+
+    @staticmethod
+    def _get_workspace_path(workspace: Any) -> str:
+        """
+        Extract workspace path from workspace object.
+
+        Args:
+            workspace: The workspace object
+
+        Returns:
+            String representation of workspace path
+        """
+        if workspace is None:
+            return "none"
+        if hasattr(workspace, 'workspace_path'):
+            return workspace.workspace_path
+        if hasattr(workspace, 'path'):
+            return str(workspace.path)
+        return str(id(workspace))
+
+    def _find_workspace_dir(self) -> Optional[Path]:
+        """
+        Find the workspace root directory by traversing up the path hierarchy.
+
+        Returns:
+            Path to workspace directory if found, None otherwise
+        """
+        current_path = self.flow_storage_dir.resolve()
+        for parent in current_path.parents:
+            if parent.name == 'workspace':
+                return parent
+        return None
 
     def _get_ready_tasks(self, plan_instance: PlanInstance) -> List[PlanTask]:
         """
@@ -135,15 +264,7 @@ class PlanService:
             plan_id: Unique ID of the plan
         """
         # Create directory structure as workspace/projects/项目名/plans
-        # Find the workspace root directory by traversing up the path
-        current_path = self.flow_storage_dir.resolve()
-        workspace_path = None
-
-        # Look for 'workspace' directory in the path hierarchy
-        for parent in current_path.parents:
-            if parent.name == 'workspace':
-                workspace_path = parent
-                break
+        workspace_path = self._find_workspace_dir()
 
         if workspace_path:
             # Use the proper workspace/projects/project_name/plans structure
@@ -162,8 +283,6 @@ class PlanService:
 
         # Prepare data for serialization
         plan_data = asdict(plan)
-        # Update the field name from project_id to project_name for serialization
-        plan_data['project_id'] = plan_data.pop('project_name')  # Use old field name for backward compatibility
         plan_data['created_at'] = plan_data['created_at'].isoformat()
         plan_data['status'] = plan_data['status'].value  # Convert enum to string
         plan_data['tasks'] = []
@@ -204,8 +323,6 @@ class PlanService:
 
         # Prepare data for serialization
         instance_data = asdict(plan_instance)
-        # Update the field name from project_id to project_name for serialization
-        instance_data['project_id'] = instance_data.pop('project_name')  # Use old field name for backward compatibility
         instance_data['created_at'] = instance_data['created_at'].isoformat()
         instance_data['started_at'] = instance_data['started_at'].isoformat() if instance_data['started_at'] else None
         instance_data['completed_at'] = instance_data['completed_at'].isoformat() if instance_data['completed_at'] else None
@@ -477,7 +594,7 @@ class PlanService:
 
         plan = Plan(
             id=data['id'],
-            project_name=data.get('project_id', data.get('project_name', project_name)),  # Support both old and new keys
+            project_name=data.get('project_name', project_name),
             name=data['name'],
             description=data['description'],
             tasks=tasks,
@@ -657,7 +774,7 @@ class PlanService:
         plan_instance = PlanInstance(
             plan_id=data['plan_id'],
             instance_id=data['instance_id'],
-            project_name=data.get('project_id', data.get('project_name', project_name)),  # Support both old and new keys
+            project_name=data.get('project_name', project_name),
             tasks=tasks,
             created_at=created_at,
             started_at=started_at,
@@ -675,14 +792,7 @@ class PlanService:
             project_name: Name of the project (used as identifier)
         """
         # Use the project-specific plans directory
-        current_path = self.flow_storage_dir.resolve()
-        workspace_path = None
-
-        # Look for 'workspace' directory in the path hierarchy
-        for parent in current_path.parents:
-            if parent.name == 'workspace':
-                workspace_path = parent
-                break
+        workspace_path = self._find_workspace_dir()
 
         if workspace_path:
             project_plans_dir = workspace_path / "projects" / project_name / "plans"
