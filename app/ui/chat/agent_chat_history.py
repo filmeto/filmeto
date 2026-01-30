@@ -909,17 +909,23 @@ class AgentChatHistoryWidget(BaseWidget):
 
             if message_type == MessageType.THINKING:
                 # Handle thinking content specially
-                thinking_content = event.content
-                if thinking_content.startswith("🤔 Thinking: "):
-                    thinking_content = thinking_content[len("🤔 Thinking: "):]
-
-                # Create StructureContent for thinking
                 from agent.chat.structure_content import ThinkingContent
-                thinking_structure = ThinkingContent(
-                    thought=thinking_content,
-                    title="Thinking Process",
-                    description="Agent's thought process"
-                )
+
+                # Check if content is already a ThinkingContent object (new format)
+                if isinstance(event.content, ThinkingContent):
+                    thinking_structure = event.content
+                else:
+                    # Old format: content is a string
+                    thinking_content = event.content
+                    if thinking_content.startswith("🤔 Thinking: "):
+                        thinking_content = thinking_content[len("🤔 Thinking: "):]
+
+                    # Create StructureContent for thinking
+                    thinking_structure = ThinkingContent(
+                        thought=thinking_content,
+                        title="Thinking Process",
+                        description="Agent's thought process"
+                    )
 
                 # Add the thinking content using the standard method
                 card.add_structure_content_widget(thinking_structure)

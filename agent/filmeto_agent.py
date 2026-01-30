@@ -583,95 +583,98 @@ class FilmetoAgent:
                 event_payload["plan_id"] = plan_id
 
             # Create appropriate content based on event type
-            content = None
+            # First, check if event already has content (from react.py)
+            content = event.content
 
-            if event.event_type == AgentEventType.LLM_THINKING:
-                # Create ThinkingContent
-                content = ThinkingContent(
-                    thought=event.payload.get("message", ""),
-                    step=event.payload.get("step"),
-                    total_steps=event.payload.get("total_steps"),
-                    title="Thinking Process",
-                    description="Agent's thought process"
-                )
+            # If no content, create from payload for backward compatibility
+            if content is None:
+                if event.event_type == AgentEventType.LLM_THINKING:
+                    # Create ThinkingContent
+                    content = ThinkingContent(
+                        thought=event.payload.get("message", ""),
+                        step=event.payload.get("step"),
+                        total_steps=event.payload.get("total_steps"),
+                        title="Thinking Process",
+                        description="Agent's thought process"
+                    )
 
-            elif event.event_type == AgentEventType.LLM_OUTPUT:
-                # Create TextContent for LLM output
-                content = TextContent(
-                    text=event.payload.get("content", "")
-                )
+                elif event.event_type == AgentEventType.LLM_OUTPUT:
+                    # Create TextContent for LLM output
+                    content = TextContent(
+                        text=event.payload.get("content", "")
+                    )
 
-            elif event.event_type == AgentEventType.TOOL_START:
-                # Create ToolCallContent and track it
-                tool_name = event.payload.get("tool_name", "unknown")
-                content = ToolCallContent(
-                    tool_name=tool_name,
-                    tool_input=event.payload.get("input", {}),
-                    title=f"Tool: {tool_name}",
-                    description="Tool execution started"
-                )
-                content_tracking[tool_name] = content.content_id
+                elif event.event_type == AgentEventType.TOOL_START:
+                    # Create ToolCallContent and track it
+                    tool_name = event.payload.get("tool_name", "unknown")
+                    content = ToolCallContent(
+                        tool_name=tool_name,
+                        tool_input=event.payload.get("input", {}),
+                        title=f"Tool: {tool_name}",
+                        description="Tool execution started"
+                    )
+                    content_tracking[tool_name] = content.content_id
 
-            elif event.event_type == AgentEventType.TOOL_PROGRESS:
-                # Create ProgressContent with parent reference
-                tool_name = event.payload.get("tool_name", "")
-                parent_id = content_tracking.get(tool_name)
-                content = ProgressContent(
-                    progress=event.payload.get("progress", ""),
-                    tool_name=tool_name,
-                    title="Tool Execution",
-                    description="Tool execution in progress",
-                    parent_id=parent_id
-                )
+                elif event.event_type == AgentEventType.TOOL_PROGRESS:
+                    # Create ProgressContent with parent reference
+                    tool_name = event.payload.get("tool_name", "")
+                    parent_id = content_tracking.get(tool_name)
+                    content = ProgressContent(
+                        progress=event.payload.get("progress", ""),
+                        tool_name=tool_name,
+                        title="Tool Execution",
+                        description="Tool execution in progress",
+                        parent_id=parent_id
+                    )
 
-            elif event.event_type == AgentEventType.TOOL_END:
-                # Create ToolResponseContent and mark as completed
-                tool_name = event.payload.get("tool_name", "")
-                result = event.payload.get("result")
-                error = event.payload.get("error")
+                elif event.event_type == AgentEventType.TOOL_END:
+                    # Create ToolResponseContent and mark as completed
+                    tool_name = event.payload.get("tool_name", "")
+                    result = event.payload.get("result")
+                    error = event.payload.get("error")
 
-                content = ToolResponseContent(
-                    tool_name=tool_name,
-                    result=result if not error else None,
-                    error=error,
-                    tool_status="completed" if not error else "failed",
-                    title=f"Tool Result: {tool_name}",
-                    description=f"Tool execution {'completed' if not error else 'failed'}",
-                    parent_id=content_tracking.get(tool_name)
-                )
-                content.complete()
+                    content = ToolResponseContent(
+                        tool_name=tool_name,
+                        result=result if not error else None,
+                        error=error,
+                        tool_status="completed" if not error else "failed",
+                        title=f"Tool Result: {tool_name}",
+                        description=f"Tool execution {'completed' if not error else 'failed'}",
+                        parent_id=content_tracking.get(tool_name)
+                    )
+                    content.complete()
 
-                # Clean up tracking
-                if tool_name in content_tracking:
-                    del content_tracking[tool_name]
+                    # Clean up tracking
+                    if tool_name in content_tracking:
+                        del content_tracking[tool_name]
 
-            elif event.event_type == AgentEventType.FINAL:
-                # Create TextContent for final response
-                final_text = event.payload.get("final_response", "")
-                content = TextContent(
-                    text=final_text,
-                    title="Response",
-                    description="Final response from agent"
-                )
+                elif event.event_type == AgentEventType.FINAL:
+                    # Create TextContent for final response
+                    final_text = event.payload.get("final_response", "")
+                    content = TextContent(
+                        text=final_text,
+                        title="Response",
+                        description="Final response from agent"
+                    )
 
-            elif event.event_type == AgentEventType.ERROR:
-                # Create ErrorContent
-                content = ErrorContent(
-                    error_message=event.payload.get("error", "Unknown error"),
-                    error_type=event.payload.get("error_type"),
-                    details=event.payload.get("details"),
-                    title="Error",
-                    description="An error occurred"
-                )
+                elif event.event_type == AgentEventType.ERROR:
+                    # Create ErrorContent
+                    content = ErrorContent(
+                        error_message=event.payload.get("error", "Unknown error"),
+                        error_type=event.payload.get("error_type"),
+                        details=event.payload.get("details"),
+                        title="Error",
+                        description="An error occurred"
+                    )
 
-            elif event.event_type == AgentEventType.TODO_UPDATE:
-                # Create MetadataContent
-                content = MetadataContent(
-                    metadata_type="todo_update",
-                    metadata_data=event.payload.get("todo", {}),
-                    title="Task Update",
-                    description="Task list has been updated"
-                )
+                elif event.event_type == AgentEventType.TODO_UPDATE:
+                    # Create MetadataContent
+                    content = MetadataContent(
+                        metadata_type="todo_update",
+                        metadata_data=event.payload.get("todo", {}),
+                        title="Task Update",
+                        description="Task list has been updated"
+                    )
 
             # Create enhanced event with content
             enhanced_event = AgentEvent.create(
