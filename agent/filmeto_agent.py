@@ -793,16 +793,23 @@ class FilmetoAgent:
 
             self._ensure_crew_members_loaded()
 
+            # Check for @mentions by name or title - if found, route directly to that crew member
+            # This prevents producer from intervening when a specific crew member is mentioned
             mentioned_crew_member = self._resolve_mentioned_crew_member(message)
-            if mentioned_crew_member and mentioned_crew_member.config.name.lower() != _PRODUCER_NAME:
+            mentioned_agent_by_title = self._resolve_mentioned_title(message)
+
+            # Use the found crew member (by name takes priority over title)
+            target_crew_member = mentioned_crew_member or mentioned_agent_by_title
+
+            if target_crew_member and target_crew_member.config.name.lower() != _PRODUCER_NAME:
                 await self._emit_system_event(
                     "crew_member_start",
                     session_id,
-                    crew_member_name=mentioned_crew_member.config.name,
+                    crew_member_name=target_crew_member.config.name,
                     message=message,
                 )
                 async for _ in self._stream_crew_member(
-                    mentioned_crew_member,
+                    target_crew_member,
                     message,
                     plan_id=None,
                     session_id=session_id,
@@ -810,6 +817,7 @@ class FilmetoAgent:
                     pass
                 return
 
+            # No specific crew member mentioned - use producer if available
             producer_agent = self._get_producer_crew_member()
             if producer_agent:
                 await self._emit_system_event(
@@ -826,36 +834,17 @@ class FilmetoAgent:
                     pass
                 return
 
-            mentioned_agent = self._resolve_mentioned_title(message)
-            if mentioned_agent:
+            # No producer and no specific agent mentioned - select a responding agent
+            responding_agent = await self._select_responding_agent(initial_prompt)
+            if responding_agent:
                 await self._emit_system_event(
-                    "mentioned_agent_start",
+                    "responding_agent_start",
                     session_id,
-                    crew_member_name=mentioned_agent.config.name,
+                    crew_member_name=responding_agent.config.name,
                     message=initial_prompt.get_text_content(),
                 )
                 async for _ in self._stream_crew_member(
-                    mentioned_agent,
-                    initial_prompt.get_text_content(),
-                    plan_id=initial_prompt.metadata.get("plan_id") if initial_prompt.metadata else None,
-                    session_id=session_id,
-                    metadata=initial_prompt.metadata
-                ):
-                    pass
-                return
-
-            # Prioritize producer if available and no specific agent is mentioned
-            producer_agent = self._get_producer_crew_member()
-            if producer_agent and not mentioned_crew_member:
-                await self._emit_system_event(
-                    "producer_start",
-                    session_id,
-                    crew_member_name=producer_agent.config.name,
-                    message=initial_prompt.get_text_content(),
-                )
-                # Stream directly from the producer crew member
-                async for _ in self._stream_crew_member(
-                    producer_agent,
+                    responding_agent,
                     initial_prompt.get_text_content(),
                     plan_id=initial_prompt.metadata.get("plan_id") if initial_prompt.metadata else None,
                     session_id=session_id,
@@ -863,28 +852,11 @@ class FilmetoAgent:
                 ):
                     pass
             else:
-                responding_agent = await self._select_responding_agent(initial_prompt)
-                if responding_agent:
-                    await self._emit_system_event(
-                        "responding_agent_start",
-                        session_id,
-                        crew_member_name=responding_agent.config.name,
-                        message=initial_prompt.get_text_content(),
-                    )
-                    async for _ in self._stream_crew_member(
-                        responding_agent,
-                        initial_prompt.get_text_content(),
-                        plan_id=initial_prompt.metadata.get("plan_id") if initial_prompt.metadata else None,
-                        session_id=session_id,
-                        metadata=initial_prompt.metadata
-                    ):
-                        pass
-                else:
-                    async for _ in self._stream_error_message(
-                        "No suitable agent found to handle this request.",
-                        session_id,
-                    ):
-                        pass
+                async for _ in self._stream_error_message(
+                    "No suitable agent found to handle this request.",
+                    session_id,
+                ):
+                    pass
         except Exception as e:
             logger.error(f"❌ Exception in chat()", exc_info=True)
             async for _ in self._stream_error_message(
