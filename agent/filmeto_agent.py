@@ -767,16 +767,12 @@ class FilmetoAgent:
                     self.project = project_list[first_project_name]
 
         # Create an AgentMessage from the string
-        from agent.chat.agent_chat_message import StructureContent
-        from agent.chat.agent_chat_types import ContentType
+        from agent.chat.structure_content import TextContent
         initial_prompt = AgentMessage(
             message_type=MessageType.TEXT,
             sender_id="user",
             sender_name="User",
-            structured_content=[StructureContent(
-                content_type=ContentType.TEXT,
-                data=message
-            )]
+            structured_content=[TextContent(text=message)]
         )
         logger.info(f"📥 Created initial prompt message: id={initial_prompt.message_id}, sender='user', content_preview='{message[:50]}{'...' if len(message) > 50 else ''}'")
 
