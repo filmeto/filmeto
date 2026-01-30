@@ -73,6 +73,8 @@ class ExecuteGeneratedCodeTool(BaseTool):
         react_type: str = "",
         run_id: str = "",
         step_id: int = 0,
+        sender_id: str = "",
+        sender_name: str = "",
     ) -> AsyncGenerator["AgentEvent", None]:
         """
         Execute dynamically generated Python code using ToolService.execute_script_content.
@@ -83,6 +85,9 @@ class ExecuteGeneratedCodeTool(BaseTool):
             project_name: Project name for event tracking
             react_type: React type for event tracking
             run_id: Run ID for event tracking
+            step_id: Step ID for event tracking
+            sender_id: ID of the event sender
+            sender_name: Display name of the event sender
             step_id: Step ID for event tracking
 
         Yields:
