@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import uuid
 from datetime import datetime
 from agent.chat.agent_chat_types import MessageType, ContentType
-from agent.chat.structure_content import StructureContent
+from agent.chat.structure_content import StructureContent, TextContent
 
 
 @dataclass
@@ -31,8 +31,8 @@ class AgentMessage:
         if not self.structured_content:
             return ""
         for sc in self.structured_content:
-            if sc.content_type == ContentType.TEXT and isinstance(sc.data, str):
-                return sc.data
+            if sc.content_type == ContentType.TEXT and isinstance(sc, TextContent):
+                return sc.text
         return ""
     
     @property

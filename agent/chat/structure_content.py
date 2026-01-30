@@ -83,6 +83,21 @@ class TextContent(StructureContent):
     def _get_data(self) -> Dict[str, Any]:
         return {"text": self.text}
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'TextContent':
+        """Create a TextContent from a dictionary."""
+        data_dict = data.get("data", {})
+        return cls(
+            content_type=ContentType(data["content_type"]),
+            title=data.get("title"),
+            description=data.get("description"),
+            metadata=data.get("metadata"),
+            content_id=data.get("content_id"),
+            status=ContentStatus(data.get("status", "creating")),
+            parent_id=data.get("parent_id"),
+            text=data_dict.get("text", "")
+        )
+
 
 @dataclass
 class ThinkingContent(StructureContent):
@@ -100,6 +115,23 @@ class ThinkingContent(StructureContent):
             data["total_steps"] = self.total_steps
         return data
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ThinkingContent':
+        """Create a ThinkingContent from a dictionary."""
+        data_dict = data.get("data", {})
+        return cls(
+            content_type=ContentType(data["content_type"]),
+            title=data.get("title"),
+            description=data.get("description"),
+            metadata=data.get("metadata"),
+            content_id=data.get("content_id"),
+            status=ContentStatus(data.get("status", "creating")),
+            parent_id=data.get("parent_id"),
+            thought=data_dict.get("thought", ""),
+            step=data_dict.get("step"),
+            total_steps=data_dict.get("total_steps")
+        )
+
 
 @dataclass
 class ToolCallContent(StructureContent):
@@ -115,6 +147,23 @@ class ToolCallContent(StructureContent):
             "tool_input": self.tool_input,
             "status": self.tool_status
         }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ToolCallContent':
+        """Create a ToolCallContent from a dictionary."""
+        data_dict = data.get("data", {})
+        return cls(
+            content_type=ContentType(data["content_type"]),
+            title=data.get("title"),
+            description=data.get("description"),
+            metadata=data.get("metadata"),
+            content_id=data.get("content_id"),
+            status=ContentStatus(data.get("status", "creating")),
+            parent_id=data.get("parent_id"),
+            tool_name=data_dict.get("tool_name", ""),
+            tool_input=data_dict.get("tool_input", {}),
+            tool_status=data_dict.get("status", "started")
+        )
 
 
 @dataclass
@@ -137,6 +186,24 @@ class ToolResponseContent(StructureContent):
             data["error"] = self.error
         return data
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ToolResponseContent':
+        """Create a ToolResponseContent from a dictionary."""
+        data_dict = data.get("data", {})
+        return cls(
+            content_type=ContentType(data["content_type"]),
+            title=data.get("title"),
+            description=data.get("description"),
+            metadata=data.get("metadata"),
+            content_id=data.get("content_id"),
+            status=ContentStatus(data.get("status", "creating")),
+            parent_id=data.get("parent_id"),
+            tool_name=data_dict.get("tool_name", ""),
+            result=data_dict.get("result"),
+            error=data_dict.get("error"),
+            tool_status=data_dict.get("status", "completed")
+        )
+
 
 @dataclass
 class ProgressContent(StructureContent):
@@ -153,6 +220,23 @@ class ProgressContent(StructureContent):
         if self.tool_name:
             data["tool_name"] = self.tool_name
         return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ProgressContent':
+        """Create a ProgressContent from a dictionary."""
+        data_dict = data.get("data", {})
+        return cls(
+            content_type=ContentType(data["content_type"]),
+            title=data.get("title"),
+            description=data.get("description"),
+            metadata=data.get("metadata"),
+            content_id=data.get("content_id"),
+            status=ContentStatus(data.get("status", "creating")),
+            parent_id=data.get("parent_id"),
+            progress=data_dict.get("progress", ""),
+            percentage=data_dict.get("percentage"),
+            tool_name=data_dict.get("tool_name")
+        )
 
 
 @dataclass
@@ -171,6 +255,23 @@ class CodeBlockContent(StructureContent):
         if self.filename:
             data["filename"] = self.filename
         return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'CodeBlockContent':
+        """Create a CodeBlockContent from a dictionary."""
+        data_dict = data.get("data", {})
+        return cls(
+            content_type=ContentType(data["content_type"]),
+            title=data.get("title"),
+            description=data.get("description"),
+            metadata=data.get("metadata"),
+            content_id=data.get("content_id"),
+            status=ContentStatus(data.get("status", "creating")),
+            parent_id=data.get("parent_id"),
+            code=data_dict.get("code", ""),
+            language=data_dict.get("language", "python"),
+            filename=data_dict.get("filename")
+        )
 
 
 @dataclass
@@ -194,6 +295,24 @@ class ImageContent(StructureContent):
             data["height"] = self.height
         return data
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ImageContent':
+        """Create a ImageContent from a dictionary."""
+        data_dict = data.get("data", {})
+        return cls(
+            content_type=ContentType(data["content_type"]),
+            title=data.get("title"),
+            description=data.get("description"),
+            metadata=data.get("metadata"),
+            content_id=data.get("content_id"),
+            status=ContentStatus(data.get("status", "creating")),
+            parent_id=data.get("parent_id"),
+            url=data_dict.get("url"),
+            alt_text=data_dict.get("alt_text"),
+            width=data_dict.get("width"),
+            height=data_dict.get("height")
+        )
+
 
 @dataclass
 class VideoContent(StructureContent):
@@ -213,6 +332,23 @@ class VideoContent(StructureContent):
             data["duration"] = self.duration
         return data
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'VideoContent':
+        """Create a VideoContent from a dictionary."""
+        data_dict = data.get("data", {})
+        return cls(
+            content_type=ContentType(data["content_type"]),
+            title=data.get("title"),
+            description=data.get("description"),
+            metadata=data.get("metadata"),
+            content_id=data.get("content_id"),
+            status=ContentStatus(data.get("status", "creating")),
+            parent_id=data.get("parent_id"),
+            url=data_dict.get("url"),
+            thumbnail_url=data_dict.get("thumbnail_url"),
+            duration=data_dict.get("duration")
+        )
+
 
 @dataclass
 class MetadataContent(StructureContent):
@@ -226,6 +362,22 @@ class MetadataContent(StructureContent):
             "metadata_type": self.metadata_type,
             "data": self.metadata_data
         }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'MetadataContent':
+        """Create a MetadataContent from a dictionary."""
+        data_dict = data.get("data", {})
+        return cls(
+            content_type=ContentType(data["content_type"]),
+            title=data.get("title"),
+            description=data.get("description"),
+            metadata=data.get("metadata"),
+            content_id=data.get("content_id"),
+            status=ContentStatus(data.get("status", "creating")),
+            parent_id=data.get("parent_id"),
+            metadata_type=data_dict.get("metadata_type", ""),
+            metadata_data=data_dict.get("data", {})
+        )
 
 
 @dataclass
@@ -243,6 +395,23 @@ class ErrorContent(StructureContent):
         if self.details:
             data["details"] = self.details
         return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ErrorContent':
+        """Create a ErrorContent from a dictionary."""
+        data_dict = data.get("data", {})
+        return cls(
+            content_type=ContentType(data["content_type"]),
+            title=data.get("title"),
+            description=data.get("description"),
+            metadata=data.get("metadata"),
+            content_id=data.get("content_id"),
+            status=ContentStatus(data.get("status", "creating")),
+            parent_id=data.get("parent_id"),
+            error_message=data_dict.get("error", ""),
+            error_type=data_dict.get("error_type"),
+            details=data_dict.get("details")
+        )
 
 
 @dataclass
@@ -263,6 +432,24 @@ class FileAttachmentContent(StructureContent):
         if self.mime_type:
             data["mime_type"] = self.mime_type
         return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'FileAttachmentContent':
+        """Create a FileAttachmentContent from a dictionary."""
+        data_dict = data.get("data", {})
+        return cls(
+            content_type=ContentType(data["content_type"]),
+            title=data.get("title"),
+            description=data.get("description"),
+            metadata=data.get("metadata"),
+            content_id=data.get("content_id"),
+            status=ContentStatus(data.get("status", "creating")),
+            parent_id=data.get("parent_id"),
+            filename=data_dict.get("filename", ""),
+            file_path=data_dict.get("file_path"),
+            file_size=data_dict.get("file_size"),
+            mime_type=data_dict.get("mime_type")
+        )
 
 
 @dataclass
@@ -286,6 +473,24 @@ class AudioContent(StructureContent):
             data["transcript"] = self.transcript
         return data
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'AudioContent':
+        """Create a AudioContent from a dictionary."""
+        data_dict = data.get("data", {})
+        return cls(
+            content_type=ContentType(data["content_type"]),
+            title=data.get("title"),
+            description=data.get("description"),
+            metadata=data.get("metadata"),
+            content_id=data.get("content_id"),
+            status=ContentStatus(data.get("status", "creating")),
+            parent_id=data.get("parent_id"),
+            url=data_dict.get("url"),
+            thumbnail_url=data_dict.get("thumbnail_url"),
+            duration=data_dict.get("duration"),
+            transcript=data_dict.get("transcript")
+        )
+
 
 @dataclass
 class TableContent(StructureContent):
@@ -303,6 +508,23 @@ class TableContent(StructureContent):
         if self.table_title:
             data["title"] = self.table_title
         return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'TableContent':
+        """Create a TableContent from a dictionary."""
+        data_dict = data.get("data", {})
+        return cls(
+            content_type=ContentType(data["content_type"]),
+            title=data.get("title"),
+            description=data.get("description"),
+            metadata=data.get("metadata"),
+            content_id=data.get("content_id"),
+            status=ContentStatus(data.get("status", "creating")),
+            parent_id=data.get("parent_id"),
+            headers=data_dict.get("headers", []),
+            rows=data_dict.get("rows", []),
+            table_title=data_dict.get("title")
+        )
 
 
 @dataclass
@@ -328,6 +550,25 @@ class ChartContent(StructureContent):
             data["y_axis_label"] = self.y_axis_label
         return data
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ChartContent':
+        """Create a ChartContent from a dictionary."""
+        data_dict = data.get("data", {})
+        return cls(
+            content_type=ContentType(data["content_type"]),
+            title=data.get("title"),
+            description=data.get("description"),
+            metadata=data.get("metadata"),
+            content_id=data.get("content_id"),
+            status=ContentStatus(data.get("status", "creating")),
+            parent_id=data.get("parent_id"),
+            chart_type=data_dict.get("chart_type", ""),
+            data=data_dict.get("data", {}),
+            chart_title=data_dict.get("title"),
+            x_axis_label=data_dict.get("x_axis_label"),
+            y_axis_label=data_dict.get("y_axis_label")
+        )
+
 
 @dataclass
 class LinkContent(StructureContent):
@@ -347,6 +588,23 @@ class LinkContent(StructureContent):
         if self.favicon_url:
             data["favicon_url"] = self.favicon_url
         return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'LinkContent':
+        """Create a LinkContent from a dictionary."""
+        data_dict = data.get("data", {})
+        return cls(
+            content_type=ContentType(data["content_type"]),
+            title=data.get("title"),
+            metadata=data.get("metadata"),
+            content_id=data.get("content_id"),
+            status=ContentStatus(data.get("status", "creating")),
+            parent_id=data.get("parent_id"),
+            url=data_dict.get("url", ""),
+            link_title=data_dict.get("title"),
+            description=data_dict.get("description"),
+            favicon_url=data_dict.get("favicon_url")
+        )
 
 
 @dataclass
@@ -370,6 +628,25 @@ class ButtonContent(StructureContent):
             data["payload"] = self.payload
         return data
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ButtonContent':
+        """Create a ButtonContent from a dictionary."""
+        data_dict = data.get("data", {})
+        return cls(
+            content_type=ContentType(data["content_type"]),
+            title=data.get("title"),
+            description=data.get("description"),
+            metadata=data.get("metadata"),
+            content_id=data.get("content_id"),
+            status=ContentStatus(data.get("status", "creating")),
+            parent_id=data.get("parent_id"),
+            label=data_dict.get("label", ""),
+            action=data_dict.get("action", ""),
+            button_style=data_dict.get("style", "primary"),
+            disabled=data_dict.get("disabled", False),
+            payload=data_dict.get("payload")
+        )
+
 
 @dataclass
 class FormContent(StructureContent):
@@ -389,6 +666,24 @@ class FormContent(StructureContent):
         if self.form_title:
             data["title"] = self.form_title
         return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'FormContent':
+        """Create a FormContent from a dictionary."""
+        data_dict = data.get("data", {})
+        return cls(
+            content_type=ContentType(data["content_type"]),
+            title=data.get("title"),
+            description=data.get("description"),
+            metadata=data.get("metadata"),
+            content_id=data.get("content_id"),
+            status=ContentStatus(data.get("status", "creating")),
+            parent_id=data.get("parent_id"),
+            fields=data_dict.get("fields", []),
+            submit_action=data_dict.get("submit_action", ""),
+            submit_label=data_dict.get("submit_label", "Submit"),
+            form_title=data_dict.get("title")
+        )
 
 
 @dataclass
@@ -413,6 +708,25 @@ class SkillContent(StructureContent):
             data["usage_criteria"] = self.usage_criteria
         return data
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'SkillContent':
+        """Create a SkillContent from a dictionary."""
+        data_dict = data.get("data", {})
+        return cls(
+            content_type=ContentType(data["content_type"]),
+            title=data.get("title"),
+            description=data.get("description"),
+            metadata=data.get("metadata"),
+            content_id=data.get("content_id"),
+            status=ContentStatus(data.get("status", "creating")),
+            parent_id=data.get("parent_id"),
+            skill_name=data_dict.get("skill_name", ""),
+            skill_description=data_dict.get("description", ""),
+            parameters=data_dict.get("parameters", []),
+            example_call=data_dict.get("example_call"),
+            usage_criteria=data_dict.get("usage_criteria")
+        )
+
 
 @dataclass
 class PlanContent(StructureContent):
@@ -436,6 +750,26 @@ class PlanContent(StructureContent):
         if self.plan_title:
             data["title"] = self.plan_title
         return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'PlanContent':
+        """Create a PlanContent from a dictionary."""
+        data_dict = data.get("data", {})
+        return cls(
+            content_type=ContentType(data["content_type"]),
+            title=data.get("title"),
+            description=data.get("description"),
+            metadata=data.get("metadata"),
+            content_id=data.get("content_id"),
+            status=ContentStatus(data.get("status", "creating")),
+            parent_id=data.get("parent_id"),
+            plan_id=data_dict.get("plan_id", ""),
+            plan_title=data_dict.get("title"),
+            steps=data_dict.get("steps", []),
+            current_step=data_dict.get("current_step", 0),
+            total_steps=data_dict.get("total_steps", 0),
+            plan_status=data_dict.get("status", "pending")
+        )
 
 
 @dataclass
@@ -465,6 +799,26 @@ class StepContent(StructureContent):
             data["estimated_duration"] = self.estimated_duration
         return data
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'StepContent':
+        """Create a StepContent from a dictionary."""
+        data_dict = data.get("data", {})
+        return cls(
+            content_type=ContentType(data["content_type"]),
+            title=data.get("title"),
+            metadata=data.get("metadata"),
+            content_id=data.get("content_id"),
+            status=ContentStatus(data.get("status", "creating")),
+            parent_id=data.get("parent_id"),
+            step_id=data_dict.get("step_id", ""),
+            step_number=data_dict.get("step_number", 0),
+            description=data_dict.get("description", ""),
+            step_status=data_dict.get("status", "pending"),
+            result=data_dict.get("result"),
+            error=data_dict.get("error"),
+            estimated_duration=data_dict.get("estimated_duration")
+        )
+
 
 @dataclass
 class TaskListContent(StructureContent):
@@ -484,6 +838,24 @@ class TaskListContent(StructureContent):
         if self.list_title:
             data["title"] = self.list_title
         return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'TaskListContent':
+        """Create a TaskListContent from a dictionary."""
+        data_dict = data.get("data", {})
+        return cls(
+            content_type=ContentType(data["content_type"]),
+            title=data.get("title"),
+            description=data.get("description"),
+            metadata=data.get("metadata"),
+            content_id=data.get("content_id"),
+            status=ContentStatus(data.get("status", "creating")),
+            parent_id=data.get("parent_id"),
+            tasks=data_dict.get("tasks", []),
+            completed_count=data_dict.get("completed_count", 0),
+            total_count=data_dict.get("total_count", 0),
+            list_title=data_dict.get("title")
+        )
 
 
 # Mapping of ContentType to appropriate subclass
