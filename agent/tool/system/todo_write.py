@@ -102,75 +102,86 @@ class TodoWriteTool(BaseTool):
         Yields:
             ReactEvent objects with progress updates and results
         """
-        todos = parameters.get("todos")
-        if not todos:
-            yield self._create_event(
-                "error",
-                project_name,
-                react_type,
-                run_id,
-                step_id,
-                error="todos parameter is required and must be a non-empty array"
-            )
-            return
-
-        if not isinstance(todos, list):
-            yield self._create_event(
-                "error",
-                project_name,
-                react_type,
-                run_id,
-                step_id,
-                error="todos parameter must be an array"
-            )
-            return
-
-        # Get the React instance from the context to update its todo_state
-        # The React instance is passed through context._data['_react_instance']
-        if context:
-            react_instance = context.get('_react_instance')
-            if react_instance:
-                result = self._update_react_todo_state(react_instance, todos)
+        try:
+            todos = parameters.get("todos")
+            if not todos:
                 yield self._create_event(
-                    "tool_progress",
+                    "error",
                     project_name,
                     react_type,
                     run_id,
                     step_id,
-                    progress="TODO list updated"
-                )
-                yield self._create_event(
-                    "tool_end",
-                    project_name,
-                    react_type,
-                    run_id,
-                    step_id,
-                    ok=True,
-                    result=result
+                    error="todos parameter is required and must be a non-empty array"
                 )
                 return
 
-        # If no React instance available, just return the parsed todos
-        # This allows the tool to work in isolation for testing
-        parsed_items = []
-        for todo in todos:
-            item = self._parse_todo_item(todo)
-            if item:
-                parsed_items.append(item)
+            if not isinstance(todos, list):
+                yield self._create_event(
+                    "error",
+                    project_name,
+                    react_type,
+                    run_id,
+                    step_id,
+                    error="todos parameter must be an array"
+                )
+                return
 
-        yield self._create_event(
-            "tool_end",
-            project_name,
-            react_type,
-            run_id,
-            step_id,
-            ok=True,
-            result={
-                "message": "TODO list updated",
-                "count": len(parsed_items),
-                "items": [item.to_dict() for item in parsed_items]
-            }
-        )
+            # Get the React instance from the context to update its todo_state
+            # The React instance is passed through context._data['_react_instance']
+            if context:
+                react_instance = context.get('_react_instance')
+                if react_instance:
+                    result = self._update_react_todo_state(react_instance, todos)
+                    yield self._create_event(
+                        "tool_progress",
+                        project_name,
+                        react_type,
+                        run_id,
+                        step_id,
+                        progress="TODO list updated"
+                    )
+                    yield self._create_event(
+                        "tool_end",
+                        project_name,
+                        react_type,
+                        run_id,
+                        step_id,
+                        ok=True,
+                        result=result
+                    )
+                    return
+
+            # If no React instance available, just return the parsed todos
+            # This allows the tool to work in isolation for testing
+            parsed_items = []
+            for todo in todos:
+                item = self._parse_todo_item(todo)
+                if item:
+                    parsed_items.append(item)
+
+            yield self._create_event(
+                "tool_end",
+                project_name,
+                react_type,
+                run_id,
+                step_id,
+                ok=True,
+                result={
+                    "message": "TODO list updated",
+                    "count": len(parsed_items),
+                    "items": [item.to_dict() for item in parsed_items]
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error in todo_write tool: {e}", exc_info=True)
+            yield self._create_event(
+                "error",
+                project_name,
+                react_type,
+                run_id,
+                step_id,
+                error=str(e)
+            )
 
     def _update_react_todo_state(self, react_instance, todos: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Update the React instance's TODO state."""

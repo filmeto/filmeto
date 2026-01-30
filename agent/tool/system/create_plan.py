@@ -1,8 +1,11 @@
 from ..base_tool import BaseTool, ToolMetadata, ToolParameter
 from typing import Any, Dict, TYPE_CHECKING, Optional, AsyncGenerator
+import logging
 from ...plan.service import PlanService
 from ...plan.models import PlanTask
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ...tool_context import ToolContext
@@ -183,6 +186,7 @@ class CreatePlanTool(BaseTool):
             )
 
         except Exception as e:
+            logger.error(f"Error creating plan: {e}", exc_info=True)
             yield self._create_event(
                 "error",
                 project_name,

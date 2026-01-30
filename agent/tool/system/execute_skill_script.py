@@ -1,6 +1,9 @@
 import os
+import logging
 from typing import Any, Dict, Optional, TYPE_CHECKING, AsyncGenerator
 from ..base_tool import BaseTool, ToolMetadata, ToolParameter
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ...tool_context import ToolContext
@@ -174,6 +177,7 @@ class ExecuteSkillScriptTool(BaseTool):
             )
 
         except Exception as e:
+            logger.error(f"Error executing skill script '{parameters.get('script_path', 'unknown')}': {e}", exc_info=True)
             yield self._create_event(
                 "error",
                 project_name,

@@ -2,11 +2,14 @@ import sys
 import runpy
 import io
 import contextlib
+import logging
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING, AsyncGenerator
 from .base_tool import BaseTool, ToolMetadata
 from .tool_context import ToolContext
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     pass
@@ -37,9 +40,9 @@ class ToolService:
                 # Create an instance and register it
                 tool_instance = tool_class()
                 self.register_tool(tool_instance)
-        except ImportError:
+        except ImportError as e:
             # If system tools are not available, continue without registering them
-            pass
+            logger.warning(f"System tools not available: {e}", exc_info=True)
 
     @contextmanager
     def _sys_path_manager(self, project_root: str):
@@ -253,6 +256,7 @@ class ToolService:
                 yield event
 
         except Exception as e:
+            logger.error(f"Tool '{tool_name}' execution failed: {e}", exc_info=True)
             yield self._create_tool_event(
                 "error",
                 tool_name,
@@ -383,10 +387,13 @@ class ToolService:
             return output.rstrip() if output else None
 
         except SyntaxError as e:
+            logger.error(f"Syntax error in script '{script_path}': {e}", exc_info=True)
             raise ValueError(f"Syntax error in script: {str(e)}")
         except FileNotFoundError:
+            logger.error(f"Script file not found: {script_path}", exc_info=True)
             raise FileNotFoundError(f"Script file not found: {script_path}")
         except Exception as e:
+            logger.error(f"Error executing script '{script_path}': {e}", exc_info=True)
             raise RuntimeError(f"Error executing script: {str(e)}")
 
     async def execute_script_content(
@@ -503,8 +510,10 @@ class ToolService:
             return output.rstrip() if output else None
 
         except SyntaxError as e:
+            logger.error(f"Syntax error in script content: {e}", exc_info=True)
             raise ValueError(f"Syntax error: {str(e)}")
         except Exception as e:
+            logger.error(f"Execution error in script content: {e}", exc_info=True)
             raise RuntimeError(f"Execution error: {str(e)}")
         finally:
             try:
@@ -531,6 +540,7 @@ class ToolService:
             ValueError: If tool is not found
         """
         if tool_name not in self.tools:
+            logger.error(f"Tool '{tool_name}' not found in available tools: {list(self.tools.keys())}", exc_info=True)
             raise ValueError(f"Tool '{tool_name}' not found")
 
         tool = self.tools[tool_name]
@@ -565,6 +575,7 @@ class ToolService:
         metadata_list = []
         for tool_name in tool_names:
             if tool_name not in self.tools:
+                logger.error(f"Tool '{tool_name}' not found in available tools: {list(self.tools.keys())}", exc_info=True)
                 raise ValueError(f"Tool '{tool_name}' not found")
             tool = self.tools[tool_name]
             metadata_list.append(tool.metadata(lang))

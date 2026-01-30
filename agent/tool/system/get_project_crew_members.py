@@ -1,6 +1,9 @@
 from ..base_tool import BaseTool, ToolMetadata, ToolParameter
 from typing import Any, Dict, Optional, TYPE_CHECKING, AsyncGenerator
+import logging
 from agent.crew.crew_service import CrewService
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ...tool_context import ToolContext
@@ -74,53 +77,64 @@ class GetProjectCrewMembersTool(BaseTool):
         Yields:
             ReactEvent objects with the crew members list
         """
-        # Extract project information from context
-        workspace = context.workspace if context else None
+        try:
+            # Extract project information from context
+            workspace = context.workspace if context else None
 
-        if not workspace:
+            if not workspace:
+                yield self._create_event(
+                    "error",
+                    project_name,
+                    react_type,
+                    run_id,
+                    step_id,
+                    error="Workspace not available in context"
+                )
+                return
+
+            # Get the project from workspace
+            project = workspace.get_project()
+
+            # Initialize CrewService
+            crew_service = CrewService()
+
+            # Get crew members for the project using CrewService
+            crew_members_dict = crew_service.get_project_crew_members(project)
+
+            # Convert CrewMember objects to dictionaries
+            crew_members_list = []
+            for name, crew_member in crew_members_dict.items():
+                member_info = {
+                    "id": name,  # Using name as ID since CrewMember doesn't have a separate ID
+                    "name": crew_member.config.name,
+                    "role": getattr(crew_member.config, 'crew_title', 'member'),  # Using crew_title as role
+                    "description": crew_member.config.description,
+                    "soul": crew_member.config.soul or "",  # The associated soul name
+                    "skills": crew_member.config.skills,  # List of skills
+                    "model": crew_member.config.model,  # Model used by the crew member
+                    "temperature": crew_member.config.temperature,  # Temperature setting
+                    "max_steps": crew_member.config.max_steps,  # Max steps for the crew member
+                    "color": crew_member.config.color,  # Color for UI representation
+                    "icon": crew_member.config.icon  # Icon for UI representation
+                }
+                crew_members_list.append(member_info)
+
+            yield self._create_event(
+                "tool_end",
+                project_name,
+                react_type,
+                run_id,
+                step_id,
+                ok=True,
+                result=crew_members_list
+            )
+        except Exception as e:
+            logger.error(f"Error getting project crew members: {e}", exc_info=True)
             yield self._create_event(
                 "error",
                 project_name,
                 react_type,
                 run_id,
                 step_id,
-                error="Workspace not available in context"
+                error=str(e)
             )
-            return
-
-        # Get the project from workspace
-        project = workspace.get_project()
-
-        # Initialize CrewService
-        crew_service = CrewService()
-
-        # Get crew members for the project using CrewService
-        crew_members_dict = crew_service.get_project_crew_members(project)
-
-        # Convert CrewMember objects to dictionaries
-        crew_members_list = []
-        for name, crew_member in crew_members_dict.items():
-            member_info = {
-                "id": name,  # Using name as ID since CrewMember doesn't have a separate ID
-                "name": crew_member.config.name,
-                "role": getattr(crew_member.config, 'crew_title', 'member'),  # Using crew_title as role
-                "description": crew_member.config.description,
-                "soul": crew_member.config.soul or "",  # The associated soul name
-                "skills": crew_member.config.skills,  # List of skills
-                "model": crew_member.config.model,  # Model used by the crew member
-                "temperature": crew_member.config.temperature,  # Temperature setting
-                "max_steps": crew_member.config.max_steps,  # Max steps for the crew member
-                "color": crew_member.config.color,  # Color for UI representation
-                "icon": crew_member.config.icon  # Icon for UI representation
-            }
-            crew_members_list.append(member_info)
-
-        yield self._create_event(
-            "tool_end",
-            project_name,
-            react_type,
-            run_id,
-            step_id,
-            ok=True,
-            result=crew_members_list
-        )
