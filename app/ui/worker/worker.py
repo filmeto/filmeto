@@ -78,9 +78,7 @@ class TaskExecutor(QObject):
             
         except Exception as e:
             error_msg = str(e)
-            logger.error(f"Task execution failed: {error_msg}")
-            logger.error("Full stack trace:")
-            logger.error(traceback.format_exc())
+            logger.error(f"Task execution failed: {error_msg}", exc_info=True)
             self.error.emit(error_msg, e)
     
     def report_progress(self, percent: int, message: str = ""):

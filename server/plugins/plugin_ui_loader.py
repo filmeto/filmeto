@@ -105,9 +105,7 @@ class PluginUILoader:
             try:
                 spec.loader.exec_module(module)
             except Exception as e:
-                print(f"Failed to load plugin module {module_name}: {e}")
-                import traceback
-                traceback.print_exc()
+                logger.error(f"Failed to load plugin module {module_name}: {e}", exc_info=True)
                 return None
         
         # Find the plugin class
@@ -166,9 +164,7 @@ class PluginUILoader:
             plugin_instance = plugin_class()
             return plugin_instance
         except Exception as e:
-            print(f"Failed to instantiate plugin class {plugin_class.__name__}: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Failed to instantiate plugin class {plugin_class.__name__}: {e}", exc_info=True)
             return None
     
     def get_plugin_ui_widget(
@@ -213,9 +209,7 @@ class PluginUILoader:
             return custom_widget
             
         except Exception as e:
-            print(f"Failed to get custom UI from plugin {plugin_name}: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Failed to get custom UI from plugin {plugin_name}: {e}", exc_info=True)
             return None
     
     def get_plugin_info_from_code(self, plugin_name: str) -> Optional[Dict[str, Any]]:

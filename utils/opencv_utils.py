@@ -58,10 +58,8 @@ def extract_last_frame_opencv(video_path: Union[str, Path], output_path: Union[s
         
         cap.release()
     except Exception as e:
-        logger.error(f"Exception occurred in OpenCV frame extraction: {e}")
-        import traceback
-        traceback.print_exc()
-    
+        logger.error(f"Exception occurred in OpenCV frame extraction: {e}", exc_info=True)
+
     # Return None if OpenCV method fails
     return None
 
@@ -107,10 +105,8 @@ def extract_first_frame_opencv(video_path: Union[str, Path], output_path: Union[
         
         cap.release()
     except Exception as e:
-        logger.error(f"Exception occurred in OpenCV first frame extraction: {e}")
-        import traceback
-        traceback.print_exc()
-    
+        logger.error(f"Exception occurred in OpenCV first frame extraction: {e}", exc_info=True)
+
     # Return None if OpenCV method fails
     return None
 
@@ -152,10 +148,8 @@ def get_video_duration(video_path: Union[str, Path]) -> Optional[float]:
         
         cap.release()
     except Exception as e:
-        logger.error(f"Exception occurred while getting video duration: {e}")
-        import traceback
-        traceback.print_exc()
-    
+        logger.error(f"Exception occurred while getting video duration: {e}", exc_info=True)
+
     return None
 
 
@@ -212,9 +206,7 @@ def extract_frame_at_time_opencv(video_path: Union[str, Path], output_path: Unio
         
         cap.release()
     except Exception as e:
-        logger.error(f"Exception occurred in OpenCV time-based frame extraction: {e}")
-        import traceback
-        traceback.print_exc()
-    
+        logger.error(f"Exception occurred in OpenCV time-based frame extraction: {e}", exc_info=True)
+
     # Return None if OpenCV method fails
     return None

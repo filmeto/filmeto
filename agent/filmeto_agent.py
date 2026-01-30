@@ -705,7 +705,11 @@ class FilmetoAgent:
                 await self.signals.send_agent_message(agent_message)
 
             # Yield the event for upstream
-            yield enhanced_event
+            try:
+                yield enhanced_event
+            except Exception as e:
+                logger.error(f"❌ Exception in _stream_crew_member while yielding event", exc_info=True)
+                # Continue processing despite the yield error
 
     async def _stream_error_message(
         self,
@@ -749,125 +753,109 @@ class FilmetoAgent:
         Args:
             message: The message to process
         """
-        # Ensure project is loaded if not provided but workspace exists
-        if not self.project and self.workspace:
-            # Ensure projects are loaded in the workspace
-            if hasattr(self.workspace, 'project_manager') and self.workspace.project_manager:
-                self.workspace.project_manager.ensure_projects_loaded()
+        try:
+            # Ensure project is loaded if not provided but workspace exists
+            if not self.project and self.workspace:
+                # Ensure projects are loaded in the workspace
+                if hasattr(self.workspace, 'project_manager') and self.workspace.project_manager:
+                    self.workspace.project_manager.ensure_projects_loaded()
 
-            # Try to get the current project from workspace
-            self.project = self.workspace.get_project()
+                # Try to get the current project from workspace
+                self.project = self.workspace.get_project()
 
-            # If still no project, try to get the first available project
-            if not self.project:
-                project_list = self.workspace.get_projects()
-                if project_list:
-                    # Use the first project in the list as default
-                    first_project_name = next(iter(project_list))
-                    self.project = project_list[first_project_name]
+                # If still no project, try to get the first available project
+                if not self.project:
+                    project_list = self.workspace.get_projects()
+                    if project_list:
+                        # Use the first project in the list as default
+                        first_project_name = next(iter(project_list))
+                        self.project = project_list[first_project_name]
 
-        # Create an AgentMessage from the string
-        from agent.chat.structure_content import TextContent
-        initial_prompt = AgentMessage(
-            message_type=MessageType.TEXT,
-            sender_id="user",
-            sender_name="User",
-            structured_content=[TextContent(text=message)]
-        )
-        logger.info(f"📥 Created initial prompt message: id={initial_prompt.message_id}, sender='user', content_preview='{message[:50]}{'...' if len(message) > 50 else ''}'")
-
-        # Create a new session
-        session_id = str(uuid.uuid4())
-        self.current_session = AgentStreamSession(session_id, message)
-
-        # Add the initial prompt to history
-        self.conversation_history.append(initial_prompt)
-
-        initial_prompt.metadata["session_id"] = session_id
-        await self.signals.send_agent_message(initial_prompt)
-
-        self._ensure_crew_members_loaded()
-
-        mentioned_crew_member = self._resolve_mentioned_crew_member(message)
-        if mentioned_crew_member and mentioned_crew_member.config.name.lower() != _PRODUCER_NAME:
-            await self._emit_system_event(
-                "crew_member_start",
-                session_id,
-                crew_member_name=mentioned_crew_member.config.name,
-                message=message,
+            # Create an AgentMessage from the string
+            from agent.chat.structure_content import TextContent
+            initial_prompt = AgentMessage(
+                message_type=MessageType.TEXT,
+                sender_id="user",
+                sender_name="User",
+                structured_content=[TextContent(text=message)]
             )
-            async for _ in self._stream_crew_member(
-                mentioned_crew_member,
-                message,
-                plan_id=None,
-                session_id=session_id,
-            ):
-                pass
-            return
+            logger.info(f"📥 Created initial prompt message: id={initial_prompt.message_id}, sender='user', content_preview='{message[:50]}{'...' if len(message) > 50 else ''}'")
 
-        producer_agent = self._get_producer_crew_member()
-        if producer_agent:
-            await self._emit_system_event(
-                "producer_start",
-                session_id,
-                crew_member_name=producer_agent.config.name,
-                message=initial_prompt.get_text_content(),
-            )
-            async for _ in self._handle_producer_flow(
-                initial_prompt=initial_prompt,
-                producer_agent=producer_agent,
-                session_id=session_id,
-            ):
-                pass
-            return
+            # Create a new session
+            session_id = str(uuid.uuid4())
+            self.current_session = AgentStreamSession(session_id, message)
 
-        mentioned_agent = self._resolve_mentioned_title(message)
-        if mentioned_agent:
-            await self._emit_system_event(
-                "mentioned_agent_start",
-                session_id,
-                crew_member_name=mentioned_agent.config.name,
-                message=initial_prompt.get_text_content(),
-            )
-            async for _ in self._stream_crew_member(
-                mentioned_agent,
-                initial_prompt.get_text_content(),
-                plan_id=initial_prompt.metadata.get("plan_id") if initial_prompt.metadata else None,
-                session_id=session_id,
-                metadata=initial_prompt.metadata
-            ):
-                pass
-            return
+            # Add the initial prompt to history
+            self.conversation_history.append(initial_prompt)
 
-        # Prioritize producer if available and no specific agent is mentioned
-        producer_agent = self._get_producer_crew_member()
-        if producer_agent and not mentioned_crew_member:
-            await self._emit_system_event(
-                "producer_start",
-                session_id,
-                crew_member_name=producer_agent.config.name,
-                message=initial_prompt.get_text_content(),
-            )
-            # Stream directly from the producer crew member
-            async for _ in self._stream_crew_member(
-                producer_agent,
-                initial_prompt.get_text_content(),
-                plan_id=initial_prompt.metadata.get("plan_id") if initial_prompt.metadata else None,
-                session_id=session_id,
-                metadata=initial_prompt.metadata
-            ):
-                pass
-        else:
-            responding_agent = await self._select_responding_agent(initial_prompt)
-            if responding_agent:
+            initial_prompt.metadata["session_id"] = session_id
+            await self.signals.send_agent_message(initial_prompt)
+
+            self._ensure_crew_members_loaded()
+
+            mentioned_crew_member = self._resolve_mentioned_crew_member(message)
+            if mentioned_crew_member and mentioned_crew_member.config.name.lower() != _PRODUCER_NAME:
                 await self._emit_system_event(
-                    "responding_agent_start",
+                    "crew_member_start",
                     session_id,
-                    crew_member_name=responding_agent.config.name,
+                    crew_member_name=mentioned_crew_member.config.name,
+                    message=message,
+                )
+                async for _ in self._stream_crew_member(
+                    mentioned_crew_member,
+                    message,
+                    plan_id=None,
+                    session_id=session_id,
+                ):
+                    pass
+                return
+
+            producer_agent = self._get_producer_crew_member()
+            if producer_agent:
+                await self._emit_system_event(
+                    "producer_start",
+                    session_id,
+                    crew_member_name=producer_agent.config.name,
+                    message=initial_prompt.get_text_content(),
+                )
+                async for _ in self._handle_producer_flow(
+                    initial_prompt=initial_prompt,
+                    producer_agent=producer_agent,
+                    session_id=session_id,
+                ):
+                    pass
+                return
+
+            mentioned_agent = self._resolve_mentioned_title(message)
+            if mentioned_agent:
+                await self._emit_system_event(
+                    "mentioned_agent_start",
+                    session_id,
+                    crew_member_name=mentioned_agent.config.name,
                     message=initial_prompt.get_text_content(),
                 )
                 async for _ in self._stream_crew_member(
-                    responding_agent,
+                    mentioned_agent,
+                    initial_prompt.get_text_content(),
+                    plan_id=initial_prompt.metadata.get("plan_id") if initial_prompt.metadata else None,
+                    session_id=session_id,
+                    metadata=initial_prompt.metadata
+                ):
+                    pass
+                return
+
+            # Prioritize producer if available and no specific agent is mentioned
+            producer_agent = self._get_producer_crew_member()
+            if producer_agent and not mentioned_crew_member:
+                await self._emit_system_event(
+                    "producer_start",
+                    session_id,
+                    crew_member_name=producer_agent.config.name,
+                    message=initial_prompt.get_text_content(),
+                )
+                # Stream directly from the producer crew member
+                async for _ in self._stream_crew_member(
+                    producer_agent,
                     initial_prompt.get_text_content(),
                     plan_id=initial_prompt.metadata.get("plan_id") if initial_prompt.metadata else None,
                     session_id=session_id,
@@ -875,11 +863,35 @@ class FilmetoAgent:
                 ):
                     pass
             else:
-                async for _ in self._stream_error_message(
-                    "No suitable agent found to handle this request.",
-                    session_id,
-                ):
-                    pass
+                responding_agent = await self._select_responding_agent(initial_prompt)
+                if responding_agent:
+                    await self._emit_system_event(
+                        "responding_agent_start",
+                        session_id,
+                        crew_member_name=responding_agent.config.name,
+                        message=initial_prompt.get_text_content(),
+                    )
+                    async for _ in self._stream_crew_member(
+                        responding_agent,
+                        initial_prompt.get_text_content(),
+                        plan_id=initial_prompt.metadata.get("plan_id") if initial_prompt.metadata else None,
+                        session_id=session_id,
+                        metadata=initial_prompt.metadata
+                    ):
+                        pass
+                else:
+                    async for _ in self._stream_error_message(
+                        "No suitable agent found to handle this request.",
+                        session_id,
+                    ):
+                        pass
+        except Exception as e:
+            logger.error(f"❌ Exception in chat()", exc_info=True)
+            async for _ in self._stream_error_message(
+                f"An error occurred while processing your message: {str(e)}",
+                str(uuid.uuid4()),
+            ):
+                pass
 
     async def _handle_producer_flow(
         self,
@@ -887,108 +899,129 @@ class FilmetoAgent:
         producer_agent: CrewMember,
         session_id: str,
     ) -> AsyncGenerator["AgentEvent", None]:
-        project_name = self._resolve_project_name()
+        try:
+            project_name = self._resolve_project_name()
 
-        # Determine the active plan ID - get the last active plan for the project
-        active_plan = self.plan_service.get_last_active_plan_for_project(project_name) if project_name else None
-        active_plan_id = active_plan.id if active_plan else None
+            # Determine the active plan ID - get the last active plan for the project
+            active_plan = self.plan_service.get_last_active_plan_for_project(project_name) if project_name else None
+            active_plan_id = active_plan.id if active_plan else None
 
-        # Stream directly to the producer agent without creating a plan automatically
-        # The producer will decide whether to create a plan using the create_execution_plan skill
-        async for event in self._stream_crew_member(
-            producer_agent,
-            initial_prompt.get_text_content(),
-            plan_id=active_plan_id,
-            session_id=session_id,
-        ):
-            yield event
+            # Stream directly to the producer agent without creating a plan automatically
+            # The producer will decide whether to create a plan using the create_execution_plan skill
+            async for event in self._stream_crew_member(
+                producer_agent,
+                initial_prompt.get_text_content(),
+                plan_id=active_plan_id,
+                session_id=session_id,
+            ):
+                try:
+                    yield event
+                except Exception as e:
+                    logger.error(f"❌ Exception in _handle_producer_flow while yielding event", exc_info=True)
 
-        # After the producer responds, check if a plan was created during the interaction
-        # If a plan was created, execute the plan tasks
-        if project_name:
-            # Check if any plan was created during the producer's response
-            # This would happen if the producer used the create_execution_plan skill
-            # Get the most recently created active plan for this project
-            latest_plan = self.plan_service.get_last_active_plan_for_project(project_name)
-            if latest_plan and latest_plan.id != active_plan_id:  # Only execute if a new plan was created
-                # Update the active plan ID to the newly created plan
-                active_plan_id = latest_plan.id
+            # After the producer responds, check if a plan was created during the interaction
+            # If a plan was created, execute the plan tasks
+            if project_name:
+                # Check if any plan was created during the producer's response
+                # This would happen if the producer used the create_execution_plan skill
+                # Get the most recently created active plan for this project
+                latest_plan = self.plan_service.get_last_active_plan_for_project(project_name)
+                if latest_plan and latest_plan.id != active_plan_id:  # Only execute if a new plan was created
+                    # Update the active plan ID to the newly created plan
+                    active_plan_id = latest_plan.id
 
-                await self._emit_system_event(
-                    "plan_update",
-                    session_id,
-                    plan_id=latest_plan.id,
-                )
+                    await self._emit_system_event(
+                        "plan_update",
+                        session_id,
+                        plan_id=latest_plan.id,
+                    )
 
-                # Check if the plan has tasks to execute
-                if latest_plan and latest_plan.tasks:
-                    async for event in self._execute_plan_tasks(
-                        plan=latest_plan,
-                        session_id=session_id,
-                    ):
-                        yield event
+                    # Check if the plan has tasks to execute
+                    if latest_plan and latest_plan.tasks:
+                        async for event in self._execute_plan_tasks(
+                            plan=latest_plan,
+                            session_id=session_id,
+                        ):
+                            try:
+                                yield event
+                            except Exception as e:
+                                logger.error(f"❌ Exception in _handle_producer_flow while yielding plan task event", exc_info=True)
+        except Exception as e:
+            logger.error(f"❌ Exception in _handle_producer_flow", exc_info=True)
 
     async def _execute_plan_tasks(
         self,
         plan: Plan,
         session_id: str,
     ) -> AsyncGenerator["AgentEvent", None]:
-        plan_instance = self.plan_service.create_plan_instance(plan)
-        self.plan_service.start_plan_execution(plan_instance)
+        try:
+            plan_instance = self.plan_service.create_plan_instance(plan)
+            self.plan_service.start_plan_execution(plan_instance)
 
-        while True:
-            ready_tasks = self._get_ready_tasks(plan_instance)
-            if not ready_tasks:
-                if self._has_incomplete_tasks(plan_instance):
-                    async for event in self._stream_error_message(
-                        "Plan execution blocked by unmet dependencies or missing agents.",
+            while True:
+                ready_tasks = self._get_ready_tasks(plan_instance)
+                if not ready_tasks:
+                    if self._has_incomplete_tasks(plan_instance):
+                        async for event in self._stream_error_message(
+                            "Plan execution blocked by unmet dependencies or missing agents.",
+                            session_id,
+                        ):
+                            try:
+                                yield event
+                            except Exception as e:
+                                logger.error(f"❌ Exception in _execute_plan_tasks while yielding blocked event", exc_info=True)
+                    break
+
+                for task in ready_tasks:
+                    self.plan_service.mark_task_running(plan_instance, task.id)
+                    await self._emit_system_event(
+                        "plan_update",
                         session_id,
-                    ):
-                        yield event
-                break
+                        plan_id=plan.id,
+                        task_id=task.id,
+                        task_status="running",
+                    )
+                    target_agent = self._crew_member_lookup.get(task.title.lower())
+                    if not target_agent:
+                        error_message = f"Crew member '{task.title}' not found for task {task.id}."
+                        self.plan_service.mark_task_failed(plan_instance, task.id, error_message)
+                        async for event in self._stream_error_message(
+                            error_message,
+                            session_id,
+                        ):
+                            try:
+                                yield event
+                            except Exception as e:
+                                logger.error(f"❌ Exception in _execute_plan_tasks while yielding error event", exc_info=True)
+                        continue
 
-            for task in ready_tasks:
-                self.plan_service.mark_task_running(plan_instance, task.id)
-                await self._emit_system_event(
-                    "plan_update",
-                    session_id,
-                    plan_id=plan.id,
-                    task_id=task.id,
-                    task_status="running",
-                )
-                target_agent = self._crew_member_lookup.get(task.title.lower())
-                if not target_agent:
-                    error_message = f"Crew member '{task.title}' not found for task {task.id}."
-                    self.plan_service.mark_task_failed(plan_instance, task.id, error_message)
-                    async for event in self._stream_error_message(
-                        error_message,
+                    task_message = self._build_task_message(task, plan.id)
+                    async for event in self._stream_crew_member(
+                        target_agent,
+                        task_message,
+                        plan_id=plan.id,
+                        session_id=session_id,
+                        metadata={"plan_id": plan.id, "task_id": task.id},
+                    ):
+                        try:
+                            yield event
+                        except Exception as e:
+                            logger.error(f"❌ Exception in _execute_plan_tasks while yielding task event", exc_info=True)
+
+                    self.plan_service.mark_task_completed(plan_instance, task.id)
+                    await self._emit_system_event(
+                        "plan_update",
                         session_id,
-                    ):
-                        yield event
-                    continue
+                        plan_id=plan.id,
+                        task_id=task.id,
+                        task_status="completed",
+                    )
 
-                task_message = self._build_task_message(task, plan.id)
-                async for event in self._stream_crew_member(
-                    target_agent,
-                    task_message,
-                    plan_id=plan.id,
-                    session_id=session_id,
-                    metadata={"plan_id": plan.id, "task_id": task.id},
-                ):
-                    yield event
-
-                self.plan_service.mark_task_completed(plan_instance, task.id)
-                await self._emit_system_event(
-                    "plan_update",
-                    session_id,
-                    plan_id=plan.id,
-                    task_id=task.id,
-                    task_status="completed",
-                )
-
-            updated_plan = self.plan_service.load_plan(plan.project_name, plan.id)
-            if updated_plan:
-                plan_instance = self.plan_service.sync_plan_instance(plan_instance, updated_plan)
+                updated_plan = self.plan_service.load_plan(plan.project_name, plan.id)
+                if updated_plan:
+                    plan_instance = self.plan_service.sync_plan_instance(plan_instance, updated_plan)
+        except Exception as e:
+            logger.error(f"❌ Exception in _execute_plan_tasks", exc_info=True)
 
     async def _select_responding_agent(self, message: AgentMessage) -> Optional[CrewMember]:
         """
@@ -1083,6 +1116,7 @@ class FilmetoAgent:
                         yield error_msg
             except Exception as e:
                 error_text = f"Error in agent {agent.config.name if hasattr(agent, 'config') else 'Unknown'}: {str(e)}"
+                logger.error(f"❌ Exception in broadcast_to_all_agents", exc_info=True)
                 error_msg = AgentMessage(
                     message_type=MessageType.ERROR,
                     sender_id="system",

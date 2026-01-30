@@ -207,9 +207,7 @@ class Project:
 
             logger.info(f"✅ Updated task config.yml with resource paths for task {task.task_id}")
         except Exception as e:
-            logger.error(f"❌ Error updating task config.yml: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"❌ Error updating task config.yml: {e}", exc_info=True)
 
     # ==================== Timeline-related methods ====================
 

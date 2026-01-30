@@ -616,9 +616,7 @@ class LayerComposeTask:
             
         except Exception as e:
             # Log the error but don't re-raise to prevent thread crashes
-            logger.error(f"Error in layer composition task {self.task_id}: {e}")
-            logger.error("Full stack trace:")
-            logger.error(traceback.format_exc())
+            logger.error(f"Error in layer composition task {self.task_id}: {e}", exc_info=True)
             logger.error(f"Thread info: {threading.current_thread().name} (ID: {threading.get_ident()})")
             # Attempt to create placeholder outputs if they don't exist
             try:
@@ -967,9 +965,7 @@ class LayerComposeTask:
                 await self._extract_first_frame()
                 return
         except Exception as e:
-            logger.error(f"Exception during FFmpeg overlay: {e}")
-            logger.error("Full stack trace:")
-            logger.error(traceback.format_exc())
+            logger.error(f"Exception during FFmpeg overlay: {e}", exc_info=True)
             # Fallback: just copy the video
             logger.warning("Falling back to copying video without overlays due to exception")
             import shutil
@@ -1013,9 +1009,7 @@ class LayerComposeTask:
                 except Exception as e:
                     logger.error(f"Failed to create placeholder image: {e}")
         except Exception as e:
-            logger.error(f"Exception during frame extraction: {e}")
-            logger.error("Full stack trace:")
-            logger.error(traceback.format_exc())
+            logger.error(f"Exception during frame extraction: {e}", exc_info=True)
     
     def _fire_timeline_changed_signal(self):
         """Fire timeline_changed signal when composition completes"""
@@ -1249,9 +1243,7 @@ class LayerComposeTaskManager:
             # Increased delay from 200ms to 500ms to ensure Qt event processing
             QTimer.singleShot(500, do_cleanup)
         except Exception as e:
-            logger.error(f"Error during worker cleanup: {e}")
-            logger.error("Full stack trace:")
-            logger.error(traceback.format_exc())
+            logger.error(f"Error during worker cleanup: {e}", exc_info=True)
     
     def shutdown(self):
         """Shutdown the task manager and clean up all resources.

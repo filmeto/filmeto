@@ -44,9 +44,7 @@ class CanvasEditor(BaseWidget):
             self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             #self.canvas_widget.set_timeline_item(self.timeline_item)
         except Exception as e:
-            logger.error(f"Error initializing CanvasEditor: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error initializing CanvasEditor: {e}", exc_info=True)
             raise
     
 

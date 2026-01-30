@@ -198,9 +198,7 @@ class Image2Video(BaseTool,BaseTaskWidget):
                     task_result = AppTaskResult(task, result_wrapper)
                     self.workspace.on_task_finished(task_result)
         except Exception as e:
-            logger.error(f"Error in Image2Video.execute: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error in Image2Video.execute: {e}", exc_info=True)
 
     async def _get_image(self, task, timeline, current_index):
         # Check if input image exists

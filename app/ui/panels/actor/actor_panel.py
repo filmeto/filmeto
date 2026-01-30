@@ -368,10 +368,7 @@ class ActorPanel(ThreadSafetyMixin, BasePanel):
     def _on_load_error(self, error_msg: str, exception: Exception):
         """Handle loading error"""
         logger.error(f"❌ Error loading actor manager: {error_msg}")
-        logger.error(f"Exception: {exception}")
-        logger.error(f"Exception type: {type(exception)}")
-        logger.error("Full stack trace:")
-        logger.error(traceback.format_exc())
+        logger.error(f"Exception: {exception}", exc_info=True)
 
         # Don't mark as loaded immediately - allow for retry in certain cases
         if not hasattr(self, '_load_attempts'):
@@ -450,9 +447,7 @@ class ActorPanel(ThreadSafetyMixin, BasePanel):
                         else:
                             return None
                 except Exception as e:
-                    logger.error(f"Error loading actor manager (attempt {retry_count + 1}): {e}")
-                    logger.error("Full stack trace:")
-                    logger.error(traceback.format_exc())
+                    logger.error(f"Error loading actor manager (attempt {retry_count + 1}): {e}", exc_info=True)
                     if retry_count < max_retries - 1:
                         import time
                         time.sleep(0.5)  # Wait before retry

@@ -378,7 +378,5 @@ class BaseServerPlugin(ABC):
         except KeyboardInterrupt:
             sys.stderr.write("Plugin interrupted\n")
         except Exception as e:
-            sys.stderr.write(f"Plugin error: {e}\n")
-            import traceback
-            traceback.print_exc(file=sys.stderr)
+            logger.error(f"Plugin error: {e}", exc_info=True)
 

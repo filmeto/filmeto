@@ -332,9 +332,7 @@ class AgentChatWidget(BaseWidget):
             return True
 
         except Exception as e:
-            logger.error(f"❌ Failed to get agent instance for project '{project_name}': {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"❌ Failed to get agent instance for project '{project_name}': {e}", exc_info=True)
             return False
 
     async def _initialize_agent_async(self):
@@ -349,9 +347,7 @@ class AgentChatWidget(BaseWidget):
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, self._initialize_agent_sync)
         except Exception as e:
-            logger.error(f"❌ Error initializing agent: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"❌ Error initializing agent: {e}", exc_info=True)
         finally:
             self._initialization_in_progress = False
 

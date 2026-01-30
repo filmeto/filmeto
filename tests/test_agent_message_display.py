@@ -198,8 +198,7 @@ You are a film director. Help with directing films.
                 
         except Exception as e:
             print(f"❌ ERROR during test: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"ERROR during test: {e}", exc_info=True)
             return False
 
 
@@ -255,8 +254,7 @@ def test_chat_history_widget_handle_stream_event():
                 
     except Exception as e:
         print(f"❌ ERROR in ChatHistoryWidget test: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"ERROR in ChatHistoryWidget test: {e}", exc_info=True)
         return False
 
 

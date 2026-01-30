@@ -321,9 +321,7 @@ class TimelineItemTaskManager:
 
             return task
         except Exception as e:
-            logger.error(f"❌ Error creating task: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"❌ Error creating task: {e}", exc_info=True)
             return None
 
     def load_all_tasks(self) -> List[Task]:
@@ -370,9 +368,7 @@ class TimelineItemTaskManager:
             return loaded_tasks
 
         except Exception as e:
-            logger.error(f"❌ Error loading tasks: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"❌ Error loading tasks: {e}", exc_info=True)
             return []
 
     def get_task_by_id(self, task_id: str) -> Optional[Task]:

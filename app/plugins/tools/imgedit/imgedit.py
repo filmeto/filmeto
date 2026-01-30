@@ -165,6 +165,4 @@ class ImageEdit(BaseTool, BaseTaskWidget):
                     task_result = AppTaskResult(task, result_wrapper)
                     self.workspace.on_task_finished(task_result)
         except Exception as e:
-            logger.error(f"Error in ImageEdit.execute: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error in ImageEdit.execute: {e}", exc_info=True)

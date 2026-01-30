@@ -142,8 +142,7 @@ You are a film director. Help with directing films.
                 
         except Exception as e:
             print(f"❌ ERROR during test: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error during test: {e}", exc_info=True)
             return False
 
 

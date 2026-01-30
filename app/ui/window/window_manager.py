@@ -127,9 +127,7 @@ class WindowManager(QObject):
             from PySide6.QtCore import QTimer
             QTimer.singleShot(200, lambda: self._set_prompt_in_agent_panel_delayed(prompt))
         except Exception as e:
-            logger.error(f"Error setting prompt in agent panel: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error setting prompt in agent panel: {e}", exc_info=True)
     
     def _set_prompt_in_agent_panel_delayed(self, prompt: str):
         """Set prompt in agent panel after a short delay (for lazy loading)."""
@@ -156,9 +154,7 @@ class WindowManager(QObject):
                 if hasattr(agent_panel.prompt_input_widget, 'input_text'):
                     agent_panel.prompt_input_widget.input_text.setFocus()
         except Exception as e:
-            logger.error(f"Error setting prompt in agent panel (delayed): {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error setting prompt in agent panel (delayed): {e}", exc_info=True)
     
     def _on_go_home(self):
         """Handle returning to home/startup mode."""

@@ -123,8 +123,7 @@ You are a film director. Help with directing films.
                 
         except Exception as e:
             print(f"❌ ERROR during test: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"ERROR during test: {e}", exc_info=True)
             return False
 
 
@@ -150,8 +149,7 @@ def test_original_completion_method():
         return True
     except Exception as e:
         print(f"❌ ERROR in original completion method test: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"ERROR in original completion method test: {e}", exc_info=True)
         return False
 
 

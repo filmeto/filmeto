@@ -225,9 +225,7 @@ class VideoTimeline(BaseTaskWidget):
             self.update()
             
         except Exception as e:
-            logger.error(f"Error adding new card: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error adding new card: {e}", exc_info=True)
 
     def on_timeline_switch(self, item: TimelineItem):
         """Handle timeline switch to update card images"""

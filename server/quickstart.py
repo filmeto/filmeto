@@ -117,8 +117,7 @@ async def main():
     
     except Exception as e:
         print(f"\n❌ Error: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error in quickstart: {e}", exc_info=True)
     
     finally:
         # Cleanup

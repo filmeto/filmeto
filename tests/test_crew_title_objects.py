@@ -79,8 +79,7 @@ def test_crew_title_objects():
                 print("   Project crew directory was not created")
         except Exception as e:
             print(f"   Error during initialization: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error during initialization: {e}", exc_info=True)
     
     # Test 4: Compare with CrewTitle.get_all_dynamic_titles
     print("\n4. Comparing with CrewTitle.get_all_dynamic_titles...")

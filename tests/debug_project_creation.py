@@ -31,8 +31,7 @@ def debug_project_creation():
             print(f"Project config exists: {os.path.exists(os.path.join(expected_project_path, 'project.yml'))}")
         except Exception as e:
             print(f"Error creating project: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error creating project: {e}", exc_info=True)
         
         # Test 2: Workspace initialization
         print("\n=== Test 2: Workspace initialization ===")
@@ -46,8 +45,7 @@ def debug_project_creation():
             print(f"Project path: {workspace.project_path}")
         except Exception as e:
             print(f"Error initializing workspace: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error initializing workspace: {e}", exc_info=True)
 
 if __name__ == "__main__":
     debug_project_creation()

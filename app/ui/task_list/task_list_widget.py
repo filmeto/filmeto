@@ -384,9 +384,7 @@ class TaskListWidget(BaseTaskWidget):
                 # For now we just log this case
                 logger.debug(f"Progress update for unloaded task {task_id}, skipping update")
         except Exception as e:
-            logger.error(f"Error handling task progress update: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error handling task progress update: {e}", exc_info=True)
     
     def on_project_switched(self, project_name):
         """处理项目切换"""

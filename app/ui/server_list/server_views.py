@@ -631,9 +631,7 @@ class ServerConfigView(BaseWidget):
             return custom_widget
 
         except Exception as e:
-            logger.error(f"Failed to get custom UI from plugin: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Failed to get custom UI from plugin: {e}", exc_info=True)
             return None
 
     def _on_custom_config_changed(self):

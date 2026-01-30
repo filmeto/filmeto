@@ -134,9 +134,7 @@ class AgentChatHistoryWidget(BaseWidget):
                 print("No conversation found, starting fresh")
 
         except Exception as e:
-            print(f"Error loading recent conversation: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error loading recent conversation: {e}", exc_info=True)
 
     def _add_historical_message(self, sender: str, message: 'Message'):
         """Add a historical message to the chat history with proper metadata."""

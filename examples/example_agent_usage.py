@@ -340,8 +340,7 @@ async def main():
             await example_func()
         except Exception as e:
             print(f"\n❌ Error in {name}: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error in example {name}: {e}", exc_info=True)
     
     print("\n" + "="*60)
     print("Examples complete!")

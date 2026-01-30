@@ -79,9 +79,7 @@ class FilmetoServerPlugin(BaseServerPlugin):
             widget = DefaultConfigWidget(self.get_plugin_info(), server_config, None)
             return widget
         except Exception as e:
-            print(f"Failed to create FilmetoServer config widget: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Failed to create FilmetoServer config widget: {e}", exc_info=True)
             return None
 
     def get_supported_tools(self) -> List[ToolConfig]:

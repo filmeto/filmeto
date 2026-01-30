@@ -158,9 +158,7 @@ class StartupWindowWorkspaceTopRightBar(BaseWidget):
             QTimer.singleShot(0, lambda: self._finalize_panel_switch(panel_name))
 
         except Exception as e:
-            logger.error(f"❌ Error creating right panel {panel_name}: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"❌ Error creating right panel {panel_name}: {e}", exc_info=True)
 
     def _finalize_panel_switch(self, panel_name: str):
         """Complete the panel switch after instance is ready"""

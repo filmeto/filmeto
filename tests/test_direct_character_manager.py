@@ -41,8 +41,7 @@ def test_character_manager_directly():
                 print(f"  - {char.name}")
         except Exception as e:
             print(f"Error listing characters: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error listing characters: {e}", exc_info=True)
     else:
         print("Character manager is None!")
 

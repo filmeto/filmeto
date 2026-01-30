@@ -321,9 +321,7 @@ class WorkflowManager:
                 return json.load(f)
                 
         except Exception as e:
-            logger.error(f"Failed to load workflow content: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Failed to load workflow content: {e}", exc_info=True)
             return None
     
     def prepare_workflow(

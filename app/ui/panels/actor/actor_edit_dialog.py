@@ -419,6 +419,5 @@ class ActorEditDialog(CustomDialog):
         
         except Exception as e:
             QMessageBox.critical(self, tr("错误"), tr(f"保存角色失败: {str(e)}"))
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Failed to save character: {e}", exc_info=True)
 

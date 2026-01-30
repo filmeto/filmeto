@@ -125,8 +125,7 @@ class App():
                     # Log stack trace for critical messages
                     import sys
                     if sys.exc_info()[0] is not None:  # Check if there's an active exception
-                        logger.error("Stack trace:")
-                        logger.error(traceback.format_exc())
+                        logger.error("Stack trace:", exc_info=True)
                     else:
                         # Print the current call stack if no exception is active
                         logger.error("Current call stack:")
@@ -140,8 +139,7 @@ class App():
                     # Log full stack trace for fatal errors
                     import sys
                     if sys.exc_info()[0] is not None:  # Check if there's an active exception
-                        logger.critical("Stack trace:")
-                        logger.critical(traceback.format_exc())
+                        logger.critical("Stack trace:", exc_info=True)
                     else:
                         # Print the current call stack if no exception is active
                         logger.critical("Current call stack:")
@@ -248,8 +246,7 @@ class App():
             logger.critical("CRITICAL ERROR IN APP.START()")
             logger.critical("="*80)
             logger.critical(f"Exception: {e}")
-            logger.critical("Full stack trace:")
-            logger.critical(traceback.format_exc())
+            logger.critical("Full stack trace:", exc_info=True)
             logger.critical("="*80)
             raise
     
@@ -324,8 +321,7 @@ class App():
             logger.info("LayerComposeTaskManager shutdown complete")
         except Exception as e:
             logger.error(f"Error during LayerComposeTaskManager cleanup: {e}")
-            logger.error("Full stack trace:")
-            logger.error(traceback.format_exc())
+            logger.error("Full stack trace:", exc_info=True)
 
         try:
             # Shut down the global download worker if it exists
@@ -335,8 +331,7 @@ class App():
             logger.info("Global download worker shutdown complete")
         except Exception as e:
             logger.error(f"Error during download worker cleanup: {e}")
-            logger.error("Full stack trace:")
-            logger.error(traceback.format_exc())
+            logger.error("Full stack trace:", exc_info=True)
 
         try:
             # Clean up any remaining QThreads that might be running
@@ -361,8 +356,7 @@ class App():
                             logger.error(f"Error terminating QThread {obj}: {term_e}")
         except Exception as e:
             logger.error(f"Error during QThread cleanup: {e}")
-            logger.error("Full stack trace:")
-            logger.error(traceback.format_exc())
+            logger.error("Full stack trace:", exc_info=True)
         
         try:
             # Properly close asyncio tasks in the event loop
@@ -395,8 +389,7 @@ class App():
                     logger.error(f"Error accessing event loop: {e}")
         except Exception as e:
             logger.error(f"Error during asyncio task cleanup: {e}")
-            logger.error("Full stack trace:")
-            logger.error(traceback.format_exc())
+            logger.error("Full stack trace:", exc_info=True)
 
         try:
             # Shut down the global worker pool if it exists
@@ -408,8 +401,7 @@ class App():
             logger.info("Global worker pool shutdown complete")
         except Exception as e:
             logger.error(f"Error during worker pool cleanup: {e}")
-            logger.error("Full stack trace:")
-            logger.error(traceback.format_exc())
+            logger.error("Full stack trace:", exc_info=True)
 
         # Force garbage collection to ensure objects are cleaned up
         logger.info("Performing garbage collection...")

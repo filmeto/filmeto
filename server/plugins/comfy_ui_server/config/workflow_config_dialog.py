@@ -570,6 +570,5 @@ class WorkflowConfigDialog(CustomDialog):
                 "Save Error",
                 f"Failed to save workflow:\n{str(e)}"
             )
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Failed to save workflow: {e}", exc_info=True)
 

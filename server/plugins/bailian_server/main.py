@@ -131,9 +131,7 @@ class BailianServerPlugin(BaseServerPlugin):
                 }
 
         except Exception as e:
-            print(f"Error executing task with tool {tool_name}: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error executing task with tool {tool_name}: {e}", exc_info=True)
             return {
                 "task_id": task_id,
                 "status": "error",

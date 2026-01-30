@@ -895,8 +895,7 @@ class ComfyUIConfigWidget(QWidget):
                 self.config_changed.emit()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to open workflow configuration: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Failed to open workflow configuration: {e}", exc_info=True)
     
     def get_config(self) -> Dict[str, Any]:
         """Get current configuration from widgets"""

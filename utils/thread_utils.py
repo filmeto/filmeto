@@ -112,9 +112,7 @@ class ThreadSafetyMixin:
             try:
                 return callback(*args, **kwargs)
             except Exception as e:
-                logger.error(f"Error in {'error' if is_error else 'finished'} callback: {e}")
-                logger.error("Full stack trace:")
-                logger.error(traceback.format_exc())
+                logger.error(f"Error in {'error' if is_error else 'finished'} callback: {e}", exc_info=True)
                 # Don't re-raise to avoid interfering with Qt's signal-slot mechanism
         
         return wrapped_callback
@@ -126,9 +124,7 @@ class ThreadSafetyMixin:
                 if worker and worker.is_running():
                     worker.stop()
             except Exception as e:
-                logger.error(f"Error stopping worker: {e}")
-                logger.error("Full stack trace:")
-                logger.error(traceback.format_exc())
+                logger.error(f"Error stopping worker: {e}", exc_info=True)
         
         # Clear the worker lists
         self._active_workers.clear()
@@ -172,9 +168,7 @@ def safe_callback_wrapper(obj: QObject, callback: Callable, is_error: bool = Fal
         try:
             return callback(*args, **kwargs)
         except Exception as e:
-            logger.error(f"Error in {'error' if is_error else 'finished'} callback: {e}")
-            logger.error("Full stack trace:")
-            logger.error(traceback.format_exc())
+            logger.error(f"Error in {'error' if is_error else 'finished'} callback: {e}", exc_info=True)
 
     return wrapped_callback
 
@@ -271,9 +265,7 @@ class SafeWorkerManager:
             try:
                 callback(*args, **kwargs)
             except Exception as e:
-                logger.error(f"Error in {'error' if is_error else 'finished'} callback: {e}")
-                logger.error("Full stack trace:")
-                logger.error(traceback.format_exc())
+                logger.error(f"Error in {'error' if is_error else 'finished'} callback: {e}", exc_info=True)
 
         return safe_handler
     
@@ -284,9 +276,7 @@ class SafeWorkerManager:
                 if worker.is_running():
                     worker.stop()
             except Exception as e:
-                logger.error(f"Error stopping worker: {e}")
-                logger.error("Full stack trace:")
-                logger.error(traceback.format_exc())
+                logger.error(f"Error stopping worker: {e}", exc_info=True)
         
         self._workers.clear()
         self._callbacks.clear()

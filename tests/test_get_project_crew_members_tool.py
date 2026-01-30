@@ -47,8 +47,7 @@ def test_get_project_crew_members_tool():
         return result
     except Exception as e:
         print(f"Error executing tool: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error executing tool: {e}", exc_info=True)
         return None
 
 

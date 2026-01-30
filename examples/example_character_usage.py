@@ -119,8 +119,7 @@ def main():
         
     except Exception as e:
         print(f"\n❌ Error: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error in character usage example: {e}", exc_info=True)
     finally:
         # Cleanup (comment out to inspect files)
         # shutil.rmtree(project_dir, ignore_errors=True)
