@@ -5,9 +5,12 @@ Provides ReAct-based streaming execution for skills.
 Handles tool calling, prompt building, and script execution for skill chat operations.
 """
 import os
+import logging
 from typing import AsyncGenerator, Any, Dict, Optional, TYPE_CHECKING
 
 from agent.skill.skill_models import Skill
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from agent.event.agent_event import AgentEvent
@@ -54,43 +57,61 @@ class SkillChat:
         Yields:
             ReactEvent objects for skill execution progress
         """
-        from agent.react import React
-        from agent.tool.tool_service import ToolService
+        try:
+            from agent.react import React
+            from agent.tool.tool_service import ToolService
 
-        if llm_service is None:
-            from agent.llm.llm_service import LlmService
-            llm_service = LlmService(workspace)
+            if llm_service is None:
+                from agent.llm.llm_service import LlmService
+                llm_service = LlmService(workspace)
 
-        # Build available tool names based on skill type
-        tool_service = ToolService()
-        available_tool_names = list(tool_service.get_available_tools())
+            # Build available tool names based on skill type
+            tool_service = ToolService()
+            available_tool_names = list(tool_service.get_available_tools())
 
-        # Add todo_write tool for complex task tracking
-        available_tool_names.append("todo_write")
+            # Add todo_write tool for complex task tracking
+            available_tool_names.append("todo_write")
 
-        # Add skill-specific tools based on whether skill has scripts
-        if skill.scripts:
-            available_tool_names.append("execute_skill_script")
-        else:
-            available_tool_names.append("execute_generated_code")
+            # Add skill-specific tools based on whether skill has scripts
+            if skill.scripts:
+                available_tool_names.append("execute_skill_script")
+            else:
+                available_tool_names.append("execute_generated_code")
 
-        def build_prompt_function(user_question: str) -> str:
-            return self._build_skill_react_prompt(
-                skill, user_question, available_tool_names, args
+            def build_prompt_function(user_question: str) -> str:
+                return self._build_skill_react_prompt(
+                    skill, user_question, available_tool_names, args
+                )
+
+            project_name = getattr(project, 'project_name', 'default_project') if project else 'default_project'
+            react_instance = React(
+                workspace=workspace,
+                project_name=project_name,
+                react_type=f"skill_{skill.name}",
+                build_prompt_function=build_prompt_function,
+                available_tool_names=available_tool_names,
+                llm_service=llm_service,
+                max_steps=max_steps,
             )
+            async for event in react_instance.chat_stream(user_message or skill.description):
+                yield event
+        except Exception as e:
+            logger.error(f"Error in skill chat_stream for '{skill.name}': {e}", exc_info=True)
+            # Yield error event for upstream handling
+            from agent.event.agent_event import AgentEvent
+            from agent.chat.structure_content import ErrorContent
 
-        project_name = getattr(project, 'project_name', 'default_project') if project else 'default_project'
-        react_instance = React(
-            workspace=workspace,
-            project_name=project_name,
-            react_type=f"skill_{skill.name}",
-            build_prompt_function=build_prompt_function,
-            available_tool_names=available_tool_names,
-            llm_service=llm_service,
-            max_steps=max_steps,
-        )
-        async for event in react_instance.chat_stream(user_message or skill.description):
-            yield event
+            error_event = AgentEvent.create(
+                event_type="error",
+                project_name=getattr(project, 'project_name', 'default_project') if project else 'default_project',
+                react_type=f"skill_{skill.name}",
+                content=ErrorContent(
+                    error_message=str(e),
+                    title="Skill Chat Error",
+                    description=f"Error executing skill: {skill.name}"
+                )
+            )
+            yield error_event
 
     def _build_skill_react_prompt(self, skill, user_question, available_tool_names, args) -> str:
         """Build the skill-specific ReAct prompt.

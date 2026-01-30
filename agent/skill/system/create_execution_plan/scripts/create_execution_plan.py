@@ -8,9 +8,12 @@ Supports both CLI execution and in-context execution via the SkillExecutor.
 import json
 import sys
 import argparse
+import logging
 from typing import Dict, Any, TYPE_CHECKING
 import os
 import ast
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from agent.skill.skill_service import SkillContext
@@ -75,6 +78,7 @@ def execute(context: 'SkillContext', args: Dict[str, Any]) -> Dict[str, Any]:
             }
 
     except Exception as e:
+        logger.error(f"Error creating execution plan: {e}", exc_info=True)
         return {
             "success": False,
             "message": f"Error creating execution plan: {str(e)}"
@@ -126,6 +130,7 @@ def create_execution_plan(plan_name: str, description: str = "", tasks: list = N
             }
 
     except Exception as e:
+        logger.error(f"Error creating execution plan: {e}", exc_info=True)
         return {
             "success": False,
             "message": f"Error creating execution plan: {str(e)}"
@@ -204,7 +209,8 @@ def main():
 
         print(json.dumps(result, indent=2))
 
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid JSON for tasks: {e}", exc_info=True)
         error_result = {
             "success": False,
             "error": "invalid_json",
@@ -212,6 +218,7 @@ def main():
         }
         print(json.dumps(error_result, indent=2))
     except Exception as e:
+        logger.error(f"Error in main execution: {e}", exc_info=True)
         error_result = {
             "success": False,
             "error": str(e),

@@ -6,10 +6,13 @@ Skills are organized as directories containing a SKILL.md file with metadata and
 plus optional reference.md, example.md, and scripts/ directory.
 """
 import os
+import logging
 from typing import AsyncGenerator, Dict, List, Optional, Any, TYPE_CHECKING
 
 # Import data models
 from agent.skill.skill_models import Skill, SkillParameter
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from agent.event.agent_event import AgentEvent
@@ -169,7 +172,7 @@ class SkillService:
             return skill
             
         except Exception as e:
-            print(f"Error loading skill from {skill_path}: {e}")
+            logger.error(f"Error loading skill from {skill_path}: {e}", exc_info=True)
             return None
     
     def get_skill(self, name: str) -> Optional[Skill]:
@@ -292,7 +295,7 @@ class SkillService:
             self.refresh_skills()
             return True
         except Exception as e:
-            print(f"Error creating skill {skill.name}: {e}")
+            logger.error(f"Error creating skill '{skill.name}': {e}", exc_info=True)
             return False
 
     def update_skill(self, skill_name: str, updated_skill: Skill) -> bool:
@@ -364,7 +367,7 @@ class SkillService:
 
             return success
         except Exception as e:
-            print(f"Error updating skill {skill_name}: {e}")
+            logger.error(f"Error updating skill '{skill_name}': {e}", exc_info=True)
             return False
 
     async def chat_stream(
@@ -437,5 +440,5 @@ class SkillService:
 
             return True
         except Exception as e:
-            print(f"Error deleting skill {skill_name}: {e}")
+            logger.error(f"Error deleting skill '{skill_name}': {e}", exc_info=True)
             return False

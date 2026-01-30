@@ -8,9 +8,12 @@ Supports both CLI execution and in-context execution via the SkillExecutor.
 import json
 import sys
 import argparse
+import logging
 from typing import Dict, List, Any, Optional, TYPE_CHECKING
 import os
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from agent.skill.skill_service import SkillContext
@@ -196,6 +199,7 @@ def write_scenes_to_manager(
                 failed_scenes.append(scene_id)
 
         except Exception as e:
+            logger.error(f"Error creating scene {scene_id}: {e}", exc_info=True)
             failed_scenes.append(scene_id)
 
     result = {
@@ -263,6 +267,7 @@ def execute_in_context(
         return result
 
     except Exception as e:
+        logger.error(f"Error in screenplay outline generation: {e}", exc_info=True)
         return {
             "success": False,
             "error": str(e),
@@ -313,6 +318,7 @@ def main():
         print(json.dumps(result, indent=2))
 
     except Exception as e:
+        logger.error(f"Error in main execution: {e}", exc_info=True)
         error_result = {
             "success": False,
             "error": str(e),
