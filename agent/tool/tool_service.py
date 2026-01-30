@@ -120,6 +120,48 @@ class ToolService:
             ReactEvent object
         """
         from agent.event.agent_event import AgentEvent
+        from agent.chat.structure_content import (
+            ToolCallContent, ProgressContent, ToolResponseContent, ErrorContent
+        )
+
+        # Create appropriate content based on event type
+        content = None
+
+        if event_type == "tool_start":
+            content = ToolCallContent(
+                tool_name=tool_name,
+                tool_input=kwargs.get("input", {}),
+                title=f"Tool: {tool_name}",
+                description="Tool execution started"
+            )
+        elif event_type == "tool_progress":
+            content = ProgressContent(
+                progress=kwargs.get("progress", ""),
+                tool_name=tool_name,
+                title="Tool Execution",
+                description="Tool execution in progress"
+            )
+        elif event_type == "tool_end":
+            content = ToolResponseContent(
+                tool_name=tool_name,
+                result=kwargs.get("result"),
+                error=kwargs.get("error"),
+                tool_status="completed" if not kwargs.get("error") else "failed",
+                title=f"Tool Result: {tool_name}",
+                description=f"Tool execution {'completed' if not kwargs.get('error') else 'failed'}"
+            )
+            if not kwargs.get("error"):
+                content.complete()
+            else:
+                content.fail()
+        elif event_type == "error":
+            content = ErrorContent(
+                error_message=kwargs.get("error", "Unknown error"),
+                error_type=kwargs.get("error_type"),
+                details=kwargs.get("details"),
+                title="Error",
+                description="Tool execution error"
+            )
 
         return AgentEvent.create(
             event_type=event_type,
@@ -129,8 +171,7 @@ class ToolService:
             step_id=step_id,
             sender_id=sender_id,
             sender_name=sender_name,
-            tool_name=tool_name,
-            **kwargs
+            content=content
         )
 
     async def execute_tool(
