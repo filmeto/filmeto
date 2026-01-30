@@ -124,7 +124,7 @@ class ExecuteSkillTool(BaseTool):
             return
 
         from agent.skill.skill_service import SkillService
-        from agent.event.agent_event import AgentEventType
+        from agent.event.agent_event import AgentEvent, AgentEventType
 
         skill_service = SkillService(workspace)
 

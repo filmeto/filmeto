@@ -83,7 +83,12 @@ class SkillChat:
                     skill, user_question, available_tool_names, args
                 )
 
-            project_name = getattr(project, 'project_name', 'default_project') if project else 'default_project'
+            # Handle both string (project_name directly) and object (with project_name attribute) cases
+            if isinstance(project, str):
+                project_name = project
+            else:
+                project_name = getattr(project, 'project_name', 'default_project') if project else 'default_project'
+
             react_instance = React(
                 workspace=workspace,
                 project_name=project_name,
@@ -101,9 +106,15 @@ class SkillChat:
             from agent.event.agent_event import AgentEvent
             from agent.chat.structure_content import ErrorContent
 
+            # Handle both string (project_name directly) and object (with project_name attribute) cases
+            if isinstance(project, str):
+                error_project_name = project
+            else:
+                error_project_name = getattr(project, 'project_name', 'default_project') if project else 'default_project'
+
             error_event = AgentEvent.create(
                 event_type="error",
-                project_name=getattr(project, 'project_name', 'default_project') if project else 'default_project',
+                project_name=error_project_name,
                 react_type=f"skill_{skill.name}",
                 content=ErrorContent(
                     error_message=str(e),
