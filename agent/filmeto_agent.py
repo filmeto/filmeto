@@ -443,9 +443,9 @@ class FilmetoAgent:
             sender_id="system",
             sender_name="System",
             metadata=meta,
-            structured_content=[StructureContent(
-                content_type=ContentType.METADATA,
-                data={"event_type": event_type, **kwargs},
+            structured_content=[MetadataContent(
+                metadata_type=event_type,
+                metadata_data={"event_type": event_type, **kwargs},
                 title=event_type,
                 description="",
             )],
@@ -715,10 +715,7 @@ class FilmetoAgent:
             message_type=MessageType.ERROR,
             sender_id="system",
             sender_name="System",
-            structured_content=[StructureContent(
-                content_type=ContentType.TEXT,
-                data=message
-            )]
+            structured_content=[TextContent(text=message)]
         )
         logger.info(f"❌ Sending error message: id={error_msg.message_id}, sender='system', content_preview='{message[:50]}{'...' if len(message) > 50 else ''}'")
         self.conversation_history.append(error_msg)
@@ -1066,10 +1063,7 @@ class FilmetoAgent:
                                 sender_id=agent.config.name,
                                 sender_name=agent.config.name.capitalize(),
                                 metadata={},
-                                structured_content=[StructureContent(
-                                    content_type=ContentType.TEXT,
-                                    data=final_text
-                                )]
+                                structured_content=[TextContent(text=final_text)]
                             )
                             self.conversation_history.append(response)
                             yield response
@@ -1080,10 +1074,7 @@ class FilmetoAgent:
                             sender_id=agent.config.name,
                             sender_name=agent.config.name.capitalize(),
                             metadata={},
-                            structured_content=[StructureContent(
-                                content_type=ContentType.TEXT,
-                                data=error_text
-                            )]
+                            structured_content=[TextContent(text=error_text)]
                         )
                         self.conversation_history.append(error_msg)
                         yield error_msg
@@ -1093,10 +1084,7 @@ class FilmetoAgent:
                     message_type=MessageType.ERROR,
                     sender_id="system",
                     sender_name="System",
-                    structured_content=[StructureContent(
-                        content_type=ContentType.TEXT,
-                        data=error_text
-                    )]
+                    structured_content=[TextContent(text=error_text)]
                 )
                 logger.info(f"❌ Broadcasting error message: id={error_msg.message_id}, sender='system', content_preview='{error_text[:50]}{'...' if len(error_text) > 50 else ''}'")
                 self.conversation_history.append(error_msg)

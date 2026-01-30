@@ -144,7 +144,7 @@ class CrewMember:
         async for event in react_instance.chat_stream(message):
             saw_event = True
 
-            # Enhance event with sender information and add appropriate content
+            # Enhance event with sender information and preserve content
             enhanced_event = AgentEvent.create(
                 event_type=event.event_type,
                 project_name=event.project_name,
@@ -153,12 +153,8 @@ class CrewMember:
                 step_id=event.step_id,
                 sender_id=self.config.name,
                 sender_name=self.config.name,
-                **event.payload
+                content=event.content  # Preserve the original content
             )
-
-            # Add structured content based on event type
-            # Content creation will be handled by FilmetoAgent's event-to-message converter
-            # We just forward the event with sender information
 
             if event.event_type == AgentEventType.FINAL:
                 # Extract from content or payload (backward compat)
