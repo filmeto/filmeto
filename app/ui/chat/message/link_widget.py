@@ -1,26 +1,19 @@
 """Widget for displaying link content in chat messages."""
 
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
-    QSizePolicy, QScrollArea, QTextEdit, QPushButton, QTableWidget, QTableWidgetItem
-)
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPixmap, QPainter, QPainterPath, QColor, QFont, QPen
+from typing import Any, Dict
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QFrame
+from PySide6.QtCore import Qt
 
-from app.ui.base_widget import BaseWidget
-from app.ui.components.avatar_widget import AvatarWidget
-from agent.chat.agent_chat_message import AgentMessage, StructureContent, ContentType
+from agent.chat.structure_content import LinkContent
 from app.ui.chat.message.base_structured_content_widget import BaseStructuredContentWidget
 
 
 class LinkWidget(BaseStructuredContentWidget):
     """Widget for displaying link content."""
 
-    def __init__(self, content: StructureContent, parent=None):
+    def __init__(self, content: LinkContent, parent=None):
         """Initialize link widget."""
         super().__init__(structure_content=content, parent=parent)
-        self._setup_ui()
 
     def _setup_ui(self):
         """Set up UI."""
@@ -28,43 +21,78 @@ class LinkWidget(BaseStructuredContentWidget):
         layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(8)
 
+        # Create container frame
+        container = QFrame(self)
+        container.setStyleSheet("""
+            QFrame {
+                background-color: rgba(74, 144, 217, 0.15);
+                border: 1px solid rgba(74, 144, 217, 0.4);
+                border-radius: 6px;
+                padding: 4px;
+            }
+        """)
+        container_layout = QHBoxLayout(container)
+        container_layout.setContentsMargins(8, 6, 8, 6)
+        container_layout.setSpacing(8)
+
         # Link icon
-        icon_label = QLabel("🔗", self)
-        layout.addWidget(icon_label)
+        icon_label = QLabel("🔗", container)
+        container_layout.addWidget(icon_label)
 
-        # Link data (should be a dict with 'url' and 'text')
-        if isinstance(self.structure_content.data, dict):
-            url = self.structure_content.data.get('url', '')
-            text = self.structure_content.data.get('text', url)
-        else:
-            url = str(self.structure_content.data)
-            text = url
+        # Get link info from LinkContent attributes
+        url = self.structure_content.url or ""
+        link_title = self.structure_content.link_title or url
+        description = self.structure_content.description or ""
 
-        # Link button
-        link_button = QPushButton(text, self)
-        link_button.setStyleSheet("""
-            QPushButton {
+        # Link title label
+        title_label = QLabel(link_title, container)
+        title_label.setStyleSheet("""
+            QLabel {
                 color: #4a90d9;
-                text-align: left;
+                font-size: 12px;
+                font-weight: bold;
+            }
+        """)
+        title_label.setWordWrap(True)
+        container_layout.addWidget(title_label)
+
+        # Description if available
+        if description:
+            desc_label = QLabel(f" - {description}", container)
+            desc_label.setStyleSheet("""
+                QLabel {
+                    color: #a0a0a0;
+                    font-size: 11px;
+                }
+            """)
+            desc_label.setWordWrap(True)
+            container_layout.addWidget(desc_label)
+
+        container_layout.addStretch()
+
+        # Open button
+        open_button = QPushButton("Open", container)
+        open_button.setStyleSheet("""
+            QPushButton {
+                background-color: #4a90d9;
+                color: white;
                 border: none;
-                background: transparent;
+                border-radius: 4px;
+                padding: 4px 12px;
                 font-size: 11px;
-                text-decoration: underline;
+                font-weight: bold;
             }
             QPushButton:hover {
-                color: #5aa0ff;
+                background-color: #5aa0ff;
+            }
+            QPushButton:pressed {
+                background-color: #3a80c9;
             }
         """)
-        link_button.clicked.connect(lambda: self._handle_link_click(url))
-        layout.addWidget(link_button)
-        layout.addStretch()
+        open_button.clicked.connect(lambda: self._handle_link_click(url))
+        container_layout.addWidget(open_button)
 
-        self.setStyleSheet("""
-            QWidget {
-                background-color: #1a3a5a;
-                border-radius: 3px;
-            }
-        """)
+        layout.addWidget(container)
 
     def _handle_link_click(self, url: str):
         """Handle link click and emit reference clicked signal."""
@@ -84,16 +112,16 @@ class LinkWidget(BaseStructuredContentWidget):
         from PySide6.QtCore import QUrl
         QDesktopServices.openUrl(QUrl(url))
 
-    def update_content(self, structure_content: StructureContent):
+    def update_content(self, structure_content: LinkContent):
         """
         Update the widget with new structure content.
-        
+
         Args:
             structure_content: The new structure content to display
         """
         self.structure_content = structure_content
         # Clear and re-layout the widget
-        for i in reversed(range(self.layout().count())): 
+        for i in reversed(range(self.layout().count())):
             child = self.layout().itemAt(i).widget()
             if child is not None:
                 child.setParent(None)
@@ -102,34 +130,33 @@ class LinkWidget(BaseStructuredContentWidget):
     def get_state(self) -> Dict[str, Any]:
         """
         Get the current state of the widget.
-        
+
         Returns:
             Dictionary representing the current state
         """
         return {
-            "title": self.structure_content.title,
+            "url": self.structure_content.url,
+            "link_title": self.structure_content.link_title,
             "description": self.structure_content.description,
-            "data": self.structure_content.data,
         }
 
     def set_state(self, state: Dict[str, Any]):
         """
         Set the state of the widget.
-        
+
         Args:
             state: Dictionary representing the state to set
         """
-        # Update the structure content with state data
-        title = state.get("title", "")
-        description = state.get("description", "")
-        data = state.get("data", {})
-        
-        # Update the UI with the new state
-        for i in reversed(range(self.layout().count())): 
+        if "url" in state and hasattr(self.structure_content, 'url'):
+            self.structure_content.url = state["url"]
+        if "link_title" in state and hasattr(self.structure_content, 'link_title'):
+            self.structure_content.link_title = state["link_title"]
+        if "description" in state and hasattr(self.structure_content, 'description'):
+            self.structure_content.description = state["description"]
+
+        # Rebuild UI
+        for i in reversed(range(self.layout().count())):
             child = self.layout().itemAt(i).widget()
             if child is not None:
                 child.setParent(None)
-        self.structure_content.title = title
-        self.structure_content.description = description
-        self.structure_content.data = data
         self._setup_ui()

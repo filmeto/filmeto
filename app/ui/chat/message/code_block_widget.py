@@ -1,26 +1,21 @@
 """Widget for displaying code blocks in chat messages."""
 
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
-    QSizePolicy, QScrollArea, QTextEdit, QPushButton, QTableWidget, QTableWidgetItem
-)
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPixmap, QPainter, QPainterPath, QColor, QFont, QPen
+from typing import Any, Dict
+from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, QPushButton
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
 
-from app.ui.base_widget import BaseWidget
-from app.ui.components.avatar_widget import AvatarWidget
-from agent.chat.agent_chat_message import AgentMessage, StructureContent, ContentType
+from agent.chat.structure_content import CodeBlockContent
 from app.ui.chat.message.base_structured_content_widget import BaseStructuredContentWidget
 
 
 class CodeBlockWidget(BaseStructuredContentWidget):
     """Widget for displaying code blocks."""
 
-    def __init__(self, content: StructureContent, parent=None):
+    def __init__(self, content: CodeBlockContent, parent=None):
         """Initialize code block widget."""
         super().__init__(structure_content=content, parent=parent)
-        self._setup_ui()
+        self.code_text = None
 
     def _setup_ui(self):
         """Set up UI."""
@@ -28,73 +23,145 @@ class CodeBlockWidget(BaseStructuredContentWidget):
         layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(4)
 
-        # Title if available
-        if self.structure_content.title:
-            title_label = QLabel(self.structure_content.title, self)
-            title_label.setStyleSheet("""
-                QLabel {
-                    color: #7c4dff;
-                    font-weight: bold;
-                    font-size: 12px;
-                }
-            """)
-            layout.addWidget(title_label)
+        # Header row with language label and copy button
+        header_row = QHBoxLayout()
+        header_row.setSpacing(8)
 
-        # Description if available
-        if self.structure_content.description:
-            desc_label = QLabel(self.structure_content.description, self)
-            desc_label.setStyleSheet("""
-                QLabel {
-                    color: #aaaaaa;
-                    font-size: 11px;
-                }
-            """)
-            layout.addWidget(desc_label)
+        # Language label
+        language = self.structure_content.language or "text"
+        language_label = QLabel(language, self)
+        language_label.setStyleSheet("""
+            QLabel {
+                background-color: #3c3c3c;
+                color: #a0a0a0;
+                font-size: 10px;
+                font-weight: bold;
+                padding: 3px 8px;
+                border-radius: 3px;
+            }
+        """)
+        language_label.setMaximumWidth(language_label.fontMetrics().horizontalAdvance(language) + 20)
+        header_row.addWidget(language_label)
 
-        # Code content
-        code_text = QTextEdit(self)
-        code_text.setReadOnly(True)
-        code_text.setStyleSheet("""
+        header_row.addStretch()
+
+        # Copy button
+        copy_button = QPushButton("📋 Copy", self)
+        copy_button.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #a0a0a0;
+                border: 1px solid #3c3c3c;
+                border-radius: 3px;
+                padding: 3px 8px;
+                font-size: 10px;
+            }
+            QPushButton:hover {
+                background-color: #3c3c3c;
+                color: #e0e0e0;
+            }
+        """)
+        copy_button.clicked.connect(self._copy_code)
+        header_row.addWidget(copy_button)
+
+        layout.addLayout(header_row)
+
+        # Code content - use the 'code' attribute from CodeBlockContent
+        self.code_text = QTextEdit(self)
+        self.code_text.setReadOnly(True)
+        self.code_text.setPlainText(self.structure_content.code)
+        self.code_text.setStyleSheet("""
             QTextEdit {
                 background-color: #1e1e1e;
                 color: #d4d4d4;
-                font-family: 'Courier New', monospace;
-                font-size: 11px;
-                border: 1px solid #3c3c3c;
-                border-radius: 3px;
-                padding: 6px;
+                font-family: 'Fira Code', 'Consolas', 'Courier New', monospace;
+                font-size: 12px;
+                border: none;
+                border-radius: 4px;
+                padding: 8px;
+            }
+            QScrollBar:vertical {
+                background-color: #1e1e1e;
+                width: 10px;
+                border: none;
+            }
+            QScrollBar::handle:vertical {
+                background-color: #3c3c3c;
+                border-radius: 5px;
+                min-height: 20px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background-color: #4c4c4c;
             }
         """)
+        layout.addWidget(self.code_text)
 
-        # Extract code from data (which should be a dict with 'language' and 'code')
-        if isinstance(self.structure_content.data, dict):
-            code_str = self.structure_content.data.get('code', str(self.structure_content.data))
-            language = self.structure_content.data.get('language', '')
-        else:
-            code_str = str(self.structure_content.data)
-            language = ''
-
-        code_text.setPlainText(code_str)
-        layout.addWidget(code_text)
+        # Filename label if available
+        if self.structure_content.filename:
+            filename_label = QLabel(f"📄 {self.structure_content.filename}", self)
+            filename_label.setStyleSheet("""
+                QLabel {
+                    color: #7c4dff;
+                    font-size: 11px;
+                    padding-top: 4px;
+                }
+            """)
+            layout.addWidget(filename_label)
 
         self.setStyleSheet("""
             QWidget {
-                background-color: #2d2d2d;
-                border: 1px solid #505254;
-                border-radius: 4px;
+                background-color: #252526;
+                border: 1px solid #3c3c3c;
+                border-radius: 6px;
             }
         """)
 
-    def update_content(self, structure_content: StructureContent):
+    def _copy_code(self):
+        """Copy the code to clipboard."""
+        from PySide6.QtGui import QClipboard
+        from PySide6.QtWidgets import QApplication
+
+        clipboard = QApplication.clipboard()
+        clipboard.setText(self.structure_content.code)
+
+        # Optionally show feedback
+        if self.code_text:
+            self.code_text.setStyleSheet("""
+                QTextEdit {
+                    background-color: #2a2a2a;
+                    color: #d4d4d4;
+                    font-family: 'Fira Code', 'Consolas', 'Courier New', monospace;
+                    font-size: 12px;
+                    border: 1px solid #7c4dff;
+                    border-radius: 4px;
+                    padding: 8px;
+                }
+            """)
+
+            # Reset style after a short delay
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(200, lambda: self.code_text.setStyleSheet("""
+                QTextEdit {
+                    background-color: #1e1e1e;
+                    color: #d4d4d4;
+                    font-family: 'Fira Code', 'Consolas', 'Courier New', monospace;
+                    font-size: 12px;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 8px;
+                }
+            """))
+
+    def update_content(self, structure_content: CodeBlockContent):
         """
         Update the widget with new structure content.
-        
+
         Args:
             structure_content: The new structure content to display
         """
         self.structure_content = structure_content
         # Clear and re-layout the widget
-        for i in reversed(range(self.layout().count())): 
+        for i in reversed(range(self.layout().count())):
             child = self.layout().itemAt(i).widget()
             if child is not None:
                 child.setParent(None)
@@ -103,34 +170,33 @@ class CodeBlockWidget(BaseStructuredContentWidget):
     def get_state(self) -> Dict[str, Any]:
         """
         Get the current state of the widget.
-        
+
         Returns:
             Dictionary representing the current state
         """
         return {
-            "title": self.structure_content.title,
-            "description": self.structure_content.description,
-            "data": self.structure_content.data,
+            "code": self.structure_content.code,
+            "language": self.structure_content.language,
+            "filename": self.structure_content.filename,
         }
 
     def set_state(self, state: Dict[str, Any]):
         """
         Set the state of the widget.
-        
+
         Args:
             state: Dictionary representing the state to set
         """
-        # Update the structure content with state data
-        title = state.get("title", "")
-        description = state.get("description", "")
-        data = state.get("data", {})
-        
-        # Update the UI with the new state
-        for i in reversed(range(self.layout().count())): 
+        if "code" in state and hasattr(self.structure_content, 'code'):
+            self.structure_content.code = state["code"]
+        if "language" in state and hasattr(self.structure_content, 'language'):
+            self.structure_content.language = state["language"]
+        if "filename" in state and hasattr(self.structure_content, 'filename'):
+            self.structure_content.filename = state["filename"]
+
+        # Rebuild UI
+        for i in reversed(range(self.layout().count())):
             child = self.layout().itemAt(i).widget()
             if child is not None:
                 child.setParent(None)
-        self.structure_content.title = title
-        self.structure_content.description = description
-        self.structure_content.data = data
         self._setup_ui()

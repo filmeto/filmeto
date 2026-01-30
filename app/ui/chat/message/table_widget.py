@@ -1,26 +1,20 @@
 """Widget for displaying table content in chat messages."""
 
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
-    QSizePolicy, QScrollArea, QTextEdit, QPushButton, QTableWidget, QTableWidgetItem
-)
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPixmap, QPainter, QPainterPath, QColor, QFont, QPen
+from typing import Any, Dict
+from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QTableWidget, QTableWidgetItem
+from PySide6.QtCore import Qt
 
-from app.ui.base_widget import BaseWidget
-from app.ui.components.avatar_widget import AvatarWidget
-from agent.chat.agent_chat_message import AgentMessage, StructureContent, ContentType
+from agent.chat.structure_content import TableContent
 from app.ui.chat.message.base_structured_content_widget import BaseStructuredContentWidget
 
 
 class TableWidget(BaseStructuredContentWidget):
     """Widget for displaying table content."""
 
-    def __init__(self, content: StructureContent, parent=None):
+    def __init__(self, content: TableContent, parent=None):
         """Initialize table widget."""
         super().__init__(structure_content=content, parent=parent)
-        self._setup_ui()
+        self.table_widget = None
 
     def _setup_ui(self):
         """Set up UI."""
@@ -28,98 +22,97 @@ class TableWidget(BaseStructuredContentWidget):
         layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(4)
 
-        # Title if available
-        if self.structure_content.title:
-            title_label = QLabel(self.structure_content.title, self)
+        # Table title if available
+        if self.structure_content.table_title:
+            title_label = QLabel(self.structure_content.table_title, self)
             title_label.setStyleSheet("""
                 QLabel {
                     color: #7c4dff;
                     font-weight: bold;
                     font-size: 12px;
+                    padding-bottom: 4px;
                 }
             """)
+            title_label.setAlignment(Qt.AlignLeft)
             layout.addWidget(title_label)
 
-        # Description if available
-        if self.structure_content.description:
-            desc_label = QLabel(self.structure_content.description, self)
-            desc_label.setStyleSheet("""
-                QLabel {
-                    color: #aaaaaa;
-                    font-size: 11px;
-                }
-            """)
-            layout.addWidget(desc_label)
-
-        # Table content
-        table_widget = QTableWidget(self)
-        table_widget.setStyleSheet("""
+        # Create table widget
+        self.table_widget = QTableWidget(self)
+        self.table_widget.setStyleSheet("""
             QTableWidget {
                 background-color: #1e1e1e;
                 alternate-background-color: #252526;
                 color: #d4d4d4;
                 gridline-color: #3c3c3c;
                 border: 1px solid #3c3c3c;
-                border-radius: 3px;
+                border-radius: 4px;
             }
             QTableWidget::item {
-                padding: 4px;
+                padding: 6px 4px;
+            }
+            QTableWidget::item:selected {
+                background-color: #4a90d9;
+                color: #ffffff;
             }
             QHeaderView::section {
                 background-color: #333337;
                 color: #cccccc;
-                padding: 4px;
-                border: 1px solid #444;
+                padding: 6px 4px;
+                border: none;
+                border-right: 1px solid #444;
+                border-bottom: 1px solid #444;
+                font-weight: bold;
+                font-size: 11px;
+            }
+            QHeaderView::section:first {
+                border-top-left-radius: 3px;
+            }
+            QHeaderView::section:last {
+                border-top-right-radius: 3px;
+                border-right: none;
             }
         """)
 
-        # Populate table from data (should be a dict with 'headers' and 'rows')
-        if isinstance(self.structure_content.data, dict):
-            headers = self.structure_content.data.get('headers', [])
-            rows = self.structure_content.data.get('rows', [])
+        # Populate table from TableContent attributes (headers, rows)
+        headers = self.structure_content.headers or []
+        rows = self.structure_content.rows or []
 
-            if headers:
-                table_widget.setColumnCount(len(headers))
-                table_widget.setHorizontalHeaderLabels(headers)
+        if headers:
+            self.table_widget.setColumnCount(len(headers))
+            self.table_widget.setHorizontalHeaderLabels(headers)
 
-            if rows:
-                table_widget.setRowCount(len(rows))
-                for row_idx, row_data in enumerate(rows):
-                    for col_idx, cell_data in enumerate(row_data):
-                        item = QTableWidgetItem(str(cell_data))
-                        table_widget.setItem(row_idx, col_idx, item)
-        elif isinstance(self.structure_content.data, list):
-            # If data is a list of lists, treat each inner list as a row
-            if self.structure_content.data:
-                num_cols = max(len(row) for row in self.structure_content.data) if self.structure_content.data else 0
-                table_widget.setColumnCount(num_cols)
-                table_widget.setRowCount(len(self.structure_content.data))
+        if rows:
+            self.table_widget.setRowCount(len(rows))
+            for row_idx, row_data in enumerate(rows):
+                for col_idx, cell_data in enumerate(row_data):
+                    item = QTableWidgetItem(str(cell_data))
+                    item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+                    self.table_widget.setItem(row_idx, col_idx, item)
 
-                for row_idx, row_data in enumerate(self.structure_content.data):
-                    for col_idx, cell_data in enumerate(row_data):
-                        item = QTableWidgetItem(str(cell_data))
-                        table_widget.setItem(row_idx, col_idx, item)
+        # Resize columns to content
+        self.table_widget.resizeColumnsToContents()
+        self.table_widget.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.table_widget.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
 
-        layout.addWidget(table_widget)
+        layout.addWidget(self.table_widget)
 
         self.setStyleSheet("""
             QWidget {
-                background-color: #2d2d2d;
-                border: 1px solid #505254;
-                border-radius: 4px;
+                background-color: transparent;
+                border: none;
             }
         """)
 
-    def update_content(self, structure_content: StructureContent):
+    def update_content(self, structure_content: TableContent):
         """
         Update the widget with new structure content.
-        
+
         Args:
             structure_content: The new structure content to display
         """
         self.structure_content = structure_content
         # Clear and re-layout the widget
-        for i in reversed(range(self.layout().count())): 
+        for i in reversed(range(self.layout().count())):
             child = self.layout().itemAt(i).widget()
             if child is not None:
                 child.setParent(None)
@@ -128,34 +121,33 @@ class TableWidget(BaseStructuredContentWidget):
     def get_state(self) -> Dict[str, Any]:
         """
         Get the current state of the widget.
-        
+
         Returns:
             Dictionary representing the current state
         """
         return {
-            "title": self.structure_content.title,
-            "description": self.structure_content.description,
-            "data": self.structure_content.data,
+            "headers": self.structure_content.headers,
+            "rows": self.structure_content.rows,
+            "table_title": self.structure_content.table_title,
         }
 
     def set_state(self, state: Dict[str, Any]):
         """
         Set the state of the widget.
-        
+
         Args:
             state: Dictionary representing the state to set
         """
-        # Update the structure content with state data
-        title = state.get("title", "")
-        description = state.get("description", "")
-        data = state.get("data", {})
-        
-        # Update the UI with the new state
-        for i in reversed(range(self.layout().count())): 
+        if "headers" in state and hasattr(self.structure_content, 'headers'):
+            self.structure_content.headers = state["headers"]
+        if "rows" in state and hasattr(self.structure_content, 'rows'):
+            self.structure_content.rows = state["rows"]
+        if "table_title" in state and hasattr(self.structure_content, 'table_title'):
+            self.structure_content.table_title = state["table_title"]
+
+        # Rebuild UI
+        for i in reversed(range(self.layout().count())):
             child = self.layout().itemAt(i).widget()
             if child is not None:
                 child.setParent(None)
-        self.structure_content.title = title
-        self.structure_content.description = description
-        self.structure_content.data = data
         self._setup_ui()

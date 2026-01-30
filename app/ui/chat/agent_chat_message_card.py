@@ -21,6 +21,9 @@ from app.ui.chat.message.table_widget import TableWidget
 from app.ui.chat.message.text_content_widget import TextContentWidget
 from app.ui.chat.message.structure_content_widget import StructureContentWidget
 from app.ui.components.avatar_widget import AvatarWidget
+# Import all specialized content widgets
+from app.ui.chat.message.thinking_content_widget import ThinkingContentWidget
+from app.ui.chat.message.skill_content_widget import SkillContentWidget
 
 if TYPE_CHECKING:
     pass
@@ -231,26 +234,66 @@ class BaseMessageCard(QFrame):
         """Add a widget for the given StructureContent based on its type."""
         widget = None
 
-        # Check if this is thinking content by looking at the content type
-        if structure_content.content_type == ContentType.THINKING:
-            # Use the ThinkingContentWidget for thinking content
-            from app.ui.chat.message.thinking_content_widget import ThinkingContentWidget
-            widget = ThinkingContentWidget(structure_content, self.structure_content)
-        elif structure_content.content_type == ContentType.TEXT:
+        # Map ContentType to appropriate widget class
+        content_type = structure_content.content_type
+
+        if content_type == ContentType.TEXT:
             widget = TextContentWidget(structure_content, self.structure_content)
-        elif structure_content.content_type == ContentType.CODE_BLOCK:
+        elif content_type == ContentType.THINKING:
+            widget = ThinkingContentWidget(structure_content, self.structure_content)
+        elif content_type == ContentType.CODE_BLOCK:
             widget = CodeBlockWidget(structure_content, self.structure_content)
-        elif structure_content.content_type == ContentType.TABLE:
+        elif content_type == ContentType.TABLE:
             widget = TableWidget(structure_content, self.structure_content)
-        elif structure_content.content_type == ContentType.LINK:
+        elif content_type == ContentType.LINK:
             widget = LinkWidget(structure_content, self.structure_content)
-        elif structure_content.content_type == ContentType.BUTTON:
+        elif content_type == ContentType.BUTTON:
             widget = ButtonWidget(structure_content, self.structure_content)
-        elif structure_content.content_type == ContentType.SKILL:
-            from app.ui.chat.message.skill_content_widget import SkillContentWidget
+        elif content_type == ContentType.SKILL:
             # Pass None initially so the widget can report natural width for bubble calculation
             widget = SkillContentWidget(structure_content, self.structure_content, available_width=None)
-        # Add more content types as needed
+        elif content_type == ContentType.TOOL_CALL:
+            from app.ui.chat.message.tool_call_content_widget import ToolCallContentWidget
+            widget = ToolCallContentWidget(structure_content, self.structure_content)
+        elif content_type == ContentType.TOOL_RESPONSE:
+            from app.ui.chat.message.tool_response_content_widget import ToolResponseContentWidget
+            widget = ToolResponseContentWidget(structure_content, self.structure_content)
+        elif content_type == ContentType.PROGRESS:
+            from app.ui.chat.message.progress_content_widget import ProgressContentWidget
+            widget = ProgressContentWidget(structure_content, self.structure_content)
+        elif content_type == ContentType.ERROR:
+            from app.ui.chat.message.error_content_widget import ErrorContentWidget
+            widget = ErrorContentWidget(structure_content, self.structure_content)
+        elif content_type == ContentType.METADATA:
+            from app.ui.chat.message.metadata_content_widget import MetadataContentWidget
+            widget = MetadataContentWidget(structure_content, self.structure_content)
+        elif content_type == ContentType.IMAGE:
+            from app.ui.chat.message.image_content_widget import ImageContentWidget
+            widget = ImageContentWidget(structure_content, self.structure_content)
+        elif content_type == ContentType.VIDEO:
+            from app.ui.chat.message.video_content_widget import VideoContentWidget
+            widget = VideoContentWidget(structure_content, self.structure_content)
+        elif content_type == ContentType.AUDIO:
+            from app.ui.chat.message.audio_content_widget import AudioContentWidget
+            widget = AudioContentWidget(structure_content, self.structure_content)
+        elif content_type == ContentType.CHART:
+            from app.ui.chat.message.chart_content_widget import ChartContentWidget
+            widget = ChartContentWidget(structure_content, self.structure_content)
+        elif content_type == ContentType.FORM:
+            from app.ui.chat.message.form_content_widget import FormContentWidget
+            widget = FormContentWidget(structure_content, self.structure_content)
+        elif content_type == ContentType.FILE_ATTACHMENT:
+            from app.ui.chat.message.file_attachment_content_widget import FileAttachmentContentWidget
+            widget = FileAttachmentContentWidget(structure_content, self.structure_content)
+        elif content_type == ContentType.PLAN:
+            from app.ui.chat.message.plan_content_widget import PlanContentWidget
+            widget = PlanContentWidget(structure_content, self.structure_content)
+        elif content_type == ContentType.STEP:
+            from app.ui.chat.message.step_content_widget import StepContentWidget
+            widget = StepContentWidget(structure_content, self.structure_content)
+        elif content_type == ContentType.TASK_LIST:
+            from app.ui.chat.message.task_list_content_widget import TaskListContentWidget
+            widget = TaskListContentWidget(structure_content, self.structure_content)
         else:
             # Default to text content for unrecognized types
             widget = TextContentWidget(structure_content, self.structure_content)

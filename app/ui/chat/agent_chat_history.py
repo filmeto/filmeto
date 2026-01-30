@@ -159,17 +159,13 @@ class AgentChatHistoryWidget(BaseWidget):
             message_id = message.metadata.get('message_id', f"hist_{message.timestamp}") if message.metadata else f"hist_{message.timestamp}"
 
             # Create an AgentMessage with structured_content
-            from agent.chat.agent_chat_message import StructureContent
-            from agent.chat.agent_chat_types import ContentType
+            from agent.chat.structure_content import TextContent
             agent_message = ChatAgentMessage(
                 message_type=MessageType.TEXT,
                 sender_id=sender,
                 sender_name=sender,
                 message_id=message_id,
-                structured_content=[StructureContent(
-                    content_type=ContentType.TEXT,
-                    data=message.content
-                )] if message.content else []
+                structured_content=[TextContent(text=message.content)] if message.content else []
             )
 
             # Get the color and icon for this agent from metadata
@@ -429,17 +425,13 @@ class AgentChatHistoryWidget(BaseWidget):
                 message_id = str(uuid.uuid4())
 
             # Create an AgentMessage with structured_content
-            from agent.chat.agent_chat_message import StructureContent
-            from agent.chat.agent_chat_types import ContentType
+            from agent.chat.structure_content import TextContent
             agent_message = ChatAgentMessage(
                 message_type=MessageType.TEXT,
                 sender_id=sender,
                 sender_name=sender,
                 message_id=message_id,
-                structured_content=[StructureContent(
-                    content_type=ContentType.TEXT,
-                    data=message
-                )] if message else []
+                structured_content=[TextContent(text=message)] if message else []
             )
 
             # Get the color and icon for this agent from metadata
@@ -509,20 +501,17 @@ class AgentChatHistoryWidget(BaseWidget):
 
         # Lazy import when first needed
         from app.ui.chat.agent_chat_message_card import AgentMessageCard
-        from agent.chat.agent_chat_message import StructureContent
+        from agent.chat.structure_content import TextContent
         from agent.chat.agent_chat_types import ContentType
 
         last_widget = self.messages[-1]
         if isinstance(last_widget, AgentMessageCard):
             # Update structured_content instead of content
             # Clear existing text content and add new one
-            text_content = StructureContent(
-                content_type=ContentType.TEXT,
-                data=message
-            )
+            text_content = TextContent(text=message)
             # Remove existing TEXT content and add new one
             last_widget.agent_message.structured_content = [
-                sc for sc in last_widget.agent_message.structured_content 
+                sc for sc in last_widget.agent_message.structured_content
                 if sc.content_type != ContentType.TEXT
             ]
             last_widget.agent_message.structured_content.append(text_content)
@@ -547,7 +536,7 @@ class AgentChatHistoryWidget(BaseWidget):
         card = self._message_cards.get(message_id)
         if card:
             # Update structured_content instead of content
-            from agent.chat.agent_chat_message import StructureContent
+            from agent.chat.structure_content import TextContent
             from agent.chat.agent_chat_types import ContentType
             # Find existing TEXT content or create new one
             text_content = None
@@ -557,13 +546,10 @@ class AgentChatHistoryWidget(BaseWidget):
                     break
             if text_content:
                 # Update existing text content
-                text_content.data = content
+                text_content.text = content
             else:
                 # Add new text content
-                card.agent_message.structured_content.append(StructureContent(
-                    content_type=ContentType.TEXT,
-                    data=content
-                ))
+                card.agent_message.structured_content.append(TextContent(text=content))
             card.set_content(content)
         else:
             # Fallback to old method
@@ -700,7 +686,7 @@ class AgentChatHistoryWidget(BaseWidget):
             return
 
         if content is not None:
-            from agent.chat.agent_chat_message import StructureContent
+            from agent.chat.structure_content import TextContent
             from agent.chat.agent_chat_types import ContentType
             # Find existing TEXT content or create new one
             text_content = None
@@ -711,21 +697,18 @@ class AgentChatHistoryWidget(BaseWidget):
             if text_content:
                 # Update existing text content
                 if append:
-                    text_content.data = (text_content.data or "") + content
+                    text_content.text = (text_content.text or "") + content
                 else:
-                    text_content.data = content
+                    text_content.text = content
             else:
                 # Add new text content
-                card.agent_message.structured_content.append(StructureContent(
-                    content_type=ContentType.TEXT,
-                    data=content
-                ))
+                card.agent_message.structured_content.append(TextContent(text=content))
             # Update the display
-            final_content = text_content.data if text_content else content
+            final_content = text_content.text if text_content else content
             card.set_content(final_content)
 
         if structured_content is not None:
-            from agent.chat.agent_chat_message import StructureContent
+            from agent.chat.structure_content import StructureContent
 
             items = (
                 [structured_content]
@@ -737,18 +720,15 @@ class AgentChatHistoryWidget(BaseWidget):
                 card.add_structure_content_widget(sc)
 
         if error:
-            from agent.chat.agent_chat_message import StructureContent
+            from agent.chat.structure_content import TextContent
             from agent.chat.agent_chat_types import ContentType
             error_text = f"❌ Error: {error}"
             # Remove existing TEXT content and add error
             card.agent_message.structured_content = [
-                sc for sc in card.agent_message.structured_content 
+                sc for sc in card.agent_message.structured_content
                 if sc.content_type != ContentType.TEXT
             ]
-            card.agent_message.structured_content.append(StructureContent(
-                content_type=ContentType.TEXT,
-                data=error_text
-            ))
+            card.agent_message.structured_content.append(TextContent(text=error_text))
             card.set_content(error_text)
 
         self._schedule_scroll()
@@ -806,11 +786,9 @@ class AgentChatHistoryWidget(BaseWidget):
             )
 
             # Update the card with the error content
-            from agent.chat.agent_chat_message import StructureContent
-            from agent.chat.agent_chat_types import ContentType
-            error_structure = StructureContent(
-                content_type=ContentType.TEXT,
-                data=error_content
+            from agent.chat.structure_content import ErrorContent
+            error_structure = ErrorContent(
+                error_message=error_content
             )
             self.update_agent_card(
                 message_id,
@@ -845,12 +823,8 @@ class AgentChatHistoryWidget(BaseWidget):
             )
 
             # Update the card with structured_content
-            from agent.chat.agent_chat_message import StructureContent
-            from agent.chat.agent_chat_types import ContentType
-            text_structure = StructureContent(
-                content_type=ContentType.TEXT,
-                data=content
-            )
+            from agent.chat.structure_content import TextContent
+            text_structure = TextContent(text=content)
             self.update_agent_card(
                 message_id,
                 structured_content=text_structure
@@ -894,16 +868,12 @@ class AgentChatHistoryWidget(BaseWidget):
             )
 
             # Create structured content for skill execution
-            from agent.chat.agent_chat_message import StructureContent, ContentType
-            skill_content = StructureContent(
-                content_type=ContentType.SKILL,
-                data={
-                    "status": status,
-                    "skill_name": skill_name,
-                    "message": message
-                },
-                title=f"Skill: {skill_name}",
-                description=f"Skill execution {status}"
+            from agent.chat.structure_content import SkillContent, ProgressContent
+            # Use ProgressContent for skill execution status
+            skill_content = ProgressContent(
+                progress=content,
+                percentage=None,
+                tool_name=skill_name
             )
 
             # Update the card with the structured content
@@ -944,10 +914,9 @@ class AgentChatHistoryWidget(BaseWidget):
                     thinking_content = thinking_content[len("🤔 Thinking: "):]
 
                 # Create StructureContent for thinking
-                from agent.chat.agent_chat_message import StructureContent
-                thinking_structure = StructureContent(
-                    content_type=ContentType.THINKING,
-                    data=thinking_content,
+                from agent.chat.structure_content import ThinkingContent
+                thinking_structure = ThinkingContent(
+                    thought=thinking_content,
                     title="Thinking Process",
                     description="Agent's thought process"
                 )
@@ -957,12 +926,8 @@ class AgentChatHistoryWidget(BaseWidget):
             else:
                 # Handle regular content
                 # Update the card with structured_content
-                from agent.chat.agent_chat_message import StructureContent
-                from agent.chat.agent_chat_types import ContentType
-                text_structure = StructureContent(
-                    content_type=ContentType.TEXT,
-                    data=event.content
-                )
+                from agent.chat.structure_content import TextContent
+                text_structure = TextContent(text=event.content)
                 self.update_agent_card(
                     event.message_id,
                     structured_content=text_structure

@@ -1,26 +1,19 @@
 """Widget for displaying text content in chat messages."""
 
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
-    QSizePolicy, QScrollArea, QTextEdit, QPushButton, QTableWidget, QTableWidgetItem
-)
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPixmap, QPainter, QPainterPath, QColor, QFont, QPen
+from typing import Any, Dict
+from PySide6.QtWidgets import QVBoxLayout, QLabel
+from PySide6.QtCore import Qt
 
-from app.ui.base_widget import BaseWidget
-from app.ui.components.avatar_widget import AvatarWidget
-from agent.chat.agent_chat_message import AgentMessage, StructureContent, ContentType
+from agent.chat.structure_content import TextContent
 from app.ui.chat.message.base_structured_content_widget import BaseStructuredContentWidget
 
 
 class TextContentWidget(BaseStructuredContentWidget):
     """Widget for displaying text content."""
 
-    def __init__(self, content: StructureContent, parent=None):
+    def __init__(self, content: TextContent, parent=None):
         """Initialize text content widget."""
         super().__init__(structure_content=content, parent=parent)
-        self._setup_ui()
 
     def _setup_ui(self):
         """Set up UI."""
@@ -51,13 +44,14 @@ class TextContentWidget(BaseStructuredContentWidget):
             """)
             layout.addWidget(desc_label)
 
-        # Actual text content
-        text_label = QLabel(str(self.structure_content.data), self)
+        # Actual text content - use the 'text' attribute from TextContent
+        text_label = QLabel(self.structure_content.text, self)
         text_label.setWordWrap(True)
+        text_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         text_label.setStyleSheet("""
             QLabel {
                 color: #e1e1e1;
-                font-size: 12px;
+                font-size: 13px;
                 padding-top: 4px;
             }
         """)
@@ -65,22 +59,21 @@ class TextContentWidget(BaseStructuredContentWidget):
 
         self.setStyleSheet("""
             QWidget {
-                background-color: #2d2d2d;
-                border: 1px solid #505254;
-                border-radius: 4px;
+                background-color: transparent;
+                border: none;
             }
         """)
 
-    def update_content(self, structure_content: StructureContent):
+    def update_content(self, structure_content: TextContent):
         """
         Update the widget with new structure content.
-        
+
         Args:
             structure_content: The new structure content to display
         """
         self.structure_content = structure_content
         # Clear and re-layout the widget
-        for i in reversed(range(self.layout().count())): 
+        for i in reversed(range(self.layout().count())):
             child = self.layout().itemAt(i).widget()
             if child is not None:
                 child.setParent(None)
@@ -89,37 +82,38 @@ class TextContentWidget(BaseStructuredContentWidget):
     def get_state(self) -> Dict[str, Any]:
         """
         Get the current state of the widget.
-        
+
         Returns:
             Dictionary representing the current state
         """
         return {
             "title": self.structure_content.title,
             "description": self.structure_content.description,
-            "data": self.structure_content.data,
+            "text": self.structure_content.text,
         }
 
     def set_state(self, state: Dict[str, Any]):
         """
         Set the state of the widget.
-        
+
         Args:
             state: Dictionary representing the state to set
         """
-        # Create a new StructureContent with the state data
-        # Note: This assumes we can modify the structure_content in place
-        # For a complete implementation, we might need to update the actual content
-        # based on the state provided
         title = state.get("title", "")
         description = state.get("description", "")
-        data = state.get("data", "")
-        
-        # Update the UI with the new state
-        for i in reversed(range(self.layout().count())): 
+        text = state.get("text", "")
+
+        # Update the structure content
+        if hasattr(self.structure_content, 'title'):
+            self.structure_content.title = title
+        if hasattr(self.structure_content, 'description'):
+            self.structure_content.description = description
+        if hasattr(self.structure_content, 'text'):
+            self.structure_content.text = text
+
+        # Rebuild UI
+        for i in reversed(range(self.layout().count())):
             child = self.layout().itemAt(i).widget()
             if child is not None:
                 child.setParent(None)
-        self.structure_content.title = title
-        self.structure_content.description = description
-        self.structure_content.data = data
         self._setup_ui()
