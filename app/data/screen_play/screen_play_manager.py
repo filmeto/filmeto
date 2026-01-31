@@ -85,6 +85,16 @@ class ScreenPlayManager:
             if k not in ["scene_id", "title", "content"]
         }
 
+        # Include any additional custom fields from metadata that aren't in the standard schema
+        standard_fields = {
+            "scene_number", "location", "time_of_day", "genre", "logline",
+            "characters", "story_beat", "page_count", "duration_minutes",
+            "tags", "status", "revision_number", "created_at", "updated_at"
+        }
+        for key, value in metadata.items():
+            if key not in standard_fields and key not in metadata_for_storage:
+                metadata_for_storage[key] = value
+
         # Ensure scene_id, title, and content are properly set
         metadata_for_storage["scene_id"] = scene_id
         metadata_for_storage["title"] = title
@@ -347,7 +357,8 @@ class ScreenPlayManager:
         all_scenes = self.list_scenes()
 
         for scene in all_scenes:
-            characters = scene.metadata.get("characters", [])
+            # Use the characters attribute directly
+            characters = scene.characters if hasattr(scene, 'characters') else []
             if character_name in characters:
                 matching_scenes.append(scene)
 
@@ -367,7 +378,8 @@ class ScreenPlayManager:
         all_scenes = self.list_scenes()
 
         for scene in all_scenes:
-            scene_location = scene.metadata.get("location", "")
+            # Use the location attribute directly
+            scene_location = scene.location if hasattr(scene, 'location') else ""
             if location.lower() in scene_location.lower():
                 matching_scenes.append(scene)
 

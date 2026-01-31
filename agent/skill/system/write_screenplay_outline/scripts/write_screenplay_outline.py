@@ -244,13 +244,23 @@ def execute_in_context(
             # Try to get from project
             if context.project is not None and hasattr(context.project, 'screenplay_manager'):
                 screenplay_manager = context.project.screenplay_manager
-        
+
         if screenplay_manager is None:
-            return {
+            # Provide detailed error information
+            error_details = {
                 "success": False,
                 "error": "no_screenplay_manager",
-                "message": "No screenplay manager available in context. Cannot create scenes."
+                "message": "No screenplay manager available in context. Cannot create scenes.",
+                "context_info": {
+                    "has_context": context is not None,
+                    "has_workspace": context.workspace is not None if context else False,
+                    "has_project": context.project is not None if context else False,
+                    "project_name": getattr(context.project, 'project_name', None) if context and context.project else None,
+                }
             }
+            logger.error(f"Screenplay manager not available: {error_details}")
+            print(json.dumps(error_details, indent=2))
+            return error_details
 
         # Generate the outline
         outline = generate_screenplay_outline(concept, genre, num_scenes)
@@ -264,15 +274,20 @@ def execute_in_context(
             for s in outline
         ]
 
+        # Print result to stdout so it gets captured by the script executor
+        print(json.dumps(result, indent=2))
         return result
 
     except Exception as e:
         logger.error(f"Error in screenplay outline generation: {e}", exc_info=True)
-        return {
+        result = {
             "success": False,
             "error": str(e),
             "message": f"Error in screenplay outline generation: {str(e)}"
         }
+        # Print result to stdout so it gets captured by the script executor
+        print(json.dumps(result, indent=2))
+        return result
 
 
 # Alias for SkillExecutor compatibility

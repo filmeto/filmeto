@@ -366,14 +366,31 @@ class ToolService:
         skill_context = None
         if context and context.workspace:
             from agent.skill.skill_models import SkillContext
-            # Get the project from workspace
-            project = context.workspace.get_project() if context.workspace else None
+            # Get the project from workspace using ProjectManager
+            project = None
+            try:
+                # Try to get project via ProjectManager
+                project_manager = context.workspace.get_project_manager() if hasattr(context.workspace, 'get_project_manager') else None
+                if project_manager and context.project_name:
+                    project = project_manager.get_project(context.project_name)
+                elif hasattr(context.workspace, 'get_project'):
+                    # Fallback to get_project() method
+                    project = context.workspace.get_project()
+            except Exception as e:
+                logger.warning(f"Failed to get project from workspace: {e}")
 
             # Create SkillContext with screenplay_manager
+            screenplay_manager = None
+            if project:
+                try:
+                    screenplay_manager = project.get_screenplay_manager()
+                except Exception as e:
+                    logger.warning(f"Failed to get screenplay_manager from project: {e}")
+
             skill_context = SkillContext(
                 workspace=context.workspace,
                 project=project,
-                screenplay_manager=project.get_screenplay_manager() if project else None
+                screenplay_manager=screenplay_manager
             )
 
         script_globals = {
