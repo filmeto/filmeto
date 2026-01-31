@@ -362,10 +362,25 @@ class ToolService:
                 return asyncio.run(_collect_result())
 
         # Prepare globals for the script execution
+        # Create a SkillContext for skill scripts that need it
+        skill_context = None
+        if context and context.workspace:
+            from agent.skill.skill_models import SkillContext
+            # Get the project from workspace
+            project = context.workspace.get_project() if context.workspace else None
+
+            # Create SkillContext with screenplay_manager
+            skill_context = SkillContext(
+                workspace=context.workspace,
+                project=project,
+                screenplay_manager=project.get_screenplay_manager() if project else None
+            )
+
         script_globals = {
             '__builtins__': __builtins__,
             'execute_tool': script_execute_tool,
             'tool_context': context,
+            'context': skill_context,  # For skill scripts expecting SkillContext
         }
 
         # Determine project root directory - look for typical project markers
