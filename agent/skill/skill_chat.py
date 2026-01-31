@@ -9,6 +9,7 @@ import logging
 from typing import AsyncGenerator, Any, Dict, Optional, TYPE_CHECKING
 
 from agent.skill.skill_models import Skill
+from agent.event.agent_event import AgentEventType
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +56,29 @@ class SkillChat:
             max_steps: Maximum number of ReAct steps
 
         Yields:
-            ReactEvent objects for skill execution progress
+            AgentEvent objects for skill execution progress (including SKILL_START, SKILL_PROGRESS, SKILL_END, SKILL_ERROR)
         """
+        from agent.event.agent_event import AgentEvent
+
+        # Handle both string (project_name directly) and object (with project_name attribute) cases
+        if isinstance(project, str):
+            project_name = project
+        else:
+            project_name = getattr(project, 'project_name', 'default_project') if project else 'default_project'
+
+        # Emit SKILL_START event
+        from agent.chat.structure_content import TextContent
+        yield AgentEvent.create(
+            event_type=AgentEventType.SKILL_START.value,
+            project_name=project_name,
+            react_type=f"skill_{skill.name}",
+            content=TextContent(
+                text=f"Starting skill: {skill.name}",
+                title=f"Skill: {skill.name}",
+                description=skill.description
+            )
+        )
+
         try:
             from agent.react import React
             from agent.tool.tool_service import ToolService
@@ -83,12 +105,6 @@ class SkillChat:
                     skill, user_question, available_tool_names, args
                 )
 
-            # Handle both string (project_name directly) and object (with project_name attribute) cases
-            if isinstance(project, str):
-                project_name = project
-            else:
-                project_name = getattr(project, 'project_name', 'default_project') if project else 'default_project'
-
             react_instance = React(
                 workspace=workspace,
                 project_name=project_name,
@@ -98,31 +114,51 @@ class SkillChat:
                 llm_service=llm_service,
                 max_steps=max_steps,
             )
+
+            # Track tool events to emit skill progress
+            tool_count = 0
             async for event in react_instance.chat_stream(user_message or skill.description):
                 yield event
+                # Emit SKILL_PROGRESS for each tool event
+                if event.event_type in (AgentEventType.TOOL_START.value, AgentEventType.TOOL_PROGRESS.value, AgentEventType.TOOL_END.value):
+                    tool_count += 1
+                    yield AgentEvent.create(
+                        event_type=AgentEventType.SKILL_PROGRESS.value,
+                        project_name=project_name,
+                        react_type=f"skill_{skill.name}",
+                        content=TextContent(
+                            text=f"Skill progress: {tool_count} tool execution(s) completed",
+                            title=f"Skill Progress: {skill.name}",
+                            description=f"Executed {tool_count} tool(s)"
+                        )
+                    )
+
+            # Emit SKILL_END event on successful completion
+            yield AgentEvent.create(
+                event_type=AgentEventType.SKILL_END.value,
+                project_name=project_name,
+                react_type=f"skill_{skill.name}",
+                content=TextContent(
+                    text=f"Skill {skill.name} completed successfully",
+                    title=f"Skill Completed: {skill.name}",
+                    description=f"Skill {skill.name} finished execution"
+                )
+            )
+
         except Exception as e:
             logger.error(f"Error in skill chat_stream for '{skill.name}': {e}", exc_info=True)
-            # Yield error event for upstream handling
-            from agent.event.agent_event import AgentEvent
+            # Emit SKILL_ERROR event
             from agent.chat.structure_content import ErrorContent
-
-            # Handle both string (project_name directly) and object (with project_name attribute) cases
-            if isinstance(project, str):
-                error_project_name = project
-            else:
-                error_project_name = getattr(project, 'project_name', 'default_project') if project else 'default_project'
-
-            error_event = AgentEvent.create(
-                event_type="error",
-                project_name=error_project_name,
+            yield AgentEvent.create(
+                event_type=AgentEventType.SKILL_ERROR.value,
+                project_name=project_name,
                 react_type=f"skill_{skill.name}",
                 content=ErrorContent(
                     error_message=str(e),
-                    title="Skill Chat Error",
+                    title=f"Skill Error: {skill.name}",
                     description=f"Error executing skill: {skill.name}"
                 )
             )
-            yield error_event
 
     def _build_skill_react_prompt(self, skill, user_question, available_tool_names, args) -> str:
         """Build the skill-specific ReAct prompt.
