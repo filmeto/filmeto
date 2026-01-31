@@ -17,11 +17,43 @@ version: 1.0
 {% endif %}
 
 {% if skill.has_scripts %}
-## 执行模式：直接执行
-此技能包含预定义脚本。请调用 `execute_existing_script` 工具。
+## 执行模式：直接脚本执行
+此技能包含预定义脚本。要执行此技能：
+1. 使用 `execute_skill_script` 工具
+2. 必需参数：
+   - `skill_path`: "{{ skill.skill_path }}"
+   - `script_name`: 以下之一: {{ skill.script_names | join(', ') }}
+   - `args`: JSON对象，包含"输入参数"部分中的技能参数
+
+示例调用：
+```json
+{
+  "type": "tool",
+  "tool_name": "execute_skill_script",
+  "tool_args": {
+    "skill_path": "{{ skill.skill_path }}",
+    "script_name": "{{ skill.script_names[0] if skill.script_names else 'script.py' }}",
+    "args": << 在此插入"输入参数"部分的参数 >>
+  }
+}
+```
 {% else %}
-## 执行模式：生成并执行
-此技能无预定义脚本。请生成Python脚本并调用 `execute_generated_script` 工具。
+## 执行模式：生成并执行代码
+此技能无预定义脚本。要执行此技能：
+1. 根据知识和参数生成实现技能功能的Python代码
+2. 使用 `execute_generated_code` 工具执行生成的代码
+3. 代码应使用 `context` 参数访问 screenplay_manager、project 等
+
+示例调用：
+```json
+{
+  "type": "tool",
+  "tool_name": "execute_generated_code",
+  "tool_args": {
+    "code": << 在此插入生成的Python代码 >>
+  }
+}
+```
 {% endif %}
 
 ## 当前任务
@@ -52,7 +84,15 @@ version: 1.0
 
 **示例调用**:
 ```json
-{{ tool.example }}
+{
+  "type": "tool",
+  "tool_name": "{{ tool.name }}",
+  "tool_args": {
+    {% if tool.parameters %}{% for param in tool.parameters %}"{{ param.name }}": <{{ param.type }}>{% if not loop.last %},
+    {% endif %}{% endfor %}{% else %}
+    // 无需参数{% endif %}
+  }
+}
 ```
 
 {% endfor %}

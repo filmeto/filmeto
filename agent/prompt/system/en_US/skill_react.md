@@ -17,11 +17,43 @@ You are a skill execution expert, responsible for executing skill tasks specifie
 {% endif %}
 
 {% if skill.has_scripts %}
-## Execution Mode: Direct Execution
-This skill contains predefined scripts. Please call the `execute_existing_script` tool.
+## Execution Mode: Direct Script Execution
+This skill contains predefined scripts. To execute this skill:
+1. Use the `execute_skill_script` tool
+2. Required parameters:
+   - `skill_path`: "{{ skill.skill_path }}"
+   - `script_name`: One of {{ skill.script_names | join(', ') }}
+   - `args`: JSON object containing the skill parameters from the "Input Arguments" section
+
+Example call:
+```json
+{
+  "type": "tool",
+  "tool_name": "execute_skill_script",
+  "tool_args": {
+    "skill_path": "{{ skill.skill_path }}",
+    "script_name": "{{ skill.script_names[0] if skill.script_names else 'script.py' }}",
+    "args": << INSERT THE ARGUMENTS FROM "Input Arguments" SECTION HERE >>
+  }
+}
+```
 {% else %}
-## Execution Mode: Generate and Execute
-This skill has no predefined scripts. Please generate Python code and call the `execute_generated_script` tool.
+## Execution Mode: Generate and Execute Code
+This skill has no predefined scripts. To execute this skill:
+1. Generate Python code that implements the skill's functionality based on the knowledge and parameters
+2. Use the `execute_generated_code` tool to execute the generated code
+3. The code should use the `context` parameter to access screenplay_manager, project, etc.
+
+Example call:
+```json
+{
+  "type": "tool",
+  "tool_name": "execute_generated_code",
+  "tool_args": {
+    "code": << GENERATED PYTHON CODE HERE >>
+  }
+}
+```
 {% endif %}
 
 ## Current Task
@@ -52,7 +84,15 @@ You have access to the following tools. Review each tool's purpose and parameter
 
 **Example call**:
 ```json
-{{ tool.example }}
+{
+  "type": "tool",
+  "tool_name": "{{ tool.name }}",
+  "tool_args": {
+    {% if tool.parameters %}{% for param in tool.parameters %}"{{ param.name }}": <{{ param.type }}>{% if not loop.last %},
+    {% endif %}{% endfor %}{% else %}
+    // No parameters required{% endif %}
+  }
+}
 ```
 
 {% endfor %}

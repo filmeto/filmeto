@@ -66,12 +66,21 @@ class SkillChat:
         else:
             project_name = getattr(project, 'project_name', 'default_project') if project else 'default_project'
 
+        # Generate a unique run_id for this skill execution
+        import uuid
+        run_id = str(uuid.uuid4())[:8]
+        step_id = 0
+
         # Emit SKILL_START event
         from agent.chat.structure_content import TextContent
         yield AgentEvent.create(
             event_type=AgentEventType.SKILL_START.value,
             project_name=project_name,
             react_type=f"skill_{skill.name}",
+            run_id=run_id,
+            step_id=step_id,
+            sender_id=f"skill_{skill.name}",
+            sender_name=f"Skill: {skill.name}",
             content=TextContent(
                 text=f"Starting skill: {skill.name}",
                 title=f"Skill: {skill.name}",
@@ -122,10 +131,15 @@ class SkillChat:
                 # Emit SKILL_PROGRESS for each tool event
                 if event.event_type in (AgentEventType.TOOL_START.value, AgentEventType.TOOL_PROGRESS.value, AgentEventType.TOOL_END.value):
                     tool_count += 1
+                    step_id += 1
                     yield AgentEvent.create(
                         event_type=AgentEventType.SKILL_PROGRESS.value,
                         project_name=project_name,
                         react_type=f"skill_{skill.name}",
+                        run_id=run_id,
+                        step_id=step_id,
+                        sender_id=f"skill_{skill.name}",
+                        sender_name=f"Skill: {skill.name}",
                         content=TextContent(
                             text=f"Skill progress: {tool_count} tool execution(s) completed",
                             title=f"Skill Progress: {skill.name}",
@@ -134,10 +148,15 @@ class SkillChat:
                     )
 
             # Emit SKILL_END event on successful completion
+            step_id += 1
             yield AgentEvent.create(
                 event_type=AgentEventType.SKILL_END.value,
                 project_name=project_name,
                 react_type=f"skill_{skill.name}",
+                run_id=run_id,
+                step_id=step_id,
+                sender_id=f"skill_{skill.name}",
+                sender_name=f"Skill: {skill.name}",
                 content=TextContent(
                     text=f"Skill {skill.name} completed successfully",
                     title=f"Skill Completed: {skill.name}",
@@ -148,11 +167,16 @@ class SkillChat:
         except Exception as e:
             logger.error(f"Error in skill chat_stream for '{skill.name}': {e}", exc_info=True)
             # Emit SKILL_ERROR event
+            step_id += 1
             from agent.chat.structure_content import ErrorContent
             yield AgentEvent.create(
                 event_type=AgentEventType.SKILL_ERROR.value,
                 project_name=project_name,
                 react_type=f"skill_{skill.name}",
+                run_id=run_id,
+                step_id=step_id,
+                sender_id=f"skill_{skill.name}",
+                sender_name=f"Skill: {skill.name}",
                 content=ErrorContent(
                     error_message=str(e),
                     title=f"Skill Error: {skill.name}",
