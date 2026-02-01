@@ -126,12 +126,33 @@ class SkillChat:
 
             # Track tool events to emit skill progress
             tool_count = 0
+            executed_tools = []  # Track names of executed tools
             async for event in react_instance.chat_stream(user_message or skill.description):
                 yield event
                 # Emit SKILL_PROGRESS for each tool event
                 if event.event_type in (AgentEventType.TOOL_START.value, AgentEventType.TOOL_PROGRESS.value, AgentEventType.TOOL_END.value):
                     tool_count += 1
                     step_id += 1
+
+                    # Extract tool name from event content if available
+                    tool_name = "unknown"
+                    if event.content and hasattr(event.content, 'tool_name'):
+                        tool_name = event.content.tool_name
+                    elif event.payload:
+                        tool_name = event.payload.get("tool_name", "unknown")
+
+                    # Add to executed tools list (avoid duplicates)
+                    if tool_name != "unknown" and tool_name not in executed_tools:
+                        executed_tools.append(tool_name)
+
+                    # Create progress message with tool information
+                    if tool_name != "unknown":
+                        progress_text = f"Skill progress: Executing tool [{tool_count}] - {tool_name}"
+                        description_text = f"Tool {tool_name} execution in progress"
+                    else:
+                        progress_text = f"Skill progress: {tool_count} tool execution(s) completed"
+                        description_text = f"Executed {tool_count} tool(s)"
+
                     yield AgentEvent.create(
                         event_type=AgentEventType.SKILL_PROGRESS.value,
                         project_name=project_name,
@@ -141,14 +162,24 @@ class SkillChat:
                         sender_id=f"skill_{skill.name}",
                         sender_name=f"Skill: {skill.name}",
                         content=TextContent(
-                            text=f"Skill progress: {tool_count} tool execution(s) completed",
+                            text=progress_text,
                             title=f"Skill Progress: {skill.name}",
-                            description=f"Executed {tool_count} tool(s)"
+                            description=description_text
                         )
                     )
 
             # Emit SKILL_END event on successful completion
             step_id += 1
+
+            # Prepare completion message with tool summary
+            if executed_tools:
+                tools_summary = ", ".join(executed_tools)
+                completion_text = f"Skill {skill.name} completed successfully. Executed tools: {tools_summary}"
+                description_text = f"Completed {len(executed_tools)} tool(s): {tools_summary}"
+            else:
+                completion_text = f"Skill {skill.name} completed successfully"
+                description_text = f"Skill {skill.name} finished execution"
+
             yield AgentEvent.create(
                 event_type=AgentEventType.SKILL_END.value,
                 project_name=project_name,
@@ -158,9 +189,9 @@ class SkillChat:
                 sender_id=f"skill_{skill.name}",
                 sender_name=f"Skill: {skill.name}",
                 content=TextContent(
-                    text=f"Skill {skill.name} completed successfully",
+                    text=completion_text,
                     title=f"Skill Completed: {skill.name}",
-                    description=f"Skill {skill.name} finished execution"
+                    description=description_text
                 )
             )
 
