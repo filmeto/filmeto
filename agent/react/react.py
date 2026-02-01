@@ -304,20 +304,39 @@ class React:
 
                 elif event.event_type == "tool_end":
                     # Tool completed successfully
-                    final_result = event.payload.get("result")
+                    # Extract result from content or payload (backward compat)
+                    if event.content and hasattr(event.content, 'result'):
+                        final_result = event.content.result
+                    elif event.payload:
+                        final_result = event.payload.get("result")
+                    else:
+                        final_result = None
+
                     duration_ms = (time.time() - start_time) * 1000
                     self._total_tool_calls += 1
                     self._tool_duration_ms += duration_ms
                     logger.debug(f"Tool '{tool_name}' completed in {duration_ms:.2f}ms")
-                    yield {"result": final_result}
+
+                    # Forward the tool_end event (which contains ToolResponseContent with result)
+                    # This ensures the result is preserved for UI display
+                    yield event
                     return
 
                 elif event.event_type == "error":
                     # Tool execution error
-                    error_msg = event.payload.get("error", "Unknown error")
+                    # Extract error from content or payload (backward compat)
+                    if event.content and hasattr(event.content, 'error_message'):
+                        error_msg = event.content.error_message
+                    elif event.payload:
+                        error_msg = event.payload.get("error", "Unknown error")
+                    else:
+                        error_msg = "Unknown error"
+
                     duration_ms = (time.time() - start_time) * 1000
                     logger.error(f"Tool '{tool_name}' failed after {duration_ms:.2f}ms: {error_msg}")
-                    yield {"error": error_msg}
+
+                    # Forward the error event
+                    yield event
                     has_error = True
                     return
 
@@ -429,6 +448,7 @@ class React:
                         )
                         try:
                             tool_result = None
+                            tool_end_received = False  # Track if we received a tool_end event
                             async for item in self._execute_tool(action.tool_name, action.tool_args):
                                 # Handle both dict items and AgentEvent objects
                                 if isinstance(item, dict):
@@ -453,30 +473,38 @@ class React:
                                     yield item
                                     # Extract result from tool_end event for final observation
                                     if item.event_type == AgentEventType.TOOL_END:
+                                        # Mark that we received a tool_end event
+                                        tool_end_received = True
                                         # Extract from content or payload (backward compat)
                                         if item.content and hasattr(item.content, 'result'):
                                             tool_result = item.content.result
                                         elif item.payload:
                                             tool_result = item.payload.get("result")
                                     elif item.event_type == AgentEventType.ERROR:
+                                        # Mark that we received an error event
+                                        tool_end_received = True
                                         # Extract from content or payload (backward compat)
                                         if item.content and hasattr(item.content, 'error_message'):
                                             tool_result = item.content.error_message
                                         elif item.payload:
                                             tool_result = item.payload.get("error", "Unknown error")
                                         break
-                            if tool_result is None:
-                                tool_result = "Tool execution completed"
-                            # Create ToolResponseContent
-                            tool_response = ToolResponseContent(
-                                tool_name=action.tool_name,
-                                result=tool_result,
-                                tool_status="completed",
-                                title=f"Tool Result: {action.tool_name}",
-                                description="Tool execution completed successfully"
-                            )
-                            tool_response.complete()
-                            yield self._create_event(AgentEventType.TOOL_END, content=tool_response)
+
+                            # Only create a new ToolResponseContent if we didn't receive a tool_end event
+                            # (for backward compatibility with tools that don't emit proper events)
+                            if not tool_end_received:
+                                if tool_result is None:
+                                    tool_result = "Tool execution completed"
+                                # Create ToolResponseContent
+                                tool_response = ToolResponseContent(
+                                    tool_name=action.tool_name,
+                                    result=tool_result,
+                                    tool_status="completed",
+                                    title=f"Tool Result: {action.tool_name}",
+                                    description="Tool execution completed successfully"
+                                )
+                                tool_response.complete()
+                                yield self._create_event(AgentEventType.TOOL_END, content=tool_response)
 
                             # Check for pending TODO update and emit event
                             if self._pending_todo_update:
