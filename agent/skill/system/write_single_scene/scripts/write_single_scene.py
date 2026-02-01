@@ -7,10 +7,10 @@ Supports both CLI execution and in-context execution via the SkillExecutor.
 """
 import json
 import sys
-import argparse
 import logging
 from typing import Dict, Any, Optional, List, TYPE_CHECKING
 import os
+import ast
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -222,65 +222,200 @@ execute = execute_in_context
 
 
 def main():
-    """CLI entry point for standalone execution."""
-    parser = argparse.ArgumentParser(
-        description="Write or update a single scene in the screenplay"
-    )
-    parser.add_argument(
-        "--scene-id", type=str, required=True,
-        help="Unique identifier for the scene"
-    )
-    parser.add_argument(
-        "--title", type=str, required=True,
-        help="Title of the scene"
-    )
-    parser.add_argument(
-        "--content", type=str, required=True,
-        help="Content of the scene in screenplay format"
-    )
-    parser.add_argument(
-        "--project-path", type=str, required=True,
-        help="Path to the project directory"
-    )
-    parser.add_argument("--scene-number", type=str, help="Scene number in the screenplay")
-    parser.add_argument("--location", type=str, help="Location of the scene")
-    parser.add_argument("--time-of-day", type=str, help="Time of day for the scene")
-    parser.add_argument("--genre", type=str, help="Genre of the screenplay")
-    parser.add_argument("--logline", type=str, help="Logline for the scene")
-    parser.add_argument("--characters", type=str, nargs='+', help="Characters in the scene")
-    parser.add_argument("--story-beat", type=str, help="Story beat for the scene")
-    parser.add_argument("--page-count", type=int, help="Estimated page count")
-    parser.add_argument("--duration-minutes", type=int, help="Estimated duration in minutes")
-    parser.add_argument("--tags", type=str, nargs='+', help="Tags for the scene")
-    parser.add_argument("--status", type=str, help="Status (draft, revised, final)")
+    """CLI entry point for standalone execution.
 
-    args = parser.parse_args()
+    This function is designed to be flexible and work both as a standalone script
+    and when called via execute_skill_script tool. It manually parses arguments
+    rather than using argparse to avoid errors when optional parameters are missing.
+    """
+    # Handle both traditional positional args and new approach with named args
+    args = sys.argv[1:]  # Skip script name
+
+    scene_id = None
+    title = None
+    content = None
+    project_path = None
+    scene_number = None
+    location = None
+    time_of_day = None
+    genre = None
+    logline = None
+    characters_str = None
+    story_beat = None
+    page_count = None
+    duration_minutes = None
+    tags_str = None
+    status = None
+
+    # Process arguments by looking for known flags first
+    i = 0
+    while i < len(args):
+        if args[i] == '--scene-id' and i + 1 < len(args):
+            scene_id = args[i + 1]
+            i += 2
+        elif args[i] == '--title' and i + 1 < len(args):
+            title = args[i + 1]
+            i += 2
+        elif args[i] == '--content' and i + 1 < len(args):
+            content = args[i + 1]
+            i += 2
+        elif args[i] == '--project-path' and i + 1 < len(args):
+            project_path = args[i + 1]
+            i += 2
+        elif args[i] == '--scene-number' and i + 1 < len(args):
+            scene_number = args[i + 1]
+            i += 2
+        elif args[i] == '--location' and i + 1 < len(args):
+            location = args[i + 1]
+            i += 2
+        elif args[i] == '--time-of-day' and i + 1 < len(args):
+            time_of_day = args[i + 1]
+            i += 2
+        elif args[i] == '--genre' and i + 1 < len(args):
+            genre = args[i + 1]
+            i += 2
+        elif args[i] == '--logline' and i + 1 < len(args):
+            logline = args[i + 1]
+            i += 2
+        elif args[i] == '--characters' and i + 1 < len(args):
+            characters_str = args[i + 1]
+            i += 2
+        elif args[i] == '--story-beat' and i + 1 < len(args):
+            story_beat = args[i + 1]
+            i += 2
+        elif args[i] == '--page-count' and i + 1 < len(args):
+            try:
+                page_count = int(args[i + 1])
+            except ValueError:
+                pass
+            i += 2
+        elif args[i] == '--duration-minutes' and i + 1 < len(args):
+            try:
+                duration_minutes = int(args[i + 1])
+            except ValueError:
+                pass
+            i += 2
+        elif args[i] == '--tags' and i + 1 < len(args):
+            tags_str = args[i + 1]
+            i += 2
+        elif args[i] == '--status' and i + 1 < len(args):
+            status = args[i + 1]
+            i += 2
+        else:
+            # For backward compatibility, handle positional arguments
+            # Order: scene_id, title, content, project_path
+            if scene_id is None and not args[i].startswith('--'):
+                scene_id = args[i]
+                i += 1
+            elif title is None and not args[i].startswith('--'):
+                title = args[i]
+                i += 1
+            elif content is None and not args[i].startswith('--'):
+                content = args[i]
+                i += 1
+            elif project_path is None and not args[i].startswith('--'):
+                project_path = args[i]
+                i += 1
+            else:
+                # Skip unknown arguments
+                i += 1
+
+    # Validate required arguments
+    if not scene_id:
+        error_result = {
+            "success": False,
+            "error": "missing_scene_id",
+            "message": "scene_id is required. Please provide --scene-id or as first positional argument."
+        }
+        print(json.dumps(error_result, indent=2))
+        return error_result
+
+    if not title:
+        error_result = {
+            "success": False,
+            "error": "missing_title",
+            "message": "title is required. Please provide --title or as second positional argument."
+        }
+        print(json.dumps(error_result, indent=2))
+        return error_result
+
+    if not content:
+        error_result = {
+            "success": False,
+            "error": "missing_content",
+            "message": "content is required. Please provide --content or as third positional argument."
+        }
+        print(json.dumps(error_result, indent=2))
+        return error_result
+
+    # project_path is optional when called via execute_skill_script (it's in context)
+    # but required for standalone CLI execution
+    if not project_path:
+        error_result = {
+            "success": False,
+            "error": "missing_project_path",
+            "message": "project_path is required. Please provide --project-path or as fourth positional argument."
+        }
+        print(json.dumps(error_result, indent=2))
+        return error_result
+
+    # Parse list arguments (characters, tags)
+    characters = None
+    if characters_str:
+        try:
+            # Try JSON first
+            characters = json.loads(characters_str)
+        except json.JSONDecodeError:
+            # Try Python literal
+            try:
+                characters = ast.literal_eval(characters_str)
+                if not isinstance(characters, list):
+                    characters = [characters]
+            except (ValueError, SyntaxError):
+                # Split by comma as last resort
+                characters = characters_str.split(',')
+
+    tags = None
+    if tags_str:
+        try:
+            # Try JSON first
+            tags = json.loads(tags_str)
+        except json.JSONDecodeError:
+            # Try Python literal
+            try:
+                tags = ast.literal_eval(tags_str)
+                if not isinstance(tags, list):
+                    tags = [tags]
+            except (ValueError, SyntaxError):
+                # Split by comma as last resort
+                tags = tags_str.split(',')
 
     try:
         # For CLI execution, create the screenplay manager directly
         from app.data.screen_play import ScreenPlayManager
 
-        screenplay_manager = ScreenPlayManager(args.project_path)
+        screenplay_manager = ScreenPlayManager(project_path)
 
         result = write_scene_to_manager(
             screenplay_manager=screenplay_manager,
-            scene_id=args.scene_id,
-            title=args.title,
-            content=args.content,
-            scene_number=args.scene_number,
-            location=args.location,
-            time_of_day=args.time_of_day,
-            genre=args.genre,
-            logline=args.logline,
-            characters=args.characters,
-            story_beat=args.story_beat,
-            page_count=args.page_count,
-            duration_minutes=args.duration_minutes,
-            tags=args.tags,
-            status=args.status
+            scene_id=scene_id,
+            title=title,
+            content=content,
+            scene_number=scene_number,
+            location=location,
+            time_of_day=time_of_day,
+            genre=genre,
+            logline=logline,
+            characters=characters,
+            story_beat=story_beat,
+            page_count=page_count,
+            duration_minutes=duration_minutes,
+            tags=tags,
+            status=status
         )
 
         print(json.dumps(result, indent=2))
+        return result
 
     except Exception as e:
         logger.error(f"Error in main execution: {e}", exc_info=True)
@@ -290,7 +425,7 @@ def main():
             "message": f"Error in single scene writing: {str(e)}"
         }
         print(json.dumps(error_result, indent=2))
-        sys.exit(1)
+        return error_result
 
 
 if __name__ == "__main__":
