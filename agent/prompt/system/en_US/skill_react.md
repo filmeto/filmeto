@@ -20,12 +20,28 @@ You are a skill execution expert, responsible for executing skill tasks specifie
 ## Execution Mode: Direct Script Execution
 This skill contains predefined scripts. To execute this skill:
 1. Use the `execute_skill_script` tool
-2. Required parameters:
-   - `skill_path`: "{{ skill.skill_path }}"
-   - `script_name`: One of {{ skill.script_names | join(', ') }}
-   - `args`: JSON object containing the skill parameters from the "Input Arguments" section
+2. You can use either:
+   - **Option A (Recommended)**: Use `script_path` with the full path to the script
+   - **Option B**: Use `skill_path` + `script_name` combination
 
-Example call:
+**Available Scripts**:
+{% for script_path in skill.script_full_paths %}
+- {{ script_path }}
+{% endfor %}
+
+**Option A - Using full script path (Recommended)**:
+```json
+{
+  "type": "tool",
+  "tool_name": "execute_skill_script",
+  "tool_args": {
+    "script_path": "{{ skill.script_full_paths[0] if skill.script_full_paths else skill.skill_path + '/script.py' }}",
+    "args": << INSERT THE ARGUMENTS FROM "Input Arguments" SECTION HERE >>
+  }
+}
+```
+
+**Option B - Using skill_path + script_name**:
 ```json
 {
   "type": "tool",

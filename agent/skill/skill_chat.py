@@ -236,12 +236,22 @@ class SkillChat:
             for name in available_tool_names
         ]
 
+        # Build full script paths for the prompt
+        script_full_paths = []
+        if skill.scripts:
+            for script in skill.scripts:
+                if os.path.isabs(script):
+                    script_full_paths.append(script)
+                else:
+                    script_full_paths.append(os.path.join(skill.skill_path, script))
+
         return prompt_service.render_prompt(
             name="skill_react",
             skill={
                 'name': skill.name,
                 'description': skill.description,
                 'knowledge': skill.knowledge,
+                'skill_path': skill.skill_path,
                 'parameters': [
                     {
                         'name': p.name,
@@ -253,6 +263,7 @@ class SkillChat:
                 ],
                 'has_scripts': bool(skill.scripts),
                 'script_names': [os.path.basename(s) for s in (skill.scripts or [])],
+                'script_full_paths': script_full_paths,
             },
             user_question=user_question or skill.description,
             available_tools=available_tools,

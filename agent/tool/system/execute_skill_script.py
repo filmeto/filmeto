@@ -26,19 +26,25 @@ class ExecuteSkillScriptTool(BaseTool):
         if lang == "zh_CN":
             return ToolMetadata(
                 name=self.name,
-                description="执行 skill 中预定义的脚本",
+                description="执行 skill 中预定义的脚本。可以直接指定完整脚本路径，或使用 skill_path + script_name 的组合。",
                 parameters=[
                     ToolParameter(
-                        name="skill_path",
-                        description="skill 目录路径",
+                        name="script_path",
+                        description="脚本的完整路径（优先使用此参数）",
                         param_type="string",
-                        required=True
+                        required=False
+                    ),
+                    ToolParameter(
+                        name="skill_path",
+                        description="skill 目录路径（当 script_path 未提供时使用）",
+                        param_type="string",
+                        required=False
                     ),
                     ToolParameter(
                         name="script_name",
-                        description="要执行的脚本名称",
+                        description="要执行的脚本名称（当 script_path 未提供时使用）",
                         param_type="string",
-                        required=True
+                        required=False
                     ),
                     ToolParameter(
                         name="args",
@@ -53,19 +59,25 @@ class ExecuteSkillScriptTool(BaseTool):
         else:
             return ToolMetadata(
                 name=self.name,
-                description="Execute a pre-defined script from a skill",
+                description="Execute a pre-defined script from a skill. Can specify full script path directly, or use skill_path + script_name combination.",
                 parameters=[
                     ToolParameter(
-                        name="skill_path",
-                        description="Path to the skill directory",
+                        name="script_path",
+                        description="Full path to the script (takes priority over skill_path + script_name)",
                         param_type="string",
-                        required=True
+                        required=False
+                    ),
+                    ToolParameter(
+                        name="skill_path",
+                        description="Path to the skill directory (used when script_path is not provided)",
+                        param_type="string",
+                        required=False
                     ),
                     ToolParameter(
                         name="script_name",
-                        description="Name of the script to execute",
+                        description="Name of the script to execute (used when script_path is not provided)",
                         param_type="string",
-                        required=True
+                        required=False
                     ),
                     ToolParameter(
                         name="args",
@@ -108,38 +120,54 @@ class ExecuteSkillScriptTool(BaseTool):
         """
         from ..tool_service import ToolService
 
+        script_path = parameters.get("script_path")
         skill_path = parameters.get("skill_path")
         script_name = parameters.get("script_name")
         args = parameters.get("args", {})
 
-        if not skill_path or not script_name:
-            yield self._create_event(
-                "error",
-                project_name,
-                react_type,
-                run_id,
-                step_id,
-                error="skill_path and script_name are required"
-            )
-            return
-
         tool_service = ToolService()
 
-        # Find the script path
-        full_script_path = os.path.join(skill_path, script_name)
-        if not os.path.exists(full_script_path):
-            # Try to find in scripts directory
-            scripts_dir = os.path.join(skill_path, "scripts")
-            full_script_path = os.path.join(scripts_dir, script_name)
+        # Determine the full script path
+        # Priority 1: Use script_path directly if provided
+        if script_path:
+            full_script_path = script_path
+            if not os.path.exists(full_script_path):
+                yield self._create_event(
+                    "error",
+                    project_name,
+                    react_type,
+                    run_id,
+                    step_id,
+                    error=f"Script not found at {full_script_path}"
+                )
+                return
+        # Priority 2: Use skill_path + script_name combination
+        elif skill_path and script_name:
+            # Try direct join first
+            full_script_path = os.path.join(skill_path, script_name)
+            if not os.path.exists(full_script_path):
+                # Try to find in scripts directory
+                scripts_dir = os.path.join(skill_path, "scripts")
+                full_script_path = os.path.join(scripts_dir, script_name)
 
-        if not os.path.exists(full_script_path):
+            if not os.path.exists(full_script_path):
+                yield self._create_event(
+                    "error",
+                    project_name,
+                    react_type,
+                    run_id,
+                    step_id,
+                    error=f"Script not found at {full_script_path}"
+                )
+                return
+        else:
             yield self._create_event(
                 "error",
                 project_name,
                 react_type,
                 run_id,
                 step_id,
-                error=f"Script not found at {full_script_path}"
+                error="Either script_path, or both skill_path and script_name must be provided"
             )
             return
 

@@ -20,12 +20,28 @@ version: 1.0
 ## 执行模式：直接脚本执行
 此技能包含预定义脚本。要执行此技能：
 1. 使用 `execute_skill_script` 工具
-2. 必需参数：
-   - `skill_path`: "{{ skill.skill_path }}"
-   - `script_name`: 以下之一: {{ skill.script_names | join(', ') }}
-   - `args`: JSON对象，包含"输入参数"部分中的技能参数
+2. 可以使用以下两种方式之一：
+   - **选项 A（推荐）**：使用 `script_path` 指定脚本的完整路径
+   - **选项 B**：使用 `skill_path` + `script_name` 的组合
 
-示例调用：
+**可用脚本**：
+{% for script_path in skill.script_full_paths %}
+- {{ script_path }}
+{% endfor %}
+
+**选项 A - 使用完整脚本路径（推荐）**：
+```json
+{
+  "type": "tool",
+  "tool_name": "execute_skill_script",
+  "tool_args": {
+    "script_path": "{{ skill.script_full_paths[0] if skill.script_full_paths else skill.skill_path + '/script.py' }}",
+    "args": << 在此插入"输入参数"部分的参数 >>
+  }
+}
+```
+
+**选项 B - 使用 skill_path + script_name**：
 ```json
 {
   "type": "tool",
