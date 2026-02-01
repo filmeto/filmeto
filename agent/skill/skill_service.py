@@ -379,6 +379,8 @@ class SkillService:
         args: Optional[Dict[str, Any]] = None,
         llm_service: Any = None,
         max_steps: int = 10,
+        crew_member_name: Optional[str] = None,
+        conversation_id: Optional[str] = None,
     ) -> AsyncGenerator["AgentEvent", None]:
         """通过 React 流式执行 skill
 
@@ -390,6 +392,8 @@ class SkillService:
             args: Arguments to pass to the skill
             llm_service: Optional LLM service
             max_steps: Maximum number of ReAct steps
+            crew_member_name: Name of the crew member calling this skill (for react_type uniqueness)
+            conversation_id: Unique conversation/session ID (for react_type uniqueness)
 
         Yields:
             ReactEvent objects for skill execution progress
@@ -402,6 +406,8 @@ class SkillService:
             args=args,
             llm_service=llm_service,
             max_steps=max_steps,
+            crew_member_name=crew_member_name,
+            conversation_id=conversation_id,
         ):
             yield event
 

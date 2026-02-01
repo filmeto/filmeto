@@ -43,6 +43,8 @@ class SkillChat:
         args: Optional[Dict[str, Any]] = None,
         llm_service: Any = None,
         max_steps: int = 10,
+        crew_member_name: Optional[str] = None,
+        conversation_id: Optional[str] = None,
     ) -> AsyncGenerator["AgentEvent", None]:
         """通过 React 流式执行 skill
 
@@ -54,6 +56,8 @@ class SkillChat:
             args: Arguments to pass to the skill
             llm_service: Optional LLM service
             max_steps: Maximum number of ReAct steps
+            crew_member_name: Name of the crew member calling this skill (for react_type uniqueness)
+            conversation_id: Unique conversation/session ID (for react_type uniqueness)
 
         Yields:
             AgentEvent objects for skill execution progress (including SKILL_START, SKILL_PROGRESS, SKILL_END, SKILL_ERROR)
@@ -71,16 +75,37 @@ class SkillChat:
         run_id = str(uuid.uuid4())[:8]
         step_id = 0
 
+        # Build unique react_type to prevent checkpoint pollution
+        # Format: skill_{skill_name}_{crew_member}_{conversation_id}
+        # This ensures different conversations and different crew members are isolated
+        if crew_member_name:
+            crew_member_part = crew_member_name.lower().replace(' ', '_').replace('-', '_')
+        else:
+            crew_member_part = 'unknown_crew'
+
+        if conversation_id:
+            conversation_part = conversation_id
+        else:
+            # Generate a unique conversation ID if not provided
+            conversation_part = f"conv_{run_id}"
+
+        react_type = f"skill_{skill.name}_{crew_member_part}_{conversation_part}"
+
+        # Determine sender_id and sender_name from crew_member information
+        # Use crew_member name for sender info to match crew member event style
+        skill_sender_id = crew_member_name if crew_member_name else f"skill_{skill.name}"
+        skill_sender_name = crew_member_name if crew_member_name else f"Skill: {skill.name}"
+
         # Emit SKILL_START event
         from agent.chat.structure_content import TextContent
         yield AgentEvent.create(
             event_type=AgentEventType.SKILL_START.value,
             project_name=project_name,
-            react_type=f"skill_{skill.name}",
+            react_type=react_type,
             run_id=run_id,
             step_id=step_id,
-            sender_id=f"skill_{skill.name}",
-            sender_name=f"Skill: {skill.name}",
+            sender_id=skill_sender_id,
+            sender_name=skill_sender_name,
             content=TextContent(
                 text=f"Starting skill: {skill.name}",
                 title=f"Skill: {skill.name}",
@@ -117,7 +142,7 @@ class SkillChat:
             react_instance = React(
                 workspace=workspace,
                 project_name=project_name,
-                react_type=f"skill_{skill.name}",
+                react_type=react_type,
                 build_prompt_function=build_prompt_function,
                 available_tool_names=available_tool_names,
                 llm_service=llm_service,
@@ -156,11 +181,11 @@ class SkillChat:
                     yield AgentEvent.create(
                         event_type=AgentEventType.SKILL_PROGRESS.value,
                         project_name=project_name,
-                        react_type=f"skill_{skill.name}",
+                        react_type=react_type,
                         run_id=run_id,
                         step_id=step_id,
-                        sender_id=f"skill_{skill.name}",
-                        sender_name=f"Skill: {skill.name}",
+                        sender_id=skill_sender_id,
+                        sender_name=skill_sender_name,
                         content=TextContent(
                             text=progress_text,
                             title=f"Skill Progress: {skill.name}",
@@ -183,11 +208,11 @@ class SkillChat:
             yield AgentEvent.create(
                 event_type=AgentEventType.SKILL_END.value,
                 project_name=project_name,
-                react_type=f"skill_{skill.name}",
+                react_type=react_type,
                 run_id=run_id,
                 step_id=step_id,
-                sender_id=f"skill_{skill.name}",
-                sender_name=f"Skill: {skill.name}",
+                sender_id=skill_sender_id,
+                sender_name=skill_sender_name,
                 content=TextContent(
                     text=completion_text,
                     title=f"Skill Completed: {skill.name}",
@@ -203,11 +228,11 @@ class SkillChat:
             yield AgentEvent.create(
                 event_type=AgentEventType.SKILL_ERROR.value,
                 project_name=project_name,
-                react_type=f"skill_{skill.name}",
+                react_type=react_type,
                 run_id=run_id,
                 step_id=step_id,
-                sender_id=f"skill_{skill.name}",
-                sender_name=f"Skill: {skill.name}",
+                sender_id=skill_sender_id,
+                sender_name=skill_sender_name,
                 content=ErrorContent(
                     error_message=str(e),
                     title=f"Skill Error: {skill.name}",

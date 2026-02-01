@@ -160,6 +160,15 @@ class ExecuteSkillTool(BaseTool):
             return
 
         try:
+            # Extract crew_member_name from sender_id/sender_name for react_type uniqueness
+            # sender_id is typically the crew member's identifier
+            # sender_name is the display name - we'll use sender_id for uniqueness
+            crew_member_name = sender_id if sender_id else None
+
+            # Use run_id as conversation_id for checkpoint isolation
+            # Each unique run_id will have its own checkpoint storage
+            conversation_id = run_id if run_id else None
+
             # Use SkillService.chat_stream to execute the skill
             # Forward events from skill_chat directly, preserving event types
             final_response = None
@@ -170,6 +179,8 @@ class ExecuteSkillTool(BaseTool):
                 project=context.project_name if context else None,
                 llm_service=None,  # Will use default LLM service
                 max_steps=max_steps,
+                crew_member_name=crew_member_name,
+                conversation_id=conversation_id,
             ):
                 # Forward the event directly, preserving original event type and content
                 # The sender_id/sender_name will be added by CrewMember upstream
