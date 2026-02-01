@@ -3,7 +3,6 @@
 Execution Plan Creation Skill Script
 
 This script creates execution plans for film production projects using the create_plan tool.
-Supports both CLI execution and in-context execution via the SkillExecutor.
 """
 import json
 import sys

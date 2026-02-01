@@ -176,6 +176,23 @@ class ExecuteSkillScriptTool(BaseTool):
         for key, value in args.items():
             argv.extend([f"--{key}", str(value)])
 
+        # Automatically add project-path from context if available
+        # Many scripts require project-path for workspace/project operations
+        if context and hasattr(context, 'project') and context.project:
+            project_path = getattr(context.project, 'project_path', None)
+            if project_path:
+                # Only add if not already provided by user
+                if not any('--project-path' in arg for arg in argv):
+                    argv.extend(["--project-path", str(project_path)])
+
+        # Automatically add workspace from context if available
+        if context and hasattr(context, 'workspace') and context.workspace:
+            workspace_path = getattr(context.workspace, 'workspace_path', None)
+            if workspace_path:
+                # Only add if not already provided by user
+                if not any('--workspace' in arg for arg in argv):
+                    argv.extend(["--workspace", str(workspace_path)])
+
         try:
             # Yield progress before execution
             yield self._create_event(
@@ -184,7 +201,7 @@ class ExecuteSkillScriptTool(BaseTool):
                 react_type,
                 run_id,
                 step_id,
-                progress=f"Executing script: {script_name}"
+                result=f"Executing script: {script_name}"
             )
 
             # execute_script now returns the result directly

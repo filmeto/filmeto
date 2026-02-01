@@ -7,7 +7,6 @@ Supports both CLI execution and in-context execution via the SkillExecutor.
 """
 import json
 import sys
-import argparse
 import logging
 from typing import Dict, List, Any, Optional, TYPE_CHECKING
 import os
@@ -295,42 +294,96 @@ execute = execute_in_context
 
 
 def main():
-    """CLI entry point for standalone execution."""
-    parser = argparse.ArgumentParser(
-        description="Generate screenplay outline and create scenes in project"
-    )
-    parser.add_argument(
-        "--concept", type=str, required=True,
-        help="The screenplay concept or idea"
-    )
-    parser.add_argument(
-        "--genre", type=str, default="General",
-        help="The genre of the screenplay"
-    )
-    parser.add_argument(
-        "--num-scenes", type=int, default=10,
-        help="Number of scenes to generate"
-    )
-    parser.add_argument(
-        "--project-path", type=str, required=True,
-        help="Path to the project directory"
-    )
+    """CLI entry point for standalone execution.
 
-    args = parser.parse_args()
+    This function is designed to be flexible and work both as a standalone script
+    and when called via execute_skill_script tool. It manually parses arguments
+    rather than using argparse to avoid errors when optional parameters are missing.
+    """
+    # Handle both traditional positional args and new approach with named args
+    args = sys.argv[1:]  # Skip script name
+
+    concept = None
+    genre = "General"
+    num_scenes = 10
+    project_path = None
+
+    # Process arguments by looking for known flags first
+    i = 0
+    while i < len(args):
+        if args[i] == '--concept' and i + 1 < len(args):
+            concept = args[i + 1]
+            i += 2
+        elif args[i] == '--genre' and i + 1 < len(args):
+            genre = args[i + 1]
+            i += 2
+        elif args[i] == '--num-scenes' and i + 1 < len(args):
+            try:
+                num_scenes = int(args[i + 1])
+            except ValueError:
+                pass
+            i += 2
+        elif args[i] == '--project-path' and i + 1 < len(args):
+            project_path = args[i + 1]
+            i += 2
+        else:
+            # For backward compatibility, handle positional arguments
+            # First non-flag argument is concept
+            if concept is None and not args[i].startswith('--'):
+                concept = args[i]
+                i += 1
+            # Second positional argument could be project_path
+            elif project_path is None and not args[i].startswith('--'):
+                project_path = args[i]
+                i += 1
+            else:
+                # Skip unknown arguments
+                i += 1
+
+    # Validate required arguments
+    if not concept:
+        error_result = {
+            "success": False,
+            "error": "missing_concept",
+            "message": "concept is required. Please provide --concept or as first positional argument."
+        }
+        print(json.dumps(error_result, indent=2))
+        return error_result
+
+    # project_path is optional when called via execute_skill_script (it's in context)
+    # but required for standalone CLI execution
+    if not project_path:
+        error_result = {
+            "success": False,
+            "error": "missing_project_path",
+            "message": "project_path is required. Please provide --project-path or as second positional argument."
+        }
+        print(json.dumps(error_result, indent=2))
+        return error_result
 
     try:
         # For CLI execution, create the screenplay manager directly
         from app.data.screen_play import ScreenPlayManager
 
-        screenplay_manager = ScreenPlayManager(args.project_path)
-        
+        screenplay_manager = ScreenPlayManager(project_path)
+
         # Generate outline
-        outline = generate_screenplay_outline(args.concept, args.genre, args.num_scenes)
-        
+        outline = generate_screenplay_outline(concept, genre, num_scenes)
+
         # Write scenes
         result = write_scenes_to_manager(outline, screenplay_manager)
-        
+
+        # Add outline summary to result
+        result["outline_summary"] = [
+            {"scene_id": f"scene_{s['scene_number'].zfill(3)}", "logline": s['logline']}
+            for s in outline
+        ]
+        result["concept"] = concept
+        result["genre"] = genre
+        result["num_scenes"] = num_scenes
+
         print(json.dumps(result, indent=2))
+        return result
 
     except Exception as e:
         logger.error(f"Error in main execution: {e}", exc_info=True)
@@ -340,7 +393,7 @@ def main():
             "message": f"Error in screenplay outline generation: {str(e)}"
         }
         print(json.dumps(error_result, indent=2))
-        sys.exit(1)
+        return error_result
 
 
 if __name__ == "__main__":
