@@ -30,7 +30,7 @@ class ScreenPlayManager:
         """
         self.project_path = Path(project_path)
         self.screen_plays_dir = self.project_path / "screen_plays"
-        self.screen_plays_dir.mkdir(exist_ok=True)
+        self.screen_plays_dir.mkdir(parents=True, exist_ok=True)
 
     def create_scene(
         self,

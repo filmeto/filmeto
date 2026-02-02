@@ -347,6 +347,24 @@ def main():
         print(json.dumps(error_result, indent=2))
         return error_result
 
+    # Try to get project_path from context if available
+    # This is injected by tool_service when executing skill scripts
+    import sys
+    script_context = globals().get('context')
+    if script_context and not project_path:
+        # Get project path from context
+        project = script_context.project if hasattr(script_context, 'project') else None
+        if project and hasattr(project, 'project_path'):
+            project_path = project.project_path
+        elif hasattr(script_context, 'project_name'):
+            # Fallback to project name, try to construct full path from workspace
+            workspace = script_context.workspace if hasattr(script_context, 'workspace') else None
+            if workspace and hasattr(workspace, 'workspace_path'):
+                project_name = script_context.project_name
+                # Project path is workspace/projects/project_name
+                import os
+                project_path = os.path.join(str(workspace.workspace_path), 'projects', project_name)
+
     # project_path is optional when called via execute_skill_script (it's in context)
     # but required for standalone CLI execution
     if not project_path:
