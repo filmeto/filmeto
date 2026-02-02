@@ -160,7 +160,7 @@ class BaseTool(ABC):
             ReactEvent object
         """
         from agent.event.agent_event import AgentEvent, AgentEventType
-        from agent.chat.structure_content import (
+        from agent.chat.content import (
             ToolResponseContent,
             ProgressContent,
             ErrorContent,

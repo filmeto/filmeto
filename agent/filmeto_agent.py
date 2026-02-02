@@ -8,7 +8,7 @@ import re
 import uuid
 from typing import AsyncIterator, AsyncGenerator, Callable, Dict, List, Optional, Any, TYPE_CHECKING
 from agent.chat.agent_chat_message import AgentMessage
-from agent.chat.structure_content import (
+from agent.chat.content import (
     StructureContent, TextContent, ThinkingContent, ToolCallContent,
     ToolResponseContent, ProgressContent, MetadataContent, ErrorContent,
     create_content
@@ -747,7 +747,7 @@ class FilmetoAgent:
                         self.project = project_list[first_project_name]
 
             # Create an AgentMessage from the string
-            from agent.chat.structure_content import TextContent
+            from agent.chat.content import TextContent
             initial_prompt = AgentMessage(
                 message_type=MessageType.TEXT,
                 sender_id="user",

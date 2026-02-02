@@ -123,7 +123,7 @@ class ToolService:
             ReactEvent object
         """
         from agent.event.agent_event import AgentEvent
-        from agent.chat.structure_content import (
+        from agent.chat.content import (
             ToolCallContent, ProgressContent, ToolResponseContent, ErrorContent
         )
 

@@ -8,7 +8,7 @@ from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 from agent.llm.llm_service import LlmService
 from agent.tool.tool_service import ToolService
 from agent.tool.tool_context import ToolContext
-from agent.chat.structure_content import (
+from agent.chat.content import (
     StructureContent,
     TextContent,
     ThinkingContent,

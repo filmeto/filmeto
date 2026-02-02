@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from PySide6.QtWidgets import QApplication
 from agent.event.agent_event import AgentEvent, AgentEventType
-from agent.chat.structure_content import ErrorContent, ContentType
+from agent.chat.content import ErrorContent, ContentType
 from agent.chat.agent_chat_message import AgentMessage
 from agent.chat.agent_chat_types import MessageType
 from agent.filmeto_agent import FilmetoAgent
@@ -153,7 +153,7 @@ class TestErrorEventDisplay:
 
     def test_skill_error_event(self):
         """Test SKILL_ERROR event type."""
-        from agent.chat.structure_content import ErrorContent
+        from agent.chat.content import ErrorContent
 
         # Create a skill error event
         event = AgentEvent.create(

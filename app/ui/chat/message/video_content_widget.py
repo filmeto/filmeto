@@ -5,7 +5,7 @@ from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QPushBut
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 
-from agent.chat.structure_content import VideoContent
+from agent.chat.content import VideoContent
 from app.ui.chat.message.base_structured_content_widget import BaseStructuredContentWidget
 
 

@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from agent.event.agent_event import AgentEvent, AgentEventType
-from agent.chat.structure_content import ToolResponseContent
+from agent.chat.content import ToolResponseContent
 from agent.filmeto_agent import FilmetoAgent
 from agent.chat.agent_chat_message import AgentMessage
 from agent.chat.agent_chat_types import MessageType, ContentType

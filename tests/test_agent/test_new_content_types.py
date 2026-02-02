@@ -4,7 +4,7 @@
 本文件展示了所有新增的StructureContent类的使用方法。
 """
 import pytest
-from agent.chat.structure_content import (
+from agent.chat.content import (
     AudioContent,
     TableContent,
     ChartContent,

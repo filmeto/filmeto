@@ -3,7 +3,7 @@ Utility functions for the Filmeto agent system.
 """
 
 from .chat.agent_chat_message import AgentMessage
-from .chat.structure_content import TextContent
+from .chat.content import TextContent
 from .chat.agent_chat_types import MessageType, ContentType
 
 

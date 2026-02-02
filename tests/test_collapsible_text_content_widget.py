@@ -17,7 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from agent.chat.structure_content import TextContent
+from agent.chat.content import TextContent
 from app.ui.chat.message.collapsible_text_content_widget import CollapsibleTextContentWidget
 
 
