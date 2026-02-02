@@ -5,6 +5,7 @@ This module implements a panel for managing movie screenplay scenes with
 support for adding, deleting, updating, and viewing scenes.
 """
 import os
+import logging
 from typing import Optional
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
@@ -15,6 +16,8 @@ from PySide6.QtGui import QFont
 
 from app.ui.panels.base_panel import BasePanel
 from app.data.screen_play import ScreenPlayManager, ScreenPlayScene
+
+logger = logging.getLogger(__name__)
 
 
 class ScreenPlayPanel(BasePanel):
@@ -70,16 +73,21 @@ class ScreenPlayPanel(BasePanel):
         """Set up the scene list view."""
         # Container for list view
         self.list_container = QWidget()
+        self.list_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         list_layout = QVBoxLayout(self.list_container)
         list_layout.setContentsMargins(0, 0, 0, 0)
-        
+        list_layout.setSpacing(0)
+
         # Toolbar for list view
         self.list_toolbar = self._create_toolbar()
         list_layout.addWidget(self.list_toolbar)
-        
+
         # Scene list
         self.scene_list = QListWidget()
         self.scene_list.setObjectName("screenplay_scene_list")
+        self.scene_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        # Set selection mode to single selection
+        self.scene_list.setSelectionMode(QListWidget.SingleSelection)
         self.scene_list.setStyleSheet("""
             QListWidget {
                 background-color: #2d2d2d;
@@ -93,11 +101,17 @@ class ScreenPlayPanel(BasePanel):
             }
             QListWidget::item:selected {
                 background-color: #4a4a4a;
+                color: #ffffff;
+            }
+            QListWidget::item:hover {
+                background-color: #3d3d3d;
             }
         """)
         self.scene_list.itemClicked.connect(self._on_scene_selected)
+        # Also connect itemDoubleClicked for double-click to edit
+        self.scene_list.itemDoubleClicked.connect(self._on_scene_selected)
         list_layout.addWidget(self.scene_list)
-        
+
         # Add to splitter
         self.splitter.addWidget(self.list_container)
         
@@ -105,16 +119,19 @@ class ScreenPlayPanel(BasePanel):
         """Set up the scene editor view."""
         # Container for editor view
         self.editor_container = QWidget()
+        self.editor_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         editor_layout = QVBoxLayout(self.editor_container)
         editor_layout.setContentsMargins(0, 0, 0, 0)
-        
+        editor_layout.setSpacing(0)
+
         # Toolbar for editor view
         self.editor_toolbar = self._create_editor_toolbar()
         editor_layout.addWidget(self.editor_toolbar)
-        
+
         # Editor for screenplay content
         self.editor = QTextEdit()
         self.editor.setObjectName("screenplay_editor")
+        self.editor.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.editor.setStyleSheet("""
             QTextEdit {
                 background-color: #2d2d2d;
@@ -125,10 +142,10 @@ class ScreenPlayPanel(BasePanel):
             }
         """)
         editor_layout.addWidget(self.editor)
-        
+
         # Add to splitter
         self.splitter.addWidget(self.editor_container)
-        
+
         # Hide initially
         self.editor_container.hide()
         
@@ -323,19 +340,52 @@ class ScreenPlayPanel(BasePanel):
         """Refresh the scene list."""
         if not self.screenplay_manager:
             return
-            
+
         # Clear the current list
         self.scene_list.clear()
-        
+
         # Get all scenes
         scenes = self.screenplay_manager.list_scenes()
-        
+
+        logger.info(f"Loading {len(scenes)} scenes from screenplay manager")
+        logger.info(f"Screenplay manager screen_plays_dir: {self.screenplay_manager.screen_plays_dir}")
+
+        if not scenes:
+            # Show empty state message
+            empty_item = QListWidgetItem("No scenes found. Click 'Add Scene' to create one.")
+            empty_item.setFlags(Qt.ItemFlag.NoItemFlags)  # Make non-selectable
+            self.scene_list.addItem(empty_item)
+            logger.info("No scenes found - showing empty state")
+            return
+
+        # Sort scenes by scene_number
+        def get_scene_sort_key(scene):
+            """Get sort key for a scene."""
+            try:
+                # Try to parse scene_number as integer for proper numeric sorting
+                return int(scene.scene_number)
+            except (ValueError, TypeError):
+                # If scene_number is not numeric, use string comparison
+                return scene.scene_number
+
+        scenes.sort(key=get_scene_sort_key)
+
         # Add each scene to the list
         for scene in scenes:
             item = QListWidgetItem()
-            item.setText(f"Scene {scene.scene_number}: {scene.title}")
+            # Convert scene_number to int for cleaner display if it's numeric
+            scene_num = scene.scene_number
+            try:
+                scene_num_int = int(scene_num)
+                display_num = str(scene_num_int)
+            except (ValueError, TypeError):
+                display_num = scene_num
+
+            item.setText(f"Scene {display_num}: {scene.title}")
             item.setData(Qt.UserRole, scene.scene_id)
             self.scene_list.addItem(item)
+
+        logger.info(f"Scene list now has {self.scene_list.count()} items")
             
     def _on_scene_selected(self, item):
         """Handle scene selection."""
@@ -434,15 +484,18 @@ class ScreenPlayPanel(BasePanel):
 
             # Load scenes
             self._refresh_scenes()
-        except AttributeError:
+        except AttributeError as e:
             # If the project doesn't have a screenplay manager yet, create one
             from app.data.screen_play import ScreenPlayManager
-            screenplay_path = os.path.join(project.project_path, "screenplay")
-            self.screenplay_manager = ScreenPlayManager(screenplay_path)
+            # Use project_path directly - ScreenPlayManager will create screen_plays subdirectory
+            self.screenplay_manager = ScreenPlayManager(project.project_path)
             self.current_project = project
 
             # Load scenes
             self._refresh_scenes()
+        except Exception as e:
+            # Log any other errors during loading
+            logger.error(f"Error loading screenplay data: {e}", exc_info=True)
 
     def on_project_switched(self, project_name: str):
         """Called when the project is switched."""
@@ -454,9 +507,16 @@ class ScreenPlayPanel(BasePanel):
         """Called when the panel becomes visible."""
         super().on_activated()
         # Ensure data is loaded when panel is activated
-        self.load_data()
+        # The BasePanel.on_activated will call load_data via QTimer if needed
+        # But also call it directly here for immediate refresh when switching panels
 
         # Ensure proper layout
         self.adjustSize()
         if self.parent():
             self.parent().adjustSize()
+
+        logger.info(f"ScreenPlayPanel activated, screenplay_manager={self.screenplay_manager is not None}")
+
+        # Also refresh the scene list if we have a manager
+        if self.screenplay_manager:
+            self._refresh_scenes()
