@@ -91,13 +91,13 @@ class TestSkillLoading:
         assert scene_id_param.required is True
 
 
-class TestSkillContext:
-    """Tests for the SkillContext class."""
+class TestToolContext:
+    """Tests for the ToolContext class (now includes SkillContext functionality)."""
 
     def setup_method(self):
         """Set up test fixtures."""
-        from agent.skill.skill_models import SkillContext
-        self.SkillContext = SkillContext
+        from agent.tool.tool_context import ToolContext
+        self.ToolContext = ToolContext
 
         # Create a temp directory for test project
         self.temp_dir = Path(tempfile.mkdtemp())
@@ -108,34 +108,52 @@ class TestSkillContext:
         """Clean up after tests."""
         shutil.rmtree(self.temp_dir)
 
-    def test_skill_context_creation(self):
-        """Test creating a SkillContext."""
+    def test_tool_context_creation(self):
+        """Test creating a ToolContext with project and llm_service."""
         mock_workspace = MagicMock()
         mock_project = MagicMock()
         mock_project.project_path = str(self.project_path)
+        mock_llm_service = MagicMock()
 
-        context = self.SkillContext(
+        context = self.ToolContext(
             workspace=mock_workspace,
-            project=mock_project
+            project=mock_project,
+            llm_service=mock_llm_service
         )
 
         assert context.workspace == mock_workspace
         assert context.project == mock_project
+        assert context.llm_service == mock_llm_service
         assert context.get_project_path() == str(self.project_path)
 
-    def test_skill_context_get_screenplay_manager(self):
-        """Test that SkillContext can get screenplay_manager from project via convenience method."""
+    def test_tool_context_get_screenplay_manager(self):
+        """Test that ToolContext can get screenplay_manager from project via convenience method."""
         mock_screenplay_manager = MagicMock()
         mock_project = MagicMock()
         mock_project.screenplay_manager = mock_screenplay_manager
         mock_project.project_path = str(self.project_path)
 
-        context = self.SkillContext(project=mock_project)
+        context = self.ToolContext(project=mock_project)
 
-        # screenplay_manager is not a direct field anymore
-        assert not hasattr(context, 'screenplay_manager') or context.screenplay_manager is None
+        # screenplay_manager is not a direct field
+        assert not hasattr(context, 'screenplay_manager') or context.get_screenplay_manager() is None
         # But can be accessed via the convenience method
         assert context.get_screenplay_manager() == mock_screenplay_manager
+
+    def test_tool_context_skill_methods(self):
+        """Test skill-related convenience methods on ToolContext."""
+        context = self.ToolContext()
+
+        # Test skill-related data access
+        context.set("skill_knowledge", "test knowledge")
+        context.set("skill_description", "test description")
+        context.set("skill_reference", "test reference")
+        context.set("skill_examples", "test examples")
+
+        assert context.get_skill_knowledge() == "test knowledge"
+        assert context.get_skill_description() == "test description"
+        assert context.get_skill_reference() == "test reference"
+        assert context.get_skill_examples() == "test examples"
 
 
 class TestSkillServiceInContextExecution:
@@ -406,20 +424,20 @@ class TestWriteScreenplayOutlineSkill:
     def test_execute_in_context(self):
         """Test the execute_in_context function."""
         from app.data.screen_play import ScreenPlayManager
-        from agent.skill.skill_service import SkillContext
+        from agent.tool.tool_context import ToolContext
         from agent.skill.system.write_screenplay_outline.scripts.write_screenplay_outline import (
             execute_in_context
         )
-        
+
         # Create screenplay manager
         screenplay_manager = ScreenPlayManager(self.project_path)
-        
+
         # Create context
         mock_project = MagicMock()
         mock_project.project_path = str(self.project_path)
         mock_project.screenplay_manager = screenplay_manager
-        
-        context = SkillContext(project=mock_project)
+
+        context = ToolContext(project=mock_project)
         
         # Execute skill
         result = execute_in_context(
@@ -513,18 +531,18 @@ class TestWriteSingleSceneSkill:
     def test_execute_in_context_creates_scene(self):
         """Test execute_in_context creates a scene properly."""
         from app.data.screen_play import ScreenPlayManager
-        from agent.skill.skill_service import SkillContext
+        from agent.tool.tool_context import ToolContext
         from agent.skill.system.write_single_scene.scripts.write_single_scene import (
             execute_in_context
         )
-        
+
         screenplay_manager = ScreenPlayManager(self.project_path)
-        
+
         mock_project = MagicMock()
         mock_project.project_path = str(self.project_path)
         mock_project.screenplay_manager = screenplay_manager
-        
-        context = SkillContext(project=mock_project)
+
+        context = ToolContext(project=mock_project)
         
         result = execute_in_context(
             context,

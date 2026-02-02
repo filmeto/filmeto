@@ -15,7 +15,7 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from agent.skill.skill_service import SkillContext
+    from agent.tool.tool_context import ToolContext
 
 
 def generate_screenplay_outline(
@@ -216,7 +216,7 @@ def write_scenes_to_manager(
 
 
 def execute_in_context(
-    context: 'SkillContext',
+    context: 'ToolContext',
     concept: str,
     genre: str = "General",
     num_scenes: int = 10,
