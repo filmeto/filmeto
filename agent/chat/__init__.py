@@ -13,7 +13,7 @@ from .agent_chat_types import (
     MessageType,
     ContentType
 )
-from .structure_content import (
+from .content import (
     StructureContent
 )
 from .agent_chat_signals import (

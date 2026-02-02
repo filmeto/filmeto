@@ -5,7 +5,7 @@ from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, QPush
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 
-from agent.chat.structure_content import CodeBlockContent
+from agent.chat.content import CodeBlockContent
 from app.ui.chat.message.base_structured_content_widget import BaseStructuredContentWidget
 
 

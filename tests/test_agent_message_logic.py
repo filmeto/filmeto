@@ -142,7 +142,7 @@ def test_agent_message_creation():
     print("\nTesting AgentMessage creation...")
 
     try:
-        from agent.chat.structure_content import TextContent
+        from agent.chat.content import TextContent
 
         # Create an AgentMessage
         message = AgentMessage(

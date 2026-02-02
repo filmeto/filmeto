@@ -97,7 +97,7 @@ class SkillChat:
         skill_sender_name = crew_member_name if crew_member_name else f"Skill: {skill.name}"
 
         # Emit SKILL_START event
-        from agent.chat.structure_content import TextContent
+        from agent.chat.content import TextContent
         yield AgentEvent.create(
             event_type=AgentEventType.SKILL_START.value,
             project_name=project_name,
@@ -224,7 +224,7 @@ class SkillChat:
             logger.error(f"Error in skill chat_stream for '{skill.name}': {e}", exc_info=True)
             # Emit SKILL_ERROR event
             step_id += 1
-            from agent.chat.structure_content import ErrorContent
+            from agent.chat.content import ErrorContent
             yield AgentEvent.create(
                 event_type=AgentEventType.SKILL_ERROR.value,
                 project_name=project_name,

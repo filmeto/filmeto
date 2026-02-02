@@ -4,7 +4,7 @@ from typing import Any, Dict
 from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QPushButton
 from PySide6.QtCore import Qt
 
-from agent.chat.structure_content import FileAttachmentContent
+from agent.chat.content import FileAttachmentContent
 from app.ui.chat.message.base_structured_content_widget import BaseStructuredContentWidget
 
 

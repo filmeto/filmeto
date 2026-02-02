@@ -141,7 +141,7 @@ def test_chat_history_widget_with_agent_message():
             widget = AgentChatHistoryWidget(workspace)
 
             # Create an AgentMessage instead of StreamEvent
-            from agent.chat.structure_content import TextContent
+            from agent.chat.content import TextContent
             message = AgentMessage(
                 message_type=MessageType.TEXT,
                 sender_id="director",

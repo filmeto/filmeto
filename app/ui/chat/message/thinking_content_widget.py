@@ -7,7 +7,7 @@ from typing import Any, Dict
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QVBoxLayout, QLabel, QFrame
 
-from agent.chat.structure_content import ThinkingContent
+from agent.chat.content import ThinkingContent
 from app.ui.chat.message.base_structured_content_widget import BaseStructuredContentWidget
 
 
@@ -24,7 +24,7 @@ class ThinkingContentWidget(BaseStructuredContentWidget):
         """
         # If no structure_content is provided, create a default one for thinking
         if structure_content is None:
-            from agent.chat.structure_content import ThinkingContent
+            from agent.chat.content import ThinkingContent
             structure_content = ThinkingContent(
                 thought="",
                 title="Thinking Process",

@@ -11,7 +11,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 
 from app.ui.chat.message.base_structured_content_widget import BaseStructuredContentWidget
-from agent.chat.structure_content import SkillContent
+from agent.chat.content import SkillContent
 
 
 class SkillContentWidget(BaseStructuredContentWidget):

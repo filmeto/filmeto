@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from PySide6.QtWidgets import QApplication
-from agent.chat.structure_content import ToolResponseContent
+from agent.chat.content import ToolResponseContent
 from app.ui.chat.message.tool_response_content_widget import ToolResponseContentWidget
 
 

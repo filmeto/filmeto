@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import uuid
 from datetime import datetime
 from agent.chat.agent_chat_types import MessageType, ContentType
-from agent.chat.structure_content import StructureContent, TextContent
+from agent.chat.content import StructureContent, TextContent
 
 
 @dataclass

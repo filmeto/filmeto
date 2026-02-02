@@ -4,7 +4,7 @@ from typing import Any, Dict, Union
 from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame
 from PySide6.QtCore import Qt
 
-from agent.chat.structure_content import ProgressContent
+from agent.chat.content import ProgressContent
 from app.ui.chat.message.base_structured_content_widget import BaseStructuredContentWidget
 
 

@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Any, Dict, Set, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from agent.chat.structure_content import StructureContent
+    from agent.chat.content import StructureContent
 
 
 class AgentEventType(str, Enum):
@@ -201,7 +201,7 @@ class AgentEvent:
             AgentEvent object
 
         Example:
-            from agent.chat.structure_content import ToolCallContent
+            from agent.chat.content import ToolCallContent
 
             event = AgentEvent.create(
                 AgentEventType.TOOL_START.value,
@@ -257,7 +257,7 @@ class AgentEvent:
         """
         # Create ErrorContent if not provided
         if content is None:
-            from agent.chat.structure_content import ErrorContent
+            from agent.chat.content import ErrorContent
             content = ErrorContent(
                 error_message=error_message,
                 title="Error",
@@ -304,7 +304,7 @@ class AgentEvent:
         """
         # Create TextContent if not provided
         if content is None:
-            from agent.chat.structure_content import TextContent
+            from agent.chat.content import TextContent
             content = TextContent(
                 text=final_response,
                 title="Response",
@@ -351,7 +351,7 @@ class AgentEvent:
         """
         # Create ToolCallContent if not provided
         if content is None:
-            from agent.chat.structure_content import ToolCallContent
+            from agent.chat.content import ToolCallContent
             content = ToolCallContent(
                 tool_name=tool_name,
                 tool_input={},
@@ -401,7 +401,7 @@ class AgentEvent:
         """
         # Create ProgressContent if not provided
         if content is None:
-            from agent.chat.structure_content import ProgressContent
+            from agent.chat.content import ProgressContent
             content = ProgressContent(
                 progress=progress,
                 tool_name=tool_name,
@@ -453,7 +453,7 @@ class AgentEvent:
         """
         # Create ToolResponseContent if not provided
         if content is None:
-            from agent.chat.structure_content import ToolResponseContent
+            from agent.chat.content import ToolResponseContent
             content = ToolResponseContent(
                 tool_name=tool_name,
                 result=result,
