@@ -143,42 +143,45 @@ def write_scene_to_manager(
         }
 
 
-def execute_in_context(
-    context: 'ToolContext',
-    scene_id: str,
-    title: str,
-    content: str,
-    scene_number: Optional[str] = None,
-    location: Optional[str] = None,
-    time_of_day: Optional[str] = None,
-    genre: Optional[str] = None,
-    logline: Optional[str] = None,
-    characters: Optional[List[str]] = None,
-    story_beat: Optional[str] = None,
-    page_count: Optional[int] = None,
-    duration_minutes: Optional[int] = None,
-    tags: Optional[List[str]] = None,
-    status: Optional[str] = None,
-    **kwargs
-) -> Dict[str, Any]:
+def execute(context: 'ToolContext', args: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Execute the single scene writing skill in-context with a SkillContext.
+    Execute the single scene writing skill in context.
 
     This is the main entry point for in-context execution via SkillExecutor.
 
     Args:
-        context: SkillContext containing workspace, project, and basic services
-        scene_id: Unique identifier for the scene
-        title: Title of the scene
-        content: Content of the scene in screenplay format
-        ... (other scene parameters)
+        context: ToolContext containing workspace and project
+        args: Dictionary of arguments for the skill
 
     Returns:
         Result dictionary with success status and scene info
     """
     try:
-        # Get screenplay_manager from context using the convenience method
-        # This keeps business-specific logic out of the basic context
+        # Extract arguments
+        scene_id = args.get('scene_id')
+        title = args.get('title')
+        content = args.get('content')
+
+        if not scene_id:
+            return {
+                "success": False,
+                "error": "missing_scene_id",
+                "message": "scene_id is required"
+            }
+        if not title:
+            return {
+                "success": False,
+                "error": "missing_title",
+                "message": "title is required"
+            }
+        if not content:
+            return {
+                "success": False,
+                "error": "missing_content",
+                "message": "content is required"
+            }
+
+        # Get screenplay_manager from context
         screenplay_manager = context.get_screenplay_manager()
 
         if screenplay_manager is None:
@@ -193,17 +196,17 @@ def execute_in_context(
             scene_id=scene_id,
             title=title,
             content=content,
-            scene_number=scene_number,
-            location=location,
-            time_of_day=time_of_day,
-            genre=genre,
-            logline=logline,
-            characters=characters,
-            story_beat=story_beat,
-            page_count=page_count,
-            duration_minutes=duration_minutes,
-            tags=tags,
-            status=status
+            scene_number=args.get('scene_number'),
+            location=args.get('location'),
+            time_of_day=args.get('time_of_day'),
+            genre=args.get('genre'),
+            logline=args.get('logline'),
+            characters=args.get('characters'),
+            story_beat=args.get('story_beat'),
+            page_count=args.get('page_count'),
+            duration_minutes=args.get('duration_minutes'),
+            tags=args.get('tags'),
+            status=args.get('status')
         )
 
     except Exception as e:
@@ -216,7 +219,7 @@ def execute_in_context(
 
 
 # Alias for SkillExecutor compatibility
-execute = execute_in_context
+execute_in_context = execute
 
 
 def main():
@@ -232,7 +235,6 @@ def main():
     scene_id = None
     title = None
     content = None
-    project_path = None
     scene_number = None
     location = None
     time_of_day = None
@@ -256,9 +258,6 @@ def main():
             i += 2
         elif args[i] == '--content' and i + 1 < len(args):
             content = args[i + 1]
-            i += 2
-        elif args[i] == '--project-path' and i + 1 < len(args):
-            project_path = args[i + 1]
             i += 2
         elif args[i] == '--scene-number' and i + 1 < len(args):
             scene_number = args[i + 1]
@@ -301,7 +300,7 @@ def main():
             i += 2
         else:
             # For backward compatibility, handle positional arguments
-            # Order: scene_id, title, content, project_path
+            # Order: scene_id, title, content
             if scene_id is None and not args[i].startswith('--'):
                 scene_id = args[i]
                 i += 1
@@ -311,11 +310,8 @@ def main():
             elif content is None and not args[i].startswith('--'):
                 content = args[i]
                 i += 1
-            elif project_path is None and not args[i].startswith('--'):
-                project_path = args[i]
-                i += 1
             else:
-                # Skip unknown arguments
+                # Skip unknown arguments (including --project-path)
                 i += 1
 
     # Validate required arguments
@@ -346,31 +342,22 @@ def main():
         print(json.dumps(error_result, indent=2))
         return error_result
 
-    # Try to get project_path from context if available
+    # Try to get screenplay_manager from context if available
     # This is injected by tool_service when executing skill scripts
-    import sys
     script_context = globals().get('context')
-    if script_context and not project_path:
-        # Get project path from context
-        project = script_context.project if hasattr(script_context, 'project') else None
-        if project and hasattr(project, 'project_path'):
-            project_path = project.project_path
-        elif hasattr(script_context, 'project_name'):
-            # Fallback to project name, try to construct full path from workspace
-            workspace = script_context.workspace if hasattr(script_context, 'workspace') else None
-            if workspace and hasattr(workspace, 'workspace_path'):
-                project_name = script_context.project_name
-                # Project path is workspace/projects/project_name
-                import os
-                project_path = os.path.join(str(workspace.workspace_path), 'projects', project_name)
+    screenplay_manager = None
 
-    # project_path is optional when called via execute_skill_script (it's in context)
-    # but required for standalone CLI execution
-    if not project_path:
+    if script_context:
+        # Try to get screenplay manager from context
+        if hasattr(script_context, 'get_screenplay_manager'):
+            screenplay_manager = script_context.get_screenplay_manager()
+
+    # Create screenplay manager if not available from context
+    if not screenplay_manager:
         error_result = {
             "success": False,
-            "error": "missing_project_path",
-            "message": "project_path is required. Please provide --project-path or as fourth positional argument."
+            "error": "no_context",
+            "message": "This script requires a context with screenplay manager. Please run via the skill system."
         }
         print(json.dumps(error_result, indent=2))
         return error_result
@@ -406,42 +393,40 @@ def main():
                 # Split by comma as last resort
                 tags = tags_str.split(',')
 
-    try:
-        # For CLI execution, create the screenplay manager directly
-        from app.data.screen_play import ScreenPlayManager
+    # Build args dict and call execute
+    args_dict = {
+        'scene_id': scene_id,
+        'title': title,
+        'content': content,
+    }
 
-        screenplay_manager = ScreenPlayManager(project_path)
+    # Add optional parameters if provided
+    if scene_number is not None:
+        args_dict['scene_number'] = scene_number
+    if location is not None:
+        args_dict['location'] = location
+    if time_of_day is not None:
+        args_dict['time_of_day'] = time_of_day
+    if genre is not None:
+        args_dict['genre'] = genre
+    if logline is not None:
+        args_dict['logline'] = logline
+    if characters is not None:
+        args_dict['characters'] = characters
+    if story_beat is not None:
+        args_dict['story_beat'] = story_beat
+    if page_count is not None:
+        args_dict['page_count'] = page_count
+    if duration_minutes is not None:
+        args_dict['duration_minutes'] = duration_minutes
+    if tags is not None:
+        args_dict['tags'] = tags
+    if status is not None:
+        args_dict['status'] = status
 
-        result = write_scene_to_manager(
-            screenplay_manager=screenplay_manager,
-            scene_id=scene_id,
-            title=title,
-            content=content,
-            scene_number=scene_number,
-            location=location,
-            time_of_day=time_of_day,
-            genre=genre,
-            logline=logline,
-            characters=characters,
-            story_beat=story_beat,
-            page_count=page_count,
-            duration_minutes=duration_minutes,
-            tags=tags,
-            status=status
-        )
-
-        print(json.dumps(result, indent=2))
-        return result
-
-    except Exception as e:
-        logger.error(f"Error in main execution: {e}", exc_info=True)
-        error_result = {
-            "success": False,
-            "error": str(e),
-            "message": f"Error in single scene writing: {str(e)}"
-        }
-        print(json.dumps(error_result, indent=2))
-        return error_result
+    result = execute(script_context, args_dict)
+    print(json.dumps(result, indent=2))
+    return result
 
 
 if __name__ == "__main__":

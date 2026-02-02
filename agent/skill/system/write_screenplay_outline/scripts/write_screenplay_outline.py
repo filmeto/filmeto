@@ -215,62 +215,54 @@ def write_scenes_to_manager(
     return result
 
 
-def execute_in_context(
-    context: 'ToolContext',
-    concept: str,
-    genre: str = "General",
-    num_scenes: int = 10,
-    **kwargs
-) -> Dict[str, Any]:
+def execute(context: 'ToolContext', args: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Execute the screenplay outline skill in-context with a SkillContext.
+    Execute the screenplay outline skill in context.
 
     This is the main entry point for in-context execution via SkillExecutor.
 
     Args:
-        context: SkillContext containing workspace, project, and basic services
-        concept: The basic concept or idea for the screenplay
-        genre: The genre of the screenplay
-        num_scenes: Number of scenes to generate
+        context: ToolContext containing workspace and project
+        args: Dictionary of arguments for the skill (concept, genre, num_scenes)
 
     Returns:
         Result dictionary with success status and created scene IDs
     """
     try:
+        # Extract arguments
+        concept = args.get('concept')
+        genre = args.get('genre', 'General')
+        num_scenes = args.get('num_scenes', 10)
+
+        if not concept:
+            return {
+                "success": False,
+                "error": "missing_concept",
+                "message": "concept is required"
+            }
+
         # Get screenplay_manager from context using the convenience method
-        # This keeps business-specific logic out of the basic context
         screenplay_manager = context.get_screenplay_manager()
 
         if screenplay_manager is None:
-            # Provide detailed error information
-            error_details = {
+            return {
                 "success": False,
                 "error": "no_screenplay_manager",
-                "message": "No screenplay manager available in context. Cannot create scenes.",
-                "context_info": {
-                    "has_context": context is not None,
-                    "has_workspace": context.workspace is not None if context else False,
-                    "has_project": context.project is not None if context else False,
-                    "project_name": getattr(context.project, 'project_name', None) if context and context.project else None,
-                }
+                "message": "No screenplay manager available in context. Cannot create scenes."
             }
-            logger.error(f"Screenplay manager not available: {error_details}")
-            print(json.dumps(error_details, indent=2))
-            return error_details
 
         # Generate the outline
         outline = generate_screenplay_outline(concept, genre, num_scenes)
 
         # Write scenes to the manager
         result = write_scenes_to_manager(outline, screenplay_manager)
-        
+
         # Add the outline to the result for reference
         result["outline_summary"] = [
             {"scene_id": f"scene_{s['scene_number'].zfill(3)}", "logline": s['logline']}
             for s in outline
         ]
 
-        # Print result to stdout so it gets captured by the script executor
         print(json.dumps(result, indent=2))
         return result
 
@@ -281,13 +273,12 @@ def execute_in_context(
             "error": str(e),
             "message": f"Error in screenplay outline generation: {str(e)}"
         }
-        # Print result to stdout so it gets captured by the script executor
         print(json.dumps(result, indent=2))
         return result
 
 
 # Alias for SkillExecutor compatibility
-execute = execute_in_context
+execute_in_context = execute
 
 
 def main():
@@ -303,7 +294,6 @@ def main():
     concept = None
     genre = "General"
     num_scenes = 10
-    project_path = None
 
     # Process arguments by looking for known flags first
     i = 0
@@ -320,21 +310,14 @@ def main():
             except ValueError:
                 pass
             i += 2
-        elif args[i] == '--project-path' and i + 1 < len(args):
-            project_path = args[i + 1]
-            i += 2
         else:
             # For backward compatibility, handle positional arguments
             # First non-flag argument is concept
             if concept is None and not args[i].startswith('--'):
                 concept = args[i]
                 i += 1
-            # Second positional argument could be project_path
-            elif project_path is None and not args[i].startswith('--'):
-                project_path = args[i]
-                i += 1
             else:
-                # Skip unknown arguments
+                # Skip unknown arguments (including --project-path)
                 i += 1
 
     # Validate required arguments
@@ -347,68 +330,29 @@ def main():
         print(json.dumps(error_result, indent=2))
         return error_result
 
-    # Try to get project_path from context if available
+    # Try to get context from injected globals
     # This is injected by tool_service when executing skill scripts
-    import sys
     script_context = globals().get('context')
-    if script_context and not project_path:
-        # Get project path from context
-        project = script_context.project if hasattr(script_context, 'project') else None
-        if project and hasattr(project, 'project_path'):
-            project_path = project.project_path
-        elif hasattr(script_context, 'project_name'):
-            # Fallback to project name, try to construct full path from workspace
-            workspace = script_context.workspace if hasattr(script_context, 'workspace') else None
-            if workspace and hasattr(workspace, 'workspace_path'):
-                project_name = script_context.project_name
-                # Project path is workspace/projects/project_name
-                import os
-                project_path = os.path.join(str(workspace.workspace_path), 'projects', project_name)
 
-    # project_path is optional when called via execute_skill_script (it's in context)
-    # but required for standalone CLI execution
-    if not project_path:
+    if not script_context:
         error_result = {
             "success": False,
-            "error": "missing_project_path",
-            "message": "project_path is required. Please provide --project-path or as second positional argument."
+            "error": "no_context",
+            "message": "This script requires a context with screenplay manager. Please run via the skill system."
         }
         print(json.dumps(error_result, indent=2))
         return error_result
 
-    try:
-        # For CLI execution, create the screenplay manager directly
-        from app.data.screen_play import ScreenPlayManager
+    # Build args dict and call execute
+    args_dict = {
+        'concept': concept,
+        'genre': genre,
+        'num_scenes': num_scenes
+    }
 
-        screenplay_manager = ScreenPlayManager(project_path)
-
-        # Generate outline
-        outline = generate_screenplay_outline(concept, genre, num_scenes)
-
-        # Write scenes
-        result = write_scenes_to_manager(outline, screenplay_manager)
-
-        # Add outline summary to result
-        result["outline_summary"] = [
-            {"scene_id": f"scene_{s['scene_number'].zfill(3)}", "logline": s['logline']}
-            for s in outline
-        ]
-        result["concept"] = concept
-        result["genre"] = genre
-        result["num_scenes"] = num_scenes
-
-        print(json.dumps(result, indent=2))
-        return result
-
-    except Exception as e:
-        logger.error(f"Error in main execution: {e}", exc_info=True)
-        error_result = {
-            "success": False,
-            "error": str(e),
-            "message": f"Error in screenplay outline generation: {str(e)}"
-        }
-        print(json.dumps(error_result, indent=2))
-        return error_result
+    result = execute(script_context, args_dict)
+    print(json.dumps(result, indent=2))
+    return result
 
 
 if __name__ == "__main__":
