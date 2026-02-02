@@ -15,10 +15,10 @@ import ast
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from agent.skill.skill_service import SkillContext
+    from agent.tool.tool_context import ToolContext
 
 
-def execute(context: 'SkillContext', args: Dict[str, Any]) -> Dict[str, Any]:
+def execute(context: 'ToolContext', args: Dict[str, Any]) -> Dict[str, Any]:
     """
     Execute the create_execution_plan skill in context.
 

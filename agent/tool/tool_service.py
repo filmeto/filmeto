@@ -353,52 +353,45 @@ class ToolService:
 
         return script_execute_tool
 
-    def _create_skill_context(
+    def _ensure_context_has_project_and_llm(
         self,
         context: Optional[ToolContext],
-    ) -> Optional[Any]:
-        """Create a SkillContext with basic business-agnostic services.
+    ) -> Optional[ToolContext]:
+        """
+        Ensure the ToolContext has project and llm_service populated from workspace.
 
-        The SkillContext should only contain basic services like workspace,
-        project, and llm_service - not business-specific services like
-        screenplay_manager.
+        This method populates the context with project and llm_service if they are
+        not already set, by fetching them from the workspace.
 
         Args:
-            context: ToolContext object containing workspace and project info
+            context: ToolContext object to enhance
 
         Returns:
-            SkillContext object or None if context is invalid
+            The enhanced ToolContext or None if context is invalid
         """
         if not context or not context.workspace:
-            return None
+            return context
 
-        from agent.skill.skill_models import SkillContext
-
-        # Get llm_service from workspace if available
-        llm_service = None
-        if hasattr(context.workspace, 'get_llm_service'):
+        # If project is not set, try to get it from workspace
+        if context.project is None:
             try:
-                llm_service = context.workspace.get_llm_service()
+                project_manager = context.workspace.get_project_manager() if hasattr(context.workspace, 'get_project_manager') else None
+                if project_manager and context.project_name:
+                    context.project = project_manager.get_project(context.project_name)
+                elif hasattr(context.workspace, 'get_project'):
+                    context.project = context.workspace.get_project()
             except Exception as e:
-                logger.warning(f"Failed to get llm_service from workspace: {e}")
+                logger.warning(f"Failed to get project from workspace: {e}")
 
-        # Get the project from workspace - this is a basic project reference,
-        # not the full business object
-        project = None
-        try:
-            project_manager = context.workspace.get_project_manager() if hasattr(context.workspace, 'get_project_manager') else None
-            if project_manager and context.project_name:
-                project = project_manager.get_project(context.project_name)
-            elif hasattr(context.workspace, 'get_project'):
-                project = context.workspace.get_project()
-        except Exception as e:
-            logger.warning(f"Failed to get project from workspace: {e}")
+        # If llm_service is not set, try to get it from workspace
+        if context.llm_service is None:
+            if hasattr(context.workspace, 'get_llm_service'):
+                try:
+                    context.llm_service = context.workspace.get_llm_service()
+                except Exception as e:
+                    logger.warning(f"Failed to get llm_service from workspace: {e}")
 
-        return SkillContext(
-            workspace=context.workspace,
-            project=project,
-            llm_service=llm_service
-        )
+        return context
 
     async def execute_script(
         self,
@@ -427,19 +420,21 @@ class ToolService:
         Returns:
             The script execution result (captured stdout), or raises an exception on error
         """
+        # Ensure context has project and llm_service populated
+        context = self._ensure_context_has_project_and_llm(context)
+
         # Create the execute_tool wrapper for scripts
         script_execute_tool = self._create_script_tool_wrapper(
             context, project_name, react_type, run_id, step_id
         )
 
-        # Create a SkillContext with basic services only
-        skill_context = self._create_skill_context(context)
-
+        # ToolContext now provides the same interface as SkillContext
+        # Use 'context' as the variable name for skill scripts
         script_globals = {
             '__builtins__': __builtins__,
             'execute_tool': script_execute_tool,
-            'tool_context': context,
-            'context': skill_context,  # For skill scripts expecting SkillContext
+            'tool_context': context,  # For scripts explicitly using ToolContext
+            'context': context,  # For skill scripts (was SkillContext, now ToolContext)
         }
 
         # Determine project root directory - look for typical project markers
