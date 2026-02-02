@@ -227,13 +227,10 @@ class AgentChatWidget(BaseWidget):
                     
                 if message:
                     try:
-                        # Get session from agent
-                        session = self.agent.get_current_session() if self.agent else None
-
                         # Forward the AgentMessage directly to downstream components
-                        await self.chat_history_widget.handle_agent_message(message, session)
+                        await self.chat_history_widget.handle_agent_message(message)
                         if self.plan_widget:
-                            await self.plan_widget.handle_agent_message(message, session)
+                            await self.plan_widget.handle_agent_message(message)
                     except Exception as e:
                         logger.error(f"Error handling agent message: {e}", exc_info=True)
                     finally:

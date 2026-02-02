@@ -730,8 +730,8 @@ class AgentChatHistoryWidget(BaseWidget):
             card.set_content(error_text)
 
         self._schedule_scroll()
-    
-    async def handle_agent_message(self, message: AgentMessage, session):
+
+    async def handle_agent_message(self, message: AgentMessage):
         if message.sender_id == "user":
             return
 
