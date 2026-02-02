@@ -47,13 +47,16 @@ class UserMessageCard(QFrame):
         main_layout.setContentsMargins(5, 8, 5, 8)
         main_layout.setSpacing(6)
 
-        # Header row (name + avatar) - name on left for user messages
+        # Header row (name + avatar) - right aligned for user messages
         header_row = QWidget(self)
         header_layout = QHBoxLayout(header_row)
         header_layout.setContentsMargins(0, 0, 0, 0)
         header_layout.setSpacing(8)
 
-        # Name and role - added first (on the left)
+        # Add stretch first to push name and avatar to the right
+        header_layout.addStretch()
+
+        # Name and role - added after stretch (on the right)
         self.name_widget = QWidget(header_row)
         name_layout = QVBoxLayout(self.name_widget)
         name_layout.setContentsMargins(0, 0, 0, 0)
@@ -70,7 +73,7 @@ class UserMessageCard(QFrame):
         """)
         name_layout.addWidget(self.name_label)
 
-        # Add the name widget to the header layout first (left side)
+        # Add the name widget to the header layout (right side)
         header_layout.addWidget(self.name_widget)
 
         # Avatar - added after name (on the right of name)
@@ -82,9 +85,6 @@ class UserMessageCard(QFrame):
             parent=header_row
         )
         header_layout.addWidget(self.avatar)
-
-        # Add stretch at the end to push everything to the right
-        header_layout.addStretch()
 
         main_layout.addWidget(header_row)
 

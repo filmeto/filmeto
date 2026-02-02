@@ -142,7 +142,7 @@ class TodoWriteTool(BaseTool):
                         react_type,
                         run_id,
                         step_id,
-                        progress="TODO list updated"
+                        result="TODO list updated"
                     )
                     yield self._create_event(
                         "tool_end",
