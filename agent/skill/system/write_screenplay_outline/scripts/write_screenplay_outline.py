@@ -224,11 +224,11 @@ def execute_in_context(
 ) -> Dict[str, Any]:
     """
     Execute the screenplay outline skill in-context with a SkillContext.
-    
+
     This is the main entry point for in-context execution via SkillExecutor.
 
     Args:
-        context: SkillContext containing workspace, project, screenplay_manager
+        context: SkillContext containing workspace, project, and basic services
         concept: The basic concept or idea for the screenplay
         genre: The genre of the screenplay
         num_scenes: Number of scenes to generate
@@ -237,12 +237,9 @@ def execute_in_context(
         Result dictionary with success status and created scene IDs
     """
     try:
-        # Validate context
-        screenplay_manager = context.screenplay_manager
-        if screenplay_manager is None:
-            # Try to get from project
-            if context.project is not None and hasattr(context.project, 'screenplay_manager'):
-                screenplay_manager = context.project.screenplay_manager
+        # Get screenplay_manager from context using the convenience method
+        # This keeps business-specific logic out of the basic context
+        screenplay_manager = context.get_screenplay_manager()
 
         if screenplay_manager is None:
             # Provide detailed error information

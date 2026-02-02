@@ -22,22 +22,31 @@ class SkillParameter:
 class SkillContext:
     """
     Context object for skill execution.
-    Provides access to workspace, project, and other resources.
+    Provides access to basic business-agnostic services.
+
+    Note: This context should only contain basic services like workspace,
+    project, and llm_service. Business-specific services like screenplay_manager
+    should be obtained from the project object when needed.
     """
     workspace: Optional[Any] = None
     project: Optional[Any] = None
-    screenplay_manager: Optional[Any] = None
     llm_service: Optional[Any] = None
     additional_context: Optional[Dict[str, Any]] = None
 
     def __post_init__(self):
-        # Auto-initialize screenplay_manager from project if available
-        if self.screenplay_manager is None and self.project is not None:
-            if hasattr(self.project, 'screenplay_manager'):
-                self.screenplay_manager = self.project.screenplay_manager
-
         if self.additional_context is None:
             self.additional_context = {}
+
+    def get_screenplay_manager(self) -> Optional[Any]:
+        """Get the screenplay manager from the project if available.
+
+        This is a convenience method for business-specific code that needs
+        access to the screenplay manager. It keeps the business-specific
+        logic out of the basic context structure.
+        """
+        if self.project is not None and hasattr(self.project, 'screenplay_manager'):
+            return self.project.screenplay_manager
+        return None
 
     def get_project_path(self) -> Optional[str]:
         """Get the project path from the context."""

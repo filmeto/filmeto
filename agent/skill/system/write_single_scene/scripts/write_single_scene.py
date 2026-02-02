@@ -167,7 +167,7 @@ def execute_in_context(
     This is the main entry point for in-context execution via SkillExecutor.
 
     Args:
-        context: SkillContext containing workspace, project, screenplay_manager
+        context: SkillContext containing workspace, project, and basic services
         scene_id: Unique identifier for the scene
         title: Title of the scene
         content: Content of the scene in screenplay format
@@ -177,11 +177,9 @@ def execute_in_context(
         Result dictionary with success status and scene info
     """
     try:
-        # Validate context
-        screenplay_manager = context.screenplay_manager
-        if screenplay_manager is None:
-            if context.project is not None and hasattr(context.project, 'screenplay_manager'):
-                screenplay_manager = context.project.screenplay_manager
+        # Get screenplay_manager from context using the convenience method
+        # This keeps business-specific logic out of the basic context
+        screenplay_manager = context.get_screenplay_manager()
 
         if screenplay_manager is None:
             return {

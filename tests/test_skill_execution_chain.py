@@ -96,9 +96,8 @@ class TestSkillContext:
 
     def setup_method(self):
         """Set up test fixtures."""
-        from agent.skill.skill_service import SkillContext, SkillService
+        from agent.skill.skill_models import SkillContext
         self.SkillContext = SkillContext
-        self.skill_service = SkillService(workspace=None)
 
         # Create a temp directory for test project
         self.temp_dir = Path(tempfile.mkdtemp())
@@ -124,8 +123,8 @@ class TestSkillContext:
         assert context.project == mock_project
         assert context.get_project_path() == str(self.project_path)
 
-    def test_skill_context_auto_initializes_screenplay_manager(self):
-        """Test that SkillContext auto-initializes screenplay_manager from project."""
+    def test_skill_context_get_screenplay_manager(self):
+        """Test that SkillContext can get screenplay_manager from project via convenience method."""
         mock_screenplay_manager = MagicMock()
         mock_project = MagicMock()
         mock_project.screenplay_manager = mock_screenplay_manager
@@ -133,7 +132,10 @@ class TestSkillContext:
 
         context = self.SkillContext(project=mock_project)
 
-        assert context.screenplay_manager == mock_screenplay_manager
+        # screenplay_manager is not a direct field anymore
+        assert not hasattr(context, 'screenplay_manager') or context.screenplay_manager is None
+        # But can be accessed via the convenience method
+        assert context.get_screenplay_manager() == mock_screenplay_manager
 
 
 class TestSkillServiceInContextExecution:
