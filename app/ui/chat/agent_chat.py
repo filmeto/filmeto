@@ -18,7 +18,7 @@ from agent.chat.agent_chat_signals import AgentChatSignals
 from app.ui.base_widget import BaseWidget
 from app.data.workspace import Workspace
 from app.ui.chat.agent_chat_history import AgentChatHistoryWidget
-from app.ui.chat.agent_chat_plan import AgentChatPlanWidget
+from app.ui.chat.plan import AgentChatPlanWidget
 from app.ui.prompt.agent_prompt_widget import AgentPromptWidget
 from utils.i18n_utils import tr
 from utils.signal_utils import AsyncSignal
