@@ -2,6 +2,7 @@
 
 from PySide6.QtWidgets import QWidget
 from PySide6.QtGui import QColor, QPainter, QFont, QPen
+from PySide6.QtCore import Qt
 
 
 class StatusIconWidget(QWidget):
