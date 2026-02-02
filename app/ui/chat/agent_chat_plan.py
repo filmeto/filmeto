@@ -416,7 +416,7 @@ class AgentChatPlanWidget(BaseWidget):
             self.setMinimumHeight(0)
             self.setMaximumHeight(16777215)  # Default maximum
 
-    async def handle_agent_message(self, message:AgentMessage, _session=None):
+    async def handle_agent_message(self, message: AgentMessage):
         """Handle an AgentMessage directly."""
         if not message:
             return

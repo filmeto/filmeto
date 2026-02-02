@@ -35,26 +35,6 @@ _PRODUCER_NAME = "producer"
 
 
 
-class AgentStreamSession:
-    """Represents a streaming session with the agent."""
-    
-    def __init__(self, session_id: str, initial_message: str):
-        self.session_id = session_id
-        self.initial_message = initial_message
-        self.responses = []
-        self.is_active = True
-
-
-class StreamEvent:
-    """Legacy: event payload for stream callbacks. Kept for tests; production uses AgentChatSignals."""
-
-    def __init__(self, event_type: str, data: Any, timestamp: float = None):
-        import time
-        self.event_type = event_type
-        self.data = data
-        self.timestamp = timestamp or time.time()
-
-
 class FilmetoAgent:
     """
     Class for managing agent capabilities in Filmeto.
@@ -86,7 +66,6 @@ class FilmetoAgent:
         self.streaming = streaming
         self.members: Dict[str, CrewMember] = {}
         self.conversation_history: List[AgentMessage] = []
-        self.current_session: Optional[AgentStreamSession] = None
         self.llm_service = llm_service or LlmService(workspace)
         self.crew_member_service = crew_member_service or CrewService()
 
@@ -739,10 +718,6 @@ class FilmetoAgent:
             sender_name="System",
         )
 
-    def get_current_session(self) -> Optional[AgentStreamSession]:
-        """Get the current streaming session."""
-        return self.current_session
-
     async def chat(self, message: str) -> None:
         """
         Send a message to the agents and receive responses via signals.
@@ -781,9 +756,8 @@ class FilmetoAgent:
             )
             logger.info(f"📥 Created initial prompt message: id={initial_prompt.message_id}, sender='user', content_preview='{message[:50]}{'...' if len(message) > 50 else ''}'")
 
-            # Create a new session
+            # Create a unique session ID for this conversation
             session_id = str(uuid.uuid4())
-            self.current_session = AgentStreamSession(session_id, message)
 
             # Add the initial prompt to history
             self.conversation_history.append(initial_prompt)
