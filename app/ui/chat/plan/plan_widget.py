@@ -8,148 +8,25 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QHBoxLayout,
     QLabel,
-    QFrame,
     QScrollArea,
     QSizePolicy,
     QSplitter,
 )
-from PySide6.QtCore import Qt, QTimer, Signal, QSize
-from PySide6.QtGui import QColor, QPainter, QFont, QPen
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QSize
 
 from agent import AgentMessage
 from app.ui.base_widget import BaseWidget
-from app.ui.components.avatar_widget import AvatarWidget
 from agent.plan.plan_service import PlanService
 from agent.plan.plan_models import Plan, PlanInstance, PlanStatus, PlanTask, TaskStatus
 from agent.crew.crew_service import CrewService
 from agent.plan.plan_signals import plan_signal_manager
 from utils.i18n_utils import tr
 
-
-class ClickableFrame(QFrame):
-    """Frame that emits clicked signal on mouse press."""
-
-    clicked = Signal()
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self.clicked.emit()
-        super().mousePressEvent(event)
-
-
-class StatusIconWidget(QWidget):
-    """Small circular status icon with text."""
-
-    def __init__(self, text: str, color: str, size: int = 14, parent=None):
-        super().__init__(parent)
-        self._text = text
-        self._color = QColor(color)
-        self._size = size
-        self.setFixedSize(size, size)
-
-    def set_style(self, text: str, color: str):
-        self._text = text
-        self._color = QColor(color)
-        self.update()
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        rect = self.rect()
-        painter.setBrush(self._color)
-        painter.setPen(QPen(self._color))
-        painter.drawEllipse(rect)
-
-        font = QFont()
-        font.setPointSize(max(7, self._size // 2))
-        font.setBold(True)
-        painter.setFont(font)
-        painter.setPen(QPen(QColor("#ffffff")))
-        painter.drawText(rect, Qt.AlignCenter, self._text)
-
-
-class StatusCountWidget(QWidget):
-    """Status icon with numeric count."""
-
-    def __init__(self, label: str, color: str, tooltip: str, parent=None):
-        super().__init__(parent)
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
-
-        self.icon = StatusIconWidget(label, color, size=12, parent=self)
-        layout.addWidget(self.icon)
-
-        self.count_label = QLabel("0", self)
-        self.count_label.setStyleSheet("color: #d0d0d0; font-size: 12px;")
-        layout.addWidget(self.count_label)
-
-        self.setToolTip(tooltip)
-
-    def set_count(self, value: int):
-        self.count_label.setText(str(value))
-
-
-class PlanTaskRow(QFrame):
-    """Row widget for a single plan task."""
-
-    def __init__(
-        self,
-        task: PlanTask,
-        crew_member,
-        status_label: str,
-        status_color: str,
-        parent=None,
-    ):
-        super().__init__(parent)
-        self.setObjectName("plan_task_row")
-        self.setStyleSheet("""
-            QFrame#plan_task_row {
-                background-color: #2b2d30;
-                border-radius: 4px;
-            }
-        """)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(6, 6, 6, 6)
-        layout.setSpacing(4)
-
-        top_row = QHBoxLayout()
-        top_row.setContentsMargins(0, 0, 0, 0)
-        top_row.setSpacing(6)
-
-        status_icon = StatusIconWidget(status_label, status_color, size=14, parent=self)
-        top_row.addWidget(status_icon, 0, Qt.AlignVCenter)
-
-        task_text = task.name or task.description or tr("Untitled Task")
-        task_label = QLabel(task_text, self)
-        task_label.setStyleSheet("color: #e1e1e1; font-size: 12px;")
-        task_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        task_label.setToolTip(task.description or task_text)
-        top_row.addWidget(task_label, 1)
-        layout.addLayout(top_row)
-
-        crew_row = QHBoxLayout()
-        crew_row.setContentsMargins(0, 0, 0, 0)
-        crew_row.setSpacing(6)
-
-        if crew_member:
-            avatar_icon = crew_member.config.icon
-            avatar_color = crew_member.config.color
-            crew_name = crew_member.config.name
-        else:
-            avatar_icon = "A"
-            avatar_color = "#5c5f66"
-            crew_name = task.title or tr("Unknown")
-
-        avatar = AvatarWidget(icon=avatar_icon, color=avatar_color, size=16, shape="rounded_rect", parent=self)
-        crew_row.addWidget(avatar, 0, Qt.AlignVCenter)
-
-        crew_label = QLabel(crew_name, self)
-        crew_label.setStyleSheet("color: #b0b0b0; font-size: 11px;")
-        crew_row.addWidget(crew_label, 0, Qt.AlignVCenter)
-        crew_row.addStretch()
-        layout.addLayout(crew_row)
+from .plan_clickable_frame import ClickableFrame
+from .plan_status_icon import StatusIconWidget
+from .plan_status_count import StatusCountWidget
+from .plan_task_row import PlanTaskRow
 
 
 class AgentChatPlanWidget(BaseWidget):
@@ -230,6 +107,8 @@ class AgentChatPlanWidget(BaseWidget):
         plan_signal_manager.task_status_updated.connect(self._on_plan_change)
 
     def _setup_ui(self):
+        from app.ui.components.avatar_widget import AvatarWidget
+
         self.setObjectName("agent_chat_plan_widget")
         self.setStyleSheet("""
             QWidget#agent_chat_plan_widget {
@@ -433,7 +312,7 @@ class AgentChatPlanWidget(BaseWidget):
         # Check message content for plan-related information
         if message.content and "plan" in message.content.lower():
             self.refresh_plan()
-        
+
         # Check message type for plan-related types
         if hasattr(message, 'message_type') and str(message.message_type).lower() == "plan":
             self.refresh_plan()
