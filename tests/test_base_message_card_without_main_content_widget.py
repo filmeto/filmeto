@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt
 import sys
 
-from app.ui.chat.agent_chat_message_card import BaseMessageCard
+from app.ui.chat.card import BaseMessageCard
 from app.ui.chat.message.text_content_widget import TextContentWidget
 from app.ui.chat.message.skill_content_widget import SkillContentWidget
 from app.ui.chat.message.code_block_widget import CodeBlockWidget
