@@ -269,43 +269,34 @@ class ToolService:
                 error=str(e)
             )
 
-    async def execute_script(
+    def _create_script_tool_wrapper(
         self,
-        script_path: str,
-        argv: list = None,
-        context: Optional[ToolContext] = None,
-        project_name: str = "",
-        react_type: str = "",
-        run_id: str = "",
-        step_id: int = 0,
-    ) -> Any:
-        """
-        Execute a script that can call various tools.
+        context: Optional[ToolContext],
+        project_name: str,
+        react_type: str,
+        run_id: str,
+        step_id: int,
+    ):
+        """Create a synchronous wrapper for execute_tool to be used in scripts.
 
-        Returns the script execution result (captured stdout).
+        This function is called from synchronous scripts and needs to
+        properly handle the async execute_tool method.
 
         Args:
-            script_path: Absolute path to the script file to execute
-            argv: Optional list of command-line arguments to pass to the script
-            context: Optional ToolContext object containing workspace and project info
-            project_name: Project name for event tracking (unused, for compatibility)
-            react_type: React type for event tracking (unused, for compatibility)
-            run_id: Run ID for event tracking (unused, for compatibility)
-            step_id: Step ID for event tracking (unused, for compatibility)
+            context: ToolContext object containing workspace and project info
+            project_name: Project name for event tracking
+            react_type: React type for event tracking
+            run_id: Run ID for event tracking
+            step_id: Step ID for event tracking
 
         Returns:
-            The script execution result (captured stdout), or raises an exception on error
+            A synchronous function that wraps execute_tool
         """
-        # Define the execute_tool function that will be available in the script
-        # Note: Scripts get a simplified sync interface for backward compatibility
-        def script_execute_tool(script_tool_name: str, parameters: Dict[str, Any]):
-            """Synchronous execute_tool wrapper for script execution.
+        import asyncio
+        import concurrent.futures
 
-            This function is called from synchronous scripts and needs to
-            properly handle the async execute_tool method.
-            """
-            import asyncio
-            import concurrent.futures
+        def script_execute_tool(script_tool_name: str, parameters: Dict[str, Any]):
+            """Synchronous execute_tool wrapper for script execution."""
 
             async def _collect_result():
                 """Collect the final result from execute_tool events."""
@@ -341,8 +332,7 @@ class ToolService:
             try:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
-                    # We're in an async context - we need to run the coroutine
-                    # Use a more robust approach: run in a separate thread with its own loop
+                    # We're in an async context - run in a separate thread with its own loop
                     def run_in_new_loop():
                         new_loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(new_loop)
@@ -361,37 +351,89 @@ class ToolService:
                 # No event loop exists, create one
                 return asyncio.run(_collect_result())
 
-        # Prepare globals for the script execution
-        # Create a SkillContext for skill scripts that need it
-        skill_context = None
-        if context and context.workspace:
-            from agent.skill.skill_models import SkillContext
-            # Get the project from workspace using ProjectManager
-            project = None
+        return script_execute_tool
+
+    def _create_skill_context(
+        self,
+        context: Optional[ToolContext],
+    ) -> Optional[Any]:
+        """Create a SkillContext with basic business-agnostic services.
+
+        The SkillContext should only contain basic services like workspace,
+        project, and llm_service - not business-specific services like
+        screenplay_manager.
+
+        Args:
+            context: ToolContext object containing workspace and project info
+
+        Returns:
+            SkillContext object or None if context is invalid
+        """
+        if not context or not context.workspace:
+            return None
+
+        from agent.skill.skill_models import SkillContext
+
+        # Get llm_service from workspace if available
+        llm_service = None
+        if hasattr(context.workspace, 'get_llm_service'):
             try:
-                # Try to get project via ProjectManager
-                project_manager = context.workspace.get_project_manager() if hasattr(context.workspace, 'get_project_manager') else None
-                if project_manager and context.project_name:
-                    project = project_manager.get_project(context.project_name)
-                elif hasattr(context.workspace, 'get_project'):
-                    # Fallback to get_project() method
-                    project = context.workspace.get_project()
+                llm_service = context.workspace.get_llm_service()
             except Exception as e:
-                logger.warning(f"Failed to get project from workspace: {e}")
+                logger.warning(f"Failed to get llm_service from workspace: {e}")
 
-            # Create SkillContext with screenplay_manager
-            screenplay_manager = None
-            if project:
-                try:
-                    screenplay_manager = project.get_screenplay_manager()
-                except Exception as e:
-                    logger.warning(f"Failed to get screenplay_manager from project: {e}")
+        # Get the project from workspace - this is a basic project reference,
+        # not the full business object
+        project = None
+        try:
+            project_manager = context.workspace.get_project_manager() if hasattr(context.workspace, 'get_project_manager') else None
+            if project_manager and context.project_name:
+                project = project_manager.get_project(context.project_name)
+            elif hasattr(context.workspace, 'get_project'):
+                project = context.workspace.get_project()
+        except Exception as e:
+            logger.warning(f"Failed to get project from workspace: {e}")
 
-            skill_context = SkillContext(
-                workspace=context.workspace,
-                project=project,
-                screenplay_manager=screenplay_manager
-            )
+        return SkillContext(
+            workspace=context.workspace,
+            project=project,
+            llm_service=llm_service
+        )
+
+    async def execute_script(
+        self,
+        script_path: str,
+        argv: list = None,
+        context: Optional[ToolContext] = None,
+        project_name: str = "",
+        react_type: str = "",
+        run_id: str = "",
+        step_id: int = 0,
+    ) -> Any:
+        """
+        Execute a script that can call various tools.
+
+        Returns the script execution result (captured stdout).
+
+        Args:
+            script_path: Absolute path to the script file to execute
+            argv: Optional list of command-line arguments to pass to the script
+            context: Optional ToolContext object containing workspace and project info
+            project_name: Project name for event tracking (unused, for compatibility)
+            react_type: React type for event tracking (unused, for compatibility)
+            run_id: Run ID for event tracking (unused, for compatibility)
+            step_id: Step ID for event tracking (unused, for compatibility)
+
+        Returns:
+            The script execution result (captured stdout), or raises an exception on error
+        """
+        # Create the execute_tool wrapper for scripts
+        script_execute_tool = self._create_script_tool_wrapper(
+            context, project_name, react_type, run_id, step_id
+        )
+
+        # Create a SkillContext with basic services only
+        skill_context = self._create_skill_context(context)
 
         script_globals = {
             '__builtins__': __builtins__,
@@ -460,64 +502,10 @@ class ToolService:
         import tempfile
         import os
 
-        # Define execute_tool function for the script
-        def script_execute_tool(script_tool_name: str, parameters: Dict[str, Any]):
-            """Synchronous execute_tool wrapper for script execution."""
-            import asyncio
-            import concurrent.futures
-
-            async def _collect_result():
-                """Collect the final result from execute_tool events."""
-                result = None
-                async for event in self.execute_tool(
-                    script_tool_name,
-                    parameters,
-                    context,
-                    project_name,
-                    react_type,
-                    run_id,
-                    step_id,
-                ):
-                    if event.event_type == "tool_end":
-                        # Extract from content or payload (backward compat)
-                        if event.content and hasattr(event.content, 'result'):
-                            result = event.content.result
-                        elif event.payload:
-                            result = event.payload.get("result")
-                        return result
-                    elif event.event_type == "error":
-                        # Extract from content or payload (backward compat)
-                        if event.content and hasattr(event.content, 'error_message'):
-                            error_msg = event.content.error_message
-                        elif event.payload:
-                            error_msg = event.payload.get("error", "Unknown error")
-                        else:
-                            error_msg = "Unknown error"
-                        raise RuntimeError(error_msg)
-                return result
-
-            # Get the current event loop (if any)
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # We're in an async context - run in a separate thread with its own loop
-                    def run_in_new_loop():
-                        new_loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(new_loop)
-                        try:
-                            return new_loop.run_until_complete(_collect_result())
-                        finally:
-                            new_loop.close()
-
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                        future = executor.submit(run_in_new_loop)
-                        return future.result(timeout=30)  # 30 second timeout
-                else:
-                    # No loop running, safe to use asyncio.run
-                    return asyncio.run(_collect_result())
-            except RuntimeError:
-                # No event loop exists, create one
-                return asyncio.run(_collect_result())
+        # Create the execute_tool wrapper for scripts
+        script_execute_tool = self._create_script_tool_wrapper(
+            context, project_name, react_type, run_id, step_id
+        )
 
         script_globals = {
             '__builtins__': __builtins__,
