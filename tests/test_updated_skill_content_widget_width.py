@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout
 from PySide6.QtCore import QTimer
 import sys
 
-from app.ui.chat.agent_chat_message_card import BaseMessageCard
+from app.ui.chat.card import BaseMessageCard
 from app.ui.chat.message.skill_content_widget import SkillContentWidget
 from app.ui.chat.message.structure_content_widget import StructureContentWidget
 from agent.chat.agent_chat_message import StructureContent, ContentType
