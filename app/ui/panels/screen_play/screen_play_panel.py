@@ -9,10 +9,10 @@ import logging
 from typing import Optional
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
-    QPushButton, QTextEdit, QLabel, QSplitter, QFrame, QSizePolicy
+    QPushButton, QTextEdit, QLabel, QSplitter, QFrame, QSizePolicy, QToolButton
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QCursor
 
 from app.ui.panels.base_panel import BasePanel
 from app.data.screen_play import ScreenPlayManager, ScreenPlayScene
@@ -25,9 +25,6 @@ class ScreenPlayPanel(BasePanel):
 
     def __init__(self, workspace, parent=None):
         """Initialize the screen play panel."""
-        super().__init__(workspace, parent)
-        self.set_panel_title("Screen Play")
-
         # Initialize screenplay manager
         self.screenplay_manager = None
         self.current_project = None
@@ -36,18 +33,14 @@ class ScreenPlayPanel(BasePanel):
         self.view_mode = "list"  # Either "list" or "editor"
         self.current_scene_id = None
 
-        # Create UI components
-        self._setup_ui()
+        # Call parent constructor (will call setup_ui())
+        super().__init__(workspace, parent)
+        self.set_panel_title("Screen Play")
 
-        # Ensure the panel is visible and properly sized
-        self.show()
-        
-    def _setup_ui(self):
+    def setup_ui(self):
         """Set up the UI components."""
-        # Main layout
-        main_layout = QVBoxLayout(self.content_widget)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
+        # Add refresh button to toolbar
+        self.add_toolbar_button("\ue6b8", self._refresh_scenes, "Refresh Scenes")
 
         # Create splitter for list and editor
         self.splitter = QSplitter(Qt.Vertical)
@@ -63,8 +56,8 @@ class ScreenPlayPanel(BasePanel):
         # Create editor view (initially hidden)
         self._setup_editor_view()
 
-        # Add splitter to main layout
-        main_layout.addWidget(self.splitter)
+        # Add splitter to content layout (already created by BasePanel)
+        self.content_layout.addWidget(self.splitter)
 
         # Initially show list view
         self._show_list_view()
@@ -148,7 +141,35 @@ class ScreenPlayPanel(BasePanel):
 
         # Hide initially
         self.editor_container.hide()
-        
+
+    def _create_icon_button(self, icon_code, tooltip, callback):
+        """Create an icon button with iconfont icon and tooltip."""
+        button = QPushButton(icon_code)
+        button.setFixedSize(32, 32)
+        button.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                border: none;
+                border-radius: 4px;
+                color: #A0A0A0;
+                font-family: "iconfont";
+                font-size: 18px;
+                padding: 0px;
+            }
+            QPushButton:hover {
+                background-color: #3D3D3D;
+                color: #FFFFFF;
+            }
+            QPushButton:pressed {
+                background-color: #4D4D4D;
+            }
+        """)
+        button.setToolTip(tooltip)
+        button.setCursor(QCursor(Qt.PointingHandCursor))
+        if callback:
+            button.clicked.connect(callback)
+        return button
+
     def _create_toolbar(self):
         """Create toolbar for list view."""
         toolbar = QFrame()
@@ -160,50 +181,24 @@ class ScreenPlayPanel(BasePanel):
                 padding: 5px;
             }
         """)
-        
+
         layout = QHBoxLayout(toolbar)
         layout.setContentsMargins(5, 5, 5, 5)
         layout.setSpacing(5)
-        
+
         # Add scene button
-        self.add_scene_btn = QPushButton("Add Scene")
-        self.add_scene_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3D3F4E;
-                border: none;
-                border-radius: 4px;
-                color: #e1e1e1;
-                padding: 5px 10px;
-            }
-            QPushButton:hover {
-                background-color: #4080ff;
-            }
-        """)
-        self.add_scene_btn.clicked.connect(self._add_scene)
+        self.add_scene_btn = self._create_icon_button("\ue835", "Add Scene", self._add_scene)
         layout.addWidget(self.add_scene_btn)
-        
+
         # Refresh button
-        self.refresh_btn = QPushButton("Refresh")
-        self.refresh_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3D3F4E;
-                border: none;
-                border-radius: 4px;
-                color: #e1e1e1;
-                padding: 5px 10px;
-            }
-            QPushButton:hover {
-                background-color: #4080ff;
-            }
-        """)
-        self.refresh_btn.clicked.connect(self._refresh_scenes)
+        self.refresh_btn = self._create_icon_button("\ue6b8", "Refresh", self._refresh_scenes)
         layout.addWidget(self.refresh_btn)
-        
+
         # Stretch to push other buttons to the left
         layout.addStretch()
-        
+
         return toolbar
-        
+
     def _create_editor_toolbar(self):
         """Create toolbar for editor view."""
         toolbar = QFrame()
@@ -215,97 +210,32 @@ class ScreenPlayPanel(BasePanel):
                 padding: 5px;
             }
         """)
-        
+
         layout = QHBoxLayout(toolbar)
         layout.setContentsMargins(5, 5, 5, 5)
         layout.setSpacing(5)
-        
+
         # Return to list button
-        self.return_btn = QPushButton("Return to List")
-        self.return_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3D3F4E;
-                border: none;
-                border-radius: 4px;
-                color: #e1e1e1;
-                padding: 5px 10px;
-            }
-            QPushButton:hover {
-                background-color: #4080ff;
-            }
-        """)
-        self.return_btn.clicked.connect(self._return_to_list)
+        self.return_btn = self._create_icon_button("\ue64f", "Return to List", self._return_to_list)
         layout.addWidget(self.return_btn)
-        
+
         # Save button
-        self.save_btn = QPushButton("Save Scene")
-        self.save_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3D3F4E;
-                border: none;
-                border-radius: 4px;
-                color: #e1e1e1;
-                padding: 5px 10px;
-            }
-            QPushButton:hover {
-                background-color: #4080ff;
-            }
-        """)
-        self.save_btn.clicked.connect(self._save_scene)
+        self.save_btn = self._create_icon_button("\ue654", "Save Scene", self._save_scene)
         layout.addWidget(self.save_btn)
-        
+
         # Add screenplay formatting buttons
-        self.action_btn = QPushButton("Action")
-        self.action_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3D3F4E;
-                border: none;
-                border-radius: 4px;
-                color: #e1e1e1;
-                padding: 5px 10px;
-            }
-            QPushButton:hover {
-                background-color: #4080ff;
-            }
-        """)
-        self.action_btn.clicked.connect(self._insert_action_format)
+        self.action_btn = self._create_icon_button("\ue702", "Action", self._insert_action_format)
         layout.addWidget(self.action_btn)
-        
-        self.character_btn = QPushButton("Character")
-        self.character_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3D3F4E;
-                border: none;
-                border-radius: 4px;
-                color: #e1e1e1;
-                padding: 5px 10px;
-            }
-            QPushButton:hover {
-                background-color: #4080ff;
-            }
-        """)
-        self.character_btn.clicked.connect(self._insert_character_format)
+
+        self.character_btn = self._create_icon_button("\ue60c", "Character", self._insert_character_format)
         layout.addWidget(self.character_btn)
-        
-        self.dialog_btn = QPushButton("Dialogue")
-        self.dialog_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3D3F4E;
-                border: none;
-                border-radius: 4px;
-                color: #e1e1e1;
-                padding: 5px 10px;
-            }
-            QPushButton:hover {
-                background-color: #4080ff;
-            }
-        """)
-        self.dialog_btn.clicked.connect(self._insert_dialogue_format)
+
+        self.dialog_btn = self._create_icon_button("\ue721", "Dialogue", self._insert_dialogue_format)
         layout.addWidget(self.dialog_btn)
-        
+
         # Stretch to push other buttons to the left
         layout.addStretch()
-        
+
         return toolbar
         
     def _add_scene(self):
@@ -462,11 +392,6 @@ class ScreenPlayPanel(BasePanel):
         cursor = self.editor.textCursor()
         cursor.insertText("\nWhat the character says here.\n")
         
-    def setup_ui(self):
-        """Set up the panel UI framework."""
-        # UI is already set up in the constructor
-        pass
-
     def load_data(self):
         """Load screenplay data for the current project."""
         # Get the current project
