@@ -8,16 +8,21 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QSizePolicy
 )
 
+from agent.chat.agent_chat_types import ContentType
+
 
 class StructureContentWidget(QWidget):
     """Widget to display both plain text content and structured content in a unified way."""
-    
+
     def __init__(self, initial_content: str = "", parent=None, available_width=None):
         """Initialize the structure content widget."""
         super().__init__(parent)
 
         # Store the available width
         self.available_width = available_width
+
+        # Track the typing widget separately to keep it at the bottom
+        self._typing_widget = None
 
         self._setup_ui(initial_content)
     
@@ -58,22 +63,76 @@ class StructureContentWidget(QWidget):
         return self.content_label.text()
     
     def add_structured_content_widget(self, widget):
-        """Add a structured content widget."""
-        self.structured_content_layout.addWidget(widget)
+        """Add a structured content widget. Typing widgets are kept at the bottom."""
+        # Check if this is a typing widget
+        from app.ui.chat.message.typing_content_widget import TypingContentWidget
+
+        is_typing = isinstance(widget, TypingContentWidget)
+
+        if is_typing:
+            # Remove existing typing widget if present
+            if self._typing_widget is not None:
+                self._remove_typing_widget()
+
+            # Store reference to the new typing widget
+            self._typing_widget = widget
+
+        # If we have a typing widget and this is not a typing widget,
+        # insert this widget before the typing widget to keep typing at the bottom
+        if self._typing_widget is not None and not is_typing and self._typing_widget != widget:
+            # Find the index of the typing widget
+            typing_index = self.structured_content_layout.indexOf(self._typing_widget)
+            if typing_index >= 0:
+                # Insert the new widget before the typing widget
+                self.structured_content_layout.insertWidget(typing_index, widget)
+            else:
+                # Typing widget not in layout, just add normally
+                self.structured_content_layout.addWidget(widget)
+        else:
+            # Add the widget to the layout
+            self.structured_content_layout.addWidget(widget)
+
         # Notify parent about the width change
         parent = self.parent()
         if parent and hasattr(parent, 'update_available_width'):
             # If the parent has an updated width, pass it to the new widget
             if hasattr(parent, 'available_width') and parent.available_width is not None:
                 widget.update_available_width(parent.available_width)
+
+    def _remove_typing_widget(self):
+        """Remove the typing widget from layout and clean it up."""
+        if self._typing_widget is not None:
+            self._typing_widget.setParent(None)
+            self._typing_widget.deleteLater()
+            self._typing_widget = None
+
+    def remove_typing_indicator(self):
+        """Remove the typing indicator widget and stop its animation."""
+        if self._typing_widget is not None:
+            # Stop the animation first
+            if hasattr(self._typing_widget, 'stop_typing'):
+                self._typing_widget.stop_typing()
+            # Remove the widget
+            self._remove_typing_widget()
+
+    def has_typing_indicator(self) -> bool:
+        """Check if this widget has a typing indicator."""
+        return self._typing_widget is not None
     
     def clear_structured_content(self):
         """Clear all structured content widgets."""
+        # Stop typing animation if present
+        if self._typing_widget is not None and hasattr(self._typing_widget, 'stop_typing'):
+            self._typing_widget.stop_typing()
+
         for i in reversed(range(self.structured_content_layout.count())):
             widget = self.structured_content_layout.itemAt(i).widget()
             if widget is not None:
                 widget.setParent(None)
                 widget.deleteLater()
+
+        # Clear the typing widget reference
+        self._typing_widget = None
     
     def get_content_label(self):
         """Get the content label widget."""

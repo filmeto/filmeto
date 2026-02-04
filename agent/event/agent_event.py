@@ -19,6 +19,7 @@ class AgentEventType(str, Enum):
 
     # === Crew成员相关 ===
     CREW_MEMBER_START = "crew_member_start"       # Crew成员开始处理任务
+    CREW_MEMBER_TYPING = "crew_member_typing"     # Crew成员正在输入（反馈给用户）
     CREW_MEMBER_THINKING = "crew_member_thinking" # Crew成员思考过程
     CREW_MEMBER_END = "crew_member_end"           # Crew成员完成处理
 
@@ -81,6 +82,7 @@ class AgentEventType(str, Enum):
         """Check if event type is crew member-related."""
         return event_type in {
             cls.CREW_MEMBER_START.value,
+            cls.CREW_MEMBER_TYPING.value,
             cls.CREW_MEMBER_THINKING.value,
             cls.CREW_MEMBER_END.value
         }

@@ -58,5 +58,6 @@ class ContentType(Enum):
 
     # === 状态和元数据 ===
     PROGRESS = "progress"
+    TYPING = "typing"
     METADATA = "metadata"
     ERROR = "error"
