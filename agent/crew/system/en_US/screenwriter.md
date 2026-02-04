@@ -7,6 +7,7 @@ skills:
   - write_single_scene
   - write_screenplay_outline
   - read_single_scene
+  - read_screenplay_outline
 model: gpt-4o-mini
 temperature: 0.5
 max_steps: 5
