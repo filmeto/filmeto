@@ -4,8 +4,8 @@ This widget displays three bouncing dots to indicate the agent is processing.
 """
 
 from typing import Any, Dict
-from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve
-from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QWidget
+from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QSize
+from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QWidget, QSizePolicy
 
 from agent.chat.content import TypingContent
 from app.ui.chat.message.base_structured_content_widget import BaseStructuredContentWidget
@@ -13,6 +13,9 @@ from app.ui.chat.message.base_structured_content_widget import BaseStructuredCon
 
 class TypingContentWidget(BaseStructuredContentWidget):
     """Widget to display agent typing indicator with bouncing dots animation."""
+
+    # Fixed width for the typing indicator
+    FIXED_WIDTH = 40  # 3 dots of 8px + 4px spacing + margins
 
     def __init__(self, structure_content: TypingContent, parent=None):
         """
@@ -45,9 +48,15 @@ class TypingContentWidget(BaseStructuredContentWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
+        # Set fixed width and size policy for the widget
+        self.setFixedWidth(self.FIXED_WIDTH)
+        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+
         # Create a container for the typing indicator
         typing_frame = QFrame(self)
         typing_frame.setObjectName("typing_frame")
+        typing_frame.setFixedWidth(self.FIXED_WIDTH)
+        typing_frame.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
         typing_frame.setStyleSheet("""
             QFrame#typing_frame {
                 background-color: transparent;
@@ -180,3 +189,7 @@ class TypingContentWidget(BaseStructuredContentWidget):
     def stop_typing(self):
         """Stop the typing animation."""
         self._stop_animation()
+
+    def sizeHint(self):
+        """Return the fixed size hint for the typing indicator."""
+        return QSize(self.FIXED_WIDTH, 20)  # Height of 20 for the dots + margins

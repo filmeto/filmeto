@@ -29,7 +29,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-_MENTION_PATTERN = re.compile(r"@([A-Za-z0-9_-]+)")
+# Pattern for @mentions supporting multiple languages including Chinese, Japanese, Korean, etc.
+# Matches: letters, numbers, underscores, hyphens, and CJK characters (Chinese, Japanese, Korean)
+# Examples: @director, @导演, @ cinematographer, @分镜师
+_MENTION_PATTERN = re.compile(r"@([\w\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af_-]+)")
 _PRODUCER_NAME = "producer"
 
 
@@ -344,15 +347,32 @@ class FilmetoAgent:
 
         crew_members = self.crew_member_service.load_project_crew_members(self.project, refresh=refresh)
         self.crew_members = crew_members
-        # Create lookup with both name and crew_title as keys
+        # Create lookup with name, crew_title, and display_names as keys
         self._crew_member_lookup = {}
         for name, agent in crew_members.items():
             # Add the agent by its name (current behavior)
             self._crew_member_lookup[name.lower()] = agent
+
             # Add the agent by its crew title (if available in metadata)
             crew_title = agent.config.metadata.get('crew_title')
             if crew_title:
                 self._crew_member_lookup[crew_title.lower()] = agent
+
+                # Also add display names (localized titles) for mention matching
+                # This allows mentioning by localized title like @导演, @分镜师, etc.
+                from agent.crew.crew_title import CrewTitle
+                title_instance = CrewTitle.create_from_title(crew_title)
+                if title_instance:
+                    # Get display name in current language
+                    display_name = title_instance.get_title_display()
+                    if display_name and display_name != title_instance.title:
+                        self._crew_member_lookup[display_name] = agent
+
+                    # Also add all available display names for cross-language mentions
+                    if title_instance.display_names:
+                        for lang, lang_display_name in title_instance.display_names.items():
+                            if lang_display_name and lang_display_name not in self._crew_member_lookup:
+                                self._crew_member_lookup[lang_display_name] = agent
 
         for crew_member in crew_members.values():
             self._register_crew_member(crew_member)
@@ -377,19 +397,23 @@ class FilmetoAgent:
         return None
 
     def _resolve_mentioned_title(self, content: str) -> Optional[CrewMember]:
+        """Resolve a crew member by @mention (supports multilingual titles)."""
         for mention in self._extract_mentions(content):
-            candidate = mention.lower()
-            for agent in self.members.values():
-                # Check against both the agent's name and any aliases in metadata
-                if (hasattr(agent, 'config') and
-                    (agent.config.name.lower() == candidate or
-                     agent.config.name.lower().capitalize() == candidate)):
+            # Direct lookup in _crew_member_lookup which now contains:
+            # - agent name
+            # - crew_title (e.g., "director")
+            # - display_name in current language (e.g., "导演")
+            # - all display_names from metadata
+            crew_member = self._crew_member_lookup.get(mention)
+            if crew_member:
+                return crew_member
+
+            # Fallback: try case-insensitive match for display names
+            mention_lower = mention.lower()
+            for key, agent in self._crew_member_lookup.items():
+                if key.lower() == mention_lower:
                     return agent
-                # Also check for crew_title in metadata
-                if (hasattr(agent, 'config') and
-                    agent.config.metadata and
-                    agent.config.metadata.get('crew_title', '').lower() == candidate):
-                    return agent
+
         return None
 
     def _get_producer_crew_member(self) -> Optional[CrewMember]:
