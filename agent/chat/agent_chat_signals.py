@@ -6,9 +6,12 @@ blinker signals for agent chat functionality.
 """
 
 import asyncio
+import logging
 import blinker
 
 from .agent_chat_message import AgentMessage
+
+logger = logging.getLogger(__name__)
 
 
 class AgentChatSignals:
@@ -72,13 +75,17 @@ class AgentChatSignals:
 
         Pulls one message every CONSUME_INTERVAL_MS and sends it via blinker signal.
         This ensures UI rendering performance is not affected by message bursts.
+
+        Error handling: If a message fails to process, logs the error and continues
+        processing subsequent messages to prevent a single failure from blocking the queue.
         """
         while self._running:
+            message = None
             try:
                 # Wait for a message with timeout
                 message = await asyncio.wait_for(
                     self._message_queue.get(),
-                    timeout=0.1
+                    timeout=1
                 )
 
                 # Send the message via blinker signal
@@ -95,14 +102,21 @@ class AgentChatSignals:
                 continue
             except asyncio.CancelledError:
                 # Handle cancellation gracefully
+                logger.info("Message consumer task cancelled")
                 break
             except Exception as e:
-                # Log error but continue processing
-                print(f"Error in message consumer: {e}")
-                try:
-                    self._message_queue.task_done()
-                except ValueError:
-                    pass
+                # Log error but continue processing subsequent messages
+                logger.error(
+                    f"Error processing message (type: {type(message).__name__ if message else 'None'}): {e}",
+                    exc_info=True
+                )
+                # Ensure task_done is called to prevent queue from blocking
+                if message is not None:
+                    try:
+                        self._message_queue.task_done()
+                    except ValueError:
+                        # task_done() called too many times, ignore
+                        logger.debug("task_done() called when no task was pending")
 
     async def send_agent_message(self, message: AgentMessage) -> AgentMessage:
         """

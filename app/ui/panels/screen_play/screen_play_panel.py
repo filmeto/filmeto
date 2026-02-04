@@ -161,28 +161,8 @@ class ScreenPlayPanel(BasePanel):
         self.scene_list.setObjectName("screenplay_scene_list")
         self.scene_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.scene_list.setSpacing(5)
-        self.scene_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         # Set selection mode to single selection
         self.scene_list.setSelectionMode(QListWidget.SingleSelection)
-        self.scene_list.setStyleSheet("""
-            QListWidget {
-                background-color: #2d2d2d;
-                color: #ffffff;
-                border: 1px solid #444444;
-            }
-            QListWidget::item {
-                padding: 0px;
-                margin: 0px;
-                border: none;
-                background: transparent;
-            }
-            QListWidget::item:selected {
-                background: transparent;
-            }
-            QListWidget::item:hover {
-                background: transparent;
-            }
-        """)
         self.scene_list.itemClicked.connect(self._on_scene_selected)
         # Also connect itemDoubleClicked for double-click to edit
         self.scene_list.itemDoubleClicked.connect(self._on_scene_selected)
@@ -209,15 +189,6 @@ class ScreenPlayPanel(BasePanel):
         self.editor = QTextEdit()
         self.editor.setObjectName("screenplay_editor")
         self.editor.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.editor.setStyleSheet("""
-            QTextEdit {
-                background-color: #2d2d2d;
-                color: #ffffff;
-                border: 1px solid #444444;
-                font-family: 'Courier New', monospace;
-                font-size: 12px;
-            }
-        """)
         editor_layout.addWidget(self.editor)
 
         # Add to splitter

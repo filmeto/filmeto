@@ -816,3 +816,82 @@ PlanPanel QPushButton:disabled {
     color: #a0a0a0;
     border: 1px solid #d0d0d0;
 }
+
+/* Screen Play Panel Styles */
+QListWidget#screenplay_scene_list {
+    background-color: #ffffff;
+    color: #333333;
+    border: 1px solid #cccccc;
+}
+
+QListWidget#screenplay_scene_list::item {
+    padding: 0px;
+    margin: 0px;
+    border: none;
+    background: transparent;
+}
+
+QListWidget#screenplay_scene_list::item:selected {
+    background: transparent;
+}
+
+QListWidget#screenplay_scene_list::item:hover {
+    background: transparent;
+}
+
+/* Hide vertical scrollbar but keep scrolling functionality */
+QListWidget#screenplay_scene_list QScrollBar:vertical {
+    width: 0px;
+    border: none;
+    background: transparent;
+}
+
+QListWidget#screenplay_scene_list QScrollBar::handle:vertical {
+    width: 0px;
+    background: transparent;
+    min-height: 0px;
+}
+
+QListWidget#screenplay_scene_list QScrollBar::add-line:vertical,
+QListWidget#screenplay_scene_list QScrollBar::sub-line:vertical {
+    height: 0px;
+    background: transparent;
+}
+
+QListWidget#screenplay_scene_list QScrollBar::add-page:vertical,
+QListWidget#screenplay_scene_list QScrollBar::sub-page:vertical {
+    background: transparent;
+}
+
+/* Screen Play Editor Styles */
+QTextEdit#screenplay_editor {
+    background-color: #ffffff;
+    color: #333333;
+    border: 1px solid #cccccc;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+}
+
+/* Hide vertical scrollbar for editor but keep scrolling functionality */
+QTextEdit#screenplay_editor QScrollBar:vertical {
+    width: 0px;
+    border: none;
+    background: transparent;
+}
+
+QTextEdit#screenplay_editor QScrollBar::handle:vertical {
+    width: 0px;
+    background: transparent;
+    min-height: 0px;
+}
+
+QTextEdit#screenplay_editor QScrollBar::add-line:vertical,
+QTextEdit#screenplay_editor QScrollBar::sub-line:vertical {
+    height: 0px;
+    background: transparent;
+}
+
+QTextEdit#screenplay_editor QScrollBar::add-page:vertical,
+QTextEdit#screenplay_editor QScrollBar::sub-page:vertical {
+    background: transparent;
+}
