@@ -90,7 +90,6 @@ class CrewMember:
         self.plan_service = plan_service or PlanService.get_instance(workspace, self.project_name)
         self.soul_service = soul_service or self._build_soul_service(project)
         self.conversation_history: List[Dict[str, str]] = []
-        self.signals = AgentChatSignals()
 
     async def chat_stream(
         self,

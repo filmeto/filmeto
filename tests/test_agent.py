@@ -53,7 +53,7 @@ async def test_chat_functionality():
         if message.message_type == MessageType.TEXT:
             responses.append(message.get_text_content())
 
-    agent_manager.signals.connect(on_message)
+    agent_manager.connect_message_handler(on_message)
 
     # Register a test agent
     async def echo_handler(msg):

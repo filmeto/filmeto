@@ -51,9 +51,9 @@ class AgentChatWidget(BaseWidget):
         self._is_processing = False
         self._initialization_in_progress = False
 
-        # Connect to AgentChatSignals for message handling
-        self._signals = AgentChatSignals()
-        self._signals.connect(self._on_agent_message_sent)
+        # Note: We'll connect to signals after agent is initialized
+        # The signals instance will be obtained from FilmetoAgent
+        self._signals_connected = False
 
         # Queue and task for processing messages sequentially
         self._message_queue = asyncio.Queue()
@@ -362,6 +362,12 @@ class AgentChatWidget(BaseWidget):
         success = self._ensure_agent_for_project(project_name, project)
 
         if success:
+            # Connect to FilmetoAgent's message handler
+            if not self._signals_connected and self.agent:
+                self.agent.connect_message_handler(self._on_agent_message_sent)
+                self._signals_connected = True
+                logger.info("✅ Connected to FilmetoAgent's message handler")
+
             init_time = (time.time() - init_start) * 1000
             # Check if agent has a valid LLM initialized
             if not self.agent.llm_service.validate_config():

@@ -12,15 +12,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from agent.chat.agent_chat_message import AgentMessage
 from agent.chat.agent_chat_signals import AgentChatSignals
 from agent.chat.agent_chat_types import MessageType
-
-
-def test_singleton():
-    """Test that AgentChatSignals is a singleton."""
-    signal1 = AgentChatSignals()
-    signal2 = AgentChatSignals()
-    
-    assert signal1 is signal2, "AgentChatSignals should be a singleton"
-    print("✓ Singleton test passed")
+from agent.chat.content import TextContent
 
 
 async def test_signal_connection():
@@ -35,17 +27,17 @@ async def test_signal_connection():
 
     # Send a message
     message = AgentMessage(
-        content="Hello, world!",
         message_type=MessageType.TEXT,
         sender_id="agent1",
         sender_name="Test Agent",
+        structured_content=[TextContent(text="Hello, world!")]
     )
     await signals.send_agent_message(message)
 
     # Check that the message was received
     assert len(received_messages) == 1
     assert received_messages[0] is message
-    assert message.content == "Hello, world!"
+    assert message.get_text_content() == "Hello, world!"
     assert message.sender_id == "agent1"
     assert message.sender_name == "Test Agent"
     assert message.message_type == MessageType.TEXT
@@ -57,14 +49,14 @@ def test_agent_message_properties():
     """Test AgentMessage properties."""
     metadata = {"timestamp": "2022-01-01", "type": "info"}
     message = AgentMessage(
-        content="Test message",
         message_type=MessageType.TEXT,
         sender_id="sender123",
         sender_name="Sender Name",
-        metadata=metadata
+        metadata=metadata,
+        structured_content=[TextContent(text="Test message")]
     )
 
-    assert message.content == "Test message"
+    assert message.get_text_content() == "Test message"
     assert message.sender_id == "sender123"
     assert message.sender_name == "Sender Name"
     assert message.message_type == MessageType.TEXT
@@ -74,7 +66,6 @@ def test_agent_message_properties():
 
 
 async def main():
-    test_singleton()
     await test_signal_connection()
     test_agent_message_properties()
     print("All tests passed!")

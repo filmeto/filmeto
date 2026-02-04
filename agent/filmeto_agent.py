@@ -1032,6 +1032,29 @@ class FilmetoAgent:
         """Clear the conversation history."""
         self.conversation_history.clear()
 
+    def connect_message_handler(self, receiver, weak: bool = True):
+        """
+        Connect a message handler to receive agent messages.
+
+        This is a wrapper method for AgentChatSignals.connect().
+
+        Args:
+            receiver: A callable that will receive messages with signature (sender, **kwargs)
+            weak: Whether to use a weak reference (default True)
+        """
+        self.signals.connect(receiver, weak=weak)
+
+    def disconnect_message_handler(self, receiver):
+        """
+        Disconnect a message handler from receiving agent messages.
+
+        This is a wrapper method for AgentChatSignals.disconnect().
+
+        Args:
+            receiver: The callable to disconnect
+        """
+        self.signals.disconnect(receiver)
+
     def update_context(self, project=None):
         """Update the agent context with new project information."""
         if project:

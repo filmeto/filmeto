@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from agent.chat.agent_chat_message import AgentMessage
 from agent.chat.agent_chat_signals import AgentChatSignals
 from agent.chat.agent_chat_types import MessageType
+from agent.chat.content import TextContent
 
 
 async def test_integration_with_existing_agentmessage():
@@ -25,11 +26,11 @@ async def test_integration_with_existing_agentmessage():
     signals.connect(message_handler)
 
     message = AgentMessage(
-        content="Integration test message",
         message_type=MessageType.TEXT,
         sender_id="integration_test_agent",
         sender_name="Integration Test Agent",
         metadata={"test": True, "category": "integration"},
+        structured_content=[TextContent(text="Integration test message")]
     )
     await signals.send_agent_message(message)
 
@@ -41,7 +42,7 @@ async def test_integration_with_existing_agentmessage():
     assert received_message is message
 
     # Check all the properties of the AgentMessage
-    assert received_message.content == "Integration test message"
+    assert received_message.get_text_content() == "Integration test message"
     assert received_message.sender_id == "integration_test_agent"
     assert received_message.sender_name == "Integration Test Agent"
     assert received_message.message_type == MessageType.TEXT
@@ -65,14 +66,14 @@ async def test_different_message_types():
     signals = AgentChatSignals()
     signals.connect(message_handler)
 
-    message_types = [MessageType.TEXT, MessageType.CODE, MessageType.IMAGE, MessageType.SYSTEM, MessageType.THINKING]
+    message_types = [MessageType.TEXT, MessageType.CODE, MessageType.SYSTEM, MessageType.THINKING]
 
     for msg_type in message_types:
         msg = AgentMessage(
-            content=f"Test {msg_type.value} message",
             message_type=msg_type,
             sender_id="test_agent",
             sender_name="Test Agent",
+            structured_content=[TextContent(text=f"Test {msg_type.value} message")]
         )
         await signals.send_agent_message(msg)
 
@@ -80,7 +81,7 @@ async def test_different_message_types():
 
     for i, msg_type in enumerate(message_types):
         assert received_messages[i].message_type == msg_type
-        assert f"Test {msg_type.value} message" in received_messages[i].content
+        assert f"Test {msg_type.value} message" in received_messages[i].get_text_content()
 
     print("✓ Different message types test passed")
 

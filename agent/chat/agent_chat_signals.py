@@ -12,16 +12,14 @@ from .agent_chat_message import AgentMessage
 
 class AgentChatSignals:
     """
-    Singleton class that provides blinker signals for agent chat functionality.
+    Provides blinker signals for agent chat functionality.
+
+    Note: Previously this was a singleton, but now instances should be
+    created by FilmetoAgent and passed to other components.
     """
-    
-    _instance = None
-    
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance.__agent_message_send = blinker.Signal()
-        return cls._instance
+
+    def __init__(self):
+        self.__agent_message_send = blinker.Signal()
 
     def connect(self, receiver, weak: bool = True):
         """
