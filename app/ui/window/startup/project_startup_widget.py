@@ -176,7 +176,7 @@ class ProjectStartupWidget(BaseWidget):
                     logger.error(f"Error loading project {project_name}: {e}")
 
             if project:
-                self.agent_chat_component.update_project(project)
+                self.agent_chat_component.on_project_switch(project)
 
             # Clear the chat history for the new project
             self.agent_chat_component.chat_history_widget.clear()

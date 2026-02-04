@@ -77,7 +77,7 @@ class AgentPanel(BasePanel):
     def update_project(self, project):
         """Update agent with new project context."""
         if self.agent_chat_component:
-            self.agent_chat_component.update_project(project)
+            self.agent_chat_component.on_project_switch(project)
 
     def load_data(self):
         """Load agent data when panel is first activated."""
