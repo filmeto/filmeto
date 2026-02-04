@@ -115,7 +115,7 @@ class TestAgentMessageFlow:
                 structured_content=[TextContent(text='Test message')]
             )
             await agent.signals.send_agent_message(msg)
-            await asyncio.sleep(0.01)
+            await agent.signals.join()
 
             assert len(received_messages) == 1
             assert received_messages[0].get_text_content() == 'Test message'
@@ -149,7 +149,7 @@ class TestAgentMessageFlow:
                 structured_content=[TextContent(text='Test message')]
             )
             await agent.signals.send_agent_message(msg)
-            await asyncio.sleep(0.01)
+            await agent.signals.join()
 
             # Should not receive message after disconnect
             assert len(received_messages) == 0
@@ -197,7 +197,8 @@ class TestAgentMessageFlow:
 
             for msg in messages:
                 await agent.signals.send_agent_message(msg)
-                await asyncio.sleep(0.01)
+
+            await agent.signals.join()
 
             assert len(received_messages) == 2
             assert received_messages[0].message_type == MessageType.TEXT
@@ -253,7 +254,8 @@ class TestAgentMessageFlow:
 
             await agent1.signals.send_agent_message(msg1)
             await agent2.signals.send_agent_message(msg2)
-            await asyncio.sleep(0.01)
+            await agent1.signals.join()
+            await agent2.signals.join()
 
             # agent1's handler should only receive agent1's messages
             assert len(agent1_messages) == 1
@@ -318,8 +320,11 @@ class TestAgentMessageFlow:
                 )
                 await agent.signals.send_agent_message(msg)
 
-            # Wait for processing
+            # Wait for agent signals to process all messages (100ms per message)
+            await agent.signals.join()
+            # Wait for message queue to process all messages
             await message_queue.join()
+            # Additional wait to ensure processor finishes
             await asyncio.sleep(0.1)
 
             # Stop processor
@@ -415,8 +420,11 @@ class TestAgentMessageFlow:
             )
             await agent.signals.send_agent_message(response_msg)
 
-            # Wait for processing
+            # Wait for agent signals to process all messages (100ms per message)
+            await agent.signals.join()
+            # Wait for UI message queue to process all messages
             await ui_message_queue.join()
+            # Additional wait to ensure processor finishes
             await asyncio.sleep(0.1)
 
             # Stop processor
