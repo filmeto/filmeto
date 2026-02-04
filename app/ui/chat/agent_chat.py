@@ -145,7 +145,12 @@ class AgentChatWidget(BaseWidget):
             return
 
         self.chat_history_widget.add_user_message(message)
-        asyncio.ensure_future(self._process_message_async(message))
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self._process_message_async(message))
+        except RuntimeError:
+            # No event loop running, schedule via QTimer
+            QTimer.singleShot(0, lambda: asyncio.ensure_future(self._process_message_async(message)))
 
     def _on_reference_clicked(self, ref_type: str, ref_id: str):
         """Handle reference click in chat history."""
@@ -175,12 +180,11 @@ class AgentChatWidget(BaseWidget):
 
     def _start_message_processor(self):
         """Start the message processing task if not already started."""
-        if not self._message_processor_started:
+        if self._message_processing_task is None or self._message_processing_task.done():
             try:
                 loop = asyncio.get_running_loop()
-                if self._message_processing_task is None or self._message_processing_task.done():
-                    self._message_processing_task = asyncio.create_task(self._process_messages())
-                    self._message_processor_started = True
+                self._message_processing_task = loop.create_task(self._process_messages())
+                self._message_processor_started = True
             except RuntimeError:
                 pass
 
@@ -206,11 +210,18 @@ class AgentChatWidget(BaseWidget):
             except Exception as e:
                 logger.error(f"Error in message processor: {e}", exc_info=True)
 
-    @asyncSlot()
-    async def _on_agent_message_sent(self, sender, message: AgentMessage):
+    @Slot(object, object)
+    def _on_agent_message_sent(self, sender, message: AgentMessage):
         """Handle agent message sent via signals by queuing it for processing."""
-        await self._message_queue.put(message)
-        self._start_message_processor()
+        try:
+            loop = asyncio.get_running_loop()
+            # Put message in queue asynchronously
+            asyncio.ensure_future(self._message_queue.put(message))
+            # Start the processor task
+            self._start_message_processor()
+        except RuntimeError:
+            # No event loop running, ignore
+            pass
 
     def _extract_project_name(self, project: Any) -> str:
         """Extract project name from a project object."""
