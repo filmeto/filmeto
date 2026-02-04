@@ -284,6 +284,7 @@ class FilmetoAgent:
             ContentType.TOOL_CALL: MessageType.TOOL_CALL,
             ContentType.TOOL_RESPONSE: MessageType.TOOL_RESPONSE,
             ContentType.PROGRESS: MessageType.COMMAND,
+            ContentType.TYPING: MessageType.COMMAND,  # Typing indicator
             ContentType.METADATA: MessageType.SYSTEM,
             ContentType.ERROR: MessageType.ERROR,
             ContentType.CODE_BLOCK: MessageType.CODE,

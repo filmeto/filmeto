@@ -18,6 +18,7 @@ from app.ui.chat.message.structure_content_widget import StructureContentWidget
 from app.ui.components.avatar_widget import AvatarWidget
 from app.ui.chat.message.thinking_content_widget import ThinkingContentWidget
 from app.ui.chat.message.skill_content_widget import SkillContentWidget
+from app.ui.chat.message.typing_content_widget import TypingContentWidget
 
 
 class BaseMessageCard(QFrame):
@@ -232,6 +233,8 @@ class BaseMessageCard(QFrame):
             widget = TextContentWidget(structure_content, self.structure_content)
         elif content_type == ContentType.THINKING:
             widget = ThinkingContentWidget(structure_content, self.structure_content)
+        elif content_type == ContentType.TYPING:
+            widget = TypingContentWidget(structure_content, self.structure_content)
         elif content_type == ContentType.CODE_BLOCK:
             widget = CodeBlockWidget(structure_content, self.structure_content)
         elif content_type == ContentType.TABLE:
@@ -344,3 +347,11 @@ class BaseMessageCard(QFrame):
     def clear_structured_content(self):
         """Clear all structured content."""
         self.structure_content.clear_structured_content()
+
+    def remove_typing_indicator(self):
+        """Remove the typing indicator widget if present."""
+        self.structure_content.remove_typing_indicator()
+
+    def has_typing_indicator(self) -> bool:
+        """Check if this card has a typing indicator."""
+        return self.structure_content.has_typing_indicator()

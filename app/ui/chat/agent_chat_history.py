@@ -705,8 +705,14 @@ class AgentChatHistoryWidget(BaseWidget):
             final_content = text_content.text if text_content else content
             card.set_content(final_content)
 
+            # When actual text content arrives, remove the typing indicator
+            # This is the final response from the agent
+            if card.has_typing_indicator():
+                card.remove_typing_indicator()
+
         if structured_content is not None:
-            from agent.chat.content import StructureContent
+            from agent.chat.content import StructureContent, TypingContent
+            from agent.chat.agent_chat_types import ContentType
 
             items = (
                 [structured_content]
@@ -714,8 +720,17 @@ class AgentChatHistoryWidget(BaseWidget):
                 else list(structured_content)
             )
             for sc in items:
+                # Check if this is NOT typing content
+                is_typing_content = isinstance(sc, TypingContent) or sc.content_type == ContentType.TYPING
+
                 card.agent_message.structured_content.append(sc)
                 card.add_structure_content_widget(sc)
+
+                # If this is the final response content (not typing), remove typing indicator
+                # Typing indicator stays for other content types (thinking, tool events, etc.)
+                if not is_typing_content and is_complete:
+                    if card.has_typing_indicator():
+                        card.remove_typing_indicator()
 
         if error:
             from agent.chat.content import TextContent
@@ -728,6 +743,10 @@ class AgentChatHistoryWidget(BaseWidget):
             ]
             card.agent_message.structured_content.append(TextContent(text=error_text))
             card.set_content(error_text)
+
+            # Remove typing indicator on error
+            if card.has_typing_indicator():
+                card.remove_typing_indicator()
 
         self._schedule_scroll()
 

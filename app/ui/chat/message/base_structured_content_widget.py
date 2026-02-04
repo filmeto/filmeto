@@ -74,8 +74,12 @@ class BaseStructuredContentWidget(ABC, QWidget, metaclass=BaseStructuredContentW
     def set_state(self, state: Dict[str, Any]):
         """
         Set the state of the widget.
-        
+
         Args:
             state: Dictionary representing the state to set
         """
+        pass
+
+    def cleanup(self):
+        """Clean up resources when widget is being destroyed. Override in subclasses if needed."""
         pass

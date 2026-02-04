@@ -23,6 +23,7 @@ from .button_content import ButtonContent
 from .form_content import FormContent
 from .skill_content import SkillContent
 from .plan_content import PlanContent, StepContent, TaskListContent
+from .typing_content import TypingContent
 
 
 # Mapping of ContentType to appropriate subclass
@@ -48,6 +49,7 @@ _CONTENT_CLASS_MAP: Dict[ContentType, type] = {
     ContentType.PLAN: PlanContent,
     ContentType.STEP: StepContent,
     ContentType.TASK_LIST: TaskListContent,
+    ContentType.TYPING: TypingContent,
 }
 
 
@@ -75,6 +77,7 @@ __all__ = [
     'PlanContent',
     'StepContent',
     'TaskListContent',
+    'TypingContent',
     'create_content',
 ]
 

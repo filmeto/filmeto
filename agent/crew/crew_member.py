@@ -108,13 +108,34 @@ class CrewMember:
             ReactEvent: Events from the ReAct execution process
         """
         from agent.react import react_service, AgentEventType, AgentEvent
+        from agent.chat.content import TypingContent
+
+        # Generate a run_id for this session
+        import uuid
+        run_id = str(uuid.uuid4())
+
+        # First, emit a typing event to give immediate visual feedback
+        yield AgentEvent.create(
+            event_type=AgentEventType.CREW_MEMBER_TYPING.value,
+            project_name=self.project_name,
+            react_type=self.config.name,
+            run_id=run_id,
+            step_id=0,
+            sender_id=self.config.name,
+            sender_name=self.config.name,
+            content=TypingContent(
+                title="Typing",
+                description="Agent is processing your request"
+            )
+        )
 
         if not self.llm_service.validate_config():
             yield AgentEvent.error(
                 error_message="LLM service is not configured.",
                 project_name=self.project_name,
                 react_type=self.config.name,
-                run_id=getattr(self, "_run_id", ""),
+                run_id=run_id,
+                step_id=0,
                 sender_id=self.config.name,
                 sender_name=self.config.name,
             )
