@@ -594,5 +594,55 @@ Tasks: {1}
 Instances: {2}</translation>
     </message>
 
+    <!-- Members Panel -->
+    <message>
+        <source>Crew Members</source>
+        <translation>剧组成员</translation>
+    </message>
+    <message>
+        <source>Search members...</source>
+        <translation>搜索成员...</translation>
+    </message>
+    <message>
+        <source>Add Member</source>
+        <translation>添加成员</translation>
+    </message>
+    <message>
+        <source>Director</source>
+        <translation>导演</translation>
+    </message>
+    <message>
+        <source>Producer</source>
+        <translation>制片人</translation>
+    </message>
+    <message>
+        <source>Screenwriter</source>
+        <translation>编剧</translation>
+    </message>
+    <message>
+        <source>Cinematographer</source>
+        <translation>摄影师</translation>
+    </message>
+    <message>
+        <source>Editor</source>
+        <translation>剪辑师</translation>
+    </message>
+    <message>
+        <source>Sound Designer</source>
+        <translation>声音设计师</translation>
+    </message>
+    <message>
+        <source>VFX Supervisor</source>
+        <translation>视觉特效总监</translation>
+    </message>
+    <message>
+        <source>Storyboard Artist</source>
+        <translation>分镜师</translation>
+    </message>
+    <message>
+        <source>Other</source>
+        <translation>其他</translation>
+    </message>
+
 </context>
 </TS>

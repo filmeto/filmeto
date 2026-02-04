@@ -157,8 +157,18 @@ class CrewTitle:
         metadata = cls.get_crew_title_metadata(title, language)
         return cls(title, metadata)
 
-    def get_title_display(self, lang_code: str = "en") -> str:
+    def get_title_display(self, lang_code: str = None) -> str:
         """Get the display title for the crew position in the specified language."""
+        # Use current language if not provided
+        if lang_code is None:
+            lang_code = translation_manager.get_current_language()
+            # Map language code to display names key format
+            # "zh_CN" -> "zh", "en_US" -> "en"
+            if lang_code == "zh_CN":
+                lang_code = "zh"
+            elif lang_code == "en_US":
+                lang_code = "en"
+
         # Use the display names from the metadata if available
         if self.display_names and lang_code in self.display_names:
             return self.display_names[lang_code]
@@ -187,7 +197,7 @@ class CrewTitle:
             },
             "storyboard_artist": {
                 "en": "Storyboard Artist",
-                "zh": "故事板艺术家"
+                "zh": "分镜师"
             },
             "vfx_supervisor": {
                 "en": "VFX Supervisor",
