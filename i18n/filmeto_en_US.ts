@@ -594,5 +594,55 @@ Instances: {2}</source>
 实例数：{2}</translation>
     </message>
 
+    <!-- Members Panel -->
+    <message>
+        <source>Crew Members</source>
+        <translation>Crew Members</translation>
+    </message>
+    <message>
+        <source>Search members...</source>
+        <translation>Search members...</translation>
+    </message>
+    <message>
+        <source>Add Member</source>
+        <translation>Add Member</translation>
+    </message>
+    <message>
+        <source>Director</source>
+        <translation>Director</translation>
+    </message>
+    <message>
+        <source>Producer</source>
+        <translation>Producer</translation>
+    </message>
+    <message>
+        <source>Screenwriter</source>
+        <translation>Screenwriter</translation>
+    </message>
+    <message>
+        <source>Cinematographer</source>
+        <translation>Cinematographer</translation>
+    </message>
+    <message>
+        <source>Editor</source>
+        <translation>Editor</translation>
+    </message>
+    <message>
+        <source>Sound Designer</source>
+        <translation>Sound Designer</translation>
+    </message>
+    <message>
+        <source>VFX Supervisor</source>
+        <translation>VFX Supervisor</translation>
+    </message>
+    <message>
+        <source>Storyboard Artist</source>
+        <translation>Storyboard Artist</translation>
+    </message>
+    <message>
+        <source>Other</source>
+        <translation>Other</translation>
+    </message>
+
 </context>
 </TS>

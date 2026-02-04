@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QVBoxLayout
 
 from app.ui.panels.base_panel import BasePanel
 from app.ui.chat.agent_chat_members import AgentChatMembersWidget
+from utils.i18n_utils import tr, translation_manager
 
 
 class MembersPanel(BasePanel):
@@ -16,13 +17,16 @@ class MembersPanel(BasePanel):
     def __init__(self, workspace, parent=None):
         """Initialize the members panel."""
         super().__init__(workspace, parent)
-        self.set_panel_title("Crew Members")
-        
+        self.set_panel_title(tr("Crew Members"))
+
         # Create the agent chat members component
         self.agent_chat_members_component = AgentChatMembersWidget(self.workspace)
-        
+
         # Add it to the content layout
         self.content_layout.addWidget(self.agent_chat_members_component)
+
+        # Connect to language change signal to refresh titles
+        translation_manager.language_changed.connect(self._on_language_changed)
 
     def setup_ui(self):
         """Set up the panel UI framework."""
@@ -72,4 +76,11 @@ class MembersPanel(BasePanel):
         """Called when the project is switched."""
         super().on_project_switched(project_name)
         # Reload members for the new project
+        self._load_crew_members()
+
+    def _on_language_changed(self, language_code: str):
+        """Called when the language is changed."""
+        # Update the panel title
+        self.set_panel_title(tr("Crew Members"))
+        # Reload members to refresh their displayed titles
         self._load_crew_members()
