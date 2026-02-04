@@ -20,6 +20,87 @@ from app.data.screen_play import ScreenPlayManager, ScreenPlayScene
 logger = logging.getLogger(__name__)
 
 
+class SceneListItemWidget(QWidget):
+    """Custom widget for a screenplay scene list item."""
+
+    def __init__(self, title_text: str, summary_text: str, parent=None):
+        super().__init__(parent)
+        self._summary_full_text = summary_text or ""
+        self._setup_ui(title_text)
+        self.set_selected(False)
+
+    def _setup_ui(self, title_text: str):
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(5, 0, 5, 0)
+        outer_layout.setSpacing(0)
+
+        self.card = QFrame(self)
+        self.card.setObjectName("scene_item_card")
+        self.card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        outer_layout.addWidget(self.card)
+
+        card_layout = QVBoxLayout(self.card)
+        card_layout.setContentsMargins(10, 8, 10, 8)
+        card_layout.setSpacing(4)
+
+        self.title_label = QLabel(title_text, self.card)
+        self.title_label.setStyleSheet(
+            "color: #f0f0f0; font-size: 13px; font-weight: 600;"
+        )
+        card_layout.addWidget(self.title_label)
+
+        self.summary_label = QLabel(self._summary_full_text, self.card)
+        self.summary_label.setStyleSheet("color: #c0c0c0; font-size: 11px;")
+        self.summary_label.setWordWrap(False)
+        self.summary_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        card_layout.addWidget(self.summary_label)
+
+        self._update_summary_elide()
+
+    def set_selected(self, is_selected: bool):
+        self._apply_card_style(is_selected)
+
+    def set_summary_text(self, summary_text: str):
+        self._summary_full_text = summary_text or ""
+        self._update_summary_elide()
+
+    def _apply_card_style(self, is_selected: bool):
+        if is_selected:
+            background_color = "#3f3f3f"
+            border_color = "#5a9bd5"
+        else:
+            background_color = "#3a3a3a"
+            border_color = "#2f2f2f"
+        self.card.setStyleSheet(
+            "QFrame#scene_item_card { background-color: %s; border: 1px solid %s; "
+            "border-radius: 8px; }" % (background_color, border_color)
+        )
+
+    def _update_summary_elide(self):
+        if not self.summary_label:
+            return
+        available_width = self.summary_label.width()
+        if available_width <= 0:
+            layout = self.card.layout()
+            if layout:
+                margins = layout.contentsMargins()
+                available_width = self.card.width() - margins.left() - margins.right()
+        if available_width <= 0:
+            return
+        metrics = self.summary_label.fontMetrics()
+        elided = metrics.elidedText(
+            self._summary_full_text, Qt.ElideRight, available_width
+        )
+        self.summary_label.setText(elided)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._update_summary_elide()
+
+
 class ScreenPlayPanel(BasePanel):
     """Panel for managing screenplay scenes."""
 
@@ -79,6 +160,8 @@ class ScreenPlayPanel(BasePanel):
         self.scene_list = QListWidget()
         self.scene_list.setObjectName("screenplay_scene_list")
         self.scene_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.scene_list.setSpacing(5)
+        self.scene_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         # Set selection mode to single selection
         self.scene_list.setSelectionMode(QListWidget.SingleSelection)
         self.scene_list.setStyleSheet("""
@@ -86,23 +169,24 @@ class ScreenPlayPanel(BasePanel):
                 background-color: #2d2d2d;
                 color: #ffffff;
                 border: 1px solid #444444;
-                alternate-background-color: #3a3a3a;
             }
             QListWidget::item {
-                padding: 8px;
-                border-bottom: 1px solid #3a3a3a;
+                padding: 0px;
+                margin: 0px;
+                border: none;
+                background: transparent;
             }
             QListWidget::item:selected {
-                background-color: #4a4a4a;
-                color: #ffffff;
+                background: transparent;
             }
             QListWidget::item:hover {
-                background-color: #3d3d3d;
+                background: transparent;
             }
         """)
         self.scene_list.itemClicked.connect(self._on_scene_selected)
         # Also connect itemDoubleClicked for double-click to edit
         self.scene_list.itemDoubleClicked.connect(self._on_scene_selected)
+        self.scene_list.itemSelectionChanged.connect(self._update_scene_item_styles)
         list_layout.addWidget(self.scene_list)
 
         # Add to splitter
@@ -272,6 +356,7 @@ class ScreenPlayPanel(BasePanel):
             return
 
         # Clear the current list
+        self.scene_list.setUpdatesEnabled(False)
         self.scene_list.clear()
 
         # Get all scenes
@@ -286,6 +371,7 @@ class ScreenPlayPanel(BasePanel):
             empty_item.setFlags(Qt.ItemFlag.NoItemFlags)  # Make non-selectable
             self.scene_list.addItem(empty_item)
             logger.info("No scenes found - showing empty state")
+            self.scene_list.setUpdatesEnabled(True)
             return
 
         # Sort scenes by scene_number
@@ -311,11 +397,79 @@ class ScreenPlayPanel(BasePanel):
             except (ValueError, TypeError):
                 display_num = scene_num
 
-            item.setText(f"Scene {display_num}: {scene.title}")
+            overview_text = self._get_scene_overview(scene, display_num)
+            item_widget = SceneListItemWidget(
+                f"Scene {display_num}",
+                overview_text,
+                self.scene_list
+            )
+            item.setSizeHint(item_widget.sizeHint())
             item.setData(Qt.UserRole, scene.scene_id)
             self.scene_list.addItem(item)
+            self.scene_list.setItemWidget(item, item_widget)
 
+        self._update_scene_item_styles()
+        self.scene_list.setUpdatesEnabled(True)
         logger.info(f"Scene list now has {self.scene_list.count()} items")
+
+    def _update_scene_item_styles(self):
+        """Update list item styling based on selection."""
+        for index in range(self.scene_list.count()):
+            item = self.scene_list.item(index)
+            item_widget = self.scene_list.itemWidget(item)
+            if isinstance(item_widget, SceneListItemWidget):
+                item_widget.set_selected(item.isSelected())
+
+    def _normalize_scene_text(self, text: Optional[str]) -> str:
+        """Normalize scene text for display."""
+        if not text:
+            return ""
+        return " ".join(text.strip().split())
+
+    def _clean_summary_line(self, text: str) -> str:
+        """Clean a summary line for display."""
+        cleaned = text.strip()
+        if cleaned.startswith("#"):
+            cleaned = cleaned.lstrip("#").strip()
+        if cleaned.startswith("**") and cleaned.endswith("**"):
+            cleaned = cleaned.strip("*")
+        if cleaned.startswith("_") and cleaned.endswith("_"):
+            cleaned = cleaned.strip("_")
+        return cleaned
+
+    def _extract_content_summary(self, content: Optional[str]) -> str:
+        """Extract a short summary from scene content."""
+        if not content:
+            return ""
+        for line in content.splitlines():
+            normalized = self._normalize_scene_text(line)
+            if normalized:
+                return self._clean_summary_line(normalized)
+        return ""
+
+    def _get_scene_overview(self, scene: ScreenPlayScene, display_num: str) -> str:
+        """Get overview text for a scene."""
+        logline = self._normalize_scene_text(scene.logline)
+        if logline:
+            return logline
+
+        story_beat = self._normalize_scene_text(scene.story_beat)
+        if story_beat:
+            return story_beat
+
+        title = self._normalize_scene_text(scene.title)
+        expected_title = f"Scene {display_num}".lower()
+        if title and title.lower() != expected_title:
+            return title
+
+        content_summary = self._extract_content_summary(scene.content)
+        if content_summary:
+            return content_summary
+
+        if title:
+            return title
+
+        return "No overview available"
             
     def _on_scene_selected(self, item):
         """Handle scene selection."""
