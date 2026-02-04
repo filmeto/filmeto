@@ -108,7 +108,7 @@ class CrewMember:
             ReactEvent: Events from the ReAct execution process
         """
         from agent.react import react_service, AgentEventType, AgentEvent
-        from agent.chat.content import TypingContent
+        from agent.chat.content import TypingContent, TypingState
 
         # Generate a run_id for this session
         import uuid
@@ -125,11 +125,27 @@ class CrewMember:
             sender_name=self.config.name,
             content=TypingContent(
                 title="Typing",
-                description="Agent is processing your request"
+                description="Agent is processing your request",
+                state=TypingState.START
             )
         )
 
         if not self.llm_service.validate_config():
+            # Emit typing_end event before error
+            yield AgentEvent.create(
+                event_type=AgentEventType.CREW_MEMBER_TYPING_END.value,
+                project_name=self.project_name,
+                react_type=self.config.name,
+                run_id=run_id,
+                step_id=0,
+                sender_id=self.config.name,
+                sender_name=self.config.name,
+                content=TypingContent(
+                    title="Typing",
+                    description="Agent processing completed",
+                    state=TypingState.END
+                )
+            )
             yield AgentEvent.error(
                 error_message="LLM service is not configured.",
                 project_name=self.project_name,
@@ -176,6 +192,21 @@ class CrewMember:
             )
 
             if event.event_type == AgentEventType.FINAL:
+                # Emit typing_end event before final response
+                yield AgentEvent.create(
+                    event_type=AgentEventType.CREW_MEMBER_TYPING_END.value,
+                    project_name=self.project_name,
+                    react_type=self.config.name,
+                    run_id=event.run_id,
+                    step_id=event.step_id,
+                    sender_id=self.config.name,
+                    sender_name=self.config.name,
+                    content=TypingContent(
+                        title="Typing",
+                        description="Agent processing completed",
+                        state=TypingState.END
+                    )
+                )
                 # Extract from content or payload (backward compat)
                 if event.content and hasattr(event.content, 'text'):
                     final_response = event.content.text
@@ -190,6 +221,21 @@ class CrewMember:
                 yield enhanced_event
                 break
             elif event.event_type == AgentEventType.ERROR:
+                # Emit typing_end event before error
+                yield AgentEvent.create(
+                    event_type=AgentEventType.CREW_MEMBER_TYPING_END.value,
+                    project_name=self.project_name,
+                    react_type=self.config.name,
+                    run_id=event.run_id,
+                    step_id=event.step_id,
+                    sender_id=self.config.name,
+                    sender_name=self.config.name,
+                    content=TypingContent(
+                        title="Typing",
+                        description="Agent processing completed",
+                        state=TypingState.END
+                    )
+                )
                 # Extract from content or payload (backward compat)
                 if event.content and hasattr(event.content, 'error_message'):
                     error_message = event.content.error_message
@@ -209,12 +255,27 @@ class CrewMember:
             return
 
         if final_response is None:
+            # Emit typing_end event before error
+            yield AgentEvent.create(
+                event_type=AgentEventType.CREW_MEMBER_TYPING_END.value,
+                project_name=self.project_name,
+                react_type=self.config.name,
+                run_id=run_id,
+                step_id=0,
+                sender_id=self.config.name,
+                sender_name=self.config.name,
+                content=TypingContent(
+                    title="Typing",
+                    description="Agent processing completed",
+                    state=TypingState.END
+                )
+            )
             # Create an error event if we didn't get a final response
             yield AgentEvent.error(
                 error_message="Reached max steps without a final response.",
                 project_name=self.project_name,
                 react_type=self.config.name,
-                run_id=getattr(self, "_run_id", ""),
+                run_id=run_id,
                 sender_id=self.config.name,
                 sender_name=self.config.name,
             )

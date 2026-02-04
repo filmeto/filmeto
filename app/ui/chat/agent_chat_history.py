@@ -711,7 +711,7 @@ class AgentChatHistoryWidget(BaseWidget):
                 card.remove_typing_indicator()
 
         if structured_content is not None:
-            from agent.chat.content import StructureContent, TypingContent
+            from agent.chat.content import StructureContent, TypingContent, TypingState
             from agent.chat.agent_chat_types import ContentType
 
             items = (
@@ -720,8 +720,16 @@ class AgentChatHistoryWidget(BaseWidget):
                 else list(structured_content)
             )
             for sc in items:
-                # Check if this is NOT typing content
+                # Check if this is typing content
                 is_typing_content = isinstance(sc, TypingContent) or sc.content_type == ContentType.TYPING
+                # Check if this is typing END state
+                is_typing_end = is_typing_content and isinstance(sc, TypingContent) and sc.state == TypingState.END
+
+                # If this is typing END state, remove the typing indicator and skip adding widget
+                if is_typing_end:
+                    if card.has_typing_indicator():
+                        card.remove_typing_indicator()
+                    continue
 
                 card.agent_message.structured_content.append(sc)
                 card.add_structure_content_widget(sc)

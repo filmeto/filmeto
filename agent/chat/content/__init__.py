@@ -23,7 +23,7 @@ from .button_content import ButtonContent
 from .form_content import FormContent
 from .skill_content import SkillContent
 from .plan_content import PlanContent, StepContent, TaskListContent
-from .typing_content import TypingContent
+from .typing_content import TypingContent, TypingState
 
 
 # Mapping of ContentType to appropriate subclass
@@ -78,6 +78,7 @@ __all__ = [
     'StepContent',
     'TaskListContent',
     'TypingContent',
+    'TypingState',
     'create_content',
 ]
 
