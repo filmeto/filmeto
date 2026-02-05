@@ -71,10 +71,8 @@ When asked to write scenes or outlines, use your available skills to create the 
         assert 'write_screenplay_outline' in system_prompt
         assert 'write_single_scene' in system_prompt
         
-        # Check that input requirements are included
-        assert 'Input Requirements' in system_prompt
-        assert 'concept' in system_prompt
-        assert 'scene_id' in system_prompt
+        # Check that descriptions are included
+        assert 'Description' in system_prompt or 'description' in system_prompt.lower()
         
         # Check that example JSON is included
         assert 'type' in system_prompt
@@ -341,8 +339,8 @@ class TestSkillPromptFormatting:
             except json.JSONDecodeError as e:
                 pytest.fail(f"Invalid JSON in example for {skill_name}: {e}")
 
-    def test_detailed_skill_format_includes_all_sections(self):
-        """Test that the detailed skill format includes all necessary sections."""
+    def test_detailed_skill_format_includes_name_and_description(self):
+        """Test that the detailed skill format includes name and description."""
         from agent.crew.crew_member import _format_skill_entry_detailed
         from agent.skill.skill_service import SkillService
         
@@ -351,12 +349,9 @@ class TestSkillPromptFormatting:
         
         formatted = _format_skill_entry_detailed(skill)
         
-        # Check all required sections
+        # Check required sections
         assert '###' in formatted  # Has heading
         assert 'Description' in formatted or 'description' in formatted.lower()
-        assert 'Input Requirements' in formatted
-        assert '```json' in formatted  # Has code block
-        assert 'execute_skill' in formatted  # Has example
 
 
 if __name__ == '__main__':

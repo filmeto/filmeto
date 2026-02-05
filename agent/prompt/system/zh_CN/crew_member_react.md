@@ -18,28 +18,11 @@ version: 2.0
 {% if skills_list %}
 ## 可用技能
 
-您可以使用以下技能。请查看每个技能的目的和输入要求，以决定何时使用它。
+您可以使用以下技能。请查看每个技能的目的，以决定何时使用它。
 
 {% for skill in skills_list %}
 ### {{ skill.name }}
 **描述**: {{ skill.description }}
-
-**何时使用此技能**:
-{% if skill.usage_criteria %}
-- {{ skill.usage_criteria }}
-{% else %}
-- {{ skill.description }}
-{% endif %}
-
-{% if skill.input_requirements %}
-**输入要求**:
-{{ skill.input_requirements }}
-{% endif %}
-
-**示例调用**:
-```json
-{{ skill.example_call }}
-```
 
 {% endfor %}
 {% endif %}
@@ -89,7 +72,7 @@ version: 2.0
 
 在决定是否使用技能时，请考虑以下几点：
 
-1. **技能目的**：查看每个技能的"何时使用此技能"部分，了解其预期用途。
+1. **技能目的**：查看每个技能的描述，了解其预期用途。
 2. **任务匹配**：将当前任务或用户请求与技能描述的功能相匹配。
 3. **输入要求**：确保提示词包含技能执行所需的关键信息。
 4. **上下文适用性**：确保技能适合当前上下文和目标。

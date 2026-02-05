@@ -18,28 +18,11 @@ Soul profile:
 {% if skills_list %}
 ## Available Skills
 
-You have access to the following skills. Review each skill's purpose and input requirements to decide when to use it.
+You have access to the following skills. Review each skill's purpose to decide when to use it.
 
 {% for skill in skills_list %}
 ### {{ skill.name }}
 **Description**: {{ skill.description }}
-
-**When to use this skill**:
-{% if skill.usage_criteria %}
-- {{ skill.usage_criteria }}
-{% else %}
-- {{ skill.description }}
-{% endif %}
-
-{% if skill.input_requirements %}
-**Input Requirements**:
-{{ skill.input_requirements }}
-{% endif %}
-
-**Example call**:
-```json
-{{ skill.example_call }}
-```
 
 {% endfor %}
 {% endif %}
@@ -89,7 +72,7 @@ You have access to the following skills. Review each skill's purpose and input r
 
 When deciding whether to use a skill, consider the following:
 
-1. **Skill Purpose**: Review the "When to use this skill" section for each skill to understand its intended use cases.
+1. **Skill Purpose**: Review each skill's description to understand its intended use cases.
 2. **Task Alignment**: Match the current task or user request with the skill's described capabilities.
 3. **Input Requirements**: Ensure your prompt includes the required details for the skill.
 4. **Context Appropriateness**: Ensure the skill fits the current context and objectives.
