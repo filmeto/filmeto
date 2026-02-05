@@ -10,7 +10,7 @@ import logging
 from typing import AsyncGenerator, Dict, List, Optional, Any, TYPE_CHECKING
 
 # Import data models
-from agent.skill.skill_models import Skill, SkillParameter
+from agent.skill.skill_models import Skill
 
 logger = logging.getLogger(__name__)
 
@@ -120,21 +120,9 @@ class SkillService:
                 print(f"Warning: Missing name or description in SKILL.md for {skill_path}")
                 return None
             
-            # Parse parameters if present
-            parameters = []
-            params_data = meta_dict.get('parameters', [])
-            if isinstance(params_data, list):
-                for param_info in params_data:
-                    if isinstance(param_info, dict):
-                        param = SkillParameter(
-                            name=param_info.get('name', ''),
-                            param_type=param_info.get('type', 'string'),
-                            required=param_info.get('required', False),
-                            default=param_info.get('default'),
-                            description=param_info.get('description', '')
-                        )
-                        parameters.append(param)
-            
+            if 'parameters' in meta_dict:
+                logger.debug("Ignoring deprecated skill parameters for %s", name)
+
             # Look for optional files
             reference_path = os.path.join(skill_path, "reference.md")
             reference = None
@@ -165,8 +153,7 @@ class SkillService:
                 skill_path=skill_path,
                 reference=reference,
                 examples=examples,
-                scripts=scripts,
-                parameters=parameters
+                scripts=scripts
             )
             
             return skill
@@ -223,7 +210,7 @@ class SkillService:
             f"### Skill: {skill.name}",
             f"Description: {skill.description}",
             "",
-            skill.get_parameters_prompt(),
+            "Invocation: Provide a prompt that includes all required details.",
             "",
             "Example call:",
             "```json",
@@ -263,16 +250,6 @@ class SkillService:
         metadata = {
             'name': skill.name,
             'description': skill.description,
-            'parameters': [
-                {
-                    'name': param.name,
-                    'type': param.param_type,
-                    'required': param.required,
-                    'default': param.default,
-                    'description': param.description
-                }
-                for param in skill.parameters
-            ]
         }
 
         # Write the SKILL.md file using md_with_meta_utils
@@ -309,8 +286,6 @@ class SkillService:
         Returns:
             True if update was successful, False otherwise
         """
-        from utils.md_with_meta_utils import update_md_with_meta
-
         # Find the existing skill directory
         skill_dir = None
         for dir_path in [self.system_skills_path, self.custom_skills_path]:
@@ -334,21 +309,18 @@ class SkillService:
         metadata = {
             'name': updated_skill.name,
             'description': updated_skill.description,
-            'parameters': [
-                {
-                    'name': param.name,
-                    'type': param.param_type,
-                    'required': param.required,
-                    'default': param.default,
-                    'description': param.description
-                }
-                for param in updated_skill.parameters
-            ]
         }
 
         try:
+            # Remove deprecated parameters from metadata while preserving other fields
+            from utils.md_with_meta_utils import read_md_with_meta, write_md_with_meta
+            current_metadata, _ = read_md_with_meta(skill_md_path)
+            current_metadata.update(metadata)
+            current_metadata.pop('parameters', None)
+
             # Update the SKILL.md file using md_with_meta_utils
-            success = update_md_with_meta(skill_md_path, metadata, updated_skill.knowledge)
+            write_md_with_meta(skill_md_path, current_metadata, updated_skill.knowledge)
+            success = True
 
             if success:
                 # Update optional files if they exist

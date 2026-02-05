@@ -1,19 +1,6 @@
 ---
 name: create_execution_plan
 description: Creates an execution plan for film production projects
-parameters:
-  - name: plan_name
-    type: string
-    required: true
-    description: Name of the execution plan
-  - name: description
-    type: string
-    required: false
-    description: Description of the plan
-  - name: tasks
-    type: array
-    required: false
-    description: Array of tasks for the plan
 ---
 # Execution Plan Creation Skill
 
@@ -46,6 +33,18 @@ Using any other title (such as 'system', 'user', 'assistant', etc.) will cause t
 
 Tasks can have dependencies defined in the 'needs' field, which should contain an array of other task IDs that must be completed before this task can begin.
 
+## Input Requirements
+
+Provide these inputs when calling the script via `execute_skill_script`:
+
+- `plan_name` (string, required): Name of the execution plan.
+- `description` (string, optional): Description of the plan.
+- `tasks` (array, optional): Task list for the plan. If not provided, create a minimal, reasonable task list from the prompt.
+  - Each task should include: `id`, `name`, `description`, `title`, `needs`, `parameters`.
+  - `title` must be one of the valid crew member titles listed above.
+
+If `plan_name` is not explicitly provided, derive a concise name from the prompt.
+
 ## Usage
 
 The skill can be invoked when users want to create a structured execution plan for a film production project. The plan will be created with the specified tasks assigned to appropriate crew members.
@@ -54,42 +53,38 @@ The skill can be invoked when users want to create a structured execution plan f
 
 This skill supports both direct script execution and in-context execution via the SkillExecutor. When executed through the SkillExecutor, it receives a SkillContext object containing project and workspace information, and arguments are passed directly to the execute function.
 
-## Example Call
+## Example Arguments
 
 ```json
 {
-  "type": "skill",
-  "skill": "create_execution_plan",
-  "args": {
-    "plan_name": "Pre-production Schedule",
-    "description": "Detailed schedule for pre-production activities",
-    "tasks": [
-      {
-        "id": "task1",
-        "name": "Script Finalization",
-        "description": "Complete final revisions to the script",
-        "title": "screenwriter",
-        "needs": [],
-        "parameters": {}
-      },
-      {
-        "id": "task2",
-        "name": "Location Scouting",
-        "description": "Find and secure filming locations",
-        "title": "director",
-        "needs": ["task1"],
-        "parameters": {}
-      },
-      {
-        "id": "task3",
-        "name": "Casting",
-        "description": "Hold auditions and select cast members",
-        "title": "director",
-        "needs": ["task1"],
-        "parameters": {}
-      }
-    ]
-  }
+  "plan_name": "Pre-production Schedule",
+  "description": "Detailed schedule for pre-production activities",
+  "tasks": [
+    {
+      "id": "task1",
+      "name": "Script Finalization",
+      "description": "Complete final revisions to the script",
+      "title": "screenwriter",
+      "needs": [],
+      "parameters": {}
+    },
+    {
+      "id": "task2",
+      "name": "Location Scouting",
+      "description": "Find and secure filming locations",
+      "title": "director",
+      "needs": ["task1"],
+      "parameters": {}
+    },
+    {
+      "id": "task3",
+      "name": "Casting",
+      "description": "Hold auditions and select cast members",
+      "title": "director",
+      "needs": ["task1"],
+      "parameters": {}
+    }
+  ]
 }
 ```
 

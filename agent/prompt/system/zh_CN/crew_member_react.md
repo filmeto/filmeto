@@ -18,7 +18,7 @@ version: 2.0
 {% if skills_list %}
 ## 可用技能
 
-您可以使用以下技能。请查看每个技能的目的和参数，以决定何时使用它。
+您可以使用以下技能。请查看每个技能的目的和输入要求，以决定何时使用它。
 
 {% for skill in skills_list %}
 ### {{ skill.name }}
@@ -31,11 +31,9 @@ version: 2.0
 - {{ skill.description }}
 {% endif %}
 
-{% if skill.parameters %}
-**参数**:
-{% for param in skill.parameters %}
-- `{{ param.name }}` ({{ param.type }}, {{ '必需' if param.required else '可选' }}{% if param.default is not none %}, 默认值: {{ param.default }}{% endif %}): {{ param.description }}
-{% endfor %}
+{% if skill.input_requirements %}
+**输入要求**:
+{{ skill.input_requirements }}
 {% endif %}
 
 **示例调用**:
@@ -73,7 +71,8 @@ version: 2.0
   "type": "tool",
   "tool_name": "execute_skill",  // ← 这是工具名称，不是技能名称
   "tool_args": {
-    "skill_name": "actual_skill_name"  // ← 这里才是填写技能名称的地方
+    "skill_name": "actual_skill_name",  // ← 这里才是填写技能名称的地方
+    "prompt": "包含关键信息的任务描述"
   }
 }
 ```
@@ -81,7 +80,7 @@ version: 2.0
 **常见错误避免**：
 - ❌ 请勿将技能名称直接用作 `tool_name`
 - ❌ 请勿写成 `"tool_name": "some_skill_name"`
-- ✅ 正确做法：`"tool_name": "execute_skill"`，并在 tool_args 中使用 `"skill_name": "some_skill_name"`
+- ✅ 正确做法：`"tool_name": "execute_skill"`，并在 tool_args 中使用 `"skill_name": "some_skill_name"` 和 `prompt`
 
 **您可用的工具**：
 - `execute_skill` - 使用此工具来调用上方"可用技能"列表中列出的任何技能
@@ -92,7 +91,7 @@ version: 2.0
 
 1. **技能目的**：查看每个技能的"何时使用此技能"部分，了解其预期用途。
 2. **任务匹配**：将当前任务或用户请求与技能描述的功能相匹配。
-3. **输入要求**：检查您是否拥有技能所需的参数。
+3. **输入要求**：确保提示词包含技能执行所需的关键信息。
 4. **上下文适用性**：确保技能适合当前上下文和目标。
 
 ## 思维过程要求
@@ -114,7 +113,7 @@ version: 2.0
   "tool_name": "execute_skill",
   "tool_args": {
     "skill_name": "可用技能列表中的名称",
-    "message": "您的任务描述"
+    "prompt": "包含关键信息的任务描述"
   }
 }
 ```

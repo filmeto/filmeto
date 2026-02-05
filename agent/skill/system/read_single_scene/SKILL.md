@@ -1,21 +1,6 @@
 ---
 name: read_single_scene
 description: A skill to read and retrieve individual scenes from the screenplay
-parameters:
-  - name: scene_id
-    type: string
-    required: true
-    description: Unique identifier for the scene to read (e.g., scene_001, scene_002)
-  - name: include_content
-    type: boolean
-    required: false
-    default: true
-    description: Whether to include the full scene content in the response
-  - name: include_metadata
-    type: boolean
-    required: false
-    default: true
-    description: Whether to include scene metadata (location, time, characters, etc.)
 ---
 
 # Single Scene Reading Skill
@@ -37,6 +22,16 @@ This skill allows the agent to read and retrieve individual scenes from the proj
 - **Valid scene_id**: The scene_id must exist in the screenplay; otherwise returns an error
 - **Read-Only**: This skill only reads scenes and does not modify them
 
+## Input Requirements
+
+Provide these inputs when calling the script via `execute_skill_script`:
+
+- `scene_id` (string, required): Scene identifier (e.g., `scene_001`).
+- `include_content` (boolean, optional, default: true): Include full scene content.
+- `include_metadata` (boolean, optional, default: true): Include scene metadata.
+
+If `scene_id` is missing, ask for it in the final response instead of calling the script.
+
 ## Usage
 
 The skill can be invoked when agents need to review existing scenes, analyze scene structure, or use scene content as context for writing or revising other scenes.
@@ -48,17 +43,13 @@ The skill can be invoked when agents need to review existing scenes, analyze sce
 - Set include_content=false when only metadata is needed (faster response)
 - Set include_metadata=false when only the scene text is needed
 
-## Example Call
+## Example Arguments
 
 ```json
 {
-  "type": "skill",
-  "skill": "read_single_scene",
-  "args": {
-    "scene_id": "scene_001",
-    "include_content": true,
-    "include_metadata": true
-  }
+  "scene_id": "scene_001",
+  "include_content": true,
+  "include_metadata": true
 }
 ```
 

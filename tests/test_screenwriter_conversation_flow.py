@@ -71,14 +71,15 @@ When asked to write scenes or outlines, use your available skills to create the 
         assert 'write_screenplay_outline' in system_prompt
         assert 'write_single_scene' in system_prompt
         
-        # Check that parameter information is included
+        # Check that input requirements are included
+        assert 'Input Requirements' in system_prompt
         assert 'concept' in system_prompt
         assert 'scene_id' in system_prompt
         
         # Check that example JSON is included
         assert 'type' in system_prompt
-        assert 'skill' in system_prompt
-        assert 'args' in system_prompt
+        assert 'execute_skill' in system_prompt
+        assert 'prompt' in system_prompt
         
         # Check that action instructions are clear
         assert 'JSON' in system_prompt
@@ -96,22 +97,20 @@ When asked to write scenes or outlines, use your available skills to create the 
         
         # Simulate an LLM response that wants to call the outline skill
         llm_response = json.dumps({
-            "type": "skill",
-            "skill": "write_screenplay_outline",
-            "args": {
-                "concept": "A film noir mystery about a detective investigating corruption",
-                "genre": "Film Noir",
-                "num_scenes": 8
+            "type": "tool",
+            "tool_name": "execute_skill",
+            "tool_args": {
+                "skill_name": "write_screenplay_outline",
+                "prompt": "A film noir mystery about a detective investigating corruption. Genre: Film Noir. 8 scenes."
             }
         })
         
         action = crew_member._parse_action(llm_response)
         
-        assert action.action_type == "skill"
-        assert action.skill == "write_screenplay_outline"
-        assert action.args["concept"] == "A film noir mystery about a detective investigating corruption"
-        assert action.args["genre"] == "Film Noir"
-        assert action.args["num_scenes"] == 8
+        assert action.action_type == "tool"
+        assert action.tool_name == "execute_skill"
+        assert action.tool_args["skill_name"] == "write_screenplay_outline"
+        assert "prompt" in action.tool_args
 
     def test_screenwriter_skill_execution_creates_scenes(self):
         """Test that executing a skill through the screenwriter creates scenes."""
@@ -270,8 +269,8 @@ Michael. Thank you for coming.
         end_event = next(e for e in events if e.event_type == 'skill_end')
         assert 'result' in end_event.data
 
-    def test_skill_prompt_includes_required_parameters(self):
-        """Test that the skill prompt clearly indicates required vs optional parameters."""
+    def test_skill_prompt_includes_required_inputs(self):
+        """Test that the skill prompt clearly indicates required inputs."""
         from agent.skill.skill_service import SkillService
         
         skill_service = SkillService(workspace=None)
@@ -280,13 +279,12 @@ Michael. Thank you for coming.
         skill = skill_service.get_skill('write_single_scene')
         assert skill is not None
         
-        # Check that required parameters are marked
-        params_prompt = skill.get_parameters_prompt()
-        assert 'required' in params_prompt.lower()
-        assert 'optional' in params_prompt.lower()
-        assert 'scene_id' in params_prompt
-        assert 'title' in params_prompt
-        assert 'content' in params_prompt
+        # Check that required inputs are documented in knowledge
+        knowledge = skill.knowledge
+        assert 'Input Requirements' in knowledge
+        assert 'scene_id' in knowledge
+        assert 'title' in knowledge
+        assert 'content' in knowledge
 
     def test_react_loop_processes_skill_observation(self):
         """Test that the ReAct loop properly handles skill execution observations."""
@@ -336,9 +334,10 @@ class TestSkillPromptFormatting:
             try:
                 parsed = json.loads(example)
                 assert 'type' in parsed
-                assert 'skill' in parsed
-                assert parsed['skill'] == skill_name
-                assert 'args' in parsed
+                assert parsed['type'] == 'tool'
+                assert parsed['tool_name'] == 'execute_skill'
+                assert parsed['tool_args']['skill_name'] == skill_name
+                assert 'prompt' in parsed['tool_args']
             except json.JSONDecodeError as e:
                 pytest.fail(f"Invalid JSON in example for {skill_name}: {e}")
 
@@ -355,9 +354,9 @@ class TestSkillPromptFormatting:
         # Check all required sections
         assert '###' in formatted  # Has heading
         assert 'Description' in formatted or 'description' in formatted.lower()
-        assert 'Parameters' in formatted or 'parameters' in formatted.lower()
+        assert 'Input Requirements' in formatted
         assert '```json' in formatted  # Has code block
-        assert 'type' in formatted  # Has example
+        assert 'execute_skill' in formatted  # Has example
 
 
 if __name__ == '__main__':

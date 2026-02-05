@@ -35,17 +35,10 @@ class ExecuteSkillTool(BaseTool):
                         required=True
                     ),
                     ToolParameter(
-                        name="message",
-                        description="用户消息/问题",
+                        name="prompt",
+                        description="任务描述/提示词（包含执行所需的关键信息）",
                         param_type="string",
-                        required=False
-                    ),
-                    ToolParameter(
-                        name="max_steps",
-                        description="最大执行步数",
-                        param_type="integer",
-                        required=False,
-                        default=10
+                        required=True
                     ),
                 ],
                 return_description="返回 skill 的执行结果（流式输出）"
@@ -62,17 +55,10 @@ class ExecuteSkillTool(BaseTool):
                         required=True
                     ),
                     ToolParameter(
-                        name="message",
-                        description="User message/question for the skill",
+                        name="prompt",
+                        description="Task prompt including required details",
                         param_type="string",
-                        required=False
-                    ),
-                    ToolParameter(
-                        name="max_steps",
-                        description="Maximum number of execution steps",
-                        param_type="integer",
-                        required=False,
-                        default=10
+                        required=True
                     ),
                 ],
                 return_description="Returns the execution result from the skill (streamed)"
@@ -96,7 +82,7 @@ class ExecuteSkillTool(BaseTool):
         which allows the skill to use tools and have multi-step reasoning.
 
         Args:
-            parameters: Parameters including skill_name, message, and max_steps
+            parameters: Parameters including skill_name and prompt
             context: ToolContext containing workspace and project info
             project_name: Project name for event tracking
             react_type: React type for event tracking
@@ -129,7 +115,7 @@ class ExecuteSkillTool(BaseTool):
         skill_service = SkillService(workspace)
 
         skill_name = parameters.get("skill_name")
-        message = parameters.get("message")
+        prompt = parameters.get("prompt") or parameters.get("message")
         max_steps = parameters.get("max_steps", 10)
 
         if not skill_name:
@@ -142,6 +128,19 @@ class ExecuteSkillTool(BaseTool):
                 sender_id,
                 sender_name,
                 error="skill_name is required"
+            )
+            return
+
+        if not prompt:
+            yield self._create_event(
+                "error",
+                project_name,
+                react_type,
+                run_id,
+                step_id,
+                sender_id,
+                sender_name,
+                error="prompt is required"
             )
             return
 
@@ -172,9 +171,9 @@ class ExecuteSkillTool(BaseTool):
             # Use SkillService.chat_stream to execute the skill
             # Forward events from skill_chat directly, preserving event types
             final_response = None
-            async for event in skill_service.chat_stream(
+        async for event in skill_service.chat_stream(
                 skill=skill,
-                user_message=message,
+                user_message=prompt,
                 workspace=workspace,
                 project=context.project_name if context else None,
                 llm_service=None,  # Will use default LLM service

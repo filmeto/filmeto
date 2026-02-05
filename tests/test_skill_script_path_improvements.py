@@ -14,7 +14,7 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from agent.skill.skill_models import Skill, SkillParameter
+from agent.skill.skill_models import Skill
 from agent.skill.skill_chat import SkillChat
 from agent.skill.skill_service import SkillService
 
@@ -40,8 +40,7 @@ class TestSkillScriptPathImprovements:
             description="A test skill",
             knowledge="Test knowledge",
             skill_path="/path/to/skill",
-            scripts=["scripts/write.py", "scripts/read.py"],
-            parameters=[]
+            scripts=["scripts/write.py", "scripts/read.py"]
         )
 
         # Create SkillChat with mock service
@@ -76,8 +75,7 @@ class TestSkillScriptPathImprovements:
             'script_full_paths': [
                 '/skills/test_skill/scripts/write.py',
                 '/skills/test_skill/scripts/read.py'
-            ],
-            'parameters': []
+            ]
         }
 
         prompt = prompt_service.render_prompt(

@@ -10,13 +10,12 @@ agent.tool.tool_context for context functionality.
 """
 
 # Import data models
-from agent.skill.skill_models import Skill, SkillParameter
+from agent.skill.skill_models import Skill
 
 # Import service
 from agent.skill.skill_service import SkillService
 
 __all__ = [
     'Skill',
-    'SkillParameter',
     'SkillService',
 ]

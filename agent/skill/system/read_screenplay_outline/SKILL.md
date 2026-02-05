@@ -1,23 +1,6 @@
 ---
 name: read_screenplay_outline
 description: A skill to read the screenplay outline containing all scene summaries
-parameters:
-  - name: include_content
-    type: boolean
-    required: false
-    default: false
-    description: "Whether to include full scene content in the response (default: false - returns metadata only)"
-  - name: sort_by
-    type: string
-    required: false
-    default: scene_number
-    description: "How to sort the scenes in the outline"
-    enum: ["scene_number", "created_at", "updated_at", "title"]
-  - name: filter_status
-    type: string
-    required: false
-    description: "Optional filter to only include scenes with a specific status"
-    enum: ["draft", "revised", "final", "approved"]
 ---
 
 # Screenplay Outline Reading Skill
@@ -40,6 +23,14 @@ This skill allows the agent to read the complete screenplay outline, which is a 
 - **Read-Only**: This skill only reads scenes and does not modify them
 - **Empty Outline**: If no scenes exist, returns an empty outline list
 
+## Input Requirements
+
+Provide these inputs when calling the script via `execute_skill_script`:
+
+- `include_content` (boolean, optional, default: false): Include full scene content (metadata only when false).
+- `sort_by` (string, optional, default: "scene_number"): Sort by "scene_number", "created_at", "updated_at", or "title".
+- `filter_status` (string, optional): Filter by status "draft", "revised", "final", or "approved".
+
 ## Usage
 
 The skill can be invoked when the screenwriter or director needs to:
@@ -56,17 +47,13 @@ The skill can be invoked when the screenwriter or director needs to:
 - Use filter_status to focus on specific workflow stages (e.g., only draft scenes)
 - The outline provides essential context for writing connected scenes
 
-## Example Call
+## Example Arguments
 
 ```json
 {
-  "type": "skill",
-  "skill": "read_screenplay_outline",
-  "args": {
-    "include_content": false,
-    "sort_by": "scene_number",
-    "filter_status": null
-  }
+  "include_content": false,
+  "sort_by": "scene_number",
+  "filter_status": null
 }
 ```
 

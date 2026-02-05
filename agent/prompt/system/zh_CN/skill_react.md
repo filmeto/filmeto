@@ -36,7 +36,7 @@ version: 1.0
   "tool_name": "execute_skill_script",
   "tool_args": {
     "script_path": "{{ skill.script_full_paths[0] if skill.script_full_paths else skill.skill_path + '/script.py' }}",
-    "args": << 在此插入"输入参数"部分的参数 >>
+    "args": << 根据提示词与技能知识提取参数 >>
   }
 }
 ```
@@ -49,14 +49,14 @@ version: 1.0
   "tool_args": {
     "skill_path": "{{ skill.skill_path }}",
     "script_name": "{{ skill.script_names[0] if skill.script_names else 'script.py' }}",
-    "args": << 在此插入"输入参数"部分的参数 >>
+    "args": << 根据提示词与技能知识提取参数 >>
   }
 }
 ```
 {% else %}
 ## 执行模式：生成并执行代码
 此技能无预定义脚本。要执行此技能：
-1. 根据知识和参数生成实现技能功能的Python代码
+1. 根据知识和提示词生成实现技能功能的Python代码
 2. 使用 `execute_generated_code` 工具执行生成的代码
 3. 代码应使用 `context` 参数访问 screenplay_manager、project 等
 
@@ -72,11 +72,11 @@ version: 1.0
 ```
 {% endif %}
 
-## 当前任务
+## 当前任务（提示词）
 {{ user_question }}
 
 {% if args %}
-## 输入参数
+## 可选输入（如有）
 ```json
 {{ args | tojson(indent=2) }}
 ```
@@ -120,7 +120,7 @@ version: 1.0
 
 1. **工具目的**：查看工具的描述，了解其预期用途。
 2. **任务匹配**：将当前任务或用户请求与工具描述的功能相匹配。
-3. **输入要求**：检查您是否拥有工具所需的参数。
+3. **输入要求**：使用提示词与技能知识补齐所需输入。
 4. **上下文适用性**：确保工具适合当前上下文和目标。
 
 ## 思维过程要求
