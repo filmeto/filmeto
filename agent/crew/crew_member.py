@@ -1,5 +1,6 @@
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional, TYPE_CHECKING
 
 import yaml
@@ -325,9 +326,8 @@ class CrewMember:
             ]
             if self.config.description:
                 prompt_sections.append(f"Role description: {self.config.description}")
-            if self.config.prompt:
-                prompt_sections.append(self.config.prompt.strip())
 
+            # soul_content already includes soul + crew_title + custom_prompt from get_full_knowledge()
             if soul_content.strip():
                 prompt_sections.append("Soul profile:")
                 prompt_sections.append(soul_content)
@@ -372,9 +372,8 @@ class CrewMember:
             ]
             if self.config.description:
                 prompt_sections.append(f"Role description: {self.config.description}")
-            if self.config.prompt:
-                prompt_sections.append(self.config.prompt.strip())
 
+            # soul_content already includes soul + crew_title + custom_prompt from get_full_knowledge()
             if soul_content.strip():
                 prompt_sections.append("Soul profile:")
                 prompt_sections.append(soul_content)
@@ -426,26 +425,105 @@ class CrewMember:
 
         return skills_list
 
-    def _get_formatted_soul_prompt(self) -> str:
-        """Get formatted soul prompt for use in system prompt."""
-        if not self.config.soul:
-            return ""
-        soul = self.soul_service.get_soul_by_name(self.project_name, self.config.soul)
-        if not soul:
-            return f"Soul '{self.config.soul}' not found."
-        if soul.knowledge:
-            return soul.knowledge
-        return f"Soul '{self.config.soul}' has no prompt content."
+    def get_full_knowledge(self) -> str:
+        """
+        Get the full knowledge for this crew member by combining:
+        1. Soul knowledge (if soul is configured)
+        2. Crew title role description
+        3. User custom knowledge (from prompt field)
 
-    def _get_soul_prompt(self) -> str:
+        Returns:
+            Combined knowledge string with all three components
+        """
+        parts = []
+
+        # 1. Get soul knowledge
+        soul_knowledge = self._get_soul_knowledge()
+        if soul_knowledge:
+            parts.append(soul_knowledge)
+
+        # 2. Get crew title role description
+        crew_title_info = self._get_crew_title_info()
+        if crew_title_info:
+            parts.append(crew_title_info)
+
+        # 3. Get user custom knowledge (from prompt field)
+        custom_knowledge = self.config.prompt or ""
+        if custom_knowledge:
+            parts.append(custom_knowledge)
+
+        # Combine all parts
+        if not parts:
+            return ""
+
+        # If there's only one part, return it directly
+        if len(parts) == 1:
+            return parts[0]
+
+        # Join with clear section separators
+        return "\n\n---\n\n".join(parts)
+
+    def _get_soul_knowledge(self) -> str:
+        """Get soul knowledge for this crew member."""
         if not self.config.soul:
             return ""
         soul = self.soul_service.get_soul_by_name(self.project_name, self.config.soul)
         if not soul:
-            return f"Soul '{self.config.soul}' not found."
+            return ""
         if soul.knowledge:
             return soul.knowledge
-        return f"Soul '{self.config.soul}' has no prompt content."
+        return ""
+
+    def _get_crew_title_info(self) -> str:
+        """Get crew title role description and content."""
+        from .crew_title import CrewTitle
+        from utils.md_with_meta_utils import get_content
+
+        crew_title = self.config.metadata.get('crew_title', '') if hasattr(self.config, 'metadata') and self.config.metadata else ''
+        if not crew_title:
+            return ""
+
+        parts = []
+
+        # Get crew title metadata
+        crew_title_metadata = CrewTitle.get_crew_title_metadata(crew_title)
+        description = crew_title_metadata.get('description', '')
+        if description:
+            parts.append(f"Role: {description}")
+
+        # Get crew title content (the "You are the..." part from the .md file)
+        try:
+            current_language = self._get_language()
+            # Get the correct path to crew system directory
+            system_base_dir = Path(os.path.dirname(__file__)) / "system"
+
+            # Determine language-specific directory
+            if current_language == "zh_CN":
+                system_dir = system_base_dir / "zh_CN"
+            elif current_language == "en_US":
+                system_dir = system_base_dir / "en_US"
+            else:
+                system_dir = system_base_dir / "en_US"
+
+            # Fallback to base directory if language-specific directory doesn't exist
+            if not system_dir.exists():
+                system_dir = system_base_dir
+
+            # Get the crew title .md file path
+            md_file_path = system_dir / f"{crew_title}.md"
+            if md_file_path.exists():
+                content = get_content(md_file_path)
+                if content and content.strip():
+                    parts.append(content.strip())
+        except Exception as e:
+            logger.debug(f"Could not read crew title content for {crew_title}: {e}")
+
+        # Combine into a single string
+        return "\n\n".join(parts) if parts else ""
+
+    def _get_formatted_soul_prompt(self) -> str:
+        """Get formatted full knowledge prompt for use in system prompt."""
+        return self.get_full_knowledge()
 
     def _format_skills_prompt(self) -> str:
         language = self._get_language()

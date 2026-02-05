@@ -130,7 +130,7 @@ class CrewService:
                     'max_steps': selected_soul.metadata.get('max_steps', crew_title_metadata.get('max_steps', 5)),
                     'color': selected_soul.metadata.get('color', crew_title_metadata.get('color', '#4a90e2')),  # Soul color takes priority
                     'icon': selected_soul.metadata.get('icon', crew_title_metadata.get('icon', '🤖')),      # Soul icon takes priority
-                    'prompt': selected_soul.knowledge if selected_soul.knowledge else crew_title_metadata.get('prompt', '')
+                    'prompt': ''  # Leave blank for user to customize later, will use soul knowledge dynamically
                 }
             else:
                 # If no soul is found, create a basic crew member with just the title
@@ -147,7 +147,7 @@ class CrewService:
                     'max_steps': crew_title_metadata.get('max_steps', 5),
                     'color': crew_title_metadata.get('color', '#4a90e2'),  # Use crew title color as fallback
                     'icon': crew_title_metadata.get('icon', '🤖'),        # Use crew title icon as fallback
-                    'prompt': crew_title_metadata.get('prompt', '')
+                    'prompt': ''  # Leave blank for user to customize later
                 }
 
             # Use the write_project_crew_member method to create the file
