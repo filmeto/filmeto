@@ -102,6 +102,44 @@ class AgentChatHistoryService:
         return history.get_latest_message_info()
 
     @classmethod
+    def get_latest_message_id(
+        cls,
+        workspace_path: str,
+        project_name: str
+    ) -> Optional[str]:
+        """
+        Get the most recent message ID.
+
+        Args:
+            workspace_path: Path to the workspace
+            project_name: Name of the project
+
+        Returns:
+            The most recent message ID, or None if no messages exist
+        """
+        history = cls.get_history(workspace_path, project_name)
+        return history.get_latest_message_id()
+
+    @classmethod
+    def get_latest_message_timestamp(
+        cls,
+        workspace_path: str,
+        project_name: str
+    ) -> Optional[int]:
+        """
+        Get the most recent message timestamp in UTC seconds.
+
+        Args:
+            workspace_path: Path to the workspace
+            project_name: Name of the project
+
+        Returns:
+            The most recent message timestamp, or None if no messages exist
+        """
+        history = cls.get_history(workspace_path, project_name)
+        return history.get_latest_message_timestamp()
+
+    @classmethod
     def get_message(
         cls,
         workspace_path: str,

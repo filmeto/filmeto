@@ -4,14 +4,20 @@ Storage module for agent chat history.
 Handles file-based storage of AgentMessage objects with daily directory organization.
 """
 
-import os
-import yaml
 import logging
-from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
+import os
+from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import yaml
 
 from agent.chat.agent_chat_message import AgentMessage
+from agent.chat.history.message_paths import (
+    build_message_filename,
+    date_str_from_timestamp,
+    parse_message_filename,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -21,13 +27,11 @@ class MessageStorage:
     Handles storage and retrieval of AgentMessage objects to/from markdown files.
 
     File naming convention: {utc_timestamp}_{message_id}_{sender}.md
-    File structure:
-        ---
-        metadata: {...}
-        ---
+    File structure (YAML):
+        metadata:
+          ...
         content:
-          - {...}
-          - {...}
+          - ...
     """
 
     def __init__(self, history_root_path: str):
@@ -40,20 +44,33 @@ class MessageStorage:
         self.history_root_path = Path(history_root_path)
         self.history_root_path.mkdir(parents=True, exist_ok=True)
 
-    def _get_date_dir_path(self, date: datetime) -> Path:
+    def _get_date_dir_path(self, date: datetime, create: bool = True) -> Path:
         """
         Get the directory path for a specific date (yyyyMMdd format).
 
         Args:
             date: The date to get the directory for
+            create: Whether to create the directory if missing
 
         Returns:
             Path to the date-specific directory
         """
-        date_str = date.strftime("%Y%m%d")
+        date_str = date_str_from_timestamp(date)
         dir_path = self.history_root_path / date_str
-        dir_path.mkdir(parents=True, exist_ok=True)
+        if create:
+            dir_path.mkdir(parents=True, exist_ok=True)
         return dir_path
+
+    def _list_date_dirs(self, reverse: bool = False) -> List[Path]:
+        if not self.history_root_path.exists():
+            return []
+        date_dirs = [d for d in self.history_root_path.iterdir() if d.is_dir()]
+        date_dirs.sort(key=lambda d: d.name, reverse=reverse)
+        return date_dirs
+
+    def _get_file_timestamp(self, file_path: Path) -> int:
+        parsed = parse_message_filename(file_path)
+        return parsed.timestamp if parsed else 0
 
     def _get_file_path(self, message: AgentMessage) -> Path:
         """
@@ -67,16 +84,9 @@ class MessageStorage:
         Returns:
             Path to the message file
         """
-        date_dir = self._get_date_dir_path(message.timestamp)
-
-        # Get UTC timestamp in seconds
-        utc_timestamp = int(message.timestamp.timestamp())
-
-        # Sanitize sender name for filename
-        sender = message.sender_name or message.sender_id
-        safe_sender = sender.replace(" ", "_").replace("/", "_").replace("\\", "_")
-
-        filename = f"{utc_timestamp}_{message.message_id}_{safe_sender}.md"
+        date_dir = self._get_date_dir_path(message.timestamp, create=True)
+        sender = message.sender_name or message.sender_id or "unknown"
+        filename = build_message_filename(message.timestamp, message.message_id, sender)
         return date_dir / filename
 
     def _message_to_dict(self, message: AgentMessage) -> Dict[str, Any]:
@@ -91,11 +101,11 @@ class MessageStorage:
         """
         return {
             "message_id": message.message_id,
-            "message_type": message.message_type.value if hasattr(message.message_type, 'value') else str(message.message_type),
+            "message_type": message.message_type.value if hasattr(message.message_type, "value") else str(message.message_type),
             "sender_id": message.sender_id,
             "sender_name": message.sender_name,
             "timestamp": message.timestamp.isoformat(),
-            "metadata": message.metadata or {}
+            "metadata": message.metadata or {},
         }
 
     def _structured_content_to_dict(self, content) -> Dict[str, Any]:
@@ -108,22 +118,107 @@ class MessageStorage:
         Returns:
             Dictionary representation of the content
         """
-        # Try to use to_dict method if available
-        if hasattr(content, 'to_dict'):
+        if hasattr(content, "to_dict"):
             return content.to_dict()
 
-        # Fallback to basic serialization
-        result = {
-            "content_type": str(content.content_type)
-        }
-        if hasattr(content, 'text'):
-            result['text'] = content.text
-        if hasattr(content, 'data'):
-            result['data'] = content.data
-        if hasattr(content, 'metadata'):
-            result['metadata'] = content.metadata
-
+        result = {"content_type": str(content.content_type)}
+        if hasattr(content, "text"):
+            result["text"] = content.text
+        if hasattr(content, "data"):
+            result["data"] = content.data
+        if hasattr(content, "metadata"):
+            result["metadata"] = content.metadata
         return result
+
+    def _normalize_loaded_payload(self, documents: List[Any]) -> Dict[str, Any]:
+        metadata: Dict[str, Any] = {}
+        content_list: List[Any] = []
+
+        if not documents:
+            return {"metadata": metadata, "content": content_list}
+
+        if len(documents) == 1:
+            doc = documents[0]
+            if isinstance(doc, dict):
+                metadata = doc.get("metadata") or {}
+                content_list = doc.get("content") or []
+                if not metadata and any(
+                    key in doc for key in ("message_id", "sender_id", "timestamp", "message_type")
+                ):
+                    metadata = {k: v for k, v in doc.items() if k != "content"}
+            elif isinstance(doc, list):
+                content_list = doc
+        else:
+            first = documents[0]
+            second = documents[1]
+            if isinstance(first, dict):
+                metadata = first.get("metadata")
+                if metadata is None:
+                    metadata = {k: v for k, v in first.items() if k != "metadata"}
+            if isinstance(second, dict) and "content" in second:
+                content_list = second.get("content") or []
+            elif isinstance(second, list):
+                content_list = second
+
+        if not isinstance(metadata, dict):
+            metadata = {}
+        if not isinstance(content_list, list):
+            content_list = []
+
+        return {"metadata": metadata, "content": content_list}
+
+    def _load_payload(self, file_path: Path) -> Optional[Dict[str, Any]]:
+        if not file_path.exists():
+            return None
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+        except Exception as e:
+            logger.error(f"Failed to read message file {file_path}: {e}")
+            return None
+
+        try:
+            documents = list(yaml.safe_load_all(content))
+        except yaml.YAMLError as e:
+            logger.warning(f"Failed to parse YAML in {file_path}: {e}")
+            return {"metadata": {}, "content": []}
+
+        return self._normalize_loaded_payload(documents)
+
+    def _coerce_content_list(self, content: Any) -> List[Any]:
+        if isinstance(content, list):
+            return content
+        return []
+
+    def _write_payload(self, file_path: Path, metadata: Dict[str, Any], content_list: List[Any]) -> None:
+        payload = {
+            "metadata": metadata,
+            "content": content_list,
+        }
+        with open(file_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(payload, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+    def _find_message_file_in_dir(self, date_dir: Path, message_id: str) -> Optional[Path]:
+        if not date_dir.exists():
+            return None
+        matches = list(date_dir.glob(f"*_{message_id}_*.md"))
+        if not matches:
+            return None
+        matches.sort(key=self._get_file_timestamp)
+        return matches[-1]
+
+    def find_message_file(self, message_id: str, date: Optional[datetime] = None) -> Optional[Path]:
+        if date is not None:
+            date_dir = self._get_date_dir_path(date, create=False)
+            found = self._find_message_file_in_dir(date_dir, message_id)
+            if found:
+                return found
+
+        for date_dir in self._list_date_dirs(reverse=True):
+            found = self._find_message_file_in_dir(date_dir, message_id)
+            if found:
+                return found
+        return None
 
     def save_message(self, message: AgentMessage, append_content: bool = True) -> Path:
         """
@@ -139,59 +234,41 @@ class MessageStorage:
         Returns:
             Path to the saved file
         """
-        file_path = self._get_file_path(message)
+        existing_path = self.find_message_file(message.message_id, message.timestamp)
+        file_path = existing_path or self._get_file_path(message)
 
-        # Convert message metadata to dict
         message_dict = self._message_to_dict(message)
 
-        # Convert structured content to list of dicts
-        content_list = []
-        for content in message.structured_content:
+        content_list: List[Dict[str, Any]] = []
+        for content in message.structured_content or []:
             try:
                 content_list.append(self._structured_content_to_dict(content))
             except Exception as e:
                 logger.warning(f"Failed to convert content to dict: {e}")
                 content_list.append({
                     "content_type": str(content.content_type),
-                    "error": str(e)
+                    "error": str(e),
                 })
 
-        if append_content and file_path.exists():
-            # Read existing content and append
-            try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
+        existing_payload = self._load_payload(file_path) if file_path.exists() else None
+        existing_metadata = None
+        existing_content = []
+        if existing_payload:
+            existing_metadata = existing_payload.get("metadata")
+            existing_content = self._coerce_content_list(existing_payload.get("content"))
 
-                # Parse existing YAML content list
-                if '\n---\ncontent:\n' in content:
-                    parts = content.split('\n---\ncontent:\n')
-                    if len(parts) == 2:
-                        existing_yaml = parts[1]
-                        try:
-                            existing_content = yaml.safe_load(existing_yaml) or []
-                            if isinstance(existing_content, list):
-                                content_list = existing_content + content_list
-                        except yaml.YAMLError as e:
-                            logger.warning(f"Failed to parse existing content YAML: {e}")
-            except Exception as e:
-                logger.warning(f"Failed to read existing file for appending: {e}")
+        if append_content and existing_content:
+            content_list = existing_content + content_list
 
-        # Build YAML content
-        yaml_content = {
-            "metadata": message_dict,
-            "content": content_list
-        }
+        metadata = dict(message_dict)
+        if append_content and isinstance(existing_metadata, dict) and existing_metadata:
+            metadata.update(existing_metadata)
 
-        # Write to file
+        if metadata.get("message_id") is None:
+            metadata["message_id"] = message.message_id
+
         try:
-            with open(file_path, 'w', encoding='utf-8') as f:
-                f.write("---\n")
-                f.write(f"metadata:\n")
-                yaml.dump(message_dict, f, default_flow_style=False, allow_unicode=True)
-                f.write("\n---\n")
-                f.write("content:\n")
-                yaml.dump(content_list, f, default_flow_style=False, allow_unicode=True)
-
+            self._write_payload(file_path, metadata, content_list)
             logger.debug(f"Saved message to {file_path}")
         except Exception as e:
             logger.error(f"Failed to save message to {file_path}: {e}")
@@ -209,42 +286,12 @@ class MessageStorage:
         Returns:
             Dictionary containing metadata and content, or None if loading fails
         """
-        if not file_path.exists():
+        payload = self._load_payload(file_path)
+        if payload is None:
             return None
-
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-
-            # Parse the YAML content
-            parts = content.split('\n---\n')
-
-            result = {}
-
-            # Parse metadata section
-            for part in parts:
-                if part.strip().startswith('metadata:'):
-                    try:
-                        result['metadata'] = yaml.safe_load(part)
-                    except yaml.YAMLError as e:
-                        logger.warning(f"Failed to parse metadata YAML: {e}")
-                        result['metadata'] = {}
-                elif part.strip().startswith('content:'):
-                    try:
-                        result['content'] = yaml.safe_load(part)
-                    except yaml.YAMLError as e:
-                        logger.warning(f"Failed to parse content YAML: {e}")
-                        result['content'] = []
-
-            # Add file metadata
-            result['_file_path'] = str(file_path)
-            result['_file_mtime'] = os.path.getmtime(file_path)
-
-            return result
-
-        except Exception as e:
-            logger.error(f"Failed to load message from {file_path}: {e}")
-            return None
+        payload["_file_path"] = str(file_path)
+        payload["_file_mtime"] = os.path.getmtime(file_path)
+        return payload
 
     def list_message_files(self, date: datetime) -> List[Path]:
         """
@@ -256,24 +303,19 @@ class MessageStorage:
         Returns:
             List of file paths, sorted by timestamp (from filename)
         """
-        date_dir = self._get_date_dir_path(date)
-
+        date_dir = self._get_date_dir_path(date, create=False)
         if not date_dir.exists():
             return []
 
         files = list(date_dir.glob("*.md"))
+        files.sort(key=self._get_file_timestamp)
+        return files
 
-        # Sort by timestamp in filename (first part before first underscore)
-        def get_timestamp(file_path: Path) -> int:
-            try:
-                name = file_path.stem
-                timestamp_str = name.split('_')[0]
-                return int(timestamp_str)
-            except (ValueError, IndexError):
-                return 0
-
-        files.sort(key=get_timestamp)
-
+    def list_all_message_files(self) -> List[Path]:
+        files: List[Path] = []
+        for date_dir in self._list_date_dirs():
+            files.extend(date_dir.glob("*.md"))
+        files.sort(key=self._get_file_timestamp)
         return files
 
     def delete_message(self, file_path: Path) -> bool:
@@ -303,41 +345,19 @@ class MessageStorage:
         Returns:
             Dictionary with message_id, timestamp, and file_path, or None if no messages exist
         """
-        # Scan all date directories
-        date_dirs = sorted([d for d in self.history_root_path.iterdir() if d.is_dir()], reverse=True)
-
-        for date_dir in date_dirs:
+        for date_dir in self._list_date_dirs(reverse=True):
             files = list(date_dir.glob("*.md"))
             if not files:
                 continue
 
-            # Sort by timestamp in filename
-            def get_timestamp(file_path: Path) -> int:
-                try:
-                    name = file_path.stem
-                    timestamp_str = name.split('_')[0]
-                    return int(timestamp_str)
-                except (ValueError, IndexError):
-                    return 0
-
-            files.sort(key=get_timestamp, reverse=True)
-
-            if files:
-                latest_file = files[0]
-                try:
-                    name = latest_file.stem
-                    parts = name.split('_')
-                    if len(parts) >= 2:
-                        timestamp = int(parts[0])
-                        message_id = parts[1]
-
-                        return {
-                            "message_id": message_id,
-                            "timestamp": timestamp,
-                            "file_path": str(latest_file)
-                        }
-                except (ValueError, IndexError) as e:
-                    logger.warning(f"Failed to parse filename {latest_file.name}: {e}")
-                    continue
+            files.sort(key=self._get_file_timestamp, reverse=True)
+            for file_path in files:
+                parsed = parse_message_filename(file_path)
+                if parsed:
+                    return {
+                        "message_id": parsed.message_id,
+                        "timestamp": parsed.timestamp,
+                        "file_path": str(file_path),
+                    }
 
         return None
