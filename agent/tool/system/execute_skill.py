@@ -144,7 +144,12 @@ class ExecuteSkillTool(BaseTool):
             )
             return
 
-        skill = skill_service.get_skill(skill_name)
+        # Get language from context for skill loading
+        language = None
+        if context and context.project and hasattr(context.project, 'get_language'):
+            language = context.project.get_language()
+
+        skill = skill_service.get_skill(skill_name, language=language)
         if not skill:
             yield self._create_event(
                 "error",
@@ -171,15 +176,15 @@ class ExecuteSkillTool(BaseTool):
             # Use SkillService.chat_stream to execute the skill
             # Forward events from skill_chat directly, preserving event types
             final_response = None
-        async for event in skill_service.chat_stream(
-                skill=skill,
-                user_message=prompt,
-                workspace=workspace,
-                project=context.project_name if context else None,
-                llm_service=None,  # Will use default LLM service
-                max_steps=max_steps,
-                crew_member_name=crew_member_name,
-                conversation_id=conversation_id,
+            async for event in skill_service.chat_stream(
+                    skill=skill,
+                    user_message=prompt,
+                    workspace=workspace,
+                    project=context.project_name if context else None,
+                    llm_service=None,  # Will use default LLM service
+                    max_steps=max_steps,
+                    crew_member_name=crew_member_name,
+                    conversation_id=conversation_id,
             ):
                 # Forward the event directly, preserving original event type and content
                 # The sender_id/sender_name will be added by CrewMember upstream

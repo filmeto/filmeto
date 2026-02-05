@@ -393,13 +393,14 @@ class CrewMember:
 
     def _get_skills_as_structured_list(self) -> list:
         """Get skills as a structured list for advanced templating."""
+        language = self._get_language()
         if not self.config.skills:
             # If no skills are configured for this crew member, fall back to all available skills
-            return self._get_all_available_skills_as_structured_list()
+            return self._get_all_available_skills_as_structured_list(language)
 
         skills_list = []
         for name in self.config.skills:
-            skill = self.skill_service.get_skill(name)
+            skill = self.skill_service.get_skill(name, language=language)
             if not skill:
                 continue  # Skip unavailable skills
 
@@ -411,9 +412,9 @@ class CrewMember:
 
         return skills_list
 
-    def _get_all_available_skills_as_structured_list(self) -> list:
+    def _get_all_available_skills_as_structured_list(self, language: str = None) -> list:
         """Get all available skills as a structured list for advanced templating."""
-        all_skills = self.skill_service.get_all_skills()
+        all_skills = self.skill_service.get_all_skills(language=language)
 
         skills_list = []
         for skill in all_skills:  # all_skills is a list, not a dict
@@ -447,14 +448,15 @@ class CrewMember:
         return f"Soul '{self.config.soul}' has no prompt content."
 
     def _format_skills_prompt(self) -> str:
+        language = self._get_language()
         if not self.config.skills:
             # If no skills are configured for this crew member, fall back to all available skills
-            return self._get_all_available_skills_prompt()
+            return self._get_all_available_skills_prompt(language)
 
         details = []
         missing = []
         for name in self.config.skills:
-            skill = self.skill_service.get_skill(name)
+            skill = self.skill_service.get_skill(name, language=language)
             if not skill:
                 missing.append(name)
                 continue
@@ -462,7 +464,7 @@ class CrewMember:
 
         if not details:
             # If none of the configured skills are available, fall back to all available skills
-            return self._get_all_available_skills_prompt()
+            return self._get_all_available_skills_prompt(language)
         else:
             skills_section = (
                 "## Available Skills\n\n"
@@ -475,9 +477,9 @@ class CrewMember:
 
         return skills_section
 
-    def _get_all_available_skills_prompt(self) -> str:
+    def _get_all_available_skills_prompt(self, language: str = None) -> str:
         """Get a prompt with all available skills in the project as a fallback."""
-        all_skills = self.skill_service.get_all_skills()
+        all_skills = self.skill_service.get_all_skills(language=language)
 
         if not all_skills:
             return "Available skills: none.\nYou cannot call any skills."
@@ -494,6 +496,27 @@ class CrewMember:
             "You have access to the following skills. Review each skill's purpose to decide when to use it.\n\n"
             + "\n\n".join(details)
         )
+
+    def _get_language(self) -> str:
+        """Get the language setting for the crew member."""
+        # Try to get language from project
+        if self.project and hasattr(self.project, 'get_language'):
+            return self.project.get_language()
+
+        # Fallback: try to get language from workspace settings
+        if self.workspace and hasattr(self.workspace, 'settings'):
+            try:
+                language = self.workspace.settings.get("general.language", "en")
+                # Convert language code to our format (en -> en_US, zh -> zh_CN)
+                if language == "zh_CN" or language == "zh":
+                    return "zh_CN"
+                else:
+                    return "en_US"
+            except:
+                pass
+
+        # Default to en_US
+        return "en_US"
 
 
 

@@ -11,7 +11,7 @@ from PySide6.QtGui import QPixmap, QIcon, QFont
 
 from app.ui.panels.base_panel import BasePanel
 from app.data.workspace import Workspace
-from utils.i18n_utils import tr
+from utils.i18n_utils import tr, translation_manager
 from agent.skill.skill_service import SkillService, Skill
 
 if TYPE_CHECKING:
@@ -39,6 +39,9 @@ class SkillsPanel(BasePanel):
         # Add add skill button to toolbar
         self.add_toolbar_button("\ue62e", self._add_skill, tr("Add New Skill"))  # Plus icon
 
+        # Connect to language change signal to refresh skills when language changes
+        translation_manager.language_changed.connect(self._on_language_changed)
+
     def load_data(self):
         """Load skills data from SkillService."""
         # Initialize skill service with workspace
@@ -53,8 +56,11 @@ class SkillsPanel(BasePanel):
     def _load_skills_async(self):
         """Load skills asynchronously."""
         try:
-            # Get all skills
-            skills = self.skill_service.get_all_skills()
+            # Get current language
+            language = translation_manager.get_current_language()
+
+            # Get all skills with language
+            skills = self.skill_service.get_all_skills(language=language)
 
             # Clear existing content
             self._clear_content()
@@ -216,4 +222,9 @@ class SkillsPanel(BasePanel):
         super().on_activated()
         # Refresh data when panel is activated
         if self._data_loaded:
+            QTimer.singleShot(0, self._refresh_skills)
+
+    def _on_language_changed(self, language_code: str):
+        """Called when the language is changed. Refresh skills with new language."""
+        if self.skill_service and self._data_loaded:
             QTimer.singleShot(0, self._refresh_skills)
