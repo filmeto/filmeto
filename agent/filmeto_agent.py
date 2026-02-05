@@ -15,12 +15,14 @@ from agent.chat.content import (
 )
 from agent.chat.agent_chat_types import ContentType, MessageType
 from agent.chat.agent_chat_signals import AgentChatSignals
+from agent.chat.history.listener import AgentChatHistoryListener
 from agent.llm.llm_service import LlmService
 from agent.plan.plan_models import Plan, PlanInstance, PlanTask, TaskStatus
 from agent.plan.plan_service import PlanService
 from agent.crew.crew_member import CrewMember
 from agent.crew.crew_title import sort_crew_members_by_title_importance
 from agent.crew.crew_service import CrewService
+from utils.path_utils import get_workspace_path
 
 if TYPE_CHECKING:
     from agent.event.agent_event import AgentEvent
@@ -78,6 +80,8 @@ class FilmetoAgent:
         self.crew_members: Dict[str, CrewMember] = {}
         self._crew_member_lookup: Dict[str, CrewMember] = {}
         self.signals = AgentChatSignals()
+        self._history_listener = None
+        self._init_history_listener()
 
         # Initialize the agent
         self._init_agent()
@@ -247,6 +251,32 @@ class FilmetoAgent:
         else:
             # Agent not configured due to missing API key or base URL
             pass
+
+    def _init_history_listener(self) -> None:
+        workspace_path = None
+        if self.workspace is not None:
+            if hasattr(self.workspace, "workspace_path"):
+                workspace_path = self.workspace.workspace_path
+            elif hasattr(self.workspace, "path"):
+                workspace_path = str(self.workspace.path)
+            elif isinstance(self.workspace, str):
+                workspace_path = self.workspace
+
+        if not workspace_path:
+            workspace_path = str(get_workspace_path())
+
+        project_name = self._resolve_project_name() or "default"
+
+        try:
+            self._history_listener = AgentChatHistoryListener(
+                workspace_path=workspace_path,
+                project_name=project_name,
+                signals=self.signals,
+            )
+            self._history_listener.connect()
+        except Exception as e:
+            logger.warning("Failed to initialize AgentChatHistoryListener: %s", e)
+            self._history_listener = None
 
     def _convert_event_to_message(
         self,

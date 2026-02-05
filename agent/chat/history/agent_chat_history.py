@@ -5,11 +5,12 @@ Provides rolling message history management for agent conversations.
 """
 
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List, Optional, Dict, Any
 from pathlib import Path
 
 from agent.chat.history.storage import MessageStorage
+from agent.chat.history.message_paths import parse_message_filename
 from agent.chat.agent_chat_message import AgentMessage
 
 logger = __import__('logging').getLogger(__name__)
@@ -82,14 +83,29 @@ class AgentChatHistory:
         """
         file_path = self.storage.save_message(message, append_content=append_content)
 
-        # Update cache
-        if message.message_id in self._cache:
-            # Reload from file to get updated content
-            loaded = self.storage.load_message(Path(file_path))
-            if loaded:
-                self._cache[message.message_id] = loaded
+        loaded = self.storage.load_message(Path(file_path))
+        if loaded:
+            self._cache[message.message_id] = loaded
 
         return file_path
+
+    def _load_messages_from_files(self, files: List[Path]) -> List[Dict[str, Any]]:
+        result: List[Dict[str, Any]] = []
+        for file_path in files:
+            loaded = self.storage.load_message(file_path)
+            if loaded:
+                message_id = loaded.get("metadata", {}).get("message_id")
+                if message_id:
+                    self._cache[message_id] = loaded
+                result.append(loaded)
+        return result
+
+    def _find_message_index(self, files: List[Path], message_id: str) -> Optional[int]:
+        for index in range(len(files) - 1, -1, -1):
+            parsed = parse_message_filename(files[index])
+            if parsed and parsed.message_id == message_id:
+                return index
+        return None
 
     def get_latest_message_info(self) -> Optional[Dict[str, Any]]:
         """
@@ -99,6 +115,16 @@ class AgentChatHistory:
             Dictionary with message_id, timestamp, and file_path, or None if no messages exist
         """
         return self.storage.get_latest_message_info()
+
+    def get_latest_message_id(self) -> Optional[str]:
+        """Get the most recent message ID."""
+        info = self.get_latest_message_info()
+        return info.get("message_id") if info else None
+
+    def get_latest_message_timestamp(self) -> Optional[int]:
+        """Get the most recent message timestamp (UTC seconds)."""
+        info = self.get_latest_message_info()
+        return info.get("timestamp") if info else None
 
     def get_message(self, message_id: str, date_str: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
@@ -114,33 +140,24 @@ class AgentChatHistory:
         # Check cache first
         if message_id in self._cache:
             return self._cache[message_id]
-
-        # Search for the message file
+        file_path = None
         if date_str:
-            # Search specific date directory
-            date = datetime.strptime(date_str, "%Y%m%d")
-            files = self.storage.list_message_files(date)
+            try:
+                date = datetime.strptime(date_str, "%Y%m%d")
+                file_path = self.storage.find_message_file(message_id, date)
+            except ValueError:
+                file_path = None
 
-            for file_path in files:
-                if message_id in file_path.stem:
-                    loaded = self.storage.load_message(file_path)
-                    if loaded and loaded.get('metadata', {}).get('message_id') == message_id:
-                        self._cache[message_id] = loaded
-                        return loaded
-        else:
-            # Search recent dates (last 7 days)
-            for days_ago in range(7):
-                date = datetime.now() - timedelta(days=days_ago)
-                files = self.storage.list_message_files(date)
+        if file_path is None:
+            file_path = self.storage.find_message_file(message_id)
 
-                for file_path in files:
-                    if message_id in file_path.stem:
-                        loaded = self.storage.load_message(file_path)
-                        if loaded and loaded.get('metadata', {}).get('message_id') == message_id:
-                            self._cache[message_id] = loaded
-                            return loaded
+        if not file_path:
+            return None
 
-        return None
+        loaded = self.storage.load_message(file_path)
+        if loaded:
+            self._cache[message_id] = loaded
+        return loaded
 
     def get_messages_before(
         self,
@@ -159,44 +176,17 @@ class AgentChatHistory:
         Returns:
             List of message dictionaries (excluding the reference message)
         """
-        result = []
+        if count <= 0:
+            return []
 
-        # Find the reference message
-        reference = self.get_message(message_id, date_str)
-        if not reference:
-            return result
+        files = self.storage.list_all_message_files()
+        index = self._find_message_index(files, message_id)
+        if index is None:
+            return []
 
-        ref_timestamp = reference['metadata'].get('timestamp')
-        if not ref_timestamp:
-            return result
-
-        ref_datetime = datetime.fromisoformat(ref_timestamp)
-
-        # Search backwards from the reference date
-        days_to_search = 7  # Search up to 7 days back
-
-        for days_ago in range(days_to_search + 1):
-            search_date = ref_datetime - timedelta(days=days_ago)
-            files = self.storage.list_message_files(search_date)
-
-            if days_ago == 0:
-                # On the same day, filter files before the reference timestamp
-                ref_timestamp_int = int(ref_datetime.timestamp())
-                files = [f for f in files if self._get_file_timestamp(f) < ref_timestamp_int]
-
-            # Process files in reverse order (newest first)
-            for file_path in reversed(files):
-                if len(result) >= count:
-                    break
-
-                loaded = self.storage.load_message(file_path)
-                if loaded:
-                    result.insert(0, loaded)  # Insert at beginning to maintain order
-
-            if len(result) >= count:
-                break
-
-        return result[-count:]  # Return the most recent N messages
+        start = max(0, index - count)
+        slice_files = files[start:index]
+        return self._load_messages_from_files(slice_files)
 
     def get_messages_after(
         self,
@@ -215,44 +205,16 @@ class AgentChatHistory:
         Returns:
             List of message dictionaries (excluding the reference message)
         """
-        result = []
+        if count <= 0:
+            return []
 
-        # Find the reference message
-        reference = self.get_message(message_id, date_str)
-        if not reference:
-            return result
+        files = self.storage.list_all_message_files()
+        index = self._find_message_index(files, message_id)
+        if index is None:
+            return []
 
-        ref_timestamp = reference['metadata'].get('timestamp')
-        if not ref_timestamp:
-            return result
-
-        ref_datetime = datetime.fromisoformat(ref_timestamp)
-
-        # Search forward from the reference date
-        days_to_search = 7  # Search up to 7 days forward
-
-        for days_ahead in range(days_to_search + 1):
-            search_date = ref_datetime + timedelta(days=days_ahead)
-            files = self.storage.list_message_files(search_date)
-
-            if days_ahead == 0:
-                # On the same day, filter files after the reference timestamp
-                ref_timestamp_int = int(ref_datetime.timestamp())
-                files = [f for f in files if self._get_file_timestamp(f) > ref_timestamp_int]
-
-            # Process files in order (oldest first)
-            for file_path in files:
-                if len(result) >= count:
-                    break
-
-                loaded = self.storage.load_message(file_path)
-                if loaded:
-                    result.append(loaded)
-
-            if len(result) >= count:
-                break
-
-        return result[:count]  # Return the first N messages
+        slice_files = files[index + 1:index + 1 + count]
+        return self._load_messages_from_files(slice_files)
 
     def get_messages_around(
         self,
@@ -289,27 +251,15 @@ class AgentChatHistory:
         Returns:
             List of message dictionaries, most recent first
         """
-        result = []
-        target_count = count
+        if count <= 0:
+            return []
 
-        # Search from most recent date backwards
-        for days_ago in range(30):  # Search up to 30 days back
-            date = datetime.now() - timedelta(days=days_ago)
-            files = self.storage.list_message_files(date)
+        files = self.storage.list_all_message_files()
+        if not files:
+            return []
 
-            # Process files in reverse order (newest first)
-            for file_path in reversed(files):
-                if len(result) >= target_count:
-                    break
-
-                loaded = self.storage.load_message(file_path)
-                if loaded:
-                    result.append(loaded)
-
-            if len(result) >= target_count:
-                break
-
-        return result[:target_count]
+        latest_files = files[-count:]
+        return self._load_messages_from_files(list(reversed(latest_files)))
 
     def get_messages_by_date(self, date: datetime) -> List[Dict[str, Any]]:
         """
@@ -322,31 +272,7 @@ class AgentChatHistory:
             List of message dictionaries for that date
         """
         files = self.storage.list_message_files(date)
-        result = []
-
-        for file_path in files:
-            loaded = self.storage.load_message(file_path)
-            if loaded:
-                result.append(loaded)
-
-        return result
-
-    def _get_file_timestamp(self, file_path: Path) -> int:
-        """
-        Extract timestamp from a message file path.
-
-        Args:
-            file_path: Path to the message file
-
-        Returns:
-            UTC timestamp in seconds, or 0 if extraction fails
-        """
-        try:
-            name = file_path.stem
-            timestamp_str = name.split('_')[0]
-            return int(timestamp_str)
-        except (ValueError, IndexError):
-            return 0
+        return self._load_messages_from_files(files)
 
     def clear_cache(self):
         """Clear the internal message cache."""
