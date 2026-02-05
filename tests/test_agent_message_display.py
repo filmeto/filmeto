@@ -15,7 +15,7 @@ from agent.filmeto_agent import FilmetoAgent
 from agent.chat.agent_chat_message import AgentMessage
 from agent.chat.agent_chat_types import MessageType
 from agent.react import AgentEventType
-from app.ui.chat.agent_chat_history import AgentChatHistoryWidget
+from app.ui.chat.list.agent_chat_list import AgentChatListWidget
 from app.data.workspace import Workspace as AppWorkspace
 
 
@@ -138,7 +138,7 @@ def test_chat_history_widget_with_agent_message():
             workspace = AppWorkspace(workspace_path=temp_dir, project_name="test")
 
             # Create a ChatHistoryWidget instance
-            widget = AgentChatHistoryWidget(workspace)
+            widget = AgentChatListWidget(workspace)
 
             # Create an AgentMessage instead of StreamEvent
             from agent.chat.content import TextContent
