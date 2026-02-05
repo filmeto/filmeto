@@ -284,7 +284,7 @@ You are a test screenwriter.
         assert 'write_single_scene' in crew_member.config.skills
 
     def test_crew_member_formats_skills_prompt(self):
-        """Test that crew member formats skills with input requirements in prompt."""
+        """Test that crew member formats skills with name and description only."""
         from agent.crew.crew_member import CrewMember
         
         crew_member = CrewMember(
@@ -295,11 +295,10 @@ You are a test screenwriter.
         
         skills_prompt = crew_member._format_skills_prompt()
         
-        # Check that input requirements are included
-        assert 'Input Requirements' in skills_prompt
-        assert 'concept' in skills_prompt
-        assert 'scene_id' in skills_prompt
-        assert 'Example call' in skills_prompt or 'example' in skills_prompt.lower()
+        # Check that skill names and descriptions are included
+        assert 'write_screenplay_outline' in skills_prompt
+        assert 'write_single_scene' in skills_prompt
+        assert 'Description' in skills_prompt or 'description' in skills_prompt.lower()
         assert 'write_screenplay_outline' in skills_prompt
 
     def test_crew_member_builds_system_prompt_with_skills(self):

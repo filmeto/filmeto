@@ -403,26 +403,10 @@ class CrewMember:
             if not skill:
                 continue  # Skip unavailable skills
 
-            # Extract usage criteria from knowledge if available
-            usage_criteria = ""
-            if skill.knowledge:
-                knowledge_lines = skill.knowledge.split('\n')
-                for line in knowledge_lines[:10]:  # Check first 10 lines for use cases
-                    line_lower = line.lower().strip()
-                    if any(keyword in line_lower for keyword in ['when', 'use', 'should', 'can', 'capability', 'feature']):
-                        if any(char in line for char in ['-', '*', '•']):
-                            usage_criteria = line.strip(' -•*')
-                            break
-                if not usage_criteria:
-                    usage_criteria = skill.description
-
             skills_list.append({
                 'name': skill.name,
                 'description': skill.description,
-                'usage_criteria': usage_criteria,
-                'input_requirements': _extract_input_requirements(skill.knowledge),
-                'example_call': skill.get_example_call()
-                # Exclude knowledge field to keep the prompt concise
+                # Keep only name and description for crew member prompts
             })
 
         return skills_list
@@ -433,26 +417,10 @@ class CrewMember:
 
         skills_list = []
         for skill in all_skills:  # all_skills is a list, not a dict
-            # Extract usage criteria from knowledge if available
-            usage_criteria = ""
-            if skill.knowledge:
-                knowledge_lines = skill.knowledge.split('\n')
-                for line in knowledge_lines[:10]:  # Check first 10 lines for use cases
-                    line_lower = line.lower().strip()
-                    if any(keyword in line_lower for keyword in ['when', 'use', 'should', 'can', 'capability', 'feature']):
-                        if any(char in line for char in ['-', '*', '•']):
-                            usage_criteria = line.strip(' -•*')
-                            break
-                if not usage_criteria:
-                    usage_criteria = skill.description
-
             skills_list.append({
                 'name': skill.name,
                 'description': skill.description,
-                'usage_criteria': usage_criteria,
-                'input_requirements': _extract_input_requirements(skill.knowledge),
-                'example_call': skill.get_example_call()
-                # Exclude knowledge field to keep the prompt concise
+                # Keep only name and description for crew member prompts
             })
 
         return skills_list
@@ -498,7 +466,7 @@ class CrewMember:
         else:
             skills_section = (
                 "## Available Skills\n\n"
-                "You have access to the following skills. Review each skill's purpose and input requirements to decide when to use it.\n\n"
+                "You have access to the following skills. Review each skill's purpose to decide when to use it.\n\n"
                 + "\n\n".join(details)
             )
 
@@ -523,7 +491,7 @@ class CrewMember:
 
         return (
             "## Available Skills\n\n"
-            "You have access to the following skills. Review each skill's purpose and input requirements to decide when to use it.\n\n"
+            "You have access to the following skills. Review each skill's purpose to decide when to use it.\n\n"
             + "\n\n".join(details)
         )
 
@@ -555,37 +523,6 @@ def _normalize_list(value: Any) -> List[str]:
     return [str(value).strip()]
 
 
-def _extract_input_requirements(knowledge: str) -> str:
-    if not knowledge:
-        return ""
-
-    lines = knowledge.splitlines()
-    start_idx = None
-    for idx, line in enumerate(lines):
-        if line.strip().lower().startswith("## input requirements"):
-            start_idx = idx + 1
-            break
-
-    if start_idx is None:
-        return ""
-
-    collected: List[str] = []
-    for line in lines[start_idx:]:
-        if line.strip().startswith("## "):
-            break
-        collected.append(line.rstrip())
-
-    while collected and collected[0] == "":
-        collected.pop(0)
-    while collected and collected[-1] == "":
-        collected.pop()
-
-    if len(collected) > 12:
-        collected = collected[:12] + ["..."]
-
-    return "\n".join(collected)
-
-
 def _format_skill_entry(skill: Skill) -> str:
     """Legacy simple skill formatting."""
     description = skill.description or ""
@@ -600,47 +537,6 @@ def _format_skill_entry_detailed(skill: Skill) -> str:
         f"**Description**: {skill.description}",
         "",
     ]
-
-    # Add usage criteria to help LLM decide when to use this skill
-    lines.append("**When to use this skill**: This skill should be used when:")
-    if skill.knowledge:
-        # Extract key capabilities from the knowledge section
-        knowledge_lines = skill.knowledge.split('\n')
-        # Look for lines that start with bullet points or keywords indicating use cases
-        use_case_found = False
-        for line in knowledge_lines[:10]:  # Check first 10 lines for use cases
-            line_lower = line.lower().strip()
-            if any(keyword in line_lower for keyword in ['when', 'use', 'should', 'can', 'capability', 'feature']):
-                if any(char in line for char in ['-', '*', '•']):
-                    lines.append(f"  - {line.strip(' -•*')}")
-                    use_case_found = True
-        if not use_case_found:
-            lines.append(f"  - {skill.description}")
-    else:
-        lines.append(f"  - {skill.description}")
-    lines.append("")
-
-    # Add input requirements extracted from knowledge
-    input_requirements = _extract_input_requirements(skill.knowledge or "")
-    if input_requirements:
-        lines.append("**Input Requirements**:")
-        lines.append(input_requirements)
-        lines.append("")
-
-    # Add example call
-    lines.append("**Example call**:")
-    lines.append("```json")
-    lines.append(skill.get_example_call())
-    lines.append("```")
-
-    # Add knowledge snippet if available
-    if skill.knowledge:
-        # Extract just the capability section
-        knowledge_preview = skill.knowledge[:300]
-        if len(skill.knowledge) > 300:
-            knowledge_preview += "..."
-        lines.append("")
-        lines.append(f"**Additional Details**: {knowledge_preview}")
 
     return "\n".join(lines)
 
