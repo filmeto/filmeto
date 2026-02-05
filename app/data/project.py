@@ -21,7 +21,6 @@ from app.data.timeline import Timeline
 from app.data.drawing import Drawing
 from app.data.resource import ResourceManager
 from app.data.character import CharacterManager
-from agent.chat.conversation import ConversationManager
 from app.data.screen_play import ScreenPlayManager
 from utils.yaml_utils import load_yaml, save_yaml
 
@@ -66,9 +65,6 @@ class Project:
         self.drawing = Drawing(self.workspace, self)
         self.resource_manager = ResourceManager(self.project_path)
         self.character_manager = CharacterManager(self.project_path, self.resource_manager)
-        # Get the singleton instance
-        from agent.chat.conversation import ConversationManager
-        self.conversation_manager = ConversationManager()
         self.screenplay_manager = ScreenPlayManager(self.project_path)
 
         # If load_data is True, ensure actor data is loaded
@@ -340,38 +336,6 @@ class Project:
     def get_character_manager(self) -> CharacterManager:
         """Get the actor manager instance"""
         return self.character_manager
-
-    def get_conversation_manager(self) -> ConversationManager:
-        """Get the conversation manager instance"""
-        return self.conversation_manager
-
-    def create_conversation(self, title: Optional[str] = None):
-        """Create a conversation in this project."""
-        return self.conversation_manager.create_conversation(self.project_path, title)
-
-    def get_conversation(self, conversation_id: str):
-        """Get a conversation from this project."""
-        return self.conversation_manager.get_conversation(self.project_path, conversation_id)
-
-    def save_conversation(self, conversation):
-        """Save a conversation in this project."""
-        return self.conversation_manager.save_conversation(self.project_path, conversation)
-
-    def list_conversations(self):
-        """List conversations in this project."""
-        return self.conversation_manager.list_conversations(self.project_path)
-
-    def delete_conversation(self, conversation_id: str):
-        """Delete a conversation from this project."""
-        return self.conversation_manager.delete_conversation(self.project_path, conversation_id)
-
-    def add_message_to_conversation(self, conversation_id: str, message):
-        """Add a message to a conversation in this project."""
-        return self.conversation_manager.add_message(self.project_path, conversation_id, message)
-
-    def get_or_create_default_conversation(self):
-        """Get or create a default conversation in this project."""
-        return self.conversation_manager.get_or_create_default_conversation(self.project_path)
 
     def get_screenplay_manager(self) -> 'ScreenPlayManager':
         """Get the screenplay manager instance"""

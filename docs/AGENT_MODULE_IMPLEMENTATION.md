@@ -15,8 +15,11 @@ agent/
 ├── nodes.py                 # LangGraph nodes (coordinator, planner, executor, responder)
 └── tools.py                 # Tool registry and built-in tools
 
-app/data/
-└── conversation.py          # Conversation and message management
+agent/chat/
+├── agent_chat_message.py    # Message classes (AgentMessage)
+├── agent_chat_types.py      # Message and content types
+├── agent_chat_signals.py    # Signal system for agent communication
+└── content/                 # Structured content types
 
 app/ui/panels/agent/
 ├── agent_panel.py           # UI panel with streaming integration
@@ -101,49 +104,7 @@ class CustomTool(FilmetoBaseTool):
 registry.register_tool(CustomTool(workspace=workspace, project=project))
 ```
 
-### 3. Conversation Management
-
-Conversations are stored per-project in the `agent/conversations/` directory:
-
-#### Data Structure
-
-```
-project/
-└── agent/
-    ├── conversations_index.yml      # Conversation metadata
-    └── conversations/
-        ├── conv_20260104_120000.json
-        └── conv_20260104_130000.json
-```
-
-#### Conversation API
-
-```python
-from agent.chat.conversation import ConversationManager, Message, MessageRole
-
-# Get singleton instance
-manager = ConversationManager()
-
-# Create conversation (pass project_path as first parameter)
-conversation = manager.create_conversation(project_path, title="My Conversation")
-
-# Add message
-message = Message(
-    role=MessageRole.USER,
-    content="Hello",
-    timestamp=datetime.now().isoformat()
-)
-conversation.add_message(message)
-manager.save_conversation(project_path, conversation)
-
-# List conversations
-conversations = manager.list_conversations(project_path)
-
-# Get conversation
-conversation = manager.get_conversation(project_path, conversation_id)
-```
-
-### 4. Streaming Interface
+### 3. Streaming Interface
 
 The agent provides a streaming chat interface for real-time responses:
 
@@ -266,24 +227,6 @@ async for token in agent.chat_stream(
     pass
 ```
 
-### Example 4: Conversation Management
-
-```python
-# Create new conversation
-conversation = agent.create_conversation(title="Video Planning")
-
-# Chat in conversation
-await agent.chat("Let's plan a video", conversation_id=conversation.conversation_id)
-
-# List all conversations
-conversations = agent.list_conversations()
-for conv in conversations:
-    print(f"{conv['title']} - {conv['updated_at']}")
-
-# Switch conversation
-agent.set_conversation(conversation_id)
-```
-
 ## Extending the Agent
 
 ### Adding Custom Tools
@@ -368,9 +311,9 @@ except Exception as e:
 
 ### Memory Management
 
-- Conversations are loaded on-demand
-- LangGraph uses memory checkpointing
-- Old conversations can be deleted
+- Messages are managed in-memory during sessions
+- LangGraph uses memory checkpointing for agent state
+- Message persistence can be implemented as needed
 
 ### API Rate Limits
 

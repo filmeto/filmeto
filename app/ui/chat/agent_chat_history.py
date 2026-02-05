@@ -19,7 +19,6 @@ from utils.i18n_utils import tr
 # Lazy imports - defer heavy imports until first use
 if TYPE_CHECKING:
     from app.data.workspace import Workspace
-    from agent.chat.conversation import Message
     from app.ui.chat.card import AgentMessageCard, UserMessageCard
 
 class AgentChatHistoryWidget(BaseWidget):
@@ -85,58 +84,11 @@ class AgentChatHistoryWidget(BaseWidget):
 
     def _load_recent_conversation(self):
         """Load the most recent conversation from the current project."""
-        try:
-            # Get the current project
-            project = self.workspace.get_project()
-            if not project:
-                print("No project found, skipping conversation load")
-                return
+        # Persistence is removed - this will be reimplemented later for the new chat system
+        print("Conversation persistence is not yet implemented for the new AgentMessage system")
+        return
 
-            # Get the conversation manager from the project
-            conversation_manager = project.get_conversation_manager()
-
-            # Get or create the default (most recent) conversation
-            conversation = project.get_or_create_default_conversation()
-
-            if conversation:
-                print(f"Loading conversation: {conversation.title} ({len(conversation.messages)} messages)")
-
-                # Clear existing messages
-                self.clear()
-
-                # Add messages to the chat history
-                for message in conversation.messages:
-                    # Map the message role to sender name
-                    if message.role == "user":
-                        sender = tr("User")  # Use translation for "User"
-                    elif message.role == "system":
-                        sender = tr("System")  # Use translation for "System"
-                    elif message.role == "tool":
-                        sender = tr("Tool")  # Use translation for "Tool"
-                    else:  # assistant or other roles
-                        # Use the metadata to get the agent name if available
-                        # Check if this is a crew member message
-                        if message.metadata and 'sender_name' in message.metadata:
-                            sender = message.metadata['sender_name']
-                        elif message.metadata and 'agent_name' in message.metadata:
-                            sender = message.metadata['agent_name']
-                        elif message.metadata and 'title' in message.metadata:
-                            # Use the title from metadata as the sender
-                            sender = message.metadata['title']
-                        else:
-                            # Default to Assistant if no specific agent info
-                            sender = tr("Assistant")
-
-                    # Add the message to the chat history
-                    # For historical messages, we need to create the proper card with metadata
-                    self._add_historical_message(sender, message)
-            else:
-                print("No conversation found, starting fresh")
-
-        except Exception as e:
-            logger.error(f"Error loading recent conversation: {e}", exc_info=True)
-
-    def _add_historical_message(self, sender: str, message: 'Message'):
+    def _add_historical_message(self, sender: str, message):
         """Add a historical message to the chat history with proper metadata."""
         if not message.content:
             return
