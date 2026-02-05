@@ -22,13 +22,15 @@ class AsyncQueueManager:
         processor: Callable[[Any], None],
         maxsize: int = 100,
         max_concurrent: int = 1,
-        name: str = "AsyncConsumer"
+        name: str = "AsyncConsumer",
+        consume_interval_ms: Union[int, float] = 0
     ):
         """
         :param processor: 异步处理函数，签名: async def func(item) -> None
         :param maxsize: 队列最大容量
         :param max_concurrent: 最大并发数（1为串行处理，>1为并发处理）
         :param name: 消费者名称（用于日志）
+        :param consume_interval_ms: 每条消息处理完成后的延迟间隔（毫秒）
         """
         if not asyncio.iscoroutinefunction(processor):
             raise TypeError("processor 必须是一个 async def 函数")
@@ -37,8 +39,14 @@ class AsyncQueueManager:
         self.queue = Queue(maxsize=maxsize)
         self.max_concurrent = max_concurrent
         self.name = name
+        self._consume_interval_seconds = max(consume_interval_ms, 0) / 1000.0
         self._task: Optional[Task] = None
         self._running = False
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+
+    @property
+    def is_running(self) -> bool:
+        return self._running
 
     def put(self, item: Any):
         """
@@ -50,13 +58,22 @@ class AsyncQueueManager:
 
         # 使用 asyncio.run_coroutine_threadsafe 确保线程安全
         try:
+            loop = self._loop or asyncio.get_event_loop()
             future = asyncio.run_coroutine_threadsafe(
                 self._put_safe(item),
-                asyncio.get_event_loop()
+                loop
             )
             # 不 await，立即返回
         except Exception as e:
             logger.error(f"❌ 提交任务失败 {item}: {e}")
+
+    async def put_async(self, item: Any):
+        """
+        异步提交任务（需在事件循环中调用）
+        """
+        if not self._running:
+            raise RuntimeError(f"{self.name} 尚未启动，请先调用 start()")
+        await self._put_safe(item)
 
     async def _put_safe(self, item: Any):
         """安全入队（避免 QueueFull）"""
@@ -71,6 +88,7 @@ class AsyncQueueManager:
             logger.info(f"⚠️ {self.name} 已经在运行中")
             return
         logger.info(f"🔄 {self.name} 开始启动...")
+        self._loop = asyncio.get_running_loop()
         self._running = True
         self._task = asyncio.create_task(self._run())  # Python 3.7 compatibility - no name parameter
         logger.info(f"✅ {self.name} 已启动 | 容量: {self.queue.maxsize} | 最大并发数: {self.max_concurrent}")
@@ -112,7 +130,10 @@ class AsyncQueueManager:
                         if not self._running and self.queue.empty():
                             logger.info(f"🟡 {self.name} 退出条件: _running=False 且队列为空")
                             break
-                        item = await self.queue.get()
+                        try:
+                            item = await asyncio.wait_for(self.queue.get(), timeout=0.5)
+                        except asyncio.TimeoutError:
+                            continue
                         logger.info(f"📦 {self.name} 获取到项目: {item}")
                         try:
                             await self.processor(item)
@@ -122,6 +143,8 @@ class AsyncQueueManager:
                         finally:
                             self.queue.task_done()
                             logger.info(f"✅ {self.name} task_done 调用: {item}")
+                        if self._consume_interval_seconds > 0:
+                            await asyncio.sleep(self._consume_interval_seconds)
                     except asyncio.CancelledError:
                         logger.info(f"🛑 {self.name} 被取消")
                         break
@@ -145,6 +168,8 @@ class AsyncQueueManager:
                         finally:
                             self.queue.task_done()
                             logger.info(f"✅ {self.name} task_done 调用: {item}")
+                        if self._consume_interval_seconds > 0:
+                            await asyncio.sleep(self._consume_interval_seconds)
                 
                 # 持续从队列获取任务并提交到并发池
                 # 先处理运行时的项目，然后处理停止后的剩余项目
@@ -193,7 +218,8 @@ class SyncQueueManager:
         maxsize: int = 100,
         max_concurrent: int = 1,
         name: str = "SyncConsumer",
-        thread_pool_size: int = 4
+        thread_pool_size: int = 4,
+        consume_interval_ms: Union[int, float] = 0
     ):
         """
         :param processor: 处理函数，可以是同步或异步函数
@@ -201,12 +227,14 @@ class SyncQueueManager:
         :param max_concurrent: 最大并发数（1为串行处理，>1为并发处理）
         :param name: 消费者名称（用于日志）
         :param thread_pool_size: 线程池大小，用于运行异步事件循环
+        :param consume_interval_ms: 每条消息处理完成后的延迟间隔（毫秒）
         """
         self.processor = processor
         self.queue = queue.Queue(maxsize=maxsize)
         self.max_concurrent = max_concurrent
         self.name = name
         self.thread_pool_size = thread_pool_size
+        self._consume_interval_seconds = max(consume_interval_ms, 0) / 1000.0
         
         self._running = False
         self._worker_threads = []
@@ -337,6 +365,8 @@ class SyncQueueManager:
                 # Mark task as done
                 self.queue.task_done()
                 logger.info(f"✅ {self.name} 任务完成: {item}")
+                if self._consume_interval_seconds > 0:
+                    time.sleep(self._consume_interval_seconds)
                 
             except Exception as e:
                 logger.error(f"❌ {self.name} 工作线程发生错误: {e}", exc_info=True)
@@ -363,6 +393,8 @@ class SyncQueueManager:
                 # Mark task as done
                 self.queue.task_done()
                 logger.info(f"✅ {self.name} 任务完成: {item}")
+                if self._consume_interval_seconds > 0:
+                    time.sleep(self._consume_interval_seconds)
                 
             except Exception as e:
                 logger.error(f"❌ {self.name} 并发工作线程发生错误: {e}", exc_info=True)

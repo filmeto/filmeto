@@ -10,6 +10,7 @@ import logging
 import blinker
 
 from .agent_chat_message import AgentMessage
+from utils.queue_utils import AsyncQueueManager
 
 logger = logging.getLogger(__name__)
 
@@ -21,18 +22,26 @@ class AgentChatSignals:
     Note: Previously this was a singleton, but now instances should be
     created by FilmetoAgent and passed to other components.
 
-    Messages are queued and consumed at a constant rate (100ms per message)
+    Messages are queued and consumed at a constant rate
     to ensure stable UI rendering performance.
     """
 
-    # Constant rate for message consumption (100ms per message)
+    # Constant rate for message consumption (ms per message)
     CONSUME_INTERVAL_MS = 300
+    QUEUE_MAXSIZE = 0
 
-    def __init__(self):
+    def __init__(self, consume_interval_ms: int | float | None = None):
         self.__agent_message_send = blinker.Signal()
-        self._message_queue: asyncio.Queue[AgentMessage] = asyncio.Queue()
-        self._consumer_task: asyncio.Task | None = None
-        self._running = False
+        self._consume_interval_ms = (
+            self.CONSUME_INTERVAL_MS if consume_interval_ms is None else consume_interval_ms
+        )
+        self._queue_manager = AsyncQueueManager(
+            processor=self._process_message,
+            maxsize=self.QUEUE_MAXSIZE,
+            max_concurrent=1,
+            name="AgentChatSignals",
+            consume_interval_ms=self._consume_interval_ms,
+        )
         self._loop: asyncio.AbstractEventLoop | None = None
 
     def connect(self, receiver, weak: bool = True):
@@ -54,76 +63,28 @@ class AgentChatSignals:
         """
         self.__agent_message_send.disconnect(receiver)
 
-    def _ensure_consumer_running(self) -> None:
+    async def _ensure_consumer_running(self) -> None:
         """
-        Ensure the consumer task is running. Starts it if not already running.
+        Ensure the consumer is running. Starts it if not already running.
         """
-        if self._consumer_task is None or self._consumer_task.done():
-            try:
-                loop = asyncio.get_running_loop()
-                self._loop = loop
-                if self._consumer_task is None or self._consumer_task.done():
-                    self._running = True
-                    self._consumer_task = loop.create_task(self._consume_messages())
-            except RuntimeError:
-                # No event loop running yet
-                pass
+        if not self._queue_manager.is_running:
+            self._loop = asyncio.get_running_loop()
+            await self._queue_manager.start()
+        elif self._loop is None:
+            self._loop = asyncio.get_running_loop()
 
-    async def _consume_messages(self) -> None:
+    async def _process_message(self, message: AgentMessage) -> None:
         """
-        Consumer task that processes messages at a constant rate.
-
-        Pulls one message every CONSUME_INTERVAL_MS and sends it via blinker signal.
-        This ensures UI rendering performance is not affected by message bursts.
-
-        Error handling: If a message fails to process, logs the error and continues
-        processing subsequent messages to prevent a single failure from blocking the queue.
+        Process a single message and emit it via blinker signal.
         """
-        while self._running:
-            message = None
-            try:
-                # Wait for a message with timeout
-                message = await asyncio.wait_for(
-                    self._message_queue.get(),
-                    timeout=1
-                )
-
-                # Send the message via blinker signal
-                self.__agent_message_send.send(self, message=message)
-
-                # Mark as done
-                self._message_queue.task_done()
-
-                # Wait for the constant interval before processing next message
-                await asyncio.sleep(self.CONSUME_INTERVAL_MS / 1000.0)
-
-            except asyncio.TimeoutError:
-                # No message available, continue waiting
-                continue
-            except asyncio.CancelledError:
-                # Handle cancellation gracefully
-                logger.info("Message consumer task cancelled")
-                break
-            except Exception as e:
-                # Log error but continue processing subsequent messages
-                logger.error(
-                    f"Error processing message (type: {type(message).__name__ if message else 'None'}): {e}",
-                    exc_info=True
-                )
-                # Ensure task_done is called to prevent queue from blocking
-                if message is not None:
-                    try:
-                        self._message_queue.task_done()
-                    except ValueError:
-                        # task_done() called too many times, ignore
-                        logger.debug("task_done() called when no task was pending")
+        self.__agent_message_send.send(self, message=message)
 
     async def send_agent_message(self, message: AgentMessage) -> AgentMessage:
         """
         Send an AgentMessage via the blinker signal.
 
         The message is placed in a queue and consumed at a constant rate
-        (100ms per message) to ensure stable UI rendering performance.
+        to ensure stable UI rendering performance.
 
         Args:
             message: The AgentMessage to send.
@@ -132,22 +93,30 @@ class AgentChatSignals:
             The same AgentMessage that was sent.
         """
         # Ensure consumer is running
-        self._ensure_consumer_running()
+        await self._ensure_consumer_running()
 
         # Put message in queue for consumption
-        await self._message_queue.put(message)
+        await self._queue_manager.put_async(message)
         return message
 
     async def join(self) -> None:
         """
         Wait until all messages in the queue are processed.
         """
-        await self._message_queue.join()
+        await self._queue_manager.join()
 
     def stop(self) -> None:
         """
         Stop the consumer task gracefully.
         """
-        self._running = False
-        if self._consumer_task and not self._consumer_task.done():
-            self._consumer_task.cancel()
+        if not self._queue_manager.is_running:
+            return
+        if self._loop and self._loop.is_running():
+            try:
+                running_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                running_loop = None
+            if running_loop is self._loop:
+                self._loop.create_task(self._queue_manager.stop())
+            else:
+                asyncio.run_coroutine_threadsafe(self._queue_manager.stop(), self._loop)
