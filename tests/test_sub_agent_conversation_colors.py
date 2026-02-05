@@ -11,7 +11,7 @@ sys.path.insert(0, str(project_root))
 
 from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
 from PySide6.QtCore import QTimer
-from app.ui.chat.agent_chat_history import AgentChatHistoryWidget
+from app.ui.chat.list.agent_chat_list import AgentChatListWidget
 from app.data.workspace import Workspace
 
 
@@ -29,7 +29,7 @@ def test_sub_agent_colors_in_conversation():
         workspace = Workspace(workspace_path=temp_dir, project_name="test_project")
         
         # Create the chat history widget
-        chat_widget = AgentChatHistoryWidget(workspace)
+        chat_widget = AgentChatListWidget(workspace)
         
         # Create a main window to show the widget
         window = QWidget()

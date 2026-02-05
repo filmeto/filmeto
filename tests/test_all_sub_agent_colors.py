@@ -8,7 +8,7 @@ from pathlib import Path
 from agent.crew.crew_service import CrewService
 from app.data.project import Project
 from app.data.workspace import Workspace
-from app.ui.chat.agent_chat_history import AgentChatHistoryWidget
+from app.ui.chat.list.agent_chat_list import AgentChatListWidget
 from agent.filmeto_agent import FilmetoAgent
 
 
@@ -122,7 +122,7 @@ async def test_chat_history_widget_colors():
         crew_member_service.initialize_project_crew_members(project)
         
         # Create the chat history widget
-        chat_widget = AgentChatHistoryWidget(workspace)
+        chat_widget = AgentChatListWidget(workspace)
         
         # Create a main window to show the widget
         from PySide6.QtWidgets import QWidget, QVBoxLayout
