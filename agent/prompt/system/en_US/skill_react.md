@@ -36,7 +36,7 @@ This skill contains predefined scripts. To execute this skill:
   "tool_name": "execute_skill_script",
   "tool_args": {
     "script_path": "{{ skill.script_full_paths[0] if skill.script_full_paths else skill.skill_path + '/script.py' }}",
-    "args": << INSERT THE ARGUMENTS FROM "Input Arguments" SECTION HERE >>
+    "args": << DERIVE ARGUMENTS FROM THE PROMPT + SKILL KNOWLEDGE >>
   }
 }
 ```
@@ -49,14 +49,14 @@ This skill contains predefined scripts. To execute this skill:
   "tool_args": {
     "skill_path": "{{ skill.skill_path }}",
     "script_name": "{{ skill.script_names[0] if skill.script_names else 'script.py' }}",
-    "args": << INSERT THE ARGUMENTS FROM "Input Arguments" SECTION HERE >>
+    "args": << DERIVE ARGUMENTS FROM THE PROMPT + SKILL KNOWLEDGE >>
   }
 }
 ```
 {% else %}
 ## Execution Mode: Generate and Execute Code
 This skill has no predefined scripts. To execute this skill:
-1. Generate Python code that implements the skill's functionality based on the knowledge and parameters
+1. Generate Python code that implements the skill's functionality based on the knowledge and prompt
 2. Use the `execute_generated_code` tool to execute the generated code
 3. The code should use the `context` parameter to access screenplay_manager, project, etc.
 
@@ -72,11 +72,11 @@ Example call:
 ```
 {% endif %}
 
-## Current Task
+## Current Task (Prompt)
 {{ user_question }}
 
 {% if args %}
-## Input Arguments
+## Provided Inputs (Optional)
 ```json
 {{ args | tojson(indent=2) }}
 ```
@@ -120,7 +120,7 @@ When deciding whether to use a tool, consider the following:
 
 1. **Tool Purpose**: Review the tool's description to understand its intended use cases.
 2. **Task Alignment**: Match the current task or user request with the tool's described capabilities.
-3. **Input Requirements**: Check if you have the required parameters for the tool.
+3. **Input Requirements**: Use the prompt and skill knowledge to supply required inputs.
 4. **Context Appropriateness**: Ensure the tool fits the current context and objectives.
 
 ## Thinking Process Requirements

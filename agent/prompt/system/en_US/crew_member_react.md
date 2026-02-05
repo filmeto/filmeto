@@ -18,7 +18,7 @@ Soul profile:
 {% if skills_list %}
 ## Available Skills
 
-You have access to the following skills. Review each skill's purpose and parameters to decide when to use it.
+You have access to the following skills. Review each skill's purpose and input requirements to decide when to use it.
 
 {% for skill in skills_list %}
 ### {{ skill.name }}
@@ -31,11 +31,9 @@ You have access to the following skills. Review each skill's purpose and paramet
 - {{ skill.description }}
 {% endif %}
 
-{% if skill.parameters %}
-**Parameters**:
-{% for param in skill.parameters %}
-- `{{ param.name }}` ({{ param.type }}, {{ 'required' if param.required else 'optional' }}{% if param.default is not none %}, default: {{ param.default }}{% endif %}): {{ param.description }}
-{% endfor %}
+{% if skill.input_requirements %}
+**Input Requirements**:
+{{ skill.input_requirements }}
 {% endif %}
 
 **Example call**:
@@ -73,7 +71,8 @@ You have access to the following skills. Review each skill's purpose and paramet
   "type": "tool",
   "tool_name": "execute_skill",  // ← This is a TOOL name, not a skill name
   "tool_args": {
-    "skill_name": "actual_skill_name"  // ← This is where you put the SKILL name
+    "skill_name": "actual_skill_name",  // ← This is where you put the SKILL name
+    "prompt": "task description with required details"
   }
 }
 ```
@@ -81,7 +80,7 @@ You have access to the following skills. Review each skill's purpose and paramet
 **COMMON MISTAKES TO AVOID**:
 - ❌ Do NOT use a skill name directly as `tool_name`
 - ❌ Do NOT write `"tool_name": "some_skill_name"`
-- ✅ Correct: `"tool_name": "execute_skill"` with `"skill_name": "some_skill_name"` in tool_args
+- ✅ Correct: `"tool_name": "execute_skill"` with `"skill_name": "some_skill_name"` and a `prompt` in tool_args
 
 **YOUR AVAILABLE TOOL**:
 - `execute_skill` - Use this tool to invoke any of the skills listed in "Available Skills" above
@@ -92,7 +91,7 @@ When deciding whether to use a skill, consider the following:
 
 1. **Skill Purpose**: Review the "When to use this skill" section for each skill to understand its intended use cases.
 2. **Task Alignment**: Match the current task or user request with the skill's described capabilities.
-3. **Input Requirements**: Check if you have the required parameters for the skill.
+3. **Input Requirements**: Ensure your prompt includes the required details for the skill.
 4. **Context Appropriateness**: Ensure the skill fits the current context and objectives.
 
 ## Thinking Process Requirements
@@ -114,7 +113,7 @@ For every action, you MUST include a "thinking" field that explains:
   "tool_name": "execute_skill",
   "tool_args": {
     "skill_name": "name_from_available_skills_list",
-    "message": "your task description"
+    "prompt": "your task description with required details"
   }
 }
 ```

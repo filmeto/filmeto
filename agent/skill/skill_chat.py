@@ -277,15 +277,6 @@ class SkillChat:
                 'description': skill.description,
                 'knowledge': skill.knowledge,
                 'skill_path': skill.skill_path,
-                'parameters': [
-                    {
-                        'name': p.name,
-                        'type': p.param_type,
-                        'required': p.required,
-                        'default': p.default,
-                        'description': p.description
-                    } for p in skill.parameters
-                ],
                 'has_scripts': bool(skill.scripts),
                 'script_names': [os.path.basename(s) for s in (skill.scripts or [])],
                 'script_full_paths': script_full_paths,

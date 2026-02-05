@@ -2,7 +2,7 @@
 Comprehensive unit tests for the skill execution chain.
 
 Tests the entire flow from skill loading to execution:
-1. Skill loading with parameters from SKILL.md
+1. Skill loading without parameter metadata
 2. SkillService in-context execution
 3. Crew member skill prompt generation
 4. End-to-end skill execution with screenplay manager
@@ -38,29 +38,20 @@ class TestSkillLoading:
         assert 'write_screenplay_outline' in skill_names
         assert 'write_single_scene' in skill_names
 
-    def test_skill_has_parameters(self):
-        """Test that skills have their parameters loaded."""
+    def test_skill_has_no_parameter_metadata(self):
+        """Test that skills do not expose parameter metadata."""
         skill = self.skill_service.get_skill('write_screenplay_outline')
-        
-        assert skill is not None
-        assert len(skill.parameters) > 0
-        
-        # Check for required 'concept' parameter
-        concept_param = next((p for p in skill.parameters if p.name == 'concept'), None)
-        assert concept_param is not None
-        assert concept_param.required is True
-        assert concept_param.param_type == 'string'
 
-    def test_skill_parameters_prompt_generation(self):
-        """Test that skill generates proper parameters prompt."""
+        assert skill is not None
+        assert not hasattr(skill, 'parameters')
+
+    def test_skill_input_requirements_in_knowledge(self):
+        """Test that input requirements are described in knowledge."""
         skill = self.skill_service.get_skill('write_screenplay_outline')
-        
-        params_prompt = skill.get_parameters_prompt()
-        
-        assert 'concept' in params_prompt
-        assert 'required' in params_prompt.lower()
-        assert 'genre' in params_prompt
-        assert 'num_scenes' in params_prompt
+
+        assert skill is not None
+        assert 'Input Requirements' in skill.knowledge
+        assert 'concept' in skill.knowledge
 
     def test_skill_example_call_generation(self):
         """Test that skill generates a valid example call JSON."""
@@ -70,25 +61,21 @@ class TestSkillLoading:
         
         # Should be valid JSON
         parsed = json.loads(example_call)
-        assert parsed['type'] == 'skill'
-        assert parsed['skill'] == 'write_screenplay_outline'
-        assert 'args' in parsed
-        assert 'concept' in parsed['args']
+        assert parsed['type'] == 'tool'
+        assert parsed['tool_name'] == 'execute_skill'
+        assert 'tool_args' in parsed
+        assert parsed['tool_args']['skill_name'] == 'write_screenplay_outline'
+        assert 'prompt' in parsed['tool_args']
 
-    def test_write_single_scene_parameters(self):
-        """Test write_single_scene skill has correct parameters."""
+    def test_write_single_scene_input_requirements(self):
+        """Test write_single_scene skill describes required inputs in knowledge."""
         skill = self.skill_service.get_skill('write_single_scene')
-        
-        assert skill is not None
-        
-        param_names = [p.name for p in skill.parameters]
-        assert 'scene_id' in param_names
-        assert 'title' in param_names
-        assert 'content' in param_names
 
-        # Check required parameters
-        scene_id_param = next(p for p in skill.parameters if p.name == 'scene_id')
-        assert scene_id_param.required is True
+        assert skill is not None
+        assert 'Input Requirements' in skill.knowledge
+        assert 'scene_id' in skill.knowledge
+        assert 'title' in skill.knowledge
+        assert 'content' in skill.knowledge
 
 
 class TestToolContext:
@@ -223,8 +210,8 @@ class TestSkillServiceInContextExecution:
         prompt_info = self.skill_service.get_skill_prompt_info('write_screenplay_outline')
         
         assert 'write_screenplay_outline' in prompt_info
-        assert 'concept' in prompt_info
-        assert 'Parameters' in prompt_info or 'parameters' in prompt_info.lower()
+        assert 'Invocation' in prompt_info
+        assert 'prompt' in prompt_info.lower()
 
     def test_execute_skill_from_knowledge_without_llm(self):
         """Test execute_skill_in_context with a skill that has no scripts (knowledge-based)."""
@@ -297,7 +284,7 @@ You are a test screenwriter.
         assert 'write_single_scene' in crew_member.config.skills
 
     def test_crew_member_formats_skills_prompt(self):
-        """Test that crew member formats skills with parameters in prompt."""
+        """Test that crew member formats skills with input requirements in prompt."""
         from agent.crew.crew_member import CrewMember
         
         crew_member = CrewMember(
@@ -308,7 +295,8 @@ You are a test screenwriter.
         
         skills_prompt = crew_member._format_skills_prompt()
         
-        # Check that parameters are included
+        # Check that input requirements are included
+        assert 'Input Requirements' in skills_prompt
         assert 'concept' in skills_prompt
         assert 'scene_id' in skills_prompt
         assert 'Example call' in skills_prompt or 'example' in skills_prompt.lower()
@@ -341,22 +329,22 @@ You are a test screenwriter.
             project=None
         )
         
-        # Simulate LLM response with skill call
+        # Simulate LLM response with tool call
         response = json.dumps({
-            "type": "skill",
-            "skill": "write_screenplay_outline",
-            "args": {
-                "concept": "A mystery thriller",
-                "genre": "Thriller",
-                "num_scenes": 5
+            "type": "tool",
+            "tool_name": "execute_skill",
+            "tool_args": {
+                "skill_name": "write_screenplay_outline",
+                "prompt": "A mystery thriller. Genre: Thriller. 5 scenes."
             }
         })
         
         action = crew_member._parse_action(response)
         
-        assert action.action_type == 'skill'
-        assert action.skill == 'write_screenplay_outline'
-        assert action.args['concept'] == 'A mystery thriller'
+        assert action.action_type == 'tool'
+        assert action.tool_name == 'execute_skill'
+        assert action.tool_args['skill_name'] == 'write_screenplay_outline'
+        assert 'prompt' in action.tool_args
 
 
 class TestWriteScreenplayOutlineSkill:

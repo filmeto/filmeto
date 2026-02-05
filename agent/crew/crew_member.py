@@ -420,15 +420,7 @@ class CrewMember:
                 'name': skill.name,
                 'description': skill.description,
                 'usage_criteria': usage_criteria,
-                'parameters': [
-                    {
-                        'name': param.name,
-                        'type': param.param_type,
-                        'required': param.required,
-                        'default': param.default,
-                        'description': param.description
-                    } for param in skill.parameters
-                ],
+                'input_requirements': _extract_input_requirements(skill.knowledge),
                 'example_call': skill.get_example_call()
                 # Exclude knowledge field to keep the prompt concise
             })
@@ -458,15 +450,7 @@ class CrewMember:
                 'name': skill.name,
                 'description': skill.description,
                 'usage_criteria': usage_criteria,
-                'parameters': [
-                    {
-                        'name': param.name,
-                        'type': param.param_type,
-                        'required': param.required,
-                        'default': param.default,
-                        'description': param.description
-                    } for param in skill.parameters
-                ],
+                'input_requirements': _extract_input_requirements(skill.knowledge),
                 'example_call': skill.get_example_call()
                 # Exclude knowledge field to keep the prompt concise
             })
@@ -514,7 +498,7 @@ class CrewMember:
         else:
             skills_section = (
                 "## Available Skills\n\n"
-                "You have access to the following skills. Review each skill's purpose and parameters to decide when to use it.\n\n"
+                "You have access to the following skills. Review each skill's purpose and input requirements to decide when to use it.\n\n"
                 + "\n\n".join(details)
             )
 
@@ -539,7 +523,7 @@ class CrewMember:
 
         return (
             "## Available Skills\n\n"
-            "You have access to the following skills. Review each skill's purpose and parameters to decide when to use it.\n\n"
+            "You have access to the following skills. Review each skill's purpose and input requirements to decide when to use it.\n\n"
             + "\n\n".join(details)
         )
 
@@ -569,6 +553,37 @@ def _normalize_list(value: Any) -> List[str]:
             return [item.strip() for item in value.split(",") if item.strip()]
         return [value.strip()] if value.strip() else []
     return [str(value).strip()]
+
+
+def _extract_input_requirements(knowledge: str) -> str:
+    if not knowledge:
+        return ""
+
+    lines = knowledge.splitlines()
+    start_idx = None
+    for idx, line in enumerate(lines):
+        if line.strip().lower().startswith("## input requirements"):
+            start_idx = idx + 1
+            break
+
+    if start_idx is None:
+        return ""
+
+    collected: List[str] = []
+    for line in lines[start_idx:]:
+        if line.strip().startswith("## "):
+            break
+        collected.append(line.rstrip())
+
+    while collected and collected[0] == "":
+        collected.pop(0)
+    while collected and collected[-1] == "":
+        collected.pop()
+
+    if len(collected) > 12:
+        collected = collected[:12] + ["..."]
+
+    return "\n".join(collected)
 
 
 def _format_skill_entry(skill: Skill) -> str:
@@ -605,13 +620,11 @@ def _format_skill_entry_detailed(skill: Skill) -> str:
         lines.append(f"  - {skill.description}")
     lines.append("")
 
-    # Add parameters
-    if skill.parameters:
-        lines.append("**Parameters**:")
-        for param in skill.parameters:
-            req_str = "required" if param.required else "optional"
-            default_str = f", default: {param.default}" if param.default is not None else ""
-            lines.append(f"  - `{param.name}` ({param.param_type}, {req_str}{default_str}): {param.description}")
+    # Add input requirements extracted from knowledge
+    input_requirements = _extract_input_requirements(skill.knowledge or "")
+    if input_requirements:
+        lines.append("**Input Requirements**:")
+        lines.append(input_requirements)
         lines.append("")
 
     # Add example call
