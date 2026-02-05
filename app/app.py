@@ -338,20 +338,28 @@ class App():
             logger.info("Checking for any remaining QThreads...")
             from PySide6.QtCore import QThread
             import gc
+            # qasync._QThreadWorker has a different wait() signature than QThread
+            from qasync import _QThreadWorker
             for obj in gc.get_objects():
                 if isinstance(obj, QThread) and obj.isRunning():
                     logger.warning(f"Found running QThread {obj}, attempting to stop it...")
                     try:
                         obj.quit()
-                        # Fixed: QThread.wait() doesn't take timeout as positional arg in newer PySide6 versions
-                        obj.wait(5000)  # Wait up to 5 seconds
+                        # _QThreadWorker.wait() takes no arguments, QThread.wait() accepts timeout
+                        if isinstance(obj, _QThreadWorker):
+                            obj.wait()  # No timeout argument for _QThreadWorker
+                        else:
+                            obj.wait(5000)  # Wait up to 5 seconds for standard QThread
                     except Exception as e:
                         logger.error(f"Error stopping QThread {obj}: {e}")
                         try:
                             # Fallback: try to terminate if quit didn't work
                             if obj.isRunning():
                                 obj.terminate()
-                                obj.wait(1000)  # Wait 1 more second after terminate
+                                if isinstance(obj, _QThreadWorker):
+                                    obj.wait()  # No timeout argument for _QThreadWorker
+                                else:
+                                    obj.wait(1000)  # Wait 1 more second after terminate
                         except Exception as term_e:
                             logger.error(f"Error terminating QThread {obj}: {term_e}")
         except Exception as e:
