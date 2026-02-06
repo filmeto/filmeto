@@ -19,8 +19,8 @@ def normalize_timestamp(timestamp: datetime) -> datetime:
     return timestamp.astimezone(timezone.utc)
 
 
-def utc_timestamp_seconds(timestamp: datetime) -> int:
-    return int(normalize_timestamp(timestamp).timestamp())
+def utc_timestamp_milliseconds(timestamp: datetime) -> int:
+    return int(normalize_timestamp(timestamp).timestamp() * 1000)
 
 
 def date_str_from_timestamp(timestamp: datetime) -> str:
@@ -34,20 +34,40 @@ def sanitize_sender(sender: str) -> str:
 
 
 def build_message_filename(timestamp: datetime, message_id: str, sender: str) -> str:
-    timestamp_seconds = utc_timestamp_seconds(timestamp)
+    timestamp_ms = utc_timestamp_milliseconds(timestamp)
     safe_sender = sanitize_sender(sender)
-    return f"{timestamp_seconds}_{message_id}_{safe_sender}.md"
+    return f"{timestamp_ms}_{safe_sender}_{message_id}.md"
 
 
 def parse_message_filename(path: Path) -> Optional[ParsedMessageFilename]:
+    """
+    Parse a message filename in the format: {millisecond_timestamp}_{sender}_{message_id}.md
+
+    Args:
+        path: Path to the message file
+
+    Returns:
+        ParsedMessageFilename with timestamp in milliseconds, or None if parsing fails
+    """
     name = path.stem
-    parts = name.split("_", 2)
-    if len(parts) < 2:
+    # Find first underscore (end of timestamp) and last underscore (start of message_id)
+    first_underscore = name.find("_")
+    last_underscore = name.rfind("_")
+
+    if first_underscore == -1 or last_underscore == -1 or first_underscore >= last_underscore:
         return None
+
     try:
-        timestamp = int(parts[0])
+        # Parse timestamp (milliseconds)
+        timestamp = int(name[:first_underscore])
     except ValueError:
         return None
-    message_id = parts[1]
-    sender = parts[2] if len(parts) > 2 else ""
+
+    # Extract sender (between first and last underscore) and message_id (after last underscore)
+    sender = name[first_underscore + 1:last_underscore]
+    message_id = name[last_underscore + 1:]
+
+    if not message_id:
+        return None
+
     return ParsedMessageFilename(timestamp=timestamp, message_id=message_id, sender=sender)

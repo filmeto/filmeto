@@ -26,7 +26,7 @@ class MessageStorage:
     """
     Handles storage and retrieval of AgentMessage objects to/from markdown files.
 
-    File naming convention: {utc_timestamp}_{message_id}_{sender}.md
+    File naming convention: {millisecond_timestamp}_{sender}_{message_id}.md
     File structure (YAML):
         metadata:
           ...
@@ -76,7 +76,7 @@ class MessageStorage:
         """
         Generate the file path for a message.
 
-        File naming: {utc_timestamp}_{message_id}_{sender}.md
+        File naming: {millisecond_timestamp}_{sender}_{message_id}.md
 
         Args:
             message: The AgentMessage to generate path for
@@ -201,7 +201,7 @@ class MessageStorage:
     def _find_message_file_in_dir(self, date_dir: Path, message_id: str) -> Optional[Path]:
         if not date_dir.exists():
             return None
-        matches = list(date_dir.glob(f"*_{message_id}_*.md"))
+        matches = list(date_dir.glob(f"*_*_{message_id}.md"))
         if not matches:
             return None
         matches.sort(key=self._get_file_timestamp)
