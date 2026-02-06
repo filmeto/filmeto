@@ -5,7 +5,8 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Any, Optional, Tuple, TYPE_CHECKING
 
 from PySide6.QtWidgets import (
-    QVBoxLayout, QWidget, QListView, QStyledItemDelegate, QAbstractItemView
+    QVBoxLayout, QWidget, QListView, QStyledItemDelegate, QAbstractItemView,
+    QStyleOptionViewItem, QSizePolicy
 )
 from PySide6.QtCore import (
     Qt, Signal, Slot, QTimer, QAbstractListModel, QModelIndex, QSize, QPoint
@@ -345,6 +346,8 @@ class AgentChatListWidget(BaseWidget):
 
     def _on_viewport_resized(self):
         self._size_hint_cache.clear()
+        # Clear existing widgets so they will be recreated with updated width
+        self._clear_visible_widgets()
         self.list_view.doItemsLayout()
         self._schedule_visible_refresh()
 
@@ -391,6 +394,23 @@ class AgentChatListWidget(BaseWidget):
                 continue
             index = self._model.index(row, 0)
             widget = self._create_message_widget(item, self.list_view.viewport())
+            # Set fixed width to match viewport width, ensuring each row has independent sizing
+            widget_width = self.list_view.viewport().width()
+            widget.setFixedWidth(max(1, widget_width))
+            # Get cached size or build sizing widget to determine height
+            cached_size = self._size_hint_cache.get(item.message_id, {}).get(widget_width)
+            if cached_size:
+                item_height = cached_size.height()
+            else:
+                # Build a temporary widget to calculate height
+                option = QStyleOptionViewItem()
+                option.rect = self.list_view.viewport().rect()
+                item_height = self.get_item_size_hint(option, index).height()
+            widget.setFixedHeight(max(1, item_height))
+            # Set size policy to fixed to prevent automatic resizing
+            widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+            if widget.layout():
+                widget.layout().activate()
             self.list_view.setIndexWidget(index, widget)
             self._visible_widgets[row] = widget
 
@@ -439,6 +459,18 @@ class AgentChatListWidget(BaseWidget):
         else:
             if hasattr(widget, "update_from_agent_message") and item.agent_message:
                 widget.update_from_agent_message(item.agent_message)
+
+        # Update widget height after content change
+        widget_width = widget.width()
+        # Invalidate size hint cache to force recalculation
+        self._invalidate_size_hint(item.message_id)
+        # Recalculate height
+        option = QStyleOptionViewItem()
+        option.rect = self.list_view.viewport().rect()
+        index = self._model.index(row, 0)
+        new_size = self.get_item_size_hint(option, index)
+        # Update widget height
+        widget.setFixedHeight(max(1, new_size.height()))
 
     def _on_rows_inserted(self, parent: QModelIndex, start: int, end: int):
         self._schedule_visible_refresh()

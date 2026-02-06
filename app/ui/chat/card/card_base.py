@@ -86,6 +86,8 @@ class BaseMessageCard(QFrame):
 
         # Name and role
         self.name_widget = QWidget(header_row)
+        # Set maximum height to prevent header from being stretched when crew_title is added
+        self.name_widget.setMaximumHeight(self.avatar_size)
         name_layout = QVBoxLayout(self.name_widget)
         name_layout.setContentsMargins(0, 0, 0, 0)
         name_layout.setSpacing(0)
@@ -216,6 +218,11 @@ class BaseMessageCard(QFrame):
         self.bubble_container.setFixedWidth(max(1, bubble_width))
         self.structure_content.setMaximumWidth(bubble_width)
         self.structure_content.update_available_width(actual_content_width)
+
+    def sizeHint(self):
+        """Return the size hint for this widget."""
+        # Use current size as size hint to prevent layout changes
+        return self.size()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

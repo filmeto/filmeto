@@ -77,6 +77,8 @@ class AgentMessageCard(BaseMessageCard):
         font_metrics = color_block_with_text.fontMetrics()
         text_width = font_metrics.horizontalAdvance(title_text) + 16  # Add some extra space
         color_block_with_text.setFixedWidth(max(text_width, 60))  # Minimum width of 60
+        # Set fixed height to prevent header row from being stretched
+        color_block_with_text.setFixedHeight(18)
 
         # Add to the name layout - we now have a reference to name_widget
         name_layout = self.name_widget.layout()
