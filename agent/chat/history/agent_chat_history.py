@@ -9,8 +9,8 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 from pathlib import Path
 
-from agent.chat.history.storage import MessageStorage
-from agent.chat.history.message_paths import parse_message_filename
+from agent.chat.history.agent_chat_history_storage import MessageStorage
+from agent.chat.history.agent_chat_history_paths import parse_message_filename
 from agent.chat.agent_chat_message import AgentMessage
 
 logger = __import__('logging').getLogger(__name__)

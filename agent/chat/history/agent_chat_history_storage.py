@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 from agent.chat.agent_chat_message import AgentMessage
-from agent.chat.history.message_paths import (
+from agent.chat.history.agent_chat_history_paths import (
     build_message_filename,
     date_str_from_timestamp,
     parse_message_filename,
