@@ -15,7 +15,7 @@ from agent.chat.content import (
 )
 from agent.chat.agent_chat_types import ContentType, MessageType
 from agent.chat.agent_chat_signals import AgentChatSignals
-from agent.chat.history.listener import AgentChatHistoryListener
+from agent.chat.history.agent_chat_history_listener import AgentChatHistoryListener
 from agent.llm.llm_service import LlmService
 from agent.plan.plan_models import Plan, PlanInstance, PlanTask, TaskStatus
 from agent.plan.plan_service import PlanService
