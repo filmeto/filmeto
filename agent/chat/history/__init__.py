@@ -6,8 +6,8 @@ and file-based persistence.
 """
 
 from .agent_chat_history import AgentChatHistory, MessageCursor
-from .service import AgentChatHistoryService
-from .listener import AgentChatHistoryListener
+from .agent_chat_history_service import AgentChatHistoryService
+from .agent_chat_history_listener import AgentChatHistoryListener
 from .storage import MessageStorage
 
 __all__ = [

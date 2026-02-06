@@ -7,7 +7,7 @@ Integrates with AgentChatSignals to automatically listen and save messages.
 import logging
 from typing import Optional
 
-from agent.chat.history.service import AgentChatHistoryService
+from agent.chat.history.agent_chat_history_service import AgentChatHistoryService
 from agent.chat.agent_chat_signals import AgentChatSignals
 from agent.chat.agent_chat_message import AgentMessage
 
