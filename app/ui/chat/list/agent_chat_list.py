@@ -1,6 +1,7 @@
 """Agent chat list component using QListView for virtualized rendering."""
 
 import uuid
+import logging
 from dataclasses import dataclass, field
 from typing import Dict, List, Any, Optional, Tuple, TYPE_CHECKING
 
@@ -15,6 +16,9 @@ from PySide6.QtCore import (
 from agent import AgentMessage
 from app.ui.base_widget import BaseWidget
 from utils.i18n_utils import tr
+from agent.chat.history.agent_chat_history_service import AgentChatHistoryService
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from app.data.workspace import Workspace
@@ -148,18 +152,28 @@ class AgentChatListWidget(BaseWidget):
         self._visible_refresh_timer.setSingleShot(True)
         self._visible_refresh_timer.timeout.connect(self._refresh_visible_widgets)
 
+        # New data check timer - polls for new messages when at bottom
+        self._new_data_check_timer = QTimer(self)
+        self._new_data_check_timer.timeout.connect(self._check_for_new_data)
+
         self._user_at_bottom = True
         self._bottom_reached = False
 
         self._crew_member_metadata: Dict[str, Dict[str, Any]] = {}
         self._agent_current_cards: Dict[str, str] = {}
 
+        # Track the latest message_id to detect new messages
+        self._latest_message_id: Optional[str] = None
+
         self._setup_ui()
         self._load_crew_member_metadata()
         self._load_recent_conversation()
+        self._start_new_data_check_timer()
 
     def on_project_switched(self, project_name: str):
         self.refresh_crew_member_metadata()
+        # Reset latest message_id tracking
+        self._latest_message_id = None
         self._load_recent_conversation()
 
     def refresh_crew_member_metadata(self):
@@ -212,8 +226,46 @@ class AgentChatListWidget(BaseWidget):
         layout.addWidget(self.list_view)
 
     def _load_recent_conversation(self):
-        print("Conversation persistence is not yet implemented for the new AgentMessage system")
-        return
+        """Load recent conversation from AgentChatHistoryService."""
+        try:
+            project = self.workspace.get_project()
+            if not project:
+                return
+
+            workspace_path = self.workspace.workspace_path
+            project_name = self.workspace.project_name
+
+            # Get the latest 50 messages from history
+            messages = AgentChatHistoryService.get_latest_messages(
+                workspace_path, project_name, count=50
+            )
+
+            if messages:
+                # Update the latest message_id tracker
+                last_msg_info = AgentChatHistoryService.get_latest_message_info(
+                    workspace_path, project_name
+                )
+                if last_msg_info:
+                    self._latest_message_id = last_msg_info.get("message_id")
+
+                # Clear and reload the model
+                self._model.clear()
+                self._size_hint_cache.clear()
+                self._clear_visible_widgets()
+
+                # Load messages in order (oldest first)
+                for msg_data in reversed(messages):
+                    self._load_message_from_history(msg_data)
+
+                # Scroll to bottom after loading
+                self._schedule_scroll()
+
+                logger.info(f"Loaded {len(messages)} messages from history")
+            else:
+                logger.info("No messages found in history")
+
+        except Exception as e:
+            logger.error(f"Error loading recent conversation: {e}")
 
     def _load_crew_member_metadata(self):
         try:
@@ -231,6 +283,161 @@ class AgentChatListWidget(BaseWidget):
         except Exception as e:
             print(f"Error loading crew members: {e}")
             self._crew_member_metadata = {}
+
+    def _load_message_from_history(self, msg_data: Dict[str, Any]):
+        """Load a single message from history data into the model."""
+        try:
+            from agent.chat.agent_chat_message import AgentMessage as ChatAgentMessage
+            from agent.chat.agent_chat_types import MessageType
+            from agent.chat.content import StructureContent
+
+            metadata = msg_data.get("metadata", {})
+            content_list = msg_data.get("content", [])
+
+            # Extract basic info
+            message_id = metadata.get("message_id", "")
+            sender_id = metadata.get("sender_id", "unknown")
+            sender_name = metadata.get("sender_name", sender_id)
+            message_type_str = metadata.get("message_type", "text")
+
+            if not message_id:
+                return
+
+            # Parse message_type
+            try:
+                message_type = MessageType(message_type_str)
+            except ValueError:
+                message_type = MessageType.TEXT
+
+            # Check if this is a user message
+            is_user = sender_id.lower() == "user"
+
+            if is_user:
+                # For user messages, extract text from content
+                text_content = ""
+                for content_item in content_list:
+                    if isinstance(content_item, dict):
+                        if content_item.get("content_type") == "text":
+                            text_content = content_item.get("data", {}).get("text", "")
+                            break
+
+                item = ChatListItem(
+                    message_id=message_id,
+                    sender_id=sender_id,
+                    sender_name=sender_name,
+                    is_user=True,
+                    user_content=text_content,
+                )
+            else:
+                # Reconstruct structured content from content list
+                structured_content = []
+                for content_item in content_list:
+                    if isinstance(content_item, dict):
+                        try:
+                            sc = StructureContent.from_dict(content_item)
+                            structured_content.append(sc)
+                        except Exception as e:
+                            logger.warning(f"Failed to load structured content: {e}")
+
+                # Create AgentMessage
+                agent_message = ChatAgentMessage(
+                    message_type=message_type,
+                    sender_id=sender_id,
+                    sender_name=sender_name,
+                    message_id=message_id,
+                    metadata=metadata,
+                    structured_content=structured_content,
+                )
+
+                # Get agent metadata
+                agent_color, agent_icon, crew_member_data = self._resolve_agent_metadata(
+                    sender_name, metadata
+                )
+
+                item = ChatListItem(
+                    message_id=message_id,
+                    sender_id=sender_id,
+                    sender_name=sender_name,
+                    is_user=False,
+                    agent_message=agent_message,
+                    agent_color=agent_color,
+                    agent_icon=agent_icon,
+                    crew_member_metadata=crew_member_data,
+                )
+
+            self._model.add_item(item)
+
+        except Exception as e:
+            logger.error(f"Error loading message from history: {e}")
+
+    def _start_new_data_check_timer(self):
+        """Start the timer to check for new data."""
+        # Check every 1 second
+        self._new_data_check_timer.start(1000)
+
+    def _stop_new_data_check_timer(self):
+        """Stop the new data check timer."""
+        self._new_data_check_timer.stop()
+
+    def _check_for_new_data(self):
+        """Check for new data and refresh if at bottom."""
+        # Only check if user is at the bottom
+        if not self._user_at_bottom:
+            return
+
+        try:
+            workspace_path = self.workspace.workspace_path
+            project_name = self.workspace.project_name
+
+            # Get the latest message_id from history
+            latest_message_id = AgentChatHistoryService.get_latest_message_id(
+                workspace_path, project_name
+            )
+
+            # Check if there's a new message
+            if latest_message_id and latest_message_id != self._latest_message_id:
+                # Load new messages
+                self._load_new_messages(latest_message_id)
+
+        except Exception as e:
+            logger.error(f"Error checking for new data: {e}")
+
+    def _load_new_messages(self, new_latest_message_id: str):
+        """Load new messages since the last known message."""
+        try:
+            workspace_path = self.workspace.workspace_path
+            project_name = self.workspace.project_name
+
+            # Get messages after the last known message_id
+            if self._latest_message_id:
+                new_messages = AgentChatHistoryService.get_messages_after(
+                    workspace_path, project_name, self._latest_message_id, count=100
+                )
+            else:
+                # If no previous message, get latest messages
+                new_messages = AgentChatHistoryService.get_latest_messages(
+                    workspace_path, project_name, count=50
+                )
+                new_messages = list(reversed(new_messages))
+
+            if new_messages:
+                # Load new messages
+                for msg_data in new_messages:
+                    # Skip if already in model
+                    message_id = msg_data.get("metadata", {}).get("message_id")
+                    if message_id and not self._model.get_row_by_message_id(message_id):
+                        self._load_message_from_history(msg_data)
+
+                # Update the latest message_id tracker
+                self._latest_message_id = new_latest_message_id
+
+                # Scroll to bottom to show new messages
+                self._schedule_scroll()
+
+                logger.info(f"Loaded {len(new_messages)} new messages")
+
+        except Exception as e:
+            logger.error(f"Error loading new messages: {e}")
 
     def _get_sender_info(self, sender: str):
         normalized_sender = sender.lower()
@@ -904,7 +1111,9 @@ class AgentChatListWidget(BaseWidget):
         pass
 
     def clear(self):
+        self._stop_new_data_check_timer()
         self._clear_visible_widgets()
         self._size_hint_cache.clear()
         self._agent_current_cards.clear()
         self._model.clear()
+        self._latest_message_id = None
