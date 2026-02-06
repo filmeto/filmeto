@@ -237,6 +237,10 @@ class AgentChatListWidget(BaseWidget):
         self._loading_older = False
         self._has_more_history = True
 
+        # Flag to force scroll-to-bottom even if _user_at_bottom was
+        # reset by intermediate scrollbar range changes during layout.
+        self._pending_scroll_to_bottom = False
+
         self._setup_ui()
         self._load_crew_member_metadata()
         self._load_recent_conversation()
@@ -250,6 +254,7 @@ class AgentChatListWidget(BaseWidget):
         self._last_known_revision = 0
         self._loading_older = False
         self._has_more_history = True
+        self._pending_scroll_to_bottom = False
         self._load_recent_conversation()
 
     def refresh_crew_member_metadata(self):
@@ -344,7 +349,11 @@ class AgentChatListWidget(BaseWidget):
                 total_count = history.get_message_count()
                 self._has_more_history = total_count > len(messages)
 
-                # Scroll to bottom after loading
+                # Force scroll to bottom after loading.
+                # The viewport might not be sized yet (during __init__), so
+                # set the pending flag to ensure the scroll happens once the
+                # viewport is ready.
+                self._pending_scroll_to_bottom = True
                 self._schedule_scroll()
 
                 logger.info(f"Loaded {len(messages)} messages from history (total: {total_count})")
@@ -744,11 +753,21 @@ class AgentChatListWidget(BaseWidget):
     # ─── Viewport and scroll handling ────────────────────────────────
 
     def _on_viewport_resized(self):
+        # Capture scroll-at-bottom state BEFORE doItemsLayout changes the
+        # scrollbar range (which resets _user_at_bottom via valueChanged).
+        was_at_bottom = self._user_at_bottom or self._pending_scroll_to_bottom
+
         self._size_hint_cache.clear()
         # Clear existing widgets so they will be recreated with updated width
         self._clear_visible_widgets()
         self.list_view.doItemsLayout()
         self._schedule_visible_refresh()
+
+        # Re-schedule scroll-to-bottom when the user was at the bottom
+        # before the resize, or when a pending scroll exists (initial load).
+        if was_at_bottom and self._model.rowCount() > 0:
+            self._pending_scroll_to_bottom = True
+            self._schedule_scroll()
 
     def _schedule_visible_refresh(self):
         if not self._visible_refresh_timer.isActive():
@@ -766,6 +785,18 @@ class AgentChatListWidget(BaseWidget):
         row_count = self._model.rowCount()
         if row_count <= 0:
             self._clear_visible_widgets()
+            return
+
+        viewport = self.list_view.viewport()
+        if viewport is None:
+            return
+
+        # Skip refresh if the viewport hasn't been sized yet (during init).
+        # Widgets created with a 0/1-pixel width would have wrong dimensions.
+        # The refresh will be rescheduled by _on_viewport_resized once the
+        # viewport receives its real size.
+        viewport_width = viewport.width()
+        if viewport_width < 10:
             return
 
         first_row, last_row = self._get_visible_row_range()
@@ -793,25 +824,27 @@ class AgentChatListWidget(BaseWidget):
             item = self._model.get_item(row)
             if not item:
                 continue
-            index = self._model.index(row, 0)
-            widget = self._create_message_widget(item, self.list_view.viewport())
-            # Set fixed width to match viewport width
-            widget_width = self.list_view.viewport().width()
-            widget.setFixedWidth(max(1, widget_width))
-            # Get cached size or build sizing widget to determine height
-            cached_size = self._size_hint_cache.get(item.message_id, {}).get(widget_width)
-            if cached_size:
-                item_height = cached_size.height()
-            else:
-                option = QStyleOptionViewItem()
-                option.rect = self.list_view.viewport().rect()
-                item_height = self.get_item_size_hint(option, index).height()
-            widget.setFixedHeight(max(1, item_height))
-            widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-            if widget.layout():
-                widget.layout().activate()
-            self.list_view.setIndexWidget(index, widget)
-            self._visible_widgets[row] = widget
+            try:
+                index = self._model.index(row, 0)
+                widget = self._create_message_widget(item, viewport)
+                # Set fixed width to match viewport width
+                widget.setFixedWidth(max(1, viewport_width))
+                # Get cached size or build sizing widget to determine height
+                cached_size = self._size_hint_cache.get(item.message_id, {}).get(viewport_width)
+                if cached_size:
+                    item_height = cached_size.height()
+                else:
+                    option = QStyleOptionViewItem()
+                    option.rect = viewport.rect()
+                    item_height = self.get_item_size_hint(option, index).height()
+                widget.setFixedHeight(max(1, item_height))
+                widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+                if widget.layout():
+                    widget.layout().activate()
+                self.list_view.setIndexWidget(index, widget)
+                self._visible_widgets[row] = widget
+            except Exception as e:
+                logger.error(f"Error creating widget for row {row}: {e}")
 
     def _get_visible_row_range(self) -> Tuple[Optional[int], Optional[int]]:
         viewport = self.list_view.viewport()
@@ -881,7 +914,13 @@ class AgentChatListWidget(BaseWidget):
         scrollbar = self.list_view.verticalScrollBar()
         scroll_diff = scrollbar.maximum() - value
         was_at_bottom = self._user_at_bottom
-        self._user_at_bottom = scroll_diff < self.SCROLL_BOTTOM_THRESHOLD
+
+        # Don't overwrite _user_at_bottom when a forced scroll is pending.
+        # During initial layout, the scrollbar range changes before
+        # _scroll_to_bottom fires, which would incorrectly set
+        # _user_at_bottom to False and prevent the scroll.
+        if not self._pending_scroll_to_bottom:
+            self._user_at_bottom = scroll_diff < self.SCROLL_BOTTOM_THRESHOLD
 
         # Detect scroll to top - trigger loading older messages
         if value < self.SCROLL_TOP_THRESHOLD and self._has_more_history and not self._loading_older:
@@ -895,8 +934,12 @@ class AgentChatListWidget(BaseWidget):
             self._bottom_reached = False
 
     def _scroll_to_bottom(self):
-        if self._user_at_bottom:
+        if self._user_at_bottom or self._pending_scroll_to_bottom:
+            self._pending_scroll_to_bottom = False
             self.list_view.scrollToBottom()
+            # After programmatic scroll-to-bottom, mark as at bottom so
+            # the new-data polling can pick up new messages.
+            self._user_at_bottom = True
 
     def _schedule_scroll(self):
         self._scroll_timer.start(50)
@@ -1321,3 +1364,4 @@ class AgentChatListWidget(BaseWidget):
         self._last_known_revision = 0
         self._loading_older = False
         self._has_more_history = True
+        self._pending_scroll_to_bottom = False
