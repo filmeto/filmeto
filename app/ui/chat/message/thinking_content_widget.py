@@ -5,7 +5,7 @@ This widget displays the agent's thinking process with a distinct visual style.
 
 from typing import Any, Dict
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QVBoxLayout, QLabel, QFrame
+from PySide6.QtWidgets import QVBoxLayout, QLabel, QFrame, QSizePolicy
 
 from agent.chat.content import ThinkingContent
 from app.ui.chat.message.base_structured_content_widget import BaseStructuredContentWidget
@@ -34,6 +34,9 @@ class ThinkingContentWidget(BaseStructuredContentWidget):
 
     def _setup_ui(self):
         """Set up the UI for the thinking content widget."""
+        # Set size policy to prevent unnecessary expansion
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)

@@ -1,3 +1,4 @@
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -17,6 +18,8 @@ from agent.prompt.prompt_service import prompt_service
 if TYPE_CHECKING:
     from agent.event.agent_event import AgentEvent
     from agent.react.types import AgentEventType
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass

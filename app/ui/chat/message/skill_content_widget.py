@@ -41,6 +41,9 @@ class SkillContentWidget(BaseStructuredContentWidget):
         """Set up the UI components."""
         self.setObjectName("skill_content_widget")
 
+        # Set size policy to prevent unnecessary expansion
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+
         # Main layout
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
