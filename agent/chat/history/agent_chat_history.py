@@ -1,10 +1,12 @@
 """
 Agent Chat History module.
 
-Provides rolling message history management for agent conversations.
+Provides rolling message history management for agent conversations
+with LRU caching and efficient file list management.
 """
 
 import os
+from collections import OrderedDict
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from pathlib import Path
@@ -41,11 +43,14 @@ class AgentChatHistory:
     """
     Manages agent chat history with rolling message retrieval.
 
-    Provides methods to:
-    - Get latest message info
-    - Get N messages before/after a given message ID
-    - Add new messages to history
+    Features:
+    - LRU cache for message data with bounded size
+    - Cached file list to avoid repeated filesystem scans
+    - Revision counter for efficient change detection
+    - Cached latest message info
     """
+
+    CACHE_MAX_SIZE = 200
 
     def __init__(self, workspace_path: str, project_name: str):
         """
@@ -68,7 +73,48 @@ class AgentChatHistory:
         )
 
         self.storage = MessageStorage(history_root)
-        self._cache: Dict[str, Dict[str, Any]] = {}
+
+        # LRU cache for loaded messages (OrderedDict for O(1) move-to-end)
+        self._cache: OrderedDict[str, Dict[str, Any]] = OrderedDict()
+
+        # Cached sorted file list (invalidated on add_message)
+        self._all_files_cache: Optional[List[Path]] = None
+
+        # Monotonically increasing revision counter for change detection
+        self._revision: int = 0
+
+        # Cached latest message info (updated on add_message, lazy-loaded otherwise)
+        self._latest_info_cache: Optional[Dict[str, Any]] = None
+
+    @property
+    def revision(self) -> int:
+        """Monotonically increasing revision counter, incremented on each add_message call."""
+        return self._revision
+
+    def _cache_put(self, message_id: str, data: Dict[str, Any]):
+        """Add item to LRU cache, evicting oldest entries if over capacity."""
+        if message_id in self._cache:
+            self._cache.move_to_end(message_id)
+        self._cache[message_id] = data
+        while len(self._cache) > self.CACHE_MAX_SIZE:
+            self._cache.popitem(last=False)
+
+    def _cache_get(self, message_id: str) -> Optional[Dict[str, Any]]:
+        """Get item from cache and mark as recently used."""
+        if message_id in self._cache:
+            self._cache.move_to_end(message_id)
+            return self._cache[message_id]
+        return None
+
+    def _invalidate_file_list_cache(self):
+        """Invalidate the cached file list so it's rebuilt on next access."""
+        self._all_files_cache = None
+
+    def _get_all_files(self) -> List[Path]:
+        """Get all message files sorted by timestamp, using cache if available."""
+        if self._all_files_cache is None:
+            self._all_files_cache = self.storage.list_all_message_files()
+        return self._all_files_cache
 
     def add_message(self, message: AgentMessage, append_content: bool = True) -> str:
         """
@@ -85,22 +131,52 @@ class AgentChatHistory:
 
         loaded = self.storage.load_message(Path(file_path))
         if loaded:
-            self._cache[message.message_id] = loaded
+            self._cache_put(message.message_id, loaded)
+
+        # Update latest info cache from the saved file
+        parsed = parse_message_filename(Path(file_path))
+        if parsed:
+            new_info = {
+                "message_id": parsed.message_id,
+                "timestamp": parsed.timestamp,
+                "file_path": str(file_path),
+            }
+            # Only update if this message is actually newer than the cached latest
+            if (self._latest_info_cache is None
+                    or parsed.timestamp >= self._latest_info_cache.get("timestamp", 0)):
+                self._latest_info_cache = new_info
+
+        # Invalidate file list so it's rebuilt with the new/updated file
+        self._invalidate_file_list_cache()
+
+        # Increment revision to signal change
+        self._revision += 1
 
         return file_path
 
     def _load_messages_from_files(self, files: List[Path]) -> List[Dict[str, Any]]:
+        """Load messages from file list, using cache when possible."""
         result: List[Dict[str, Any]] = []
         for file_path in files:
+            # Try cache first via parsed filename
+            parsed = parse_message_filename(file_path)
+            if parsed:
+                cached = self._cache_get(parsed.message_id)
+                if cached is not None:
+                    result.append(cached)
+                    continue
+
+            # Cache miss - load from disk
             loaded = self.storage.load_message(file_path)
             if loaded:
                 message_id = loaded.get("metadata", {}).get("message_id")
                 if message_id:
-                    self._cache[message_id] = loaded
+                    self._cache_put(message_id, loaded)
                 result.append(loaded)
         return result
 
     def _find_message_index(self, files: List[Path], message_id: str) -> Optional[int]:
+        """Find the index of a message file in the sorted file list (searches from end)."""
         for index in range(len(files) - 1, -1, -1):
             parsed = parse_message_filename(files[index])
             if parsed and parsed.message_id == message_id:
@@ -114,7 +190,12 @@ class AgentChatHistory:
         Returns:
             Dictionary with message_id, timestamp, and file_path, or None if no messages exist
         """
-        return self.storage.get_latest_message_info()
+        if self._latest_info_cache is not None:
+            return self._latest_info_cache
+        info = self.storage.get_latest_message_info()
+        if info:
+            self._latest_info_cache = info
+        return info
 
     def get_latest_message_id(self) -> Optional[str]:
         """Get the most recent message ID."""
@@ -122,7 +203,7 @@ class AgentChatHistory:
         return info.get("message_id") if info else None
 
     def get_latest_message_timestamp(self) -> Optional[int]:
-        """Get the most recent message timestamp (UTC seconds)."""
+        """Get the most recent message timestamp (UTC milliseconds)."""
         info = self.get_latest_message_info()
         return info.get("timestamp") if info else None
 
@@ -137,9 +218,10 @@ class AgentChatHistory:
         Returns:
             Dictionary containing metadata and content, or None if not found
         """
-        # Check cache first
-        if message_id in self._cache:
-            return self._cache[message_id]
+        cached = self._cache_get(message_id)
+        if cached is not None:
+            return cached
+
         file_path = None
         if date_str:
             try:
@@ -156,7 +238,7 @@ class AgentChatHistory:
 
         loaded = self.storage.load_message(file_path)
         if loaded:
-            self._cache[message_id] = loaded
+            self._cache_put(message_id, loaded)
         return loaded
 
     def get_messages_before(
@@ -174,12 +256,12 @@ class AgentChatHistory:
             date_str: Optional date string (yyyyMMdd) to narrow search
 
         Returns:
-            List of message dictionaries (excluding the reference message)
+            List of message dictionaries in chronological order (excluding the reference message)
         """
         if count <= 0:
             return []
 
-        files = self.storage.list_all_message_files()
+        files = self._get_all_files()
         index = self._find_message_index(files, message_id)
         if index is None:
             return []
@@ -203,12 +285,12 @@ class AgentChatHistory:
             date_str: Optional date string (yyyyMMdd) to narrow search
 
         Returns:
-            List of message dictionaries (excluding the reference message)
+            List of message dictionaries in chronological order (excluding the reference message)
         """
         if count <= 0:
             return []
 
-        files = self.storage.list_all_message_files()
+        files = self._get_all_files()
         index = self._find_message_index(files, message_id)
         if index is None:
             return []
@@ -254,7 +336,7 @@ class AgentChatHistory:
         if count <= 0:
             return []
 
-        files = self.storage.list_all_message_files()
+        files = self._get_all_files()
         if not files:
             return []
 
@@ -274,6 +356,12 @@ class AgentChatHistory:
         files = self.storage.list_message_files(date)
         return self._load_messages_from_files(files)
 
+    def get_message_count(self) -> int:
+        """Get the total number of messages in history."""
+        return len(self._get_all_files())
+
     def clear_cache(self):
-        """Clear the internal message cache."""
+        """Clear all internal caches."""
         self._cache.clear()
+        self._all_files_cache = None
+        self._latest_info_cache = None

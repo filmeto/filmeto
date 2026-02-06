@@ -282,6 +282,47 @@ class AgentChatHistoryService:
         return history.get_messages_by_date(date)
 
     @classmethod
+    def get_revision(
+        cls,
+        workspace_path: str,
+        project_name: str
+    ) -> int:
+        """
+        Get the current revision counter for a history instance.
+
+        The revision is incremented on every add_message call and can be used
+        for efficient change detection without scanning the filesystem.
+
+        Args:
+            workspace_path: Path to the workspace
+            project_name: Name of the project
+
+        Returns:
+            Current revision counter value
+        """
+        history = cls.get_history(workspace_path, project_name)
+        return history.revision
+
+    @classmethod
+    def get_message_count(
+        cls,
+        workspace_path: str,
+        project_name: str
+    ) -> int:
+        """
+        Get the total number of messages in history.
+
+        Args:
+            workspace_path: Path to the workspace
+            project_name: Name of the project
+
+        Returns:
+            Total number of messages
+        """
+        history = cls.get_history(workspace_path, project_name)
+        return history.get_message_count()
+
+    @classmethod
     def clear_cache(cls, workspace_path: str, project_name: str):
         """
         Clear the internal cache for a specific history instance.
