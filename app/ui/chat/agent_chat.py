@@ -13,7 +13,6 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtCore import Signal, Slot
 from qasync import asyncSlot
 
-from agent import AgentMessage
 from app.ui.base_widget import BaseWidget
 from app.data.workspace import Workspace
 from app.ui.chat.list.agent_chat_list import AgentChatListWidget
@@ -40,11 +39,6 @@ class AgentChatWidget(BaseWidget):
         self.agent = None
         self._agent_ready = False
         self._agent_lock = asyncio.Lock()
-
-        # Message processing
-        self._message_queue = asyncio.Queue()
-        self._message_processing_task = None
-        self._message_processor_started = False
 
         # Connect internal signal
         self.error_occurred.connect(self._on_error)
@@ -126,8 +120,6 @@ class AgentChatWidget(BaseWidget):
                     streaming=True
                 )
 
-                # Connect to agent's signals
-                self.agent.connect_message_handler(self._on_agent_message_sent)
                 self._agent_ready = True
 
                 logger.info(f"✅ Agent initialized for project '{project_name}'")
@@ -178,51 +170,6 @@ class AgentChatWidget(BaseWidget):
         if self.chat_history_widget:
             self.chat_history_widget.append_message(tr("System"), error_message)
 
-    def _start_message_processor(self):
-        """Start the message processing task if not already started."""
-        if self._message_processing_task is None or self._message_processing_task.done():
-            try:
-                loop = asyncio.get_running_loop()
-                self._message_processing_task = loop.create_task(self._process_messages())
-                self._message_processor_started = True
-            except RuntimeError:
-                pass
-
-    async def _process_messages(self):
-        """Process messages from the queue sequentially."""
-        while True:
-            try:
-                message = await self._message_queue.get()
-                if message is None:
-                    break
-
-                if message:
-                    try:
-                        await self.chat_history_widget.handle_agent_message(message)
-                        if self.plan_widget:
-                            await self.plan_widget.handle_agent_message(message)
-                    except Exception as e:
-                        logger.error(f"Error handling agent message: {e}", exc_info=True)
-                    finally:
-                        self._message_queue.task_done()
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"Error in message processor: {e}", exc_info=True)
-
-    @Slot(object, object)
-    def _on_agent_message_sent(self, sender, message: AgentMessage):
-        """Handle agent message sent via signals by queuing it for processing."""
-        try:
-            loop = asyncio.get_running_loop()
-            # Put message in queue asynchronously
-            asyncio.ensure_future(self._message_queue.put(message))
-            # Start the processor task
-            self._start_message_processor()
-        except RuntimeError:
-            # No event loop running, ignore
-            pass
-
     def _extract_project_name(self, project: Any) -> str:
         """Extract project name from a project object."""
         if project:
@@ -248,14 +195,6 @@ class AgentChatWidget(BaseWidget):
 
         # Reset agent state
         self._agent_ready = False
-
-        # Disconnect from old agent if exists
-        if self.agent:
-            try:
-                self.agent.disconnect_message_handler(self._on_agent_message_sent)
-            except Exception:
-                pass
-
         self.agent = None
 
         # Initialize with new project
