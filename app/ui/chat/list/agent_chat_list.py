@@ -24,6 +24,7 @@ from agent import AgentMessage
 from app.ui.base_widget import BaseWidget
 from utils.i18n_utils import tr
 from agent.chat.history.agent_chat_history_service import AgentChatHistoryService
+from agent.chat.history.agent_chat_history import get_history_signals
 
 logger = logging.getLogger(__name__)
 
@@ -220,7 +221,7 @@ class AgentChatListWidget(BaseWidget):
         self._visible_refresh_timer.setSingleShot(True)
         self._visible_refresh_timer.timeout.connect(self._refresh_visible_widgets)
 
-        # New data check timer - polls for new messages using revision counter
+        # New data check timer - polls for new messages using revision counter (fallback)
         self._new_data_check_timer = QTimer(self)
         self._new_data_check_timer.timeout.connect(self._check_for_new_data)
 
@@ -241,6 +242,9 @@ class AgentChatListWidget(BaseWidget):
         self._load_crew_member_metadata()
         self._load_recent_conversation()
         self._start_new_data_check_timer()
+
+        # Connect to history signals for real-time updates
+        get_history_signals().message_added.connect(self._on_history_message_added)
 
     def on_project_switched(self, project_name: str):
         self.refresh_crew_member_metadata()
@@ -479,6 +483,18 @@ class AgentChatListWidget(BaseWidget):
 
         except Exception as e:
             logger.error(f"Error checking for new data: {e}")
+
+    @Slot(str, str)
+    def _on_history_message_added(self, workspace_path: str, project_name: str):
+        """Handle signal when a new message is added to history."""
+        # Only process if this signal is for the current workspace/project
+        if workspace_path != self.workspace.workspace_path:
+            return
+        if project_name != self.workspace.project_name:
+            return
+
+        # Load new messages from history
+        self._load_new_messages_from_history()
 
     def _load_new_messages_from_history(self):
         """Load new messages from history that aren't in the model yet."""
@@ -1321,3 +1337,11 @@ class AgentChatListWidget(BaseWidget):
         self._last_known_revision = 0
         self._loading_older = False
         self._has_more_history = True
+
+    def __del__(self):
+        """Destructor to disconnect signals."""
+        try:
+            get_history_signals().message_added.disconnect(self._on_history_message_added)
+        except (TypeError, RuntimeError):
+            # Signal may already be disconnected or object destroyed
+            pass
