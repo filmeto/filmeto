@@ -1,7 +1,7 @@
 """Widget for displaying tool response content in chat messages."""
 
 from typing import Any, Dict
-from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QTextEdit
+from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QTextEdit, QSizePolicy
 from PySide6.QtCore import Qt
 
 from agent.chat.content import ToolResponseContent
@@ -17,6 +17,9 @@ class ToolResponseContentWidget(BaseStructuredContentWidget):
 
     def _setup_ui(self):
         """Set up UI."""
+        # Set size policy to prevent unnecessary expansion
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(4)
@@ -129,7 +132,7 @@ class ToolResponseContentWidget(BaseStructuredContentWidget):
             if len(result_str) > 100 or '\n' in result_str:
                 result_text = QTextEdit(container)
                 result_text.setReadOnly(True)
-                result_text.setMaximumHeight(150)
+                result_text.setMaximumHeight(80)
                 result_text.setStyleSheet("""
                     QTextEdit {
                         background-color: #1e1e1e;

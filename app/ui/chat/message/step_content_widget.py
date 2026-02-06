@@ -1,7 +1,7 @@
 """Widget for displaying step content in chat messages."""
 
 from typing import Any, Dict
-from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QTextEdit
+from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QTextEdit, QSizePolicy
 from PySide6.QtCore import Qt
 
 from agent.chat.content import StepContent
@@ -17,6 +17,9 @@ class StepContentWidget(BaseStructuredContentWidget):
 
     def _setup_ui(self):
         """Set up UI."""
+        # Set size policy to prevent unnecessary expansion
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(4)

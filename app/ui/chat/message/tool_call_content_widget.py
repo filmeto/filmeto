@@ -1,7 +1,7 @@
 """Widget for displaying tool call content in chat messages."""
 
 from typing import Any, Dict
-from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QTextEdit
+from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QTextEdit, QSizePolicy
 from PySide6.QtCore import Qt
 
 from agent.chat.content import ToolCallContent
@@ -17,6 +17,9 @@ class ToolCallContentWidget(BaseStructuredContentWidget):
 
     def _setup_ui(self):
         """Set up UI."""
+        # Set size policy to prevent unnecessary expansion
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(4)
@@ -88,7 +91,7 @@ class ToolCallContentWidget(BaseStructuredContentWidget):
             # Format input as JSON-like string
             input_text = QTextEdit(container)
             input_text.setReadOnly(True)
-            input_text.setMaximumHeight(100)
+            input_text.setMaximumHeight(80)
             input_text.setStyleSheet("""
                 QTextEdit {
                     background-color: #1e1e1e;

@@ -1,7 +1,7 @@
 """Widget for displaying progress content in chat messages."""
 
 from typing import Any, Dict, Union
-from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame
+from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QSizePolicy
 from PySide6.QtCore import Qt
 
 from agent.chat.content import ProgressContent
@@ -23,6 +23,9 @@ class ProgressContentWidget(BaseStructuredContentWidget):
 
     def _setup_ui(self):
         """Set up UI."""
+        # Set size policy to prevent unnecessary expansion
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(4)
