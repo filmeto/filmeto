@@ -1,4 +1,11 @@
-"""Agent chat list component using QListView for virtualized rendering."""
+"""Agent chat list component using QListView for virtualized rendering.
+
+Loads data exclusively from AgentChatHistory with:
+- Page-based initial loading (PAGE_SIZE messages)
+- Dynamic older message loading when scrolling to top
+- Revision-based polling for new messages when at bottom
+- Virtualized widget management (only visible rows + buffer have widgets)
+"""
 
 import uuid
 import logging
@@ -75,6 +82,53 @@ class AgentChatListModel(QAbstractListModel):
         self.endInsertRows()
         return row
 
+    def prepend_items(self, items: List[ChatListItem]) -> int:
+        """Insert items at the beginning of the model.
+
+        After insertion, all existing row indices shift by len(items).
+        The id-to-row map is rebuilt entirely for correctness.
+        """
+        if not items:
+            return 0
+        count = len(items)
+        self.beginInsertRows(QModelIndex(), 0, count - 1)
+        self._items = list(items) + self._items
+        # Rebuild index map
+        self._message_id_to_row.clear()
+        for i, item in enumerate(self._items):
+            if item.message_id:
+                self._message_id_to_row[item.message_id] = i
+        self.endInsertRows()
+        return count
+
+    def remove_first_n(self, n: int):
+        """Remove first n items from the model."""
+        total = len(self._items)
+        if n <= 0 or n > total:
+            return
+        self.beginRemoveRows(QModelIndex(), 0, n - 1)
+        self._items = self._items[n:]
+        # Rebuild index map
+        self._message_id_to_row.clear()
+        for i, item in enumerate(self._items):
+            if item.message_id:
+                self._message_id_to_row[item.message_id] = i
+        self.endRemoveRows()
+
+    def remove_last_n(self, n: int):
+        """Remove last n items from the model."""
+        total = len(self._items)
+        if n <= 0 or n > total:
+            return
+        start = total - n
+        self.beginRemoveRows(QModelIndex(), start, total - 1)
+        removed = self._items[start:]
+        self._items = self._items[:start]
+        for item in removed:
+            if item.message_id:
+                self._message_id_to_row.pop(item.message_id, None)
+        self.endRemoveRows()
+
     def get_item(self, row: int) -> Optional[ChatListItem]:
         if 0 <= row < len(self._items):
             return self._items[row]
@@ -128,8 +182,22 @@ class AgentChatListView(QListView):
 
 
 class AgentChatListWidget(BaseWidget):
-    """Virtualized chat list widget for agent conversations."""
+    """Virtualized chat list widget for agent conversations.
 
+    Loads data exclusively from AgentChatHistory:
+    - Initial load: PAGE_SIZE most recent messages
+    - Scroll to top: loads older messages in pages
+    - At bottom: polls for new messages via revision counter
+    """
+
+    # Configuration
+    PAGE_SIZE = 30
+    MAX_MODEL_ITEMS = 300
+    NEW_DATA_CHECK_INTERVAL_MS = 500
+    SCROLL_TOP_THRESHOLD = 50
+    SCROLL_BOTTOM_THRESHOLD = 50
+
+    # Signals
     reference_clicked = Signal(str, str)  # ref_type, ref_id
     message_complete = Signal(str, str)  # message_id, agent_name
     load_more_requested = Signal()
@@ -152,7 +220,7 @@ class AgentChatListWidget(BaseWidget):
         self._visible_refresh_timer.setSingleShot(True)
         self._visible_refresh_timer.timeout.connect(self._refresh_visible_widgets)
 
-        # New data check timer - polls for new messages when at bottom
+        # New data check timer - polls for new messages using revision counter
         self._new_data_check_timer = QTimer(self)
         self._new_data_check_timer.timeout.connect(self._check_for_new_data)
 
@@ -162,8 +230,12 @@ class AgentChatListWidget(BaseWidget):
         self._crew_member_metadata: Dict[str, Dict[str, Any]] = {}
         self._agent_current_cards: Dict[str, str] = {}
 
-        # Track the latest message_id to detect new messages
+        # Message tracking for dynamic loading
+        self._oldest_message_id: Optional[str] = None
         self._latest_message_id: Optional[str] = None
+        self._last_known_revision: int = 0
+        self._loading_older = False
+        self._has_more_history = True
 
         self._setup_ui()
         self._load_crew_member_metadata()
@@ -172,8 +244,12 @@ class AgentChatListWidget(BaseWidget):
 
     def on_project_switched(self, project_name: str):
         self.refresh_crew_member_metadata()
-        # Reset latest message_id tracking
+        # Reset all tracking state
+        self._oldest_message_id = None
         self._latest_message_id = None
+        self._last_known_revision = 0
+        self._loading_older = False
+        self._has_more_history = True
         self._load_recent_conversation()
 
     def refresh_crew_member_metadata(self):
@@ -225,8 +301,10 @@ class AgentChatListWidget(BaseWidget):
 
         layout.addWidget(self.list_view)
 
+    # ─── Data loading from AgentChatHistory ───────────────────────────
+
     def _load_recent_conversation(self):
-        """Load recent conversation from AgentChatHistoryService."""
+        """Load recent conversation from AgentChatHistory (PAGE_SIZE messages)."""
         try:
             project = self.workspace.get_project()
             if not project:
@@ -235,37 +313,302 @@ class AgentChatListWidget(BaseWidget):
             workspace_path = self.workspace.workspace_path
             project_name = self.workspace.project_name
 
-            # Get the latest 50 messages from history
+            # Get the latest PAGE_SIZE messages from history (newest first)
             messages = AgentChatHistoryService.get_latest_messages(
-                workspace_path, project_name, count=50
+                workspace_path, project_name, count=self.PAGE_SIZE
             )
 
-            if messages:
-                # Update the latest message_id tracker
-                last_msg_info = AgentChatHistoryService.get_latest_message_info(
-                    workspace_path, project_name
-                )
-                if last_msg_info:
-                    self._latest_message_id = last_msg_info.get("message_id")
+            # Track revision for change detection
+            history = AgentChatHistoryService.get_history(workspace_path, project_name)
+            self._last_known_revision = history.revision
 
+            if messages:
                 # Clear and reload the model
                 self._model.clear()
                 self._size_hint_cache.clear()
                 self._clear_visible_widgets()
 
-                # Load messages in order (oldest first)
-                for msg_data in reversed(messages):
+                # Reverse to chronological order (oldest first)
+                ordered_messages = list(reversed(messages))
+
+                for msg_data in ordered_messages:
                     self._load_message_from_history(msg_data)
+
+                # Track oldest and newest message_ids
+                first_meta = ordered_messages[0].get("metadata", {})
+                self._oldest_message_id = first_meta.get("message_id")
+                last_meta = ordered_messages[-1].get("metadata", {})
+                self._latest_message_id = last_meta.get("message_id")
+
+                # Check if there's more history to load
+                total_count = history.get_message_count()
+                self._has_more_history = total_count > len(messages)
 
                 # Scroll to bottom after loading
                 self._schedule_scroll()
 
-                logger.info(f"Loaded {len(messages)} messages from history")
+                logger.info(f"Loaded {len(messages)} messages from history (total: {total_count})")
             else:
+                self._model.clear()
+                self._size_hint_cache.clear()
+                self._clear_visible_widgets()
+                self._oldest_message_id = None
+                self._latest_message_id = None
+                self._has_more_history = False
                 logger.info("No messages found in history")
 
         except Exception as e:
             logger.error(f"Error loading recent conversation: {e}")
+
+    def _load_older_messages(self):
+        """Load older messages when user scrolls to the top."""
+        if not self._oldest_message_id or self._loading_older or not self._has_more_history:
+            return
+
+        self._loading_older = True
+        try:
+            workspace_path = self.workspace.workspace_path
+            project_name = self.workspace.project_name
+
+            # Get PAGE_SIZE messages before the oldest loaded message
+            older_messages = AgentChatHistoryService.get_messages_before(
+                workspace_path, project_name, self._oldest_message_id, count=self.PAGE_SIZE
+            )
+
+            if not older_messages:
+                self._has_more_history = False
+                return
+
+            # Save current scroll state for position restoration
+            scrollbar = self.list_view.verticalScrollBar()
+            old_max = scrollbar.maximum()
+            old_value = scrollbar.value()
+
+            # Build items from history data (already in chronological order)
+            items = []
+            for msg_data in older_messages:
+                item = self._build_item_from_history(msg_data)
+                if item and not self._model.get_row_by_message_id(item.message_id):
+                    items.append(item)
+
+            if items:
+                # Update the oldest message_id to the first of the new batch
+                self._oldest_message_id = items[0].message_id
+
+                # Clear visible widgets before prepending (rows will shift)
+                self._clear_visible_widgets()
+
+                # Prepend items to model
+                self._model.prepend_items(items)
+
+                # Restore scroll position so the view doesn't jump
+                QTimer.singleShot(0, lambda: self._restore_scroll_after_prepend(
+                    scrollbar, old_max, old_value
+                ))
+
+                # Prune oldest items if model exceeds MAX_MODEL_ITEMS
+                self._prune_model_bottom()
+
+                logger.debug(f"Prepended {len(items)} older messages")
+
+            if len(older_messages) < self.PAGE_SIZE:
+                self._has_more_history = False
+
+        except Exception as e:
+            logger.error(f"Error loading older messages: {e}")
+        finally:
+            self._loading_older = False
+
+    def _restore_scroll_after_prepend(self, scrollbar, old_max: int, old_value: int):
+        """Restore scroll position after prepending items to keep the view stable."""
+        new_max = scrollbar.maximum()
+        delta = new_max - old_max
+        scrollbar.setValue(old_value + delta)
+        self._schedule_visible_refresh()
+
+    def _prune_model_bottom(self):
+        """Remove excess items from the bottom of the model if it exceeds MAX_MODEL_ITEMS."""
+        excess = self._model.rowCount() - self.MAX_MODEL_ITEMS
+        if excess > 0:
+            self._clear_visible_widgets()
+            self._model.remove_last_n(excess)
+            # Update latest message_id to the new last item
+            last_item = self._model.get_item(self._model.rowCount() - 1)
+            if last_item:
+                self._latest_message_id = last_item.message_id
+            self._user_at_bottom = False
+
+    def _prune_model_top(self):
+        """Remove excess items from the top of the model if it exceeds MAX_MODEL_ITEMS."""
+        excess = self._model.rowCount() - self.MAX_MODEL_ITEMS
+        if excess > 0:
+            self._clear_visible_widgets()
+            self._model.remove_first_n(excess)
+            # Update oldest message_id to the new first item
+            first_item = self._model.get_item(0)
+            if first_item:
+                self._oldest_message_id = first_item.message_id
+            self._has_more_history = True
+
+    # ─── New data polling ─────────────────────────────────────────────
+
+    def _start_new_data_check_timer(self):
+        """Start the timer to check for new data."""
+        self._new_data_check_timer.start(self.NEW_DATA_CHECK_INTERVAL_MS)
+
+    def _stop_new_data_check_timer(self):
+        """Stop the new data check timer."""
+        self._new_data_check_timer.stop()
+
+    def _check_for_new_data(self):
+        """Check for new data using the revision counter (very fast, no disk I/O)."""
+        if not self._user_at_bottom:
+            return
+
+        try:
+            workspace_path = self.workspace.workspace_path
+            project_name = self.workspace.project_name
+
+            # Compare revision counter - O(1) operation
+            history = AgentChatHistoryService.get_history(workspace_path, project_name)
+            current_revision = history.revision
+
+            if current_revision != self._last_known_revision:
+                self._last_known_revision = current_revision
+                self._load_new_messages_from_history()
+
+        except Exception as e:
+            logger.error(f"Error checking for new data: {e}")
+
+    def _load_new_messages_from_history(self):
+        """Load new messages from history that aren't in the model yet."""
+        try:
+            workspace_path = self.workspace.workspace_path
+            project_name = self.workspace.project_name
+
+            if self._latest_message_id:
+                # Get messages after the last known message
+                new_messages = AgentChatHistoryService.get_messages_after(
+                    workspace_path, project_name, self._latest_message_id, count=100
+                )
+            else:
+                # No previous messages - load latest page
+                new_messages = AgentChatHistoryService.get_latest_messages(
+                    workspace_path, project_name, count=self.PAGE_SIZE
+                )
+                new_messages = list(reversed(new_messages))
+
+            if not new_messages:
+                return
+
+            added_count = 0
+            for msg_data in new_messages:
+                message_id = msg_data.get("metadata", {}).get("message_id")
+                if message_id and not self._model.get_row_by_message_id(message_id):
+                    self._load_message_from_history(msg_data)
+                    added_count += 1
+
+            # Update latest message_id from the last message
+            last_id = new_messages[-1].get("metadata", {}).get("message_id")
+            if last_id:
+                self._latest_message_id = last_id
+
+            if added_count > 0:
+                # Prune oldest items if model exceeds MAX_MODEL_ITEMS
+                self._prune_model_top()
+                self._schedule_scroll()
+                logger.debug(f"Loaded {added_count} new messages from history")
+
+        except Exception as e:
+            logger.error(f"Error loading new messages: {e}")
+
+    # ─── Message item building ────────────────────────────────────────
+
+    def _build_item_from_history(self, msg_data: Dict[str, Any]) -> Optional[ChatListItem]:
+        """Build a ChatListItem from history data without adding to model."""
+        try:
+            from agent.chat.agent_chat_message import AgentMessage as ChatAgentMessage
+            from agent.chat.agent_chat_types import MessageType
+            from agent.chat.content import StructureContent
+
+            metadata = msg_data.get("metadata", {})
+            content_list = msg_data.get("content", [])
+
+            message_id = metadata.get("message_id", "")
+            sender_id = metadata.get("sender_id", "unknown")
+            sender_name = metadata.get("sender_name", sender_id)
+            message_type_str = metadata.get("message_type", "text")
+
+            if not message_id:
+                return None
+
+            try:
+                message_type = MessageType(message_type_str)
+            except ValueError:
+                message_type = MessageType.TEXT
+
+            is_user = sender_id.lower() == "user"
+
+            if is_user:
+                text_content = ""
+                for content_item in content_list:
+                    if isinstance(content_item, dict):
+                        if content_item.get("content_type") == "text":
+                            text_content = content_item.get("data", {}).get("text", "")
+                            break
+
+                return ChatListItem(
+                    message_id=message_id,
+                    sender_id=sender_id,
+                    sender_name=sender_name,
+                    is_user=True,
+                    user_content=text_content,
+                )
+            else:
+                structured_content = []
+                for content_item in content_list:
+                    if isinstance(content_item, dict):
+                        try:
+                            sc = StructureContent.from_dict(content_item)
+                            structured_content.append(sc)
+                        except Exception as e:
+                            logger.warning(f"Failed to load structured content: {e}")
+
+                agent_message = ChatAgentMessage(
+                    message_type=message_type,
+                    sender_id=sender_id,
+                    sender_name=sender_name,
+                    message_id=message_id,
+                    metadata=metadata,
+                    structured_content=structured_content,
+                )
+
+                agent_color, agent_icon, crew_member_data = self._resolve_agent_metadata(
+                    sender_name, metadata
+                )
+
+                return ChatListItem(
+                    message_id=message_id,
+                    sender_id=sender_id,
+                    sender_name=sender_name,
+                    is_user=False,
+                    agent_message=agent_message,
+                    agent_color=agent_color,
+                    agent_icon=agent_icon,
+                    crew_member_metadata=crew_member_data,
+                )
+
+        except Exception as e:
+            logger.error(f"Error building item from history: {e}")
+            return None
+
+    def _load_message_from_history(self, msg_data: Dict[str, Any]):
+        """Load a single message from history data into the model."""
+        item = self._build_item_from_history(msg_data)
+        if item:
+            self._model.add_item(item)
+
+    # ─── Crew member metadata ────────────────────────────────────────
 
     def _load_crew_member_metadata(self):
         try:
@@ -283,161 +626,6 @@ class AgentChatListWidget(BaseWidget):
         except Exception as e:
             print(f"Error loading crew members: {e}")
             self._crew_member_metadata = {}
-
-    def _load_message_from_history(self, msg_data: Dict[str, Any]):
-        """Load a single message from history data into the model."""
-        try:
-            from agent.chat.agent_chat_message import AgentMessage as ChatAgentMessage
-            from agent.chat.agent_chat_types import MessageType
-            from agent.chat.content import StructureContent
-
-            metadata = msg_data.get("metadata", {})
-            content_list = msg_data.get("content", [])
-
-            # Extract basic info
-            message_id = metadata.get("message_id", "")
-            sender_id = metadata.get("sender_id", "unknown")
-            sender_name = metadata.get("sender_name", sender_id)
-            message_type_str = metadata.get("message_type", "text")
-
-            if not message_id:
-                return
-
-            # Parse message_type
-            try:
-                message_type = MessageType(message_type_str)
-            except ValueError:
-                message_type = MessageType.TEXT
-
-            # Check if this is a user message
-            is_user = sender_id.lower() == "user"
-
-            if is_user:
-                # For user messages, extract text from content
-                text_content = ""
-                for content_item in content_list:
-                    if isinstance(content_item, dict):
-                        if content_item.get("content_type") == "text":
-                            text_content = content_item.get("data", {}).get("text", "")
-                            break
-
-                item = ChatListItem(
-                    message_id=message_id,
-                    sender_id=sender_id,
-                    sender_name=sender_name,
-                    is_user=True,
-                    user_content=text_content,
-                )
-            else:
-                # Reconstruct structured content from content list
-                structured_content = []
-                for content_item in content_list:
-                    if isinstance(content_item, dict):
-                        try:
-                            sc = StructureContent.from_dict(content_item)
-                            structured_content.append(sc)
-                        except Exception as e:
-                            logger.warning(f"Failed to load structured content: {e}")
-
-                # Create AgentMessage
-                agent_message = ChatAgentMessage(
-                    message_type=message_type,
-                    sender_id=sender_id,
-                    sender_name=sender_name,
-                    message_id=message_id,
-                    metadata=metadata,
-                    structured_content=structured_content,
-                )
-
-                # Get agent metadata
-                agent_color, agent_icon, crew_member_data = self._resolve_agent_metadata(
-                    sender_name, metadata
-                )
-
-                item = ChatListItem(
-                    message_id=message_id,
-                    sender_id=sender_id,
-                    sender_name=sender_name,
-                    is_user=False,
-                    agent_message=agent_message,
-                    agent_color=agent_color,
-                    agent_icon=agent_icon,
-                    crew_member_metadata=crew_member_data,
-                )
-
-            self._model.add_item(item)
-
-        except Exception as e:
-            logger.error(f"Error loading message from history: {e}")
-
-    def _start_new_data_check_timer(self):
-        """Start the timer to check for new data."""
-        # Check every 1 second
-        self._new_data_check_timer.start(1000)
-
-    def _stop_new_data_check_timer(self):
-        """Stop the new data check timer."""
-        self._new_data_check_timer.stop()
-
-    def _check_for_new_data(self):
-        """Check for new data and refresh if at bottom."""
-        # Only check if user is at the bottom
-        if not self._user_at_bottom:
-            return
-
-        try:
-            workspace_path = self.workspace.workspace_path
-            project_name = self.workspace.project_name
-
-            # Get the latest message_id from history
-            latest_message_id = AgentChatHistoryService.get_latest_message_id(
-                workspace_path, project_name
-            )
-
-            # Check if there's a new message
-            if latest_message_id and latest_message_id != self._latest_message_id:
-                # Load new messages
-                self._load_new_messages(latest_message_id)
-
-        except Exception as e:
-            logger.error(f"Error checking for new data: {e}")
-
-    def _load_new_messages(self, new_latest_message_id: str):
-        """Load new messages since the last known message."""
-        try:
-            workspace_path = self.workspace.workspace_path
-            project_name = self.workspace.project_name
-
-            # Get messages after the last known message_id
-            if self._latest_message_id:
-                new_messages = AgentChatHistoryService.get_messages_after(
-                    workspace_path, project_name, self._latest_message_id, count=100
-                )
-            else:
-                # If no previous message, get latest messages
-                new_messages = AgentChatHistoryService.get_latest_messages(
-                    workspace_path, project_name, count=50
-                )
-                new_messages = list(reversed(new_messages))
-
-            if new_messages:
-                # Load new messages
-                for msg_data in new_messages:
-                    # Skip if already in model
-                    message_id = msg_data.get("metadata", {}).get("message_id")
-                    if message_id and not self._model.get_row_by_message_id(message_id):
-                        self._load_message_from_history(msg_data)
-
-                # Update the latest message_id tracker
-                self._latest_message_id = new_latest_message_id
-
-                # Scroll to bottom to show new messages
-                self._schedule_scroll()
-
-                logger.info(f"Loaded {len(new_messages)} new messages")
-
-        except Exception as e:
-            logger.error(f"Error loading new messages: {e}")
 
     def _get_sender_info(self, sender: str):
         normalized_sender = sender.lower()
@@ -493,6 +681,8 @@ class AgentChatListWidget(BaseWidget):
                 agent_icon = message_metadata.get("icon", agent_icon)
                 crew_member_data = dict(message_metadata)
         return agent_color, agent_icon, crew_member_data
+
+    # ─── Widget creation and sizing ──────────────────────────────────
 
     def _create_message_widget(self, item: ChatListItem, parent=None) -> QWidget:
         from app.ui.chat.card import AgentMessageCard, UserMessageCard
@@ -551,6 +741,8 @@ class AgentChatListWidget(BaseWidget):
         if message_id in self._size_hint_cache:
             self._size_hint_cache.pop(message_id, None)
 
+    # ─── Viewport and scroll handling ────────────────────────────────
+
     def _on_viewport_resized(self):
         self._size_hint_cache.clear()
         # Clear existing widgets so they will be recreated with updated width
@@ -585,6 +777,7 @@ class AgentChatListWidget(BaseWidget):
         end_row = min(row_count - 1, last_row + buffer_size)
         desired_rows = set(range(start_row, end_row + 1))
 
+        # Remove widgets that are no longer in the desired range
         for row in list(self._visible_widgets.keys()):
             if row not in desired_rows:
                 index = self._model.index(row, 0)
@@ -593,6 +786,7 @@ class AgentChatListWidget(BaseWidget):
                 widget.setParent(None)
                 widget.deleteLater()
 
+        # Create widgets for rows that need them
         for row in desired_rows:
             if row in self._visible_widgets:
                 continue
@@ -601,7 +795,7 @@ class AgentChatListWidget(BaseWidget):
                 continue
             index = self._model.index(row, 0)
             widget = self._create_message_widget(item, self.list_view.viewport())
-            # Set fixed width to match viewport width, ensuring each row has independent sizing
+            # Set fixed width to match viewport width
             widget_width = self.list_view.viewport().width()
             widget.setFixedWidth(max(1, widget_width))
             # Get cached size or build sizing widget to determine height
@@ -609,12 +803,10 @@ class AgentChatListWidget(BaseWidget):
             if cached_size:
                 item_height = cached_size.height()
             else:
-                # Build a temporary widget to calculate height
                 option = QStyleOptionViewItem()
                 option.rect = self.list_view.viewport().rect()
                 item_height = self.get_item_size_hint(option, index).height()
             widget.setFixedHeight(max(1, item_height))
-            # Set size policy to fixed to prevent automatic resizing
             widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
             if widget.layout():
                 widget.layout().activate()
@@ -668,26 +860,32 @@ class AgentChatListWidget(BaseWidget):
                 widget.update_from_agent_message(item.agent_message)
 
         # Update widget height after content change
-        widget_width = widget.width()
-        # Invalidate size hint cache to force recalculation
         self._invalidate_size_hint(item.message_id)
-        # Recalculate height
         option = QStyleOptionViewItem()
         option.rect = self.list_view.viewport().rect()
         index = self._model.index(row, 0)
         new_size = self.get_item_size_hint(option, index)
-        # Update widget height
         widget.setFixedHeight(max(1, new_size.height()))
 
     def _on_rows_inserted(self, parent: QModelIndex, start: int, end: int):
+        # Update latest_message_id only when items are appended at the end
+        if end == self._model.rowCount() - 1:
+            last_item = self._model.get_item(end)
+            if last_item and last_item.message_id:
+                self._latest_message_id = last_item.message_id
         self._schedule_visible_refresh()
-        self._schedule_scroll()
+        if self._user_at_bottom:
+            self._schedule_scroll()
 
     def _on_scroll_value_changed(self, value: int):
         scrollbar = self.list_view.verticalScrollBar()
         scroll_diff = scrollbar.maximum() - value
         was_at_bottom = self._user_at_bottom
-        self._user_at_bottom = scroll_diff < 50
+        self._user_at_bottom = scroll_diff < self.SCROLL_BOTTOM_THRESHOLD
+
+        # Detect scroll to top - trigger loading older messages
+        if value < self.SCROLL_TOP_THRESHOLD and self._has_more_history and not self._loading_older:
+            self._load_older_messages()
 
         if self._user_at_bottom and not was_at_bottom:
             if not self._bottom_reached:
@@ -702,6 +900,8 @@ class AgentChatListWidget(BaseWidget):
 
     def _schedule_scroll(self):
         self._scroll_timer.start(50)
+
+    # ─── Public API for direct message manipulation ───────────────────
 
     def _add_historical_message(self, sender: str, message):
         if not message.content:
@@ -1116,4 +1316,8 @@ class AgentChatListWidget(BaseWidget):
         self._size_hint_cache.clear()
         self._agent_current_cards.clear()
         self._model.clear()
+        self._oldest_message_id = None
         self._latest_message_id = None
+        self._last_known_revision = 0
+        self._loading_older = False
+        self._has_more_history = True
