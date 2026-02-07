@@ -353,7 +353,32 @@ class QmlAgentChatListModel(QAbstractListModel):
                     elif hasattr(sc, 'data') and isinstance(sc.data, dict):
                         data = sc.data
                         if 'text' in data:
-                            content = data['text']
+                            text_value = data['text']
+                            # Check if text contains a JSON code block that needs parsing
+                            if text_value and isinstance(text_value, str):
+                                # Try to extract JSON from markdown code blocks
+                                import re
+                                # Match ```json\n{...}\n``` or ```\n{...}\n```
+                                json_match = re.search(r'```(?:json)?\s*\n([\s\S]*?)\n```', text_value)
+                                if json_match:
+                                    try:
+                                        inner_json = json_match.group(1).strip()
+                                        parsed = json.loads(inner_json)
+                                        # Extract 'final' field if it's a response wrapper
+                                        if isinstance(parsed, dict) and 'final' in parsed:
+                                            content = parsed['final']
+                                        elif isinstance(parsed, str):
+                                            content = parsed
+                                        else:
+                                            content = text_value
+                                    except (json.JSONDecodeError, TypeError, ValueError) as e:
+                                        logger.debug(f"Failed to parse JSON code block: {e}, using original text")
+                                        # If parsing fails, use original text
+                                        content = text_value
+                                else:
+                                    content = text_value
+                            else:
+                                content = text_value
                             break
                         elif 'progress' in data:
                             content = data['progress']

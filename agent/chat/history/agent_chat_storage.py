@@ -205,7 +205,16 @@ class MessageLogStorage:
 
     def _escape_message(self, message: Dict[str, Any]) -> str:
         """Escape message to single-line JSON format."""
-        return json.dumps(message, ensure_ascii=False, separators=(',', ':'))
+        json_str = json.dumps(message, ensure_ascii=False, separators=(',', ':'))
+        # Validate that the JSON can be parsed back
+        try:
+            json.loads(json_str)
+        except json.JSONDecodeError as e:
+            # If validation fails, try to fix common issues
+            logger.warning(f"Generated invalid JSON, attempting to fix: {e}")
+            # Ensure all strings are properly escaped
+            json_str = json.dumps(message, ensure_ascii=False)
+        return json_str
 
     def _unescape_message(self, line: str) -> Optional[Dict[str, Any]]:
         """Unescape message from single-line JSON format."""
@@ -279,6 +288,17 @@ class MessageLogStorage:
         try:
             # Escape message to single line
             line = self._escape_message(message) + '\n'
+
+            # Validate the JSON is complete and valid
+            try:
+                parsed = json.loads(line.strip())
+                if not parsed:
+                    logger.error(f"Generated empty JSON, message: {message}")
+                    return False
+            except json.JSONDecodeError as e:
+                logger.error(f"Generated invalid JSON: {e}, message preview: {str(message)[:200]}")
+                return False
+
             line_bytes = len(line.encode('utf-8'))
 
             # Acquire file lock before writing to prevent concurrent writes
@@ -304,7 +324,7 @@ class MessageLogStorage:
                 self._release_lock()
 
         except Exception as e:
-            logger.error(f"Error appending message: {e}")
+            logger.error(f"Error appending message: {e}", exc_info=True)
             return False
 
     def get_message_count(self) -> int:
