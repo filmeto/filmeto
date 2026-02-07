@@ -1,51 +1,107 @@
-// UserMessageBubble.qml - Right-aligned user message bubble
+// UserMessageBubble.qml - Right-aligned user message bubble with avatar
 import QtQuick 2.15
 import QtQuick.Controls 2.15
+import QtQuick.Layouts 1.15
 
 Item {
     id: root
 
     property string content: ""
     property bool isRead: true
+    property string userName: "You"
+    property string userIcon: "👤"
 
     // Theme colors
     readonly property color bubbleColor: "#4a90e2"
     readonly property color textColor: "#ffffff"
+    readonly property color avatarColor: "#6fa8e8"
+    readonly property int avatarSize: 32
+    readonly property int avatarSpacing: 8
+    readonly property int totalAvatarWidth: (avatarSize + avatarSpacing) * 2  // Both sides
 
-    // Don't set implicitWidth - let the bubble determine it
-    implicitHeight: bubble.height
+    // Available width for content (minus avatar space on both sides)
+    readonly property int availableWidth: parent.width - totalAvatarWidth
 
-    // Message bubble positioned on the right
-    Rectangle {
-        id: bubble
+    // Width is determined by anchors, height is calculated dynamically
+    implicitHeight: headerRow.height + bubbleContainer.height
+
+    Row {
+        id: headerRow
         anchors {
             right: parent.right
             top: parent.top
         }
-        width: Math.min(Math.max(80, contentText.implicitWidth + 24), 500)
-        height: contentText.implicitHeight + 24
+        spacing: avatarSpacing
+        layoutDirection: Qt.RightToLeft
+        height: Math.max(avatarRect.height, nameText.implicitHeight)
 
-        color: bubbleColor
-        radius: 18
+        // Avatar/icon
+        Rectangle {
+            id: avatarRect
+            width: avatarSize
+            height: avatarSize
+            radius: width / 2
+            color: avatarColor
+            anchors.verticalCenter: parent.verticalCenter
 
-        // Content
-        Text {
-            id: contentText
-            anchors {
-                fill: parent
-                margins: 12
+            Text {
+                anchors.centerIn: parent
+                text: root.userIcon
+                font.pixelSize: 18
             }
+        }
 
-            text: root.content
+        // User name
+        Text {
+            id: nameText
+            text: root.userName
             color: textColor
-            font.pixelSize: 14
-            wrapMode: Text.WordWrap
-            textFormat: Text.PlainText
-            lineHeight: 1.4
-            linkColor: "#87ceeb"
+            font.pixelSize: 13
+            font.weight: Font.Medium
+            anchors.verticalCenter: parent.verticalCenter
+            opacity: 0.9
+        }
+    }
 
-            onLinkActivated: function(link) {
-                Qt.openUrlExternally(link)
+    // Message bubble container positioned on the right
+    Item {
+        id: bubbleContainer
+        anchors {
+            right: parent.right
+            top: headerRow.bottom
+            topMargin: 4
+        }
+        width: bubble.width
+        height: bubble.height
+
+        // Message bubble
+        Rectangle {
+            id: bubble
+            width: Math.min(Math.max(80, contentText.implicitWidth + 24), availableWidth)
+            height: contentText.implicitHeight + 24
+
+            color: bubbleColor
+            radius: 18
+
+            // Content
+            Text {
+                id: contentText
+                anchors {
+                    fill: parent
+                    margins: 12
+                }
+
+                text: root.content
+                color: textColor
+                font.pixelSize: 14
+                wrapMode: Text.WordWrap
+                textFormat: Text.PlainText
+                lineHeight: 1.4
+                linkColor: "#87ceeb"
+
+                onLinkActivated: function(link) {
+                    Qt.openUrlExternally(link)
+                }
             }
         }
     }

@@ -17,6 +17,7 @@ from agent import AgentMessage
 from agent.chat.agent_chat_message import AgentMessage as ChatAgentMessage
 from agent.chat.agent_chat_types import MessageType, ContentType
 from agent.chat.content import TextContent, StructureContent
+from agent.crew.crew_title import CrewTitle
 from app.ui.base_widget import BaseWidget
 from utils.i18n_utils import tr
 
@@ -484,19 +485,37 @@ class QmlAgentChatListWidget(BaseWidget):
         if sender_crew_member:
             agent_color = sender_crew_member.config.color
             agent_icon = sender_crew_member.config.icon
+            crew_title_raw = sender_crew_member.config.metadata.get("crew_title", normalized_sender)
+
+            # Get localized display name for crew title
+            crew_title_display = self._get_crew_title_display(crew_title_raw)
+
             crew_member_data = {
                 "name": sender_crew_member.config.name,
                 "description": sender_crew_member.config.description,
                 "color": agent_color,
                 "icon": agent_icon,
-                "crew_title": sender_crew_member.config.metadata.get("crew_title", normalized_sender),
+                "crew_title": crew_title_raw,
+                "crew_title_display": crew_title_display,
             }
         else:
             if message_metadata:
                 agent_color = message_metadata.get("color", agent_color)
                 agent_icon = message_metadata.get("icon", agent_icon)
+                crew_title_raw = message_metadata.get("crew_title", normalized_sender)
+                crew_title_display = self._get_crew_title_display(crew_title_raw)
                 crew_member_data = dict(message_metadata)
+                crew_member_data["crew_title_display"] = crew_title_display
         return agent_color, agent_icon, crew_member_data
+
+    def _get_crew_title_display(self, crew_title: str) -> str:
+        """Get localized display name for crew title."""
+        try:
+            crew_title_obj = CrewTitle.create_from_title(crew_title)
+            return crew_title_obj.get_title_display()
+        except Exception:
+            # Fallback to formatted title (replace underscores with spaces, title case)
+            return crew_title.replace("_", " ").title() if crew_title else ""
 
     # ─── Public API ───────────────────────────────────────────────────────
 

@@ -23,6 +23,14 @@ Item {
     readonly property color nameColor: agentColor
     readonly property color timestampColor: "#808080"
 
+    // Avatar dimensions
+    readonly property int avatarSize: 32
+    readonly property int avatarSpacing: 8
+    readonly property int totalAvatarWidth: (avatarSize + avatarSpacing) * 2  // Both sides
+
+    // Available width for content (minus avatar space on both sides)
+    readonly property int availableWidth: parent.width - totalAvatarWidth
+
     // Width is determined by anchors, height is calculated dynamically
     implicitHeight: headerRow.height + contentRect.implicitHeight + 8
 
@@ -55,7 +63,7 @@ Item {
         // Agent name and title column
         Column {
             id: nameColumn
-            spacing: 2
+            spacing: 4
             anchors.verticalCenter: parent.verticalCenter
 
             Text {
@@ -65,25 +73,37 @@ Item {
                 font.weight: Font.Medium
             }
 
-            // Crew title if available
-            Text {
-                visible: root.crewMetadata !== undefined && root.crewMetadata.crew_title !== undefined && root.crewMetadata.crew_title !== ""
-                text: (root.crewMetadata && root.crewMetadata.crew_title) || ""
-                color: timestampColor
-                font.pixelSize: 11
+            // Crew title color block if available
+            Rectangle {
+                id: crewTitleBlock
+                visible: root.crewMetadata !== undefined && root.crewMetadata.crew_title_display !== undefined && root.crewMetadata.crew_title_display !== ""
+                width: crewTitleText.implicitWidth + 16
+                height: 18
+                color: root.agentColor
+                radius: 3
+
+                Text {
+                    id: crewTitleText
+                    anchors.centerIn: parent
+                    text: (root.crewMetadata && root.crewMetadata.crew_title_display) || ""
+                    color: "#ffffff"
+                    font.pixelSize: 9
+                    font.weight: Font.Bold
+                }
             }
         }
     }
 
-    // Message content area
+    // Message content area - aligned with avatar
     Rectangle {
         id: contentRect
         anchors {
             left: parent.left
+            leftMargin: 40  // avatar (32) + spacing (8)
             top: headerRow.bottom
             topMargin: 8
-            right: parent.right
         }
+        width: availableWidth
         implicitHeight: contentColumn.implicitHeight + 24
         color: backgroundColor
         radius: 12
