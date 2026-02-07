@@ -159,10 +159,12 @@ class ProjectStartupWidget(BaseWidget):
 
     def set_project(self, project_name: str):
         """Set the project to display."""
+        # Store previous project name to detect actual project switches
+        previous_project = self.project_name
         self.project_name = project_name
 
         # Update the agent chat component with the new project context
-        # and clear the chat history for the new project
+        # Only clear chat history if actually switching to a different project
         if hasattr(self, 'agent_chat_component') and self.agent_chat_component:
             # Update the agent's project context
             project = self.workspace.get_project()
@@ -178,8 +180,13 @@ class ProjectStartupWidget(BaseWidget):
             if project:
                 self.agent_chat_component.on_project_switch(project)
 
-            # Clear the chat history for the new project
-            self.agent_chat_component.chat_history_widget.clear()
+            # Only clear chat history if this is a different project
+            # For the same project, we want to preserve the loaded history
+            if previous_project and previous_project != project_name:
+                logger.info(f"Switched from project '{previous_project}' to '{project_name}', clearing history")
+                self.agent_chat_component.chat_history_widget.clear()
+            elif previous_project == project_name:
+                logger.debug(f"Same project '{project_name}', preserving history")
 
         # Update the agent chat members component with the new project context
         if hasattr(self, 'agent_chat_members_component') and self.agent_chat_members_component:

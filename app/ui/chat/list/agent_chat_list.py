@@ -1,10 +1,12 @@
 """Agent chat list component using QListView for virtualized rendering.
 
-Loads data exclusively from AgentChatHistory with:
-- Page-based initial loading (PAGE_SIZE messages)
-- Dynamic older message loading when scrolling to top
-- Revision-based polling for new messages when at bottom
-- Virtualized widget management (only visible rows + buffer have widgets)
+Optimized to leverage FastMessageHistoryService capabilities:
+- Message grouping by message_id for unified display
+- Page-based initial loading with unique message count
+- Efficient pagination using line offsets
+- Smart polling using active log count only
+- Virtualized widget management for performance
+- Cached history instance for reduced overhead
 """
 
 import uuid
@@ -24,6 +26,7 @@ from agent import AgentMessage
 from app.ui.base_widget import BaseWidget
 from utils.i18n_utils import tr
 from agent.chat.history.agent_chat_history_service import FastMessageHistoryService
+from agent.chat.history.agent_chat_storage import MessageLogHistory
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +45,44 @@ class ChatListItem:
     agent_color: str = "#4a90e2"
     agent_icon: str = "🤖"
     crew_member_metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+class MessageGroup:
+    """Helper class to group messages by message_id and combine content."""
+
+    def __init__(self):
+        self.messages: List[Dict[str, Any]] = []
+        self.all_content: List[Dict[str, Any]] = []
+
+    def add_message(self, msg_data: Dict[str, Any]) -> None:
+        """Add a message to the group."""
+        self.messages.append(msg_data)
+        content_list = msg_data.get("content", [])
+        if isinstance(content_list, list):
+            self.all_content.extend(content_list)
+
+    def get_combined_message(self) -> Optional[Dict[str, Any]]:
+        """Get the combined message with all content items."""
+        if not self.messages:
+            return None
+
+        # Use the first message as the base
+        base_msg = dict(self.messages[0])
+
+        # Combine all content items
+        base_msg["content"] = self.all_content
+
+        return base_msg
+
+
+@dataclass
+class LoadState:
+    """Track the current loading state for efficient pagination."""
+    active_log_count: int = 0  # Number of lines in active log
+    unique_message_count: int = 0  # Number of unique messages in model
+    current_line_offset: int = 0  # Current line offset in active log
+    has_more_older: bool = True  # Whether there are more older messages
+    known_message_ids: set = field(default_factory=set)  # Track known message IDs
 
 
 class AgentChatListModel(QAbstractListModel):
@@ -242,7 +283,7 @@ class AgentChatListWidget(BaseWidget):
         self._pending_scroll_value: Optional[int] = None
         self._scroll_delta_since_last_refresh = 0
 
-        # New data check timer - polls for new messages using revision counter (fallback)
+        # New data check timer - polls for new messages using active log count
         self._new_data_check_timer = QTimer(self)
         self._new_data_check_timer.timeout.connect(self._check_for_new_data)
 
@@ -252,26 +293,36 @@ class AgentChatListWidget(BaseWidget):
         self._crew_member_metadata: Dict[str, Dict[str, Any]] = {}
         self._agent_current_cards: Dict[str, str] = {}
 
-        # Message tracking for dynamic loading
-        self._oldest_message_id: Optional[str] = None
-        self._latest_message_id: Optional[str] = None
-        self._last_known_revision: int = 0
+        # Optimized loading state using LoadState dataclass
+        self._load_state = LoadState()
         self._loading_older = False
-        self._has_more_history = True
+
+        # Cache history instance for reduced overhead
+        self._history: Optional[MessageLogHistory] = None
 
         self._setup_ui()
         self._load_crew_member_metadata()
         self._load_recent_conversation()
         self._start_new_data_check_timer()
 
+    def _get_history(self) -> Optional[MessageLogHistory]:
+        """Get or create cached history instance."""
+        if self._history is None:
+            workspace_path = self.workspace.workspace_path
+            project_name = self.workspace.project_name
+            if workspace_path and project_name:
+                self._history = FastMessageHistoryService.get_history(
+                    workspace_path, project_name
+                )
+        return self._history
+
     def on_project_switched(self, project_name: str):
         self.refresh_crew_member_metadata()
-        # Reset all tracking state
-        self._oldest_message_id = None
-        self._latest_message_id = None
-        self._last_known_message_count = 0
+        # Reset loading state
+        self._load_state = LoadState()
         self._loading_older = False
-        self._has_more_history = True
+        # Invalidate history cache
+        self._history = None
         # Clear position cache
         self._positions_cache_dirty = True
         self._row_positions_cache.clear()
@@ -293,6 +344,8 @@ class AgentChatListWidget(BaseWidget):
         current_y = 0
         row_count = self._model.rowCount()
 
+        logger.debug(f"_rebuild_positions_cache: rebuilding for {row_count} rows")
+
         for row in range(row_count):
             index = self._model.index(row, 0)
             from PySide6.QtWidgets import QStyleOptionViewItem
@@ -305,6 +358,8 @@ class AgentChatListWidget(BaseWidget):
 
         self._total_height_cache = current_y
         self._positions_cache_dirty = False
+
+        logger.debug(f"_rebuild_positions_cache: built cache for {len(self._row_positions_cache)} rows, total height: {self._total_height_cache}")
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -355,91 +410,108 @@ class AgentChatListWidget(BaseWidget):
     # ─── Data loading from AgentChatHistory ───────────────────────────
 
     def _load_recent_conversation(self):
-        """Load recent conversation from history using fast message log storage."""
+        """Load recent conversation from history using optimized grouping."""
         try:
             project = self.workspace.get_project()
             if not project:
+                logger.warning("No project found, skipping history load")
                 return
 
-            workspace_path = self.workspace.workspace_path
-            project_name = self.workspace.project_name
+            history = self._get_history()
+            if not history:
+                logger.warning("Could not get history instance")
+                return
 
-            # Use FastMessageHistoryService for better performance
-            messages = FastMessageHistoryService.get_latest_messages(
-                workspace_path, project_name, count=self.PAGE_SIZE
-            )
+            logger.info(f"Loading history using cached instance")
 
-            # Track line offset for pagination
-            line_offset = FastMessageHistoryService.get_latest_line_offset(
-                workspace_path, project_name
-            )
+            # Get latest messages from active log
+            raw_messages = history.get_latest_messages(count=self.PAGE_SIZE)
+            logger.info(f"Retrieved {len(raw_messages)} raw messages from active log")
 
-            if messages:
-                # Clear and reload the model
+            # Update load state
+            self._load_state.active_log_count = history.storage.get_message_count()
+            self._load_state.current_line_offset = self._load_state.active_log_count
+
+            if raw_messages:
+                # Clear model and caches
                 self._model.clear()
                 self._size_hint_cache.clear()
                 self._clear_visible_widgets()
+                self._load_state.known_message_ids.clear()
 
-                # Reverse to chronological order (oldest first)
-                ordered_messages = list(reversed(messages))
+                # Group messages by message_id using MessageGroup helper
+                message_groups: Dict[str, MessageGroup] = {}
+                for msg_data in raw_messages:
+                    message_id = msg_data.get("message_id") or msg_data.get("metadata", {}).get("message_id", "")
+                    if not message_id:
+                        continue
 
+                    if message_id not in message_groups:
+                        message_groups[message_id] = MessageGroup()
+                    message_groups[message_id].add_message(msg_data)
+
+                # Convert groups to ordered list (maintaining chronological order)
+                # raw_messages are in reverse chronological (newest first), so reverse
+                ordered_messages = []
+                for msg_data in reversed(raw_messages):
+                    message_id = msg_data.get("message_id") or msg_data.get("metadata", {}).get("message_id", "")
+                    if message_id in message_groups and message_id not in self._load_state.known_message_ids:
+                        combined = message_groups[message_id].get_combined_message()
+                        if combined:
+                            ordered_messages.append(combined)
+                            self._load_state.known_message_ids.add(message_id)
+
+                # Load messages into model
                 for msg_data in ordered_messages:
                     self._load_message_from_history(msg_data)
 
-                # Track oldest and newest message_ids
-                first_meta = ordered_messages[0].get("metadata", {})
-                self._oldest_message_id = first_meta.get("message_id")
-                last_meta = ordered_messages[-1].get("metadata", {})
-                self._latest_message_id = last_meta.get("message_id")
+                # Update load state
+                self._load_state.unique_message_count = len(ordered_messages)
+                self._load_state.has_more_older = len(raw_messages) >= self.PAGE_SIZE
 
-                # Store line offset for loading more messages
-                self._current_line_offset = line_offset
+                # Get total count (including archives)
+                total_count = history.get_total_count()
 
-                # Check if there's more history to load
-                total_count = FastMessageHistoryService.get_total_count(
-                    workspace_path, project_name
+                logger.info(
+                    f"Loaded {len(ordered_messages)} unique messages "
+                    f"(from {len(raw_messages)} raw messages, "
+                    f"total available: {total_count})"
                 )
-                self._has_more_history = total_count > line_offset
 
                 # Scroll to bottom after loading
                 self._schedule_scroll()
-
-                # Force refresh and scroll after a delay
                 QTimer.singleShot(100, self._ensure_widgets_visible_and_scrolled)
-
-                logger.info(f"Loaded {len(messages)} messages from history (total: {total_count})")
             else:
                 self._model.clear()
                 self._size_hint_cache.clear()
                 self._clear_visible_widgets()
-                self._oldest_message_id = None
-                self._latest_message_id = None
-                self._has_more_history = False
+                self._load_state.known_message_ids.clear()
+                self._load_state.unique_message_count = 0
+                self._load_state.has_more_older = False
                 logger.info("No messages found in history")
 
         except Exception as e:
-            logger.error(f"Error loading recent conversation: {e}")
+            logger.error(f"Error loading recent conversation: {e}", exc_info=True)
 
     def _load_older_messages(self):
         """Load older messages when user scrolls to the top."""
-        # Use line offset instead of message_id for better performance
-        if self._loading_older or not self._has_more_history:
+        if self._loading_older or not self._load_state.has_more_older:
             return
 
         self._loading_older = True
         try:
-            workspace_path = self.workspace.workspace_path
-            project_name = self.workspace.project_name
+            history = self._get_history()
+            if not history:
+                return
 
-            # Get PAGE_SIZE messages before the current offset
-            current_offset = self._current_line_offset if hasattr(self, '_current_line_offset') else 0
-
-            older_messages = FastMessageHistoryService.get_messages_before(
-                workspace_path, project_name, current_offset, count=self.PAGE_SIZE
+            # Get messages before current offset
+            current_offset = self._load_state.current_line_offset
+            older_messages = history.get_messages_before(
+                current_offset, count=self.PAGE_SIZE
             )
 
             if not older_messages:
-                self._has_more_history = False
+                self._load_state.has_more_older = False
                 return
 
             # Save current scroll state for position restoration
@@ -447,23 +519,41 @@ class AgentChatListWidget(BaseWidget):
             old_max = scrollbar.maximum()
             old_value = scrollbar.value()
 
-            # Build items from history data (already in chronological order)
-            items = []
+            # Group messages by message_id using MessageGroup helper
+            message_groups: Dict[str, MessageGroup] = {}
             for msg_data in older_messages:
-                item = self._build_item_from_history(msg_data)
-                if item and not self._model.get_row_by_message_id(item.message_id):
-                    items.append(item)
+                message_id = msg_data.get("message_id") or msg_data.get("metadata", {}).get("message_id", "")
+                if not message_id:
+                    continue
+
+                if message_id not in message_groups:
+                    message_groups[message_id] = MessageGroup()
+                message_groups[message_id].add_message(msg_data)
+
+            # Build items from grouped history data (already in chronological order)
+            items = []
+            for message_id, group in message_groups.items():
+                # Check if already known
+                if message_id in self._load_state.known_message_ids:
+                    continue
+
+                combined_msg = group.get_combined_message()
+                if combined_msg:
+                    item = self._build_item_from_history(combined_msg)
+                    if item:
+                        items.append(item)
+                        self._load_state.known_message_ids.add(message_id)
 
             if items:
-                # Update the oldest message_id and line offset
-                self._oldest_message_id = items[0].message_id
-                self._current_line_offset = current_offset - len(items)
-
                 # Clear visible widgets before prepending (rows will shift)
                 self._clear_visible_widgets()
 
                 # Prepend items to model
                 self._model.prepend_items(items)
+
+                # Update load state
+                self._load_state.unique_message_count += len(items)
+                self._load_state.current_line_offset = current_offset - len(older_messages)
 
                 # Restore scroll position so the view doesn't jump
                 QTimer.singleShot(0, lambda: self._restore_scroll_after_prepend(
@@ -473,14 +563,14 @@ class AgentChatListWidget(BaseWidget):
                 # Prune oldest items if model exceeds MAX_MODEL_ITEMS
                 self._prune_model_bottom()
 
-                logger.debug(f"Prepended {len(items)} older messages")
+                logger.debug(f"Prepended {len(items)} older unique messages (from {len(older_messages)} raw messages)")
 
             # Check if we've loaded all available messages
             if len(older_messages) < self.PAGE_SIZE:
-                self._has_more_history = False
+                self._load_state.has_more_older = False
 
         except Exception as e:
-            logger.error(f"Error loading older messages: {e}")
+            logger.error(f"Error loading older messages: {e}", exc_info=True)
         finally:
             self._loading_older = False
 
@@ -496,11 +586,13 @@ class AgentChatListWidget(BaseWidget):
         excess = self._model.rowCount() - self.MAX_MODEL_ITEMS
         if excess > 0:
             self._clear_visible_widgets()
-            self._model.remove_last_n(excess)
-            # Update latest message_id to the new last item
-            last_item = self._model.get_item(self._model.rowCount() - 1)
-            if last_item:
-                self._latest_message_id = last_item.message_id
+            # Remove items from model
+            for _ in range(excess):
+                if self._model.rowCount() > 0:
+                    item = self._model.get_item(self._model.rowCount() - 1)
+                    if item and item.message_id in self._load_state.known_message_ids:
+                        self._load_state.known_message_ids.remove(item.message_id)
+                    self._model.remove_last_n(1)
             self._user_at_bottom = False
 
     def _prune_model_top(self):
@@ -508,12 +600,14 @@ class AgentChatListWidget(BaseWidget):
         excess = self._model.rowCount() - self.MAX_MODEL_ITEMS
         if excess > 0:
             self._clear_visible_widgets()
-            self._model.remove_first_n(excess)
-            # Update oldest message_id to the new first item
-            first_item = self._model.get_item(0)
-            if first_item:
-                self._oldest_message_id = first_item.message_id
-            self._has_more_history = True
+            # Remove items from model
+            for _ in range(excess):
+                if self._model.rowCount() > 0:
+                    item = self._model.get_item(0)
+                    if item and item.message_id in self._load_state.known_message_ids:
+                        self._load_state.known_message_ids.remove(item.message_id)
+                    self._model.remove_first_n(1)
+            self._load_state.has_more_older = True
 
     # ─── New data polling ─────────────────────────────────────────────
 
@@ -526,24 +620,26 @@ class AgentChatListWidget(BaseWidget):
         self._new_data_check_timer.stop()
 
     def _check_for_new_data(self):
-        """Check for new data by comparing message count (very fast, no disk I/O)."""
+        """Check for new data by comparing active log count (fast, no disk I/O)."""
         if not self._user_at_bottom:
             return
 
         try:
-            workspace_path = self.workspace.workspace_path
-            project_name = self.workspace.project_name
-
-            # Compare message count - O(1) operation using cached count
-            current_count = FastMessageHistoryService.get_total_count(workspace_path, project_name)
-
-            # Store initial count on first check
-            if not hasattr(self, '_last_known_message_count'):
-                self._last_known_message_count = current_count
+            history = self._get_history()
+            if not history:
                 return
 
-            if current_count != self._last_known_message_count:
-                self._last_known_message_count = current_count
+            # Use active log count for fast checking (O(1) cached value)
+            current_count = history.storage.get_message_count()
+
+            # Initialize on first check
+            if self._load_state.active_log_count == 0:
+                self._load_state.active_log_count = current_count
+                return
+
+            # Check if new messages were added to active log
+            if current_count > self._load_state.active_log_count:
+                self._load_state.active_log_count = current_count
                 self._load_new_messages_from_history()
 
         except Exception as e:
@@ -552,46 +648,51 @@ class AgentChatListWidget(BaseWidget):
     def _load_new_messages_from_history(self):
         """Load new messages from history that aren't in the model yet."""
         try:
-            workspace_path = self.workspace.workspace_path
-            project_name = self.workspace.project_name
-
-            # Use line offset for efficient loading
-            current_offset = self._current_line_offset if hasattr(self, '_current_line_offset') else 0
-            total_count = FastMessageHistoryService.get_total_count(workspace_path, project_name)
+            history = self._get_history()
+            if not history:
+                return
 
             # Get messages after current offset
-            new_messages = FastMessageHistoryService.get_messages_after(
-                workspace_path, project_name, current_offset, count=100
-            )
+            current_offset = self._load_state.current_line_offset
+            new_messages = history.get_messages_after(current_offset, count=100)
 
             if not new_messages:
                 return
 
-            added_count = 0
+            # Group messages by message_id using MessageGroup helper
+            message_groups: Dict[str, MessageGroup] = {}
             for msg_data in new_messages:
-                message_id = msg_data.get("metadata", {}).get("message_id")
-                if message_id and not self._model.get_row_by_message_id(message_id):
-                    self._load_message_from_history(msg_data)
-                    added_count += 1
+                message_id = msg_data.get("message_id") or msg_data.get("metadata", {}).get("message_id", "")
+                if not message_id:
+                    continue
 
-            # Update line offset and latest message_id
-            self._current_line_offset = current_offset + len(new_messages)
-            if new_messages:
-                last_id = new_messages[-1].get("metadata", {}).get("message_id")
-                if last_id:
-                    self._latest_message_id = last_id
+                if message_id not in message_groups:
+                    message_groups[message_id] = MessageGroup()
+                message_groups[message_id].add_message(msg_data)
 
-            # Update has_more_history flag
-            self._has_more_history = self._current_line_offset < total_count
+            # Add only unknown messages
+            added_count = 0
+            for message_id, group in message_groups.items():
+                # Only add if not already known
+                if message_id not in self._load_state.known_message_ids:
+                    combined_msg = group.get_combined_message()
+                    if combined_msg:
+                        self._load_message_from_history(combined_msg)
+                        self._load_state.known_message_ids.add(message_id)
+                        added_count += 1
+
+            # Update load state
+            self._load_state.current_line_offset = current_offset + len(new_messages)
+            self._load_state.unique_message_count += added_count
 
             if added_count > 0:
                 # Prune oldest items if model exceeds MAX_MODEL_ITEMS
                 self._prune_model_top()
                 self._schedule_scroll()
-                logger.debug(f"Loaded {added_count} new messages from history")
+                logger.debug(f"Loaded {added_count} new unique messages (from {len(new_messages)} raw messages)")
 
         except Exception as e:
-            logger.error(f"Error loading new messages: {e}")
+            logger.error(f"Error loading new messages: {e}", exc_info=True)
 
     # ─── Message item building ────────────────────────────────────────
 
@@ -610,12 +711,16 @@ class AgentChatListWidget(BaseWidget):
             sender_name = metadata.get("sender_name", sender_id)
             message_type_str = metadata.get("message_type", "text")
 
+            logger.debug(f"Building item: message_id={message_id}, sender={sender_name}, type={message_type_str}")
+
             if not message_id:
+                logger.warning(f"No message_id in msg_data: {msg_data}")
                 return None
 
             try:
                 message_type = MessageType(message_type_str)
             except ValueError:
+                logger.debug(f"Unknown message type '{message_type_str}', using TEXT")
                 message_type = MessageType.TEXT
 
             is_user = sender_id.lower() == "user"
@@ -628,6 +733,7 @@ class AgentChatListWidget(BaseWidget):
                             text_content = content_item.get("data", {}).get("text", "")
                             break
 
+                logger.debug(f"Built user message: {message_id} with content length {len(text_content)}")
                 return ChatListItem(
                     message_id=message_id,
                     sender_id=sender_id,
@@ -643,7 +749,9 @@ class AgentChatListWidget(BaseWidget):
                             sc = StructureContent.from_dict(content_item)
                             structured_content.append(sc)
                         except Exception as e:
-                            logger.warning(f"Failed to load structured content: {e}")
+                            logger.debug(f"Failed to load structured content item: {e}")
+
+                logger.debug(f"Built agent message: {message_id} with {len(structured_content)} content items")
 
                 agent_message = ChatAgentMessage(
                     message_type=message_type,
@@ -670,7 +778,7 @@ class AgentChatListWidget(BaseWidget):
                 )
 
         except Exception as e:
-            logger.error(f"Error building item from history: {e}")
+            logger.error(f"Error building item from history: {e}", exc_info=True)
             return None
 
     def _load_message_from_history(self, msg_data: Dict[str, Any]):
@@ -678,6 +786,9 @@ class AgentChatListWidget(BaseWidget):
         item = self._build_item_from_history(msg_data)
         if item:
             self._model.add_item(item)
+            logger.debug(f"Loaded message: {item.message_id} from {item.sender_name}")
+        else:
+            logger.warning(f"Failed to build item from msg_data: {msg_data.get('message_id', 'unknown')}")
 
     # ─── Crew member metadata ────────────────────────────────────────
 
@@ -874,11 +985,14 @@ class AgentChatListWidget(BaseWidget):
         Limits the number of widgets created per refresh to avoid blocking.
         """
         row_count = self._model.rowCount()
+        logger.debug(f"_refresh_visible_widgets: row_count={row_count}")
+
         if row_count <= 0:
             self._clear_visible_widgets()
             return
 
         first_row, last_row = self._get_visible_row_range()
+        logger.debug(f"_refresh_visible_widgets: visible range={first_row}-{last_row}")
         if first_row is None or last_row is None:
             return
 
@@ -946,6 +1060,8 @@ class AgentChatListWidget(BaseWidget):
             self.list_view.setIndexWidget(index, widget)
             self._visible_widgets[row] = widget
 
+        logger.debug(f"_refresh_visible_widgets: created {len(widgets_to_create)} widgets, total visible: {len(self._visible_widgets)}")
+
     def _get_visible_row_range(self) -> Tuple[Optional[int], Optional[int]]:
         """Get the range of currently visible rows using cached positions.
 
@@ -953,6 +1069,7 @@ class AgentChatListWidget(BaseWidget):
         """
         viewport = self.list_view.viewport()
         if viewport is None:
+            logger.debug("_get_visible_row_range: viewport is None")
             return None, None
 
         # Rebuild cache if dirty
@@ -967,6 +1084,8 @@ class AgentChatListWidget(BaseWidget):
             viewport_height = 10  # Default fallback
 
         row_count = self._model.rowCount()
+        logger.debug(f"_get_visible_row_range: scroll={scroll_value}, viewport_h={viewport_height}, row_count={row_count}, cache_entries={len(self._row_positions_cache)}")
+
         if row_count == 0:
             return 0, 0
 
@@ -1060,12 +1179,7 @@ class AgentChatListWidget(BaseWidget):
         widget.setFixedHeight(max(1, new_size.height()))
 
     def _on_rows_inserted(self, parent: QModelIndex, start: int, end: int):
-        # Update latest_message_id only when items are appended at the end
-        if end == self._model.rowCount() - 1:
-            last_item = self._model.get_item(end)
-            if last_item and last_item.message_id:
-                self._latest_message_id = last_item.message_id
-        # Mark positions cache as dirty
+        # Mark positions cache as dirty and refresh
         self._invalidate_positions_cache()
         self._schedule_visible_refresh()
         if self._user_at_bottom:
@@ -1101,7 +1215,7 @@ class AgentChatListWidget(BaseWidget):
         self._user_at_bottom = scroll_diff < self.SCROLL_BOTTOM_THRESHOLD
 
         # Detect scroll to top - trigger loading older messages
-        if value < self.SCROLL_TOP_THRESHOLD and self._has_more_history and not self._loading_older:
+        if value < self.SCROLL_TOP_THRESHOLD and self._load_state.has_more_older and not self._loading_older:
             self._load_older_messages()
 
         if self._user_at_bottom and not was_at_bottom:
@@ -1561,11 +1675,9 @@ class AgentChatListWidget(BaseWidget):
         self._size_hint_cache.clear()
         self._agent_current_cards.clear()
         self._model.clear()
-        self._oldest_message_id = None
-        self._latest_message_id = None
-        self._last_known_revision = 0
+        # Reset load state
+        self._load_state = LoadState()
         self._loading_older = False
-        self._has_more_history = True
 
     def __del__(self):
         """Destructor."""
