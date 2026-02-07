@@ -204,7 +204,7 @@ class AgentChatWidget(BaseWidget):
         if self.plan_widget:
             self.plan_widget.refresh_plan()
         if self.chat_history_widget:
-            self.chat_history_widget._load_recent_conversation()
+            self.chat_history_widget.on_project_switched(self._extract_project_name(project))
 
     def get_current_project_name(self) -> Optional[str]:
         """Get the current agent's project name."""

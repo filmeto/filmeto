@@ -344,8 +344,6 @@ class AgentChatListWidget(BaseWidget):
         current_y = 0
         row_count = self._model.rowCount()
 
-        logger.debug(f"_rebuild_positions_cache: rebuilding for {row_count} rows")
-
         for row in range(row_count):
             index = self._model.index(row, 0)
             from PySide6.QtWidgets import QStyleOptionViewItem
@@ -358,8 +356,6 @@ class AgentChatListWidget(BaseWidget):
 
         self._total_height_cache = current_y
         self._positions_cache_dirty = False
-
-        logger.debug(f"_rebuild_positions_cache: built cache for {len(self._row_positions_cache)} rows, total height: {self._total_height_cache}")
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -711,8 +707,6 @@ class AgentChatListWidget(BaseWidget):
             sender_name = metadata.get("sender_name", sender_id)
             message_type_str = metadata.get("message_type", "text")
 
-            logger.debug(f"Building item: message_id={message_id}, sender={sender_name}, type={message_type_str}")
-
             if not message_id:
                 logger.warning(f"No message_id in msg_data: {msg_data}")
                 return None
@@ -733,7 +727,6 @@ class AgentChatListWidget(BaseWidget):
                             text_content = content_item.get("data", {}).get("text", "")
                             break
 
-                logger.debug(f"Built user message: {message_id} with content length {len(text_content)}")
                 return ChatListItem(
                     message_id=message_id,
                     sender_id=sender_id,
@@ -750,8 +743,6 @@ class AgentChatListWidget(BaseWidget):
                             structured_content.append(sc)
                         except Exception as e:
                             logger.debug(f"Failed to load structured content item: {e}")
-
-                logger.debug(f"Built agent message: {message_id} with {len(structured_content)} content items")
 
                 agent_message = ChatAgentMessage(
                     message_type=message_type,
@@ -786,7 +777,6 @@ class AgentChatListWidget(BaseWidget):
         item = self._build_item_from_history(msg_data)
         if item:
             self._model.add_item(item)
-            logger.debug(f"Loaded message: {item.message_id} from {item.sender_name}")
         else:
             logger.warning(f"Failed to build item from msg_data: {msg_data.get('message_id', 'unknown')}")
 
@@ -985,14 +975,12 @@ class AgentChatListWidget(BaseWidget):
         Limits the number of widgets created per refresh to avoid blocking.
         """
         row_count = self._model.rowCount()
-        logger.debug(f"_refresh_visible_widgets: row_count={row_count}")
 
         if row_count <= 0:
             self._clear_visible_widgets()
             return
 
         first_row, last_row = self._get_visible_row_range()
-        logger.debug(f"_refresh_visible_widgets: visible range={first_row}-{last_row}")
         if first_row is None or last_row is None:
             return
 
@@ -1060,8 +1048,6 @@ class AgentChatListWidget(BaseWidget):
             self.list_view.setIndexWidget(index, widget)
             self._visible_widgets[row] = widget
 
-        logger.debug(f"_refresh_visible_widgets: created {len(widgets_to_create)} widgets, total visible: {len(self._visible_widgets)}")
-
     def _get_visible_row_range(self) -> Tuple[Optional[int], Optional[int]]:
         """Get the range of currently visible rows using cached positions.
 
@@ -1069,7 +1055,6 @@ class AgentChatListWidget(BaseWidget):
         """
         viewport = self.list_view.viewport()
         if viewport is None:
-            logger.debug("_get_visible_row_range: viewport is None")
             return None, None
 
         # Rebuild cache if dirty
@@ -1084,7 +1069,6 @@ class AgentChatListWidget(BaseWidget):
             viewport_height = 10  # Default fallback
 
         row_count = self._model.rowCount()
-        logger.debug(f"_get_visible_row_range: scroll={scroll_value}, viewport_h={viewport_height}, row_count={row_count}, cache_entries={len(self._row_positions_cache)}")
 
         if row_count == 0:
             return 0, 0
@@ -1254,8 +1238,6 @@ class AgentChatListWidget(BaseWidget):
             # One more refresh after scrolling to ensure widgets in the new
             # visible range are created
             QTimer.singleShot(50, self._refresh_visible_widgets)
-
-            logger.debug(f"Ensured widgets visible, {len(self._visible_widgets)} widgets created")
 
         except Exception as e:
             logger.error(f"Error in _ensure_widgets_visible_and_scrolled: {e}")
