@@ -115,11 +115,52 @@ class MessageLogStorage:
                         line = f.readline()
                         if not line:
                             break
-                        self._position_cache.append(offset)
-                        offset += len(line)
-                        self._line_count += 1
+
+                        # Check if line ends with newline (complete line)
+                        if not line.endswith(b'\n'):
+                            logger.warning(f"Found incomplete line at offset {offset}, skipping")
+                            break
+
+                        # Try to decode to check for corruption
+                        try:
+                            line.decode('utf-8')
+                            self._position_cache.append(offset)
+                            offset += len(line)
+                            self._line_count += 1
+                        except UnicodeDecodeError:
+                            logger.warning(f"Found corrupted line at offset {offset}, stopping cache rebuild")
+                            # Truncate file at this point to recover
+                            self._truncate_file_at(offset)
+                            break
+
             except Exception as e:
                 logger.error(f"Error building position cache: {e}")
+
+    def _truncate_file_at(self, offset: int):
+        """Truncate the active log file at a specific offset to recover from corruption."""
+        try:
+            if not self.active_log_path.exists():
+                return
+
+            # Read the valid portion of the file
+            with open(self.active_log_path, 'rb') as f:
+                f.seek(0, 2)  # Seek to end
+                file_size = f.tell()
+
+                if offset >= file_size:
+                    return  # Nothing to truncate
+
+                f.seek(0, 0)
+                valid_content = f.read(offset)
+
+            # Write back only the valid content
+            with open(self.active_log_path, 'wb') as f:
+                f.write(valid_content)
+
+            logger.info(f"Truncated message.log at offset {offset} to recover from corruption")
+
+        except Exception as e:
+            logger.error(f"Error truncating file: {e}")
 
     def _escape_message(self, message: Dict[str, Any]) -> str:
         """Escape message to single-line JSON format."""
@@ -162,18 +203,27 @@ class MessageLogStorage:
             line = self._escape_message(message) + '\n'
             line_bytes = len(line.encode('utf-8'))
 
-            # Append to file
-            with open(self.active_log_path, 'a', encoding='utf-8') as f:
-                f.write(line)
+            # Acquire file lock before writing to prevent concurrent writes
+            self._get_lock()
 
-            # Update position cache incrementally
-            self._incremental_cache_update(line_bytes)
+            try:
+                # Append to file with buffering for performance
+                with open(self.active_log_path, 'a', encoding='utf-8', buffering=1) as f:
+                    f.write(line)
+                    f.flush()
+                    os.fsync(f.fileno())  # Ensure data is written to disk
 
-            # Check if we need to archive (check without lock first for speed)
-            if self._line_count >= Constants.MAX_MESSAGES:
-                self._archive_old_messages()
+                # Update position cache incrementally
+                self._incremental_cache_update(line_bytes)
 
-            return True
+                # Check if we need to archive (check without lock first for speed)
+                if self._line_count >= Constants.MAX_MESSAGES:
+                    self._archive_old_messages()
+
+                return True
+
+            finally:
+                self._release_lock()
 
         except Exception as e:
             logger.error(f"Error appending message: {e}")
@@ -202,7 +252,8 @@ class MessageLogStorage:
         end = min(start + count, self._line_count)
 
         try:
-            with open(self.active_log_path, 'r', encoding='utf-8') as f:
+            # Use errors='replace' to handle corrupted UTF-8 bytes gracefully
+            with open(self.active_log_path, 'r', encoding='utf-8', errors='replace') as f:
                 # Get start offset from cache
                 with self._cache_lock:
                     if start >= len(self._position_cache):
@@ -219,6 +270,12 @@ class MessageLogStorage:
 
                     line = line.strip()
                     if line:
+                        # Check for replacement character (indicates UTF-8 corruption)
+                        REPLACEMENT_CHAR = '\ufffd'
+                        if REPLACEMENT_CHAR in line:
+                            logger.warning(f"Skipping corrupted line at index {i}")
+                            continue
+
                         msg = self._unescape_message(line)
                         if msg:
                             messages.append(msg)
@@ -561,3 +618,25 @@ class MessageLogHistory:
         """Invalidate all caches."""
         self._refresh_archives()
         self.storage.clear_cache()
+
+    def recover_from_corruption(self) -> bool:
+        """
+        Attempt to recover from a corrupted message.log file.
+
+        This method will:
+        1. Rebuild the position cache, which will detect corruption
+        2. Truncate the file at the last valid position
+        3. Return True if recovery was successful
+
+        Returns:
+            True if recovery was successful, False otherwise
+        """
+        try:
+            logger.info(f"Attempting to recover message.log for project '{self.project_name}'")
+            # Force a cache rebuild which will handle corruption
+            self.storage._rebuild_position_cache()
+            logger.info(f"Recovery completed for project '{self.project_name}'")
+            return True
+        except Exception as e:
+            logger.error(f"Error during recovery: {e}")
+            return False

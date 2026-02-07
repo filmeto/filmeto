@@ -1,7 +1,7 @@
 """Widget for displaying plan content in chat messages."""
 
 from typing import Any, Dict
-from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QScrollArea, QWidget
+from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QWidget
 from PySide6.QtCore import Qt
 
 from agent.chat.content import PlanContent
@@ -122,17 +122,7 @@ class PlanContentWidget(BaseStructuredContentWidget):
             """)
             container_layout.addWidget(steps_label)
 
-            # Create scrollable steps area
-            scroll_area = QScrollArea(container)
-            scroll_area.setWidgetResizable(True)
-            scroll_area.setMaximumHeight(150)
-            scroll_area.setStyleSheet("""
-                QScrollArea {
-                    border: none;
-                    background-color: transparent;
-                }
-            """)
-
+            # Create steps widget directly without scroll area
             steps_widget = QWidget()
             steps_layout = QVBoxLayout(steps_widget)
             steps_layout.setContentsMargins(4, 4, 4, 4)
@@ -163,9 +153,8 @@ class PlanContentWidget(BaseStructuredContentWidget):
                 step_label.setWordWrap(True)
                 steps_layout.addWidget(step_label)
 
-            steps_layout.addStretch()
-            scroll_area.setWidget(steps_widget)
-            container_layout.addWidget(scroll_area)
+            # Add steps widget directly to container layout
+            container_layout.addWidget(steps_widget)
 
         layout.addWidget(container)
 
