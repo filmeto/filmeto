@@ -101,7 +101,7 @@ Item {
             left: parent.left
             leftMargin: 40  // avatar (32) + spacing (8)
             top: headerRow.bottom
-            topMargin: 8
+            topMargin: 12
         }
         width: availableWidth
         implicitHeight: contentColumn.implicitHeight + 24

@@ -68,8 +68,9 @@ Item {
         id: bubbleContainer
         anchors {
             right: parent.right
+            rightMargin: 40  // avatar (32) + spacing (8)
             top: headerRow.bottom
-            topMargin: 4
+            topMargin: 12
         }
         width: bubble.width
         height: bubble.height

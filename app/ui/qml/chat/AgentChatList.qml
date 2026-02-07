@@ -52,7 +52,9 @@ ListView {
             UserMessageBubble {
                 anchors {
                     right: parent.right
-                    rightMargin: 52  // avatar (32) + spacing (8) + extra padding (12)
+                    rightMargin: 12  // Same as agent message
+                    left: parent.left
+                    leftMargin: 12
                 }
                 content: modelData.content || ""
                 isRead: modelData.isRead !== undefined ? modelData.isRead : true
