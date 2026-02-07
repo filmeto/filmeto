@@ -136,7 +136,8 @@ class AgentChatWidget(BaseWidget):
         if not message:
             return
 
-        self.chat_history_widget.add_user_message(message)
+        # User message will be added through history listener and loaded by polling
+        # No need to manually add it here to avoid duplication
         try:
             loop = asyncio.get_running_loop()
             loop.create_task(self._process_message_async(message))
