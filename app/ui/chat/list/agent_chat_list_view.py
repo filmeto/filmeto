@@ -36,12 +36,14 @@ class AgentChatListView(QListView):
         self._total_content_height = 0
         self._row_positions: Dict[int, Tuple[int, int]] = {}  # {row: (y_position, height)}
 
-    def set_row_positions(self, positions: Dict[int, Tuple[int, int]], total_height: int) -> None:
+    def set_row_positions(self, positions: Dict[int, Tuple[int, int]], total_height: int,
+                         restore_scroll: bool = True) -> None:
         """Set cached row positions for smooth scrolling.
 
         Args:
             positions: Dictionary mapping row to (y_position, height)
             total_height: Total height of all content
+            restore_scroll: Whether to restore the scroll position (default: True)
         """
         self._row_positions = dict(positions)
         self._total_content_height = total_height
@@ -53,8 +55,8 @@ class AgentChatListView(QListView):
             current_value = scrollbar.value()
             scrollbar.setRange(0, scroll_maximum)
             scrollbar.setPageStep(viewport_height)
-            # Restore scroll position if needed
-            if current_value <= scroll_maximum:
+            # Restore scroll position if needed (and requested)
+            if restore_scroll and current_value <= scroll_maximum:
                 scrollbar.setValue(current_value)
         # Trigger geometry update
         self.updateGeometry()

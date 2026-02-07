@@ -103,6 +103,9 @@ class AgentChatListWidget(BaseWidget):
         self._pending_scroll_value: Optional[int] = None
         self._scroll_delta_since_last_refresh = 0
 
+        # Track if user is actively dragging the scrollbar
+        self._is_dragging_scrollbar = False
+
         # New data check timer - polls for new messages using active log count
         self._new_data_check_timer = QTimer(self)
         self._new_data_check_timer.timeout.connect(self._check_for_new_data)
@@ -116,6 +119,7 @@ class AgentChatListWidget(BaseWidget):
         # Optimized loading state using LoadState dataclass
         self._load_state = LoadState()
         self._loading_older = False
+        self._is_prepending = False  # Flag to track prepend operations
 
         # Cache history instance for reduced overhead
         self._history: Optional[MessageLogHistory] = None
@@ -155,31 +159,47 @@ class AgentChatListWidget(BaseWidget):
         """Mark the positions cache as dirty - needs rebuild."""
         self._positions_cache_dirty = True
 
-    def _rebuild_positions_cache(self):
-        """Rebuild the row positions cache from scratch."""
-        if not self._positions_cache_dirty:
+    def _rebuild_positions_cache(self, force: bool = False):
+        """Rebuild the row positions cache from scratch.
+
+        Args:
+            force: If True, rebuild even if cache is not marked dirty
+        """
+        if not force and not self._positions_cache_dirty:
             return
 
         self._row_positions_cache.clear()
         current_y = 0
         row_count = self._model.rowCount()
 
-        # Reuse option object for better performance
-        option = QStyleOptionViewItem()
-        option.rect = self.list_view.viewport().rect()
+        try:
+            # Reuse option object for better performance
+            option = QStyleOptionViewItem()
+            option.rect = self.list_view.viewport().rect()
 
-        for row in range(row_count):
-            index = self._model.index(row, 0)
-            size = self.get_item_size_hint(option, index)
+            for row in range(row_count):
+                index = self._model.index(row, 0)
+                size = self.get_item_size_hint(option, index)
 
-            self._row_positions_cache[row] = (current_y, size.height())
-            current_y += size.height()
+                self._row_positions_cache[row] = (current_y, size.height())
+                current_y += size.height()
 
-        self._total_height_cache = current_y
-        self._positions_cache_dirty = False
+            self._total_height_cache = current_y
+            self._positions_cache_dirty = False
 
-        # Sync positions to list view for smooth scrolling
-        self.list_view.set_row_positions(self._row_positions_cache, self._total_height_cache)
+            # Sync positions to list view for smooth scrolling
+            # Don't restore scroll position if we're in the middle of a prepend operation
+            # (scroll restoration will be handled by _restore_scroll_after_prepend)
+            restore_scroll = not self._is_prepending
+            self.list_view.set_row_positions(
+                self._row_positions_cache,
+                self._total_height_cache,
+                restore_scroll=restore_scroll
+            )
+
+        except Exception as e:
+            logger.error(f"Error rebuilding positions cache: {e}", exc_info=True)
+            self._positions_cache_dirty = True  # Mark dirty so we try again
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -368,6 +388,9 @@ class AgentChatListWidget(BaseWidget):
                 # Clear visible widgets before prepending (rows will shift)
                 self._clear_visible_widgets()
 
+                # Set flag to prevent automatic scroll restoration during cache rebuild
+                self._is_prepending = True
+
                 # Prepend items to model
                 self._model.prepend_items(items)
 
@@ -396,10 +419,14 @@ class AgentChatListWidget(BaseWidget):
 
     def _restore_scroll_after_prepend(self, scrollbar, old_max: int, old_value: int):
         """Restore scroll position after prepending items to keep the view stable."""
-        new_max = scrollbar.maximum()
-        delta = new_max - old_max
-        scrollbar.setValue(old_value + delta)
-        self._schedule_visible_refresh()
+        try:
+            new_max = scrollbar.maximum()
+            delta = new_max - old_max
+            scrollbar.setValue(old_value + delta)
+            self._schedule_visible_refresh()
+        finally:
+            # Clear the prepend flag after scroll restoration is complete
+            self._is_prepending = False
 
     def _prune_model_bottom(self):
         """Remove excess items from the bottom of the model if it exceeds MAX_MODEL_ITEMS."""
@@ -760,9 +787,20 @@ class AgentChatListWidget(BaseWidget):
 
     # ─── Viewport and scroll handling ────────────────────────────────
 
-    def _schedule_visible_refresh(self):
-        if not self._visible_refresh_timer.isActive():
-            self._visible_refresh_timer.start(self.VISIBLE_REFRESH_DELAY_MS)
+    def _schedule_visible_refresh(self, immediate: bool = False):
+        """Schedule a refresh of visible widgets.
+
+        Args:
+            immediate: If True, refresh immediately without delay (useful during scrolling)
+        """
+        if immediate:
+            # Cancel any pending refresh and do it now
+            self._visible_refresh_timer.stop()
+            self._refresh_visible_widgets()
+        else:
+            if not self._visible_refresh_timer.isActive():
+                # Use shorter delay for more responsive scrolling
+                self._visible_refresh_timer.start(8)  # Reduced from 16ms to 8ms
 
     def _on_viewport_resized(self):
         """Handle viewport resize with optimized cache handling."""
@@ -802,6 +840,12 @@ class AgentChatListWidget(BaseWidget):
 
         first_row, last_row = self._get_visible_row_range()
         if first_row is None or last_row is None:
+            logger.debug(
+                f"_refresh_visible_widgets: Invalid range (first_row={first_row}, "
+                f"last_row={last_row}, row_count={row_count}, "
+                f"cache_size={len(self._row_positions_cache)}, "
+                f"cache_dirty={self._positions_cache_dirty})"
+            )
             return
 
         # Use larger buffer when at bottom to ensure more widgets are created
@@ -809,21 +853,28 @@ class AgentChatListWidget(BaseWidget):
         scrollbar = self.list_view.verticalScrollBar()
         is_at_bottom = (scrollbar.value() >= scrollbar.maximum() - 10)
 
+        # Detect if we're actively scrolling (by checking if scrollbar value changed recently)
+        is_scrolling = (abs(scrollbar.value() - self._scroll_delta_since_last_refresh) > 20)
+
         if is_at_bottom:
             # At bottom, create widgets for more items above
             buffer_size = min(20, row_count)  # Show up to 20 items when at bottom
-            # Also include items below if any (shouldn't happen at bottom)
             start_row = max(0, first_row - buffer_size)
             end_row = row_count - 1  # Always include all items to the end when at bottom
+        elif is_scrolling:
+            # During scrolling, use larger buffer to prevent blank areas
+            buffer_size = 10  # Increased from 2 to 10 during scrolling
+            start_row = max(0, first_row - buffer_size)
+            end_row = min(row_count - 1, last_row + buffer_size)
         else:
-            buffer_size = 2
+            buffer_size = 3  # Slightly increased from 2 for normal case
             start_row = max(0, first_row - buffer_size)
             end_row = min(row_count - 1, last_row + buffer_size)
 
         desired_rows = set(range(start_row, end_row + 1))
 
-        # Limit number of widgets to create per refresh
-        max_to_create = self.MAX_VISIBLE_WIDGETS
+        # During scrolling, allow creating more widgets to prevent blank areas
+        max_to_create = self.MAX_VISIBLE_WIDGETS * 2 if is_scrolling else self.MAX_VISIBLE_WIDGETS
         widgets_to_create = [r for r in desired_rows if r not in self._visible_widgets]
         if len(widgets_to_create) > max_to_create:
             # Prioritize rows closer to the visible center
@@ -875,6 +926,11 @@ class AgentChatListWidget(BaseWidget):
         elif self._row_positions_cache:
             self.list_view.set_row_positions(self._row_positions_cache, self._total_height_cache)
 
+        # Ensure viewport is updated to show the newly created widgets
+        if widgets_to_create or len(self._visible_widgets) < 10:
+            # Force viewport update if we created widgets or have very few widgets
+            self.list_view.viewport().update()
+
     def _get_visible_row_range(self) -> Tuple[Optional[int], Optional[int]]:
         """Get the range of currently visible rows using cached positions.
 
@@ -899,6 +955,20 @@ class AgentChatListWidget(BaseWidget):
 
         if row_count == 0:
             return 0, 0
+
+        # If cache is empty but we have rows, rebuild it
+        if not self._row_positions_cache and row_count > 0:
+            logger.debug(
+                f"_get_visible_row_range: Cache empty, rebuilding (row_count={row_count})"
+            )
+            self._rebuild_positions_cache(force=True)
+            # Still empty after rebuild? Something is wrong
+            if not self._row_positions_cache:
+                logger.warning(
+                    f"_get_visible_row_range: Cache still empty after rebuild, "
+                    f"returning default range (0, {row_count - 1})"
+                )
+                return 0, row_count - 1
 
         # Binary search for first visible row
         scroll_bottom = scroll_value + viewport_height
@@ -941,6 +1011,24 @@ class AgentChatListWidget(BaseWidget):
                 # Cache miss, fall back to linear search
                 last_row = self._find_last_visible_linear(first_row, scroll_bottom, row_count)
                 break
+
+        # Validate and clamp the returned range to ensure it's valid
+        if first_row < 0:
+            first_row = 0
+        if first_row >= row_count:
+            first_row = row_count - 1
+        if last_row < first_row:
+            last_row = first_row
+        if last_row >= row_count:
+            last_row = row_count - 1
+
+        # Final sanity check - if still invalid, return safe defaults
+        if first_row is None or last_row is None or first_row < 0 or last_row < 0:
+            logger.warning(
+                f"_get_visible_row_range: Invalid range after calculation, "
+                f"using safe defaults (0, {max(0, row_count - 1)})"
+            )
+            return 0, max(0, row_count - 1)
 
         return first_row, last_row
 
@@ -1001,16 +1089,19 @@ class AgentChatListWidget(BaseWidget):
         # Store pending scroll value for throttled processing
         self._pending_scroll_value = value
 
-        # Start throttle timer
-        self._scroll_throttle_timer.start(self.SCROLL_THROTTLE_MS)
-
-        # Immediately trigger refresh if significant scroll
-        scrollbar = self.list_view.verticalScrollBar()
+        # Detect rapid scrolling (likely user dragging)
         scroll_diff = abs(value - self._scroll_delta_since_last_refresh)
 
-        if scroll_diff > 100:  # Significant scroll threshold
+        # During rapid scrolling, refresh more aggressively
+        if scroll_diff > 50:  # Reduced from 100 for more responsive updates
             self._scroll_delta_since_last_refresh = value
-            self._schedule_visible_refresh()
+            self._schedule_visible_refresh(immediate=True)  # Immediate refresh during scrolling
+        else:
+            # For small scrolls, use delayed refresh
+            self._schedule_visible_refresh(immediate=False)
+
+        # Start throttle timer for loading messages etc
+        self._scroll_throttle_timer.start(self.SCROLL_THROTTLE_MS)
 
     def _on_scroll_throttled(self):
         """Handle throttled scroll event - debounced processing."""
