@@ -125,11 +125,13 @@ class AgentChatHistory:
     def _invalidate_file_list_cache(self):
         """Invalidate the cached file list so it's rebuilt on next access."""
         self._all_files_cache = None
+        # Also invalidate storage cache
+        self.storage.invalidate_file_list_cache()
 
-    def _get_all_files(self) -> List[Path]:
+    def _get_all_files(self, force_refresh: bool = False) -> List[Path]:
         """Get all message files sorted by timestamp, using cache if available."""
-        if self._all_files_cache is None:
-            self._all_files_cache = self.storage.list_all_message_files()
+        if self._all_files_cache is None or force_refresh:
+            self._all_files_cache = self.storage.list_all_message_files(force_refresh=force_refresh)
         return self._all_files_cache
 
     def add_message(self, message: AgentMessage, append_content: bool = True) -> str:
@@ -162,8 +164,19 @@ class AgentChatHistory:
                     or parsed.timestamp >= self._latest_info_cache.get("timestamp", 0)):
                 self._latest_info_cache = new_info
 
-        # Invalidate file list so it's rebuilt with the new/updated file
-        self._invalidate_file_list_cache()
+        # Incrementally update file list cache instead of invalidating
+        # This avoids rescanning all directories on every add_message
+        if self._all_files_cache is not None:
+            # Remove old file with same message_id if exists
+            self._all_files_cache = [f for f in self._all_files_cache
+                                       if parse_message_filename(f).message_id != message.message_id
+                                       if parse_message_filename(f)]
+            # Add new file
+            self._all_files_cache.append(Path(file_path))
+            self._all_files_cache.sort(key=self.storage._get_file_timestamp)
+        else:
+            # Cache not initialized, will be built on demand
+            pass
 
         # Increment revision to signal change
         self._revision += 1
@@ -174,10 +187,15 @@ class AgentChatHistory:
         return file_path
 
     def _load_messages_from_files(self, files: List[Path]) -> List[Dict[str, Any]]:
-        """Load messages from file list, using cache when possible."""
+        """Load messages from file list with parallel loading optimization."""
+        if not files:
+            return []
+
+        # Try to load as many as possible from cache first
         result: List[Dict[str, Any]] = []
+        files_to_load: List[Path] = []
+
         for file_path in files:
-            # Try cache first via parsed filename
             parsed = parse_message_filename(file_path)
             if parsed:
                 cached = self._cache_get(parsed.message_id)
@@ -185,13 +203,38 @@ class AgentChatHistory:
                     result.append(cached)
                     continue
 
-            # Cache miss - load from disk
-            loaded = self.storage.load_message(file_path)
-            if loaded:
-                message_id = loaded.get("metadata", {}).get("message_id")
-                if message_id:
-                    self._cache_put(message_id, loaded)
-                result.append(loaded)
+            files_to_load.append(file_path)
+
+        # Batch load remaining files in parallel
+        if files_to_load:
+            # Use parallel loading for better performance
+            try:
+                loaded_batch = self.storage.load_messages_batch(files_to_load)
+
+                # Map results back to original order
+                loaded_dict: Dict[Path, Optional[Dict[str, Any]]] = dict(zip(files_to_load, loaded_batch))
+
+                for file_path in files_to_load:
+                    loaded = loaded_dict.get(file_path)
+                    if loaded:
+                        message_id = loaded.get("metadata", {}).get("message_id")
+                        if message_id:
+                            self._cache_put(message_id, loaded)
+                        result.append(loaded)
+                    else:
+                        # Skip failed loads
+                        pass
+            except Exception as e:
+                logger.error(f"Error in batch loading, falling back to sequential: {e}")
+                # Fallback to sequential loading
+                for file_path in files_to_load:
+                    loaded = self.storage.load_message(file_path)
+                    if loaded:
+                        message_id = loaded.get("metadata", {}).get("message_id")
+                        if message_id:
+                            self._cache_put(message_id, loaded)
+                        result.append(loaded)
+
         return result
 
     def _find_message_index(self, files: List[Path], message_id: str) -> Optional[int]:

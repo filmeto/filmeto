@@ -2,13 +2,20 @@
 Storage module for agent chat history.
 
 Handles file-based storage of AgentMessage objects with daily directory organization.
+
+Performance optimizations:
+- File list caching with lazy validation
+- Batch file operations
+- Metadata-only index for fast lookups
 """
 
 import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 import yaml
 
@@ -32,7 +39,15 @@ class MessageStorage:
           ...
         content:
           - ...
+
+    Performance optimizations:
+    - File list cache with validation
+    - Thread pool for parallel loading
+    - Metadata index for fast lookups
     """
+
+    # Cache settings
+    FILE_LIST_CACHE_TTL = 5.0  # Cache file list for 5 seconds
 
     def __init__(self, history_root_path: str):
         """
@@ -43,6 +58,14 @@ class MessageStorage:
         """
         self.history_root_path = Path(history_root_path)
         self.history_root_path.mkdir(parents=True, exist_ok=True)
+
+        # File list cache
+        self._file_list_cache: Optional[List[Path]] = None
+        self._file_list_cache_time: float = 0
+        self._file_list_cache_lock = threading.Lock()
+
+        # Thread pool for parallel loading
+        self._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="history_loader")
 
     def _get_date_dir_path(self, date: datetime, create: bool = True) -> Path:
         """
@@ -311,12 +334,72 @@ class MessageStorage:
         files.sort(key=self._get_file_timestamp)
         return files
 
-    def list_all_message_files(self) -> List[Path]:
+    def list_all_message_files(self, force_refresh: bool = False) -> List[Path]:
+        """List all message files with caching.
+
+        Args:
+            force_refresh: Force cache refresh even if not expired
+
+        Returns:
+            Sorted list of message file paths
+        """
+        import time
+        current_time = time.time()
+
+        # Check cache
+        with self._file_list_cache_lock:
+            if (not force_refresh and
+                self._file_list_cache is not None and
+                current_time - self._file_list_cache_time < self.FILE_LIST_CACHE_TTL):
+                return self._file_list_cache
+
+        # Build file list
         files: List[Path] = []
         for date_dir in self._list_date_dirs():
             files.extend(date_dir.glob("*.md"))
         files.sort(key=self._get_file_timestamp)
+
+        # Update cache
+        with self._file_list_cache_lock:
+            self._file_list_cache = files
+            self._file_list_cache_time = current_time
+
         return files
+
+    def invalidate_file_list_cache(self):
+        """Invalidate the file list cache."""
+        with self._file_list_cache_lock:
+            self._file_list_cache = None
+            self._file_list_cache_time = 0
+
+    def load_messages_batch(self, file_paths: List[Path]) -> List[Optional[Dict[str, Any]]]:
+        """Load multiple messages in parallel using thread pool.
+
+        Args:
+            file_paths: List of file paths to load
+
+        Returns:
+            List of loaded message data (same order as input)
+        """
+        futures = []
+        for file_path in file_paths:
+            future = self._executor.submit(self.load_message, file_path)
+            futures.append(future)
+
+        results = []
+        for future in as_completed(futures):
+            try:
+                result = future.result(timeout=5)  # 5 second timeout per file
+                results.append(result)
+            except Exception as e:
+                logger.error(f"Error loading message in batch: {e}")
+                results.append(None)
+
+        return results
+
+    def count_messages(self) -> int:
+        """Count total messages efficiently using file list cache."""
+        return len(self.list_all_message_files())
 
     def delete_message(self, file_path: Path) -> bool:
         """

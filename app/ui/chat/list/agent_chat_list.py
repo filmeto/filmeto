@@ -189,6 +189,11 @@ class AgentChatListWidget(BaseWidget):
     - Initial load: PAGE_SIZE most recent messages
     - Scroll to top: loads older messages in pages
     - At bottom: polls for new messages via revision counter
+
+    Performance optimizations:
+    - Cached row positions for fast visible range calculation
+    - Throttled scroll event handling
+    - Deferred widget creation for smooth scrolling
     """
 
     # Configuration
@@ -197,6 +202,11 @@ class AgentChatListWidget(BaseWidget):
     NEW_DATA_CHECK_INTERVAL_MS = 500
     SCROLL_TOP_THRESHOLD = 50
     SCROLL_BOTTOM_THRESHOLD = 50
+
+    # Performance tuning
+    VISIBLE_REFRESH_DELAY_MS = 16  # ~60fps
+    SCROLL_THROTTLE_MS = 50  # Throttle scroll events
+    MAX_VISIBLE_WIDGETS = 30  # Limit widgets created at once
 
     # Signals
     reference_clicked = Signal(str, str)  # ref_type, ref_id
@@ -213,6 +223,11 @@ class AgentChatListWidget(BaseWidget):
         self._visible_widgets: Dict[int, QWidget] = {}
         self._size_hint_cache: Dict[str, Dict[int, QSize]] = {}
 
+        # Cached row positions for performance: {row: (y_position, height)}
+        self._row_positions_cache: Dict[int, Tuple[int, int]] = {}
+        self._total_height_cache: int = 0
+        self._positions_cache_dirty: bool = True
+
         self._scroll_timer = QTimer(self)
         self._scroll_timer.setSingleShot(True)
         self._scroll_timer.timeout.connect(self._scroll_to_bottom)
@@ -220,6 +235,13 @@ class AgentChatListWidget(BaseWidget):
         self._visible_refresh_timer = QTimer(self)
         self._visible_refresh_timer.setSingleShot(True)
         self._visible_refresh_timer.timeout.connect(self._refresh_visible_widgets)
+
+        # Throttle for scroll events
+        self._scroll_throttle_timer = QTimer(self)
+        self._scroll_throttle_timer.setSingleShot(True)
+        self._scroll_throttle_timer.timeout.connect(self._on_scroll_throttled)
+        self._pending_scroll_value: Optional[int] = None
+        self._scroll_delta_since_last_refresh = 0
 
         # New data check timer - polls for new messages using revision counter (fallback)
         self._new_data_check_timer = QTimer(self)
@@ -254,10 +276,39 @@ class AgentChatListWidget(BaseWidget):
         self._last_known_revision = 0
         self._loading_older = False
         self._has_more_history = True
+        # Clear position cache
+        self._positions_cache_dirty = True
+        self._row_positions_cache.clear()
         self._load_recent_conversation()
 
     def refresh_crew_member_metadata(self):
         self._load_crew_member_metadata()
+
+    def _invalidate_positions_cache(self):
+        """Mark the positions cache as dirty - needs rebuild."""
+        self._positions_cache_dirty = True
+
+    def _rebuild_positions_cache(self):
+        """Rebuild the row positions cache from scratch."""
+        if not self._positions_cache_dirty:
+            return
+
+        self._row_positions_cache.clear()
+        current_y = 0
+        row_count = self._model.rowCount()
+
+        for row in range(row_count):
+            index = self._model.index(row, 0)
+            from PySide6.QtWidgets import QStyleOptionViewItem
+            option = QStyleOptionViewItem()
+            option.rect = self.list_view.viewport().rect()
+            size = self.get_item_size_hint(option, index)
+
+            self._row_positions_cache[row] = (current_y, size.height())
+            current_y += size.height()
+
+        self._total_height_cache = current_y
+        self._positions_cache_dirty = False
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -781,21 +832,33 @@ class AgentChatListWidget(BaseWidget):
         return size
 
     def _invalidate_size_hint(self, message_id: str):
+        """Invalidate size hint cache for a specific message."""
         if message_id in self._size_hint_cache:
             self._size_hint_cache.pop(message_id, None)
+        # Also mark positions cache as dirty since heights may change
+        self._invalidate_positions_cache()
 
     # ─── Viewport and scroll handling ────────────────────────────────
 
-    def _on_viewport_resized(self):
-        self._size_hint_cache.clear()
-        # Clear existing widgets so they will be recreated with updated width
-        self._clear_visible_widgets()
-        self.list_view.doItemsLayout()
-        self._schedule_visible_refresh()
-
     def _schedule_visible_refresh(self):
         if not self._visible_refresh_timer.isActive():
-            self._visible_refresh_timer.start(0)
+            self._visible_refresh_timer.start(self.VISIBLE_REFRESH_DELAY_MS)
+
+    def _on_viewport_resized(self):
+        """Handle viewport resize with optimized cache handling."""
+        # Only clear size hint cache if width changed significantly
+        new_width = self.list_view.viewport().width()
+        old_width_hint = next(iter(self._size_hint_cache.values()), {}).get(0, QSize(0, 0)).width() if self._size_hint_cache else 0
+
+        if abs(new_width - old_width_hint) > 50:  # Significant width change
+            # Clear widgets and cache only on significant width change
+            self._size_hint_cache.clear()
+            self._clear_visible_widgets()
+            self.list_view.doItemsLayout()
+            # Mark positions cache as dirty
+            self._invalidate_positions_cache()
+
+        self._schedule_visible_refresh()
 
     def _clear_visible_widgets(self):
         for row, widget in list(self._visible_widgets.items()):
@@ -806,6 +869,10 @@ class AgentChatListWidget(BaseWidget):
         self._visible_widgets = {}
 
     def _refresh_visible_widgets(self):
+        """Refresh visible widgets with performance optimizations.
+
+        Limits the number of widgets created per refresh to avoid blocking.
+        """
         row_count = self._model.rowCount()
         if row_count <= 0:
             self._clear_visible_widgets()
@@ -833,6 +900,16 @@ class AgentChatListWidget(BaseWidget):
 
         desired_rows = set(range(start_row, end_row + 1))
 
+        # Limit number of widgets to create per refresh
+        max_to_create = self.MAX_VISIBLE_WIDGETS
+        widgets_to_create = [r for r in desired_rows if r not in self._visible_widgets]
+        if len(widgets_to_create) > max_to_create:
+            # Prioritize rows closer to the visible center
+            visible_center = (first_row + last_row) // 2
+            widgets_to_create.sort(key=lambda r: abs(r - visible_center))
+            widgets_to_create = widgets_to_create[:max_to_create]
+            desired_rows = set(widgets_to_create) | set(self._visible_widgets.keys())
+
         # Remove widgets that are no longer in the desired range
         for row in list(self._visible_widgets.keys()):
             if row not in desired_rows:
@@ -843,7 +920,7 @@ class AgentChatListWidget(BaseWidget):
                 widget.deleteLater()
 
         # Create widgets for rows that need them
-        for row in desired_rows:
+        for row in widgets_to_create:
             if row in self._visible_widgets:
                 continue
             item = self._model.get_item(row)
@@ -870,14 +947,17 @@ class AgentChatListWidget(BaseWidget):
             self._visible_widgets[row] = widget
 
     def _get_visible_row_range(self) -> Tuple[Optional[int], Optional[int]]:
-        """Get the range of currently visible rows.
+        """Get the range of currently visible rows using cached positions.
 
-        Uses visual position and scrollbar value to determine visible range,
-        which is more reliable than indexAt() when viewport is small or items are large.
+        Uses binary search on cached row positions for O(log n) performance.
         """
         viewport = self.list_view.viewport()
         if viewport is None:
             return None, None
+
+        # Rebuild cache if dirty
+        if self._positions_cache_dirty:
+            self._rebuild_positions_cache()
 
         scrollbar = self.list_view.verticalScrollBar()
         scroll_value = scrollbar.value()
@@ -890,41 +970,67 @@ class AgentChatListWidget(BaseWidget):
         if row_count == 0:
             return 0, 0
 
-        # Find first visible row by accumulating heights
-        current_y = scroll_value
+        # Binary search for first visible row
+        scroll_bottom = scroll_value + viewport_height
+
         first_row = 0
+        last_row = row_count - 1
 
-        for i in range(row_count):
-            index = self._model.index(i, 0)
-            from PySide6.QtWidgets import QStyleOptionViewItem
-            option = QStyleOptionViewItem()
-            option.rect = viewport.rect()
-            size = self.get_item_size_hint(option, index)
-
-            if current_y < size.height():
-                first_row = i
+        # Find first row where y + height > scroll_value
+        low, high = 0, row_count - 1
+        while low <= high:
+            mid = (low + high) // 2
+            if mid in self._row_positions_cache:
+                y, h = self._row_positions_cache[mid]
+                if y + h <= scroll_value:
+                    low = mid + 1
+                elif y > scroll_value:
+                    high = mid - 1
+                else:
+                    first_row = mid
+                    break
+            else:
+                # Cache miss, fall back to linear search for this section
+                first_row = self._find_first_visible_linear(scroll_value, row_count)
                 break
-            current_y -= size.height()
-        else:
-            # If we didn't find it, use last row
-            first_row = row_count - 1
 
-        # Find last visible row
-        current_y = scroll_value + viewport_height
-        last_row = first_row
-
-        for i in range(first_row, row_count):
-            index = self._model.index(i, 0)
-            size = self.get_item_size_hint(option, index)
-
-            current_y -= size.height()
-            if current_y <= 0:
-                last_row = i
+        # Find last row
+        low, high = first_row, row_count - 1
+        while low <= high:
+            mid = (low + high) // 2
+            if mid in self._row_positions_cache:
+                y, h = self._row_positions_cache[mid]
+                if y < scroll_bottom:
+                    low = mid + 1
+                elif y >= scroll_bottom:
+                    high = mid - 1
+                else:
+                    last_row = mid
+                    break
+            else:
+                # Cache miss, fall back to linear search
+                last_row = self._find_last_visible_linear(first_row, scroll_bottom, row_count)
                 break
-        else:
-            last_row = row_count - 1
 
         return first_row, last_row
+
+    def _find_first_visible_linear(self, scroll_value: int, row_count: int) -> int:
+        """Linear search fallback for first visible row."""
+        for row in range(row_count):
+            if row in self._row_positions_cache:
+                y, h = self._row_positions_cache[row]
+                if y + h > scroll_value:
+                    return row
+        return 0
+
+    def _find_last_visible_linear(self, start_row: int, scroll_bottom: int, row_count: int) -> int:
+        """Linear search fallback for last visible row."""
+        for row in range(start_row, row_count):
+            if row in self._row_positions_cache:
+                y, _ = self._row_positions_cache[row]
+                if y >= scroll_bottom:
+                    return row - 1
+        return row_count - 1
 
     def _on_model_data_changed(self, top_left: QModelIndex, bottom_right: QModelIndex, roles=None):
         for row in range(top_left.row(), bottom_right.row() + 1):
@@ -959,11 +1065,36 @@ class AgentChatListWidget(BaseWidget):
             last_item = self._model.get_item(end)
             if last_item and last_item.message_id:
                 self._latest_message_id = last_item.message_id
+        # Mark positions cache as dirty
+        self._invalidate_positions_cache()
         self._schedule_visible_refresh()
         if self._user_at_bottom:
             self._schedule_scroll()
 
     def _on_scroll_value_changed(self, value: int):
+        """Handle scroll value changes with throttling."""
+        # Store pending scroll value for throttled processing
+        self._pending_scroll_value = value
+
+        # Start throttle timer
+        self._scroll_throttle_timer.start(self.SCROLL_THROTTLE_MS)
+
+        # Immediately trigger refresh if significant scroll
+        scrollbar = self.list_view.verticalScrollBar()
+        scroll_diff = abs(value - self._scroll_delta_since_last_refresh)
+
+        if scroll_diff > 100:  # Significant scroll threshold
+            self._scroll_delta_since_last_refresh = value
+            self._schedule_visible_refresh()
+
+    def _on_scroll_throttled(self):
+        """Handle throttled scroll event - debounced processing."""
+        if self._pending_scroll_value is None:
+            return
+
+        value = self._pending_scroll_value
+        self._pending_scroll_value = None
+
         scrollbar = self.list_view.verticalScrollBar()
         scroll_diff = scrollbar.maximum() - value
         was_at_bottom = self._user_at_bottom
@@ -979,6 +1110,9 @@ class AgentChatListWidget(BaseWidget):
                 self.load_more_requested.emit()
         elif not self._user_at_bottom:
             self._bottom_reached = False
+
+        # Schedule refresh after throttled scroll processing
+        self._schedule_visible_refresh()
 
     def _scroll_to_bottom(self):
         if self._user_at_bottom:
