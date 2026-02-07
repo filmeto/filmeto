@@ -1,0 +1,46 @@
+# QML Module Definition for Agent Chat
+# This file defines the QML components available in this module
+
+# Main chat list component
+AgentChatList 1.0 AgentChatList.qml
+
+# Component: User message bubble (right-aligned)
+UserMessageBubble 1.0 components/UserMessageBubble.qml
+
+# Component: Agent message bubble (left-aligned with avatar)
+AgentMessageBubble 1.0 components/AgentMessageBubble.qml
+
+# Component: Thinking message (collapsible)
+ThinkingMessageBubble 1.0 components/ThinkingMessageBubble.qml
+
+# Component: Code message with syntax highlighting
+CodeMessageBubble 1.0 components/CodeMessageBubble.qml
+
+# Component: Image message
+ImageMessageBubble 1.0 components/ImageMessageBubble.qml
+
+# Component: Tool call message
+ToolCallMessageBubble 1.0 components/ToolCallMessageBubble.qml
+
+# Component: Error message
+ErrorMessageBubble 1.0 components/ErrorMessageBubble.qml
+
+# Component: Progress message
+ProgressMessageBubble 1.0 components/ProgressMessageBubble.qml
+
+# Component: Date separator
+DateSeparator 1.0 components/DateSeparator.qml
+
+# Widgets
+CodeBlockWidget 1.0 widgets/CodeBlockWidget.qml
+ThinkingWidget 1.0 widgets/ThinkingWidget.qml
+TypingIndicator 1.0 widgets/TypingIndicator.qml
+ToolCallWidget 1.0 widgets/ToolCallWidget.qml
+ToolResponseWidget 1.0 widgets/ToolResponseWidget.qml
+ProgressWidget 1.0 widgets/ProgressWidget.qml
+ImageWidget 1.0 widgets/ImageWidget.qml
+TableWidget 1.0 widgets/TableWidget.qml
+LinkWidget 1.0 widgets/LinkWidget.qml
+FileWidget 1.0 widgets/FileWidget.qml
+PlanWidget 1.0 widgets/PlanWidget.qml
+TaskWidget 1.0 widgets/TaskWidget.qml
