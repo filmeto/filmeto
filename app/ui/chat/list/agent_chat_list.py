@@ -351,6 +351,10 @@ class AgentChatListWidget(BaseWidget):
                 # Scroll to bottom after loading
                 self._schedule_scroll()
 
+                # Force refresh and scroll after a delay to ensure widgets are created
+                # This fixes the issue where only first few messages are visible
+                QTimer.singleShot(100, self._ensure_widgets_visible_and_scrolled)
+
                 logger.info(f"Loaded {len(messages)} messages from history (total: {total_count})")
             else:
                 self._model.clear()
@@ -716,13 +720,28 @@ class AgentChatListWidget(BaseWidget):
             widget.reference_clicked.connect(self.reference_clicked.emit)
         return widget
 
+    # Minimum width to use for size hint calculation
+    # This prevents incorrect size calculation when viewport is very small
+    MIN_SIZING_WIDTH = 400
+
     def _build_sizing_widget(self, item: ChatListItem, width: int) -> QWidget:
         widget = self._create_message_widget(item, None)
         widget.setAttribute(Qt.WA_DontShowOnScreen, True)
-        widget.setFixedWidth(max(1, width))
+        # Use a reasonable minimum width to avoid exaggerated height calculations
+        actual_width = max(self.MIN_SIZING_WIDTH, width)
+        widget.setFixedWidth(actual_width)
         if widget.layout():
             widget.layout().activate()
+            widget.layout().update()
+        # Force geometry update
+        widget.setGeometry(0, 0, actual_width, 100)
         widget.adjustSize()
+        # Ensure the size reflects the fixed width
+        size = widget.size()
+        if size.width() != actual_width:
+            # If width didn't take, manually set it
+            from PySide6.QtCore import QSize
+            widget.resize(QSize(actual_width, size.height()))
         return widget
 
     def get_item_size_hint(self, option, index) -> QSize:
@@ -733,24 +752,32 @@ class AgentChatListWidget(BaseWidget):
         width = option.rect.width()
         if width <= 0:
             width = self.list_view.viewport().width()
-        width = max(1, width)
 
-        cached = self._size_hint_cache.get(item.message_id, {}).get(width)
+        # Use minimum width for calculation to avoid exaggerated heights
+        calc_width = max(self.MIN_SIZING_WIDTH, width)
+
+        cached = self._size_hint_cache.get(item.message_id, {}).get(calc_width)
         if cached:
-            return cached
+            # If cached size was calculated with different width, adjust width
+            result = QSize(cached)
+            result.setWidth(width)
+            return result
 
-        widget = self._build_sizing_widget(item, width)
-        size = widget.sizeHint()
+        widget = self._build_sizing_widget(item, calc_width)
+        # Use size() instead of sizeHint() since we set a fixed width
+        size = widget.size()
         widget.deleteLater()
 
+        # Always return the actual display width, not the calculation width
         if size.width() <= 0:
-            size.setWidth(width)
+            size.setWidth(max(1, width))
         else:
-            size.setWidth(width)
+            size.setWidth(max(1, width))
         if size.height() < 1:
             size.setHeight(1)
 
-        self._size_hint_cache.setdefault(item.message_id, {})[width] = size
+        # Cache with the calculation width
+        self._size_hint_cache.setdefault(item.message_id, {})[calc_width] = size
         return size
 
     def _invalidate_size_hint(self, message_id: str):
@@ -788,9 +815,22 @@ class AgentChatListWidget(BaseWidget):
         if first_row is None or last_row is None:
             return
 
-        buffer_size = 2
-        start_row = max(0, first_row - buffer_size)
-        end_row = min(row_count - 1, last_row + buffer_size)
+        # Use larger buffer when at bottom to ensure more widgets are created
+        # This helps when viewport is small (e.g., during initialization)
+        scrollbar = self.list_view.verticalScrollBar()
+        is_at_bottom = (scrollbar.value() >= scrollbar.maximum() - 10)
+
+        if is_at_bottom:
+            # At bottom, create widgets for more items above
+            buffer_size = min(20, row_count)  # Show up to 20 items when at bottom
+            # Also include items below if any (shouldn't happen at bottom)
+            start_row = max(0, first_row - buffer_size)
+            end_row = row_count - 1  # Always include all items to the end when at bottom
+        else:
+            buffer_size = 2
+            start_row = max(0, first_row - buffer_size)
+            end_row = min(row_count - 1, last_row + buffer_size)
+
         desired_rows = set(range(start_row, end_row + 1))
 
         # Remove widgets that are no longer in the desired range
@@ -830,29 +870,59 @@ class AgentChatListWidget(BaseWidget):
             self._visible_widgets[row] = widget
 
     def _get_visible_row_range(self) -> Tuple[Optional[int], Optional[int]]:
+        """Get the range of currently visible rows.
+
+        Uses visual position and scrollbar value to determine visible range,
+        which is more reliable than indexAt() when viewport is small or items are large.
+        """
         viewport = self.list_view.viewport()
         if viewport is None:
             return None, None
 
-        top_index = self.list_view.indexAt(QPoint(0, 0))
-        if top_index.isValid():
-            first_row = top_index.row()
-        else:
-            first_row = 0
+        scrollbar = self.list_view.verticalScrollBar()
+        scroll_value = scrollbar.value()
+        viewport_height = viewport.height()
 
-        bottom_pos = max(0, viewport.height() - 1)
-        bottom_index = self.list_view.indexAt(QPoint(0, bottom_pos))
-        if not bottom_index.isValid():
-            y = bottom_pos
-            step = max(1, viewport.height() // 10)
-            while y >= 0 and not bottom_index.isValid():
-                bottom_index = self.list_view.indexAt(QPoint(0, y))
-                y -= step
+        if viewport_height <= 0:
+            viewport_height = 10  # Default fallback
 
-        if bottom_index.isValid():
-            last_row = bottom_index.row()
+        row_count = self._model.rowCount()
+        if row_count == 0:
+            return 0, 0
+
+        # Find first visible row by accumulating heights
+        current_y = scroll_value
+        first_row = 0
+
+        for i in range(row_count):
+            index = self._model.index(i, 0)
+            from PySide6.QtWidgets import QStyleOptionViewItem
+            option = QStyleOptionViewItem()
+            option.rect = viewport.rect()
+            size = self.get_item_size_hint(option, index)
+
+            if current_y < size.height():
+                first_row = i
+                break
+            current_y -= size.height()
         else:
-            last_row = first_row
+            # If we didn't find it, use last row
+            first_row = row_count - 1
+
+        # Find last visible row
+        current_y = scroll_value + viewport_height
+        last_row = first_row
+
+        for i in range(first_row, row_count):
+            index = self._model.index(i, 0)
+            size = self.get_item_size_hint(option, index)
+
+            current_y -= size.height()
+            if current_y <= 0:
+                last_row = i
+                break
+        else:
+            last_row = row_count - 1
 
         return first_row, last_row
 
@@ -916,6 +986,31 @@ class AgentChatListWidget(BaseWidget):
 
     def _schedule_scroll(self):
         self._scroll_timer.start(50)
+
+    def _ensure_widgets_visible_and_scrolled(self):
+        """Ensure widgets are created and scrolled to bottom after initial load.
+
+        This method is called after a delay to ensure that:
+        1. The viewport has its final size
+        2. Widgets are created for visible items
+        3. The view is scrolled to the bottom
+        """
+        try:
+            # Force refresh of visible widgets
+            self._refresh_visible_widgets()
+
+            # Ensure we're scrolled to bottom
+            self._user_at_bottom = True
+            self.list_view.scrollToBottom()
+
+            # One more refresh after scrolling to ensure widgets in the new
+            # visible range are created
+            QTimer.singleShot(50, self._refresh_visible_widgets)
+
+            logger.debug(f"Ensured widgets visible, {len(self._visible_widgets)} widgets created")
+
+        except Exception as e:
+            logger.error(f"Error in _ensure_widgets_visible_and_scrolled: {e}")
 
     # ─── Public API for direct message manipulation ───────────────────
 
