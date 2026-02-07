@@ -33,11 +33,21 @@ Item {
             top: parent.top
             topMargin: 12
         }
-        spacing: avatarSpacing
-        layoutDirection: Qt.RightToLeft
+        spacing: 8
         height: Math.max(avatarRect.height, nameText.implicitHeight)
 
-        // Avatar/icon
+        // User name (first element, placed on left in normal layout)
+        Text {
+            id: nameText
+            text: root.userName
+            color: textColor
+            font.pixelSize: 13
+            font.weight: Font.Medium
+            anchors.verticalCenter: parent.verticalCenter
+            opacity: 0.9
+        }
+
+        // Avatar/icon (second element, placed on right)
         Rectangle {
             id: avatarRect
             width: avatarSize
@@ -51,17 +61,6 @@ Item {
                 text: root.userIcon
                 font.pixelSize: 18
             }
-        }
-
-        // User name
-        Text {
-            id: nameText
-            text: root.userName
-            color: textColor
-            font.pixelSize: 13
-            font.weight: Font.Medium
-            anchors.verticalCenter: parent.verticalCenter
-            opacity: 0.9
         }
     }
 

@@ -34,10 +34,13 @@ ListView {
         z: -1
     }
 
+    // Scrollbar width
+    readonly property int scrollbarWidth: 10
+
     // Main delegate - use Loader to select component
     delegate: Loader {
         id: loader
-        width: root.width
+        width: root.width - root.scrollbarWidth
 
         // Expose model data to loaded component
         property var modelData: model
