@@ -2,12 +2,14 @@
 Agent Chat History Listener module.
 
 Integrates with AgentChatSignals to automatically listen and save messages.
+
+Uses FastMessageHistoryService for high-performance message log storage.
 """
 
 import logging
 from typing import Optional
 
-from agent.chat.history.agent_chat_history_service import AgentChatHistoryService
+from agent.chat.history.agent_chat_history_service import FastMessageHistoryService
 from agent.chat.agent_chat_signals import AgentChatSignals
 from agent.chat.agent_chat_message import AgentMessage
 
@@ -19,7 +21,7 @@ class AgentChatHistoryListener:
     Listens to AgentChatSignals and automatically saves messages to history.
 
     Connects to the agent_message_send signal and persists messages
-    to the history storage system.
+    to the history storage system using FastMessageHistoryService.
     """
 
     def __init__(
@@ -79,15 +81,17 @@ class AgentChatHistoryListener:
                 # Optional: Filter out certain system messages
                 pass
 
-            # Save message to history
-            file_path = AgentChatHistoryService.add_message(
+            # Save message to history using FastMessageHistoryService
+            success = FastMessageHistoryService.add_message(
                 self.workspace_path,
                 self.project_name,
-                message,
-                append_content=True  # Append content for same message_id
+                message
             )
 
-            logger.debug(f"Saved message {message.message_id} to {file_path}")
+            if success:
+                logger.debug(f"Saved message {message.message_id} to message.log")
+            else:
+                logger.warning(f"Failed to save message {message.message_id}")
 
         except Exception as e:
             logger.error(f"Failed to save message to history: {e}", exc_info=True)

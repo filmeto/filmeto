@@ -17,7 +17,7 @@ from qasync import QEventLoop
 
 from app.ui.chat.agent_chat import AgentChatWidget
 from app.data.workspace import Workspace
-from agent.chat.history.agent_chat_history_service import AgentChatHistoryService
+from agent.chat.history.agent_chat_history_service import FastMessageHistoryService
 
 # Configure logging
 logging.basicConfig(
@@ -97,7 +97,7 @@ class HistoryTestWindow(QMainWindow):
         """Handle clear cache button click."""
         workspace_path = self.workspace.workspace_path
         project_name = self.workspace.project_name
-        AgentChatHistoryService.clear_cache(workspace_path, project_name)
+        FastMessageHistoryService.clear_cache(workspace_path, project_name)
         logger.info("Cleared history cache")
         self._update_stats()
 
@@ -117,7 +117,7 @@ class HistoryTestWindow(QMainWindow):
         project_name = self.workspace.project_name
 
         try:
-            history = AgentChatHistoryService.get_history(workspace_path, project_name)
+            history = FastMessageHistoryService.get_history(workspace_path, project_name)
             total_count = history.get_message_count()
             latest_info = history.get_latest_message_info()
             revision = history.revision
@@ -169,7 +169,7 @@ def main():
         workspace = Workspace(workspace_path, project_name, load_data=True, defer_heavy_init=False)
 
         # Log history information before showing UI
-        history = AgentChatHistoryService.get_history(workspace_path, project_name)
+        history = FastMessageHistoryService.get_history(workspace_path, project_name)
         total_messages = history.get_message_count()
         latest_info = history.get_latest_message_info()
 
@@ -178,7 +178,7 @@ def main():
             logger.info(f"Latest message: {latest_info.get('message_id')}")
 
         # Get latest messages for preview
-        messages = AgentChatHistoryService.get_latest_messages(workspace_path, project_name, count=5)
+        messages = FastMessageHistoryService.get_latest_messages(workspace_path, project_name, count=5)
         logger.info(f"Preview of {len(messages)} latest messages:")
         for i, msg in enumerate(messages):
             metadata = msg.get("metadata", {})

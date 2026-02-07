@@ -1,61 +1,46 @@
 """
-Agent Chat History Service module.
+Fast Message History Service using MessageLogStorage.
 
-Provides singleton-style service for managing AgentChatHistory instances
-at workspace+project_name granularity.
+This service provides high-performance message history access using:
+- File cursor positioning for O(1) random access
+- Single-line JSON format for efficient parsing
+- Active log + archive files for management
+- Pure synchronous API for Qt compatibility
 """
 
 import logging
-from typing import Dict, Optional
+from typing import Dict, List
 
-from agent.chat.history.agent_chat_history import AgentChatHistory
+from agent.chat.history.agent_chat_storage import MessageLogHistory
 from agent.chat.agent_chat_message import AgentMessage
 
 logger = logging.getLogger(__name__)
 
 
-class AgentChatHistoryService:
+class FastMessageHistoryService:
     """
-    Service for managing AgentChatHistory instances.
+    Fast message history service using MessageLogStorage.
 
-    Provides static methods for accessing history instances
-    at workspace+project_name granularity.
+    This is a drop-in replacement for AgentChatHistoryService with
+    significantly better performance for large message histories.
     """
 
     # Class-level storage for history instances
-    _instances: Dict[str, AgentChatHistory] = {}
+    _instances: Dict[str, MessageLogHistory] = {}
 
     @classmethod
     def _make_key(cls, workspace_path: str, project_name: str) -> str:
-        """
-        Create a unique key for workspace+project combination.
-
-        Args:
-            workspace_path: Path to the workspace
-            project_name: Name of the project
-
-        Returns:
-            Unique key string
-        """
+        """Create a unique key for workspace+project combination."""
         return f"{workspace_path}||{project_name}"
 
     @classmethod
-    def get_history(cls, workspace_path: str, project_name: str) -> AgentChatHistory:
-        """
-        Get or create an AgentChatHistory instance for a workspace+project.
-
-        Args:
-            workspace_path: Path to the workspace
-            project_name: Name of the project
-
-        Returns:
-            AgentChatHistory instance
-        """
+    def get_history(cls, workspace_path: str, project_name: str) -> MessageLogHistory:
+        """Get or create a MessageLogHistory instance."""
         key = cls._make_key(workspace_path, project_name)
 
         if key not in cls._instances:
-            cls._instances[key] = AgentChatHistory(workspace_path, project_name)
-            logger.debug(f"Created AgentChatHistory for {project_name} in {workspace_path}")
+            cls._instances[key] = MessageLogHistory(workspace_path, project_name)
+            logger.debug(f"Created MessageLogHistory for {project_name}")
 
         return cls._instances[key]
 
@@ -64,180 +49,62 @@ class AgentChatHistoryService:
         cls,
         workspace_path: str,
         project_name: str,
-        message: AgentMessage,
-        append_content: bool = True
-    ) -> str:
+        message: AgentMessage
+    ) -> bool:
         """
-        Add a message to the history for a workspace+project.
+        Add a message to history.
 
         Args:
-            workspace_path: Path to the workspace
-            project_name: Name of the project
+            workspace_path: Path to workspace
+            project_name: Name of project
             message: The AgentMessage to add
-            append_content: Whether to append content to existing file
 
         Returns:
-            Path to the saved file
+            True if successful
         """
+        # Convert AgentMessage to dict format
+        message_dict = cls._message_to_dict(message)
         history = cls.get_history(workspace_path, project_name)
-        return history.add_message(message, append_content=append_content)
+        return history.append_message(message_dict)
 
     @classmethod
-    def get_latest_message_info(
-        cls,
-        workspace_path: str,
-        project_name: str
-    ) -> Optional[dict]:
-        """
-        Get information about the most recent message.
+    def _message_to_dict(cls, message: AgentMessage) -> dict:
+        """Convert AgentMessage to dictionary for storage."""
+        # The UI expects data in a specific format with nested metadata
+        # We store flattened and maintain compatibility
+        serialized_content = cls._serialize_content(message.structured_content)
 
-        Args:
-            workspace_path: Path to the workspace
-            project_name: Name of the project
-
-        Returns:
-            Dictionary with message_id, timestamp, and file_path, or None
-        """
-        history = cls.get_history(workspace_path, project_name)
-        return history.get_latest_message_info()
-
-    @classmethod
-    def get_latest_message_id(
-        cls,
-        workspace_path: str,
-        project_name: str
-    ) -> Optional[str]:
-        """
-        Get the most recent message ID.
-
-        Args:
-            workspace_path: Path to the workspace
-            project_name: Name of the project
-
-        Returns:
-            The most recent message ID, or None if no messages exist
-        """
-        history = cls.get_history(workspace_path, project_name)
-        return history.get_latest_message_id()
+        # Create the dict format that matches what the UI expects from AgentChatHistory
+        return {
+            "message_id": message.message_id,
+            "message_type": message.message_type.value if hasattr(message.message_type, "value") else str(message.message_type),
+            "sender_id": message.sender_id,
+            "sender_name": message.sender_name,
+            "timestamp": message.timestamp.isoformat(),
+            "metadata": {
+                "message_id": message.message_id,
+                "message_type": message.message_type.value if hasattr(message.message_type, "value") else str(message.message_type),
+                "sender_id": message.sender_id,
+                "sender_name": message.sender_name,
+                **(message.metadata or {})
+            },
+            "structured_content": serialized_content,
+            # Also include 'content' for UI compatibility
+            "content": serialized_content,
+        }
 
     @classmethod
-    def get_latest_message_timestamp(
-        cls,
-        workspace_path: str,
-        project_name: str
-    ) -> Optional[int]:
-        """
-        Get the most recent message timestamp in UTC seconds.
-
-        Args:
-            workspace_path: Path to the workspace
-            project_name: Name of the project
-
-        Returns:
-            The most recent message timestamp, or None if no messages exist
-        """
-        history = cls.get_history(workspace_path, project_name)
-        return history.get_latest_message_timestamp()
-
-    @classmethod
-    def get_message(
-        cls,
-        workspace_path: str,
-        project_name: str,
-        message_id: str,
-        date_str: Optional[str] = None
-    ) -> Optional[dict]:
-        """
-        Get a specific message by ID.
-
-        Args:
-            workspace_path: Path to the workspace
-            project_name: Name of the project
-            message_id: The message ID to retrieve
-            date_str: Optional date string (yyyyMMdd) to narrow search
-
-        Returns:
-            Dictionary containing metadata and content, or None
-        """
-        history = cls.get_history(workspace_path, project_name)
-        return history.get_message(message_id, date_str)
-
-    @classmethod
-    def get_messages_before(
-        cls,
-        workspace_path: str,
-        project_name: str,
-        message_id: str,
-        count: int = 20,
-        date_str: Optional[str] = None
-    ) -> list:
-        """
-        Get N messages before a given message ID.
-
-        Args:
-            workspace_path: Path to the workspace
-            project_name: Name of the project
-            message_id: The reference message ID
-            count: Number of messages to retrieve
-            date_str: Optional date string (yyyyMMdd) to narrow search
-
-        Returns:
-            List of message dictionaries
-        """
-        history = cls.get_history(workspace_path, project_name)
-        return history.get_messages_before(message_id, count, date_str)
-
-    @classmethod
-    def get_messages_after(
-        cls,
-        workspace_path: str,
-        project_name: str,
-        message_id: str,
-        count: int = 20,
-        date_str: Optional[str] = None
-    ) -> list:
-        """
-        Get N messages after a given message ID.
-
-        Args:
-            workspace_path: Path to the workspace
-            project_name: Name of the project
-            message_id: The reference message ID
-            count: Number of messages to retrieve
-            date_str: Optional date string (yyyyMMdd) to narrow search
-
-        Returns:
-            List of message dictionaries
-        """
-        history = cls.get_history(workspace_path, project_name)
-        return history.get_messages_after(message_id, count, date_str)
-
-    @classmethod
-    def get_messages_around(
-        cls,
-        workspace_path: str,
-        project_name: str,
-        message_id: str,
-        before_count: int = 10,
-        after_count: int = 10,
-        date_str: Optional[str] = None
-    ) -> dict:
-        """
-        Get messages around a given message ID.
-
-        Args:
-            workspace_path: Path to the workspace
-            project_name: Name of the project
-            message_id: The reference message ID
-            before_count: Number of messages before to retrieve
-            after_count: Number of messages after to retrieve
-            date_str: Optional date string (yyyyMMdd) to narrow search
-
-        Returns:
-            Dictionary with 'before', 'current', and 'after' keys
-        """
-        history = cls.get_history(workspace_path, project_name)
-        return history.get_messages_around(message_id, before_count, after_count, date_str)
+    def _serialize_content(cls, content_list) -> List[dict]:
+        """Serialize structured content to dict format."""
+        result = []
+        for content in content_list or []:
+            if hasattr(content, "to_dict"):
+                result.append(content.to_dict())
+            elif hasattr(content, "__dict__"):
+                result.append(content.__dict__)
+            else:
+                result.append({"content_type": str(content)})
+        return result
 
     @classmethod
     def get_latest_messages(
@@ -245,13 +112,13 @@ class AgentChatHistoryService:
         workspace_path: str,
         project_name: str,
         count: int = 20
-    ) -> list:
+    ) -> List[dict]:
         """
         Get the N most recent messages.
 
         Args:
-            workspace_path: Path to the workspace
-            project_name: Name of the project
+            workspace_path: Path to workspace
+            project_name: Name of project
             count: Number of messages to retrieve
 
         Returns:
@@ -261,95 +128,99 @@ class AgentChatHistoryService:
         return history.get_latest_messages(count)
 
     @classmethod
-    def get_messages_by_date(
+    def get_messages_after(
         cls,
         workspace_path: str,
         project_name: str,
-        date
-    ) -> list:
+        line_offset: int,
+        count: int = 20
+    ) -> List[dict]:
         """
-        Get all messages for a specific date.
+        Get N messages after a given line offset.
 
         Args:
-            workspace_path: Path to the workspace
-            project_name: Name of the project
-            date: The datetime object for the date
+            workspace_path: Path to workspace
+            project_name: Name of project
+            line_offset: Line offset in active log
+            count: Number of messages to retrieve
 
         Returns:
-            List of message dictionaries for that date
+            List of message dictionaries in chronological order
         """
         history = cls.get_history(workspace_path, project_name)
-        return history.get_messages_by_date(date)
+        return history.get_messages_after(line_offset, count)
 
     @classmethod
-    def get_revision(
+    def get_messages_before(
+        cls,
+        workspace_path: str,
+        project_name: str,
+        line_offset: int,
+        count: int = 20
+    ) -> List[dict]:
+        """
+        Get N messages before a given line offset.
+
+        Args:
+            workspace_path: Path to workspace
+            project_name: Name of project
+            line_offset: Starting line offset (exclusive)
+            count: Number of messages to retrieve
+
+        Returns:
+            List of message dictionaries in chronological order
+        """
+        history = cls.get_history(workspace_path, project_name)
+        return history.get_messages_before(line_offset, count)
+
+    @classmethod
+    def get_total_count(
         cls,
         workspace_path: str,
         project_name: str
     ) -> int:
         """
-        Get the current revision counter for a history instance.
-
-        The revision is incremented on every add_message call and can be used
-        for efficient change detection without scanning the filesystem.
+        Get total message count.
 
         Args:
-            workspace_path: Path to the workspace
-            project_name: Name of the project
-
-        Returns:
-            Current revision counter value
-        """
-        history = cls.get_history(workspace_path, project_name)
-        return history.revision
-
-    @classmethod
-    def get_message_count(
-        cls,
-        workspace_path: str,
-        project_name: str
-    ) -> int:
-        """
-        Get the total number of messages in history.
-
-        Args:
-            workspace_path: Path to the workspace
-            project_name: Name of the project
+            workspace_path: Path to workspace
+            project_name: Name of project
 
         Returns:
             Total number of messages
         """
         history = cls.get_history(workspace_path, project_name)
-        return history.get_message_count()
+        return history.get_total_count()
+
+    @classmethod
+    def get_latest_line_offset(
+        cls,
+        workspace_path: str,
+        project_name: str
+    ) -> int:
+        """
+        Get the latest line offset (total messages in active log).
+
+        Args:
+            workspace_path: Path to workspace
+            project_name: Name of project
+
+        Returns:
+            Current line offset
+        """
+        history = cls.get_history(workspace_path, project_name)
+        return history.get_latest_line_offset()
 
     @classmethod
     def clear_cache(cls, workspace_path: str, project_name: str):
-        """
-        Clear the internal cache for a specific history instance.
-
-        Args:
-            workspace_path: Path to the workspace
-            project_name: Name of the project
-        """
+        """Clear caches for a specific history instance."""
         history = cls.get_history(workspace_path, project_name)
-        history.clear_cache()
-
-    @classmethod
-    def clear_all_caches(cls):
-        """Clear all internal caches."""
-        for history in cls._instances.values():
-            history.clear_cache()
+        history.invalidate_cache()
 
     @classmethod
     def remove_history(cls, workspace_path: str, project_name: str):
-        """
-        Remove a history instance from the service.
-
-        Args:
-            workspace_path: Path to the workspace
-            project_name: Name of the project
-        """
+        """Remove a history instance from the service."""
         key = cls._make_key(workspace_path, project_name)
         if key in cls._instances:
             del cls._instances[key]
-            logger.debug(f"Removed AgentChatHistory for {project_name} in {workspace_path}")
+            logger.debug(f"Removed MessageLogHistory for {project_name}")

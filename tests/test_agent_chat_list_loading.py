@@ -6,7 +6,7 @@ import os
 # Set PYTHONPATH
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from agent.chat.history.agent_chat_history_service import AgentChatHistoryService
+from agent.chat.history.agent_chat_history_service import FastMessageHistoryService
 from agent.chat.content import StructureContent
 
 
@@ -20,7 +20,7 @@ def test_message_structure_loading():
 
     try:
         # Get latest messages
-        messages = AgentChatHistoryService.get_latest_messages(
+        messages = FastMessageHistoryService.get_latest_messages(
             workspace_path, project_name, count=5
         )
 
@@ -84,7 +84,7 @@ def test_message_structure_loading():
             ref_message_id = ref_metadata.get("message_id")
 
             if ref_message_id:
-                messages_after = AgentChatHistoryService.get_messages_after(
+                messages_after = FastMessageHistoryService.get_messages_after(
                     workspace_path, project_name, ref_message_id, count=3
                 )
 
@@ -118,7 +118,7 @@ def test_message_parsing():
     project_name = "demo"
 
     try:
-        messages = AgentChatHistoryService.get_latest_messages(
+        messages = FastMessageHistoryService.get_latest_messages(
             workspace_path, project_name, count=1
         )
 

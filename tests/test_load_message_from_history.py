@@ -5,7 +5,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from agent.chat.history.agent_chat_history_service import AgentChatHistoryService
+from agent.chat.history.agent_chat_history_service import FastMessageHistoryService
 from agent.chat.agent_chat_types import MessageType, ContentType
 from agent.chat.content import StructureContent
 
@@ -96,7 +96,7 @@ def test_load_messages():
 
     try:
         # Get latest messages
-        messages = AgentChatHistoryService.get_latest_messages(
+        messages = FastMessageHistoryService.get_latest_messages(
             workspace_path, project_name, count=10
         )
 

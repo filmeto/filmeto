@@ -19,7 +19,7 @@ from qasync import QEventLoop
 
 from app.ui.chat.agent_chat import AgentChatWidget
 from app.data.workspace import Workspace
-from agent.chat.history.agent_chat_history_service import AgentChatHistoryService
+from agent.chat.history.agent_chat_history_service import FastMessageHistoryService
 
 logging.basicConfig(
     level=logging.INFO,
@@ -170,9 +170,7 @@ class EnhancedHistoryTestWindow(QMainWindow):
             workspace_path = self.workspace.workspace_path
             project_name = self.workspace.project_name
 
-            history = AgentChatHistoryService.get_history(workspace_path, project_name)
-            total_count = history.get_message_count()
-            revision = history.revision
+            total_count = FastMessageHistoryService.get_total_count(workspace_path, project_name)
 
             chat_list = self.chat_widget.chat_history_widget
             model_count = chat_list._model.rowCount()
@@ -188,8 +186,7 @@ class EnhancedHistoryTestWindow(QMainWindow):
 
             stats_text = (
                 f"History Total: {total_count} | Model: {model_count} | "
-                f"Visible: {visible_count} | Has More: {has_more} | "
-                f"Rev: {revision}"
+                f"Visible: {visible_count} | Has More: {has_more}"
             )
             self.stats_label.setText(stats_text)
 
@@ -257,9 +254,10 @@ class EnhancedHistoryTestWindow(QMainWindow):
             self._log("No oldest message ID, cannot load older")
             return
 
-        # Get messages before oldest
-        older_messages = AgentChatHistoryService.get_messages_before(
-            workspace_path, project_name, chat_list._oldest_message_id, count=n
+        # Get messages before oldest (using line_offset)
+        current_offset = FastMessageHistoryService.get_latest_line_offset(workspace_path, project_name)
+        older_messages = FastMessageHistoryService.get_messages_before(
+            workspace_path, project_name, current_offset, count=n
         )
 
         self._log(f"Retrieved {len(older_messages)} older messages")
@@ -282,7 +280,7 @@ class EnhancedHistoryTestWindow(QMainWindow):
         self._log("=== TEST: Clear Cache ===")
         workspace_path = self.workspace.workspace_path
         project_name = self.workspace.project_name
-        AgentChatHistoryService.clear_cache(workspace_path, project_name)
+        FastMessageHistoryService.clear_cache(workspace_path, project_name)
         self._log("Cache cleared")
         self._update_all_info()
 
@@ -292,7 +290,7 @@ class EnhancedHistoryTestWindow(QMainWindow):
         workspace_path = self.workspace.workspace_path
         project_name = self.workspace.project_name
 
-        messages = AgentChatHistoryService.get_latest_messages(
+        messages = FastMessageHistoryService.get_latest_messages(
             workspace_path, project_name, count=n
         )
 
@@ -306,20 +304,21 @@ class EnhancedHistoryTestWindow(QMainWindow):
         self._update_all_info()
 
     def _test_check_revision(self):
-        """Test: Check revision counter."""
-        self._log("=== TEST: Check Revision ===")
+        """Test: Check total message count."""
+        self._log("=== TEST: Check Message Count ===")
         workspace_path = self.workspace.workspace_path
         project_name = self.workspace.project_name
 
-        history = AgentChatHistoryService.get_history(workspace_path, project_name)
-        revision = history.revision
+        total_count = FastMessageHistoryService.get_total_count(workspace_path, project_name)
+        line_offset = FastMessageHistoryService.get_latest_line_offset(workspace_path, project_name)
 
         chat_list = self.chat_widget.chat_history_widget
-        known_rev = chat_list._last_known_revision
+        model_count = chat_list._model.rowCount()
 
-        self._log(f"History revision: {revision}")
-        self._log(f"Widget known revision: {known_rev}")
-        self._log(f"Has new data: {revision != known_rev}")
+        self._log(f"History total count: {total_count}")
+        self._log(f"Active log line offset: {line_offset}")
+        self._log(f"Widget model count: {model_count}")
+        self._log(f"Has more history available: {chat_list._has_more_history}")
 
     def _test_simulate_add(self):
         """Test: Simulate adding a message (doesn't actually add)."""

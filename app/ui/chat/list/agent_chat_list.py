@@ -23,7 +23,7 @@ from PySide6.QtCore import (
 from agent import AgentMessage
 from app.ui.base_widget import BaseWidget
 from utils.i18n_utils import tr
-from agent.chat.history.agent_chat_history_service import AgentChatHistoryService
+from agent.chat.history.agent_chat_history_service import FastMessageHistoryService
 from agent.chat.history.agent_chat_history import get_history_signals
 
 logger = logging.getLogger(__name__)
@@ -273,7 +273,7 @@ class AgentChatListWidget(BaseWidget):
         # Reset all tracking state
         self._oldest_message_id = None
         self._latest_message_id = None
-        self._last_known_revision = 0
+        self._last_known_message_count = 0
         self._loading_older = False
         self._has_more_history = True
         # Clear position cache
@@ -359,7 +359,7 @@ class AgentChatListWidget(BaseWidget):
     # ─── Data loading from AgentChatHistory ───────────────────────────
 
     def _load_recent_conversation(self):
-        """Load recent conversation from AgentChatHistory (PAGE_SIZE messages)."""
+        """Load recent conversation from history using fast message log storage."""
         try:
             project = self.workspace.get_project()
             if not project:
@@ -368,14 +368,15 @@ class AgentChatListWidget(BaseWidget):
             workspace_path = self.workspace.workspace_path
             project_name = self.workspace.project_name
 
-            # Get the latest PAGE_SIZE messages from history (newest first)
-            messages = AgentChatHistoryService.get_latest_messages(
+            # Use FastMessageHistoryService for better performance
+            messages = FastMessageHistoryService.get_latest_messages(
                 workspace_path, project_name, count=self.PAGE_SIZE
             )
 
-            # Track revision for change detection
-            history = AgentChatHistoryService.get_history(workspace_path, project_name)
-            self._last_known_revision = history.revision
+            # Track line offset for pagination
+            line_offset = FastMessageHistoryService.get_latest_line_offset(
+                workspace_path, project_name
+            )
 
             if messages:
                 # Clear and reload the model
@@ -395,15 +396,19 @@ class AgentChatListWidget(BaseWidget):
                 last_meta = ordered_messages[-1].get("metadata", {})
                 self._latest_message_id = last_meta.get("message_id")
 
+                # Store line offset for loading more messages
+                self._current_line_offset = line_offset
+
                 # Check if there's more history to load
-                total_count = history.get_message_count()
-                self._has_more_history = total_count > len(messages)
+                total_count = FastMessageHistoryService.get_total_count(
+                    workspace_path, project_name
+                )
+                self._has_more_history = total_count > line_offset
 
                 # Scroll to bottom after loading
                 self._schedule_scroll()
 
-                # Force refresh and scroll after a delay to ensure widgets are created
-                # This fixes the issue where only first few messages are visible
+                # Force refresh and scroll after a delay
                 QTimer.singleShot(100, self._ensure_widgets_visible_and_scrolled)
 
                 logger.info(f"Loaded {len(messages)} messages from history (total: {total_count})")
@@ -421,7 +426,8 @@ class AgentChatListWidget(BaseWidget):
 
     def _load_older_messages(self):
         """Load older messages when user scrolls to the top."""
-        if not self._oldest_message_id or self._loading_older or not self._has_more_history:
+        # Use line offset instead of message_id for better performance
+        if self._loading_older or not self._has_more_history:
             return
 
         self._loading_older = True
@@ -429,9 +435,11 @@ class AgentChatListWidget(BaseWidget):
             workspace_path = self.workspace.workspace_path
             project_name = self.workspace.project_name
 
-            # Get PAGE_SIZE messages before the oldest loaded message
-            older_messages = AgentChatHistoryService.get_messages_before(
-                workspace_path, project_name, self._oldest_message_id, count=self.PAGE_SIZE
+            # Get PAGE_SIZE messages before the current offset
+            current_offset = self._current_line_offset if hasattr(self, '_current_line_offset') else 0
+
+            older_messages = FastMessageHistoryService.get_messages_before(
+                workspace_path, project_name, current_offset, count=self.PAGE_SIZE
             )
 
             if not older_messages:
@@ -451,8 +459,9 @@ class AgentChatListWidget(BaseWidget):
                     items.append(item)
 
             if items:
-                # Update the oldest message_id to the first of the new batch
+                # Update the oldest message_id and line offset
                 self._oldest_message_id = items[0].message_id
+                self._current_line_offset = current_offset - len(items)
 
                 # Clear visible widgets before prepending (rows will shift)
                 self._clear_visible_widgets()
@@ -470,6 +479,7 @@ class AgentChatListWidget(BaseWidget):
 
                 logger.debug(f"Prepended {len(items)} older messages")
 
+            # Check if we've loaded all available messages
             if len(older_messages) < self.PAGE_SIZE:
                 self._has_more_history = False
 
@@ -520,7 +530,7 @@ class AgentChatListWidget(BaseWidget):
         self._new_data_check_timer.stop()
 
     def _check_for_new_data(self):
-        """Check for new data using the revision counter (very fast, no disk I/O)."""
+        """Check for new data by comparing message count (very fast, no disk I/O)."""
         if not self._user_at_bottom:
             return
 
@@ -528,12 +538,16 @@ class AgentChatListWidget(BaseWidget):
             workspace_path = self.workspace.workspace_path
             project_name = self.workspace.project_name
 
-            # Compare revision counter - O(1) operation
-            history = AgentChatHistoryService.get_history(workspace_path, project_name)
-            current_revision = history.revision
+            # Compare message count - O(1) operation using cached count
+            current_count = FastMessageHistoryService.get_total_count(workspace_path, project_name)
 
-            if current_revision != self._last_known_revision:
-                self._last_known_revision = current_revision
+            # Store initial count on first check
+            if not hasattr(self, '_last_known_message_count'):
+                self._last_known_message_count = current_count
+                return
+
+            if current_count != self._last_known_message_count:
+                self._last_known_message_count = current_count
                 self._load_new_messages_from_history()
 
         except Exception as e:
@@ -557,17 +571,14 @@ class AgentChatListWidget(BaseWidget):
             workspace_path = self.workspace.workspace_path
             project_name = self.workspace.project_name
 
-            if self._latest_message_id:
-                # Get messages after the last known message
-                new_messages = AgentChatHistoryService.get_messages_after(
-                    workspace_path, project_name, self._latest_message_id, count=100
-                )
-            else:
-                # No previous messages - load latest page
-                new_messages = AgentChatHistoryService.get_latest_messages(
-                    workspace_path, project_name, count=self.PAGE_SIZE
-                )
-                new_messages = list(reversed(new_messages))
+            # Use line offset for efficient loading
+            current_offset = self._current_line_offset if hasattr(self, '_current_line_offset') else 0
+            total_count = FastMessageHistoryService.get_total_count(workspace_path, project_name)
+
+            # Get messages after current offset
+            new_messages = FastMessageHistoryService.get_messages_after(
+                workspace_path, project_name, current_offset, count=100
+            )
 
             if not new_messages:
                 return
@@ -579,10 +590,15 @@ class AgentChatListWidget(BaseWidget):
                     self._load_message_from_history(msg_data)
                     added_count += 1
 
-            # Update latest message_id from the last message
-            last_id = new_messages[-1].get("metadata", {}).get("message_id")
-            if last_id:
-                self._latest_message_id = last_id
+            # Update line offset and latest message_id
+            self._current_line_offset = current_offset + len(new_messages)
+            if new_messages:
+                last_id = new_messages[-1].get("metadata", {}).get("message_id")
+                if last_id:
+                    self._latest_message_id = last_id
+
+            # Update has_more_history flag
+            self._has_more_history = self._current_line_offset < total_count
 
             if added_count > 0:
                 # Prune oldest items if model exceeds MAX_MODEL_ITEMS

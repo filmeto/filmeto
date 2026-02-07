@@ -17,7 +17,7 @@ from qasync import QEventLoop
 
 from app.ui.chat.agent_chat import AgentChatWidget
 from app.data.workspace import Workspace
-from agent.chat.history.agent_chat_history_service import AgentChatHistoryService
+from agent.chat.history.agent_chat_history_service import FastMessageHistoryService
 
 import logging
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
@@ -137,7 +137,7 @@ class FixedHistoryTestWindow(QMainWindow):
         """Handle clear cache button click."""
         workspace_path = self.workspace.workspace_path
         project_name = self.workspace.project_name
-        AgentChatHistoryService.clear_cache(workspace_path, project_name)
+        FastMessageHistoryService.clear_cache(workspace_path, project_name)
         logger.info("Cleared history cache")
 
     def _show_debug_info(self):
@@ -177,7 +177,7 @@ First 5 items in model:
         project_name = self.workspace.project_name
 
         try:
-            history = AgentChatHistoryService.get_history(workspace_path, project_name)
+            history = FastMessageHistoryService.get_history(workspace_path, project_name)
             total_count = history.get_message_count()
 
             chat_list = self.chat_widget.chat_history_widget
@@ -225,7 +225,7 @@ def main():
         workspace = Workspace(workspace_path, project_name, load_data=True, defer_heavy_init=False)
 
         # Log history information
-        history = AgentChatHistoryService.get_history(workspace_path, project_name)
+        history = FastMessageHistoryService.get_history(workspace_path, project_name)
         total_messages = history.get_message_count()
 
         logger.info(f"Total messages in history: {total_messages}")

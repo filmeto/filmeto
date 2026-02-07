@@ -6,7 +6,7 @@ import os
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from agent.chat.history.agent_chat_history_service import AgentChatHistoryService
+from agent.chat.history.agent_chat_history_service import FastMessageHistoryService
 
 
 def test_load_history():
@@ -21,7 +21,7 @@ def test_load_history():
     try:
         # Test 1: Get latest messages
         print("\n[Test 1] Getting latest 10 messages...")
-        messages = AgentChatHistoryService.get_latest_messages(
+        messages = FastMessageHistoryService.get_latest_messages(
             workspace_path, project_name, count=10
         )
         print(f"✓ Loaded {len(messages)} messages")
@@ -42,32 +42,33 @@ def test_load_history():
                 print(f"     Content: {text_content}...")
                 print()
 
-        # Test 2: Get latest message info
-        print("\n[Test 2] Getting latest message info...")
-        latest_info = AgentChatHistoryService.get_latest_message_info(
+        # Test 2: Get total count
+        print("\n[Test 2] Getting total message count...")
+        total_count = FastMessageHistoryService.get_total_count(
             workspace_path, project_name
         )
-        if latest_info:
-            print(f"✓ Latest message ID: {latest_info.get('message_id')}")
-            print(f"  Timestamp: {latest_info.get('timestamp')}")
-            print(f"  File: {latest_info.get('file_path')}")
-        else:
-            print("✗ No latest message info found")
+        print(f"✓ Total messages: {total_count}")
 
-        # Test 3: Get latest message ID
-        print("\n[Test 3] Getting latest message ID...")
-        latest_id = AgentChatHistoryService.get_latest_message_id(
+        # Test 3: Get latest line offset
+        print("\n[Test 3] Getting latest line offset...")
+        line_offset = FastMessageHistoryService.get_latest_line_offset(
             workspace_path, project_name
         )
-        print(f"✓ Latest message ID: {latest_id}")
+        print(f"✓ Active log line offset: {line_offset}")
 
-        # Test 4: Get messages after a specific message
-        if latest_id:
-            print("\n[Test 4] Getting messages after latest (should be empty)...")
-            messages_after = AgentChatHistoryService.get_messages_after(
-                workspace_path, project_name, latest_id, count=5
-            )
-            print(f"✓ Messages after latest: {len(messages_after)}")
+        # Test 4: Get messages after line offset
+        print("\n[Test 4] Getting messages after line offset (should be empty)...")
+        messages_after = FastMessageHistoryService.get_messages_after(
+            workspace_path, project_name, line_offset, count=5
+        )
+        print(f"✓ Messages after offset: {len(messages_after)}")
+
+        # Test 5: Get messages before line offset
+        print("\n[Test 5] Getting messages before line offset...")
+        messages_before = FastMessageHistoryService.get_messages_before(
+            workspace_path, project_name, line_offset, count=5
+        )
+        print(f"✓ Messages before offset: {len(messages_before)}")
 
         print("\n" + "=" * 60)
         print("✓ All tests passed!")

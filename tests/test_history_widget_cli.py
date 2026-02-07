@@ -2,7 +2,7 @@
 
 This test verifies that:
 1. Workspace can be initialized
-2. AgentChatHistoryService can load messages
+2. FastMessageHistoryService can load messages
 3. AgentChatWidget can be created (without showing GUI)
 """
 
@@ -18,7 +18,7 @@ from qasync import QEventLoop
 
 from app.ui.chat.agent_chat import AgentChatWidget
 from app.data.workspace import Workspace
-from agent.chat.history.agent_chat_history_service import AgentChatHistoryService
+from agent.chat.history.agent_chat_history_service import FastMessageHistoryService
 
 # Configure logging
 logging.basicConfig(
@@ -59,7 +59,7 @@ def test_history_loading(workspace_path: str, project_name: str):
     print("=" * 70)
 
     try:
-        history = AgentChatHistoryService.get_history(workspace_path, project_name)
+        history = FastMessageHistoryService.get_history(workspace_path, project_name)
         total_count = history.get_message_count()
         latest_info = history.get_latest_message_info()
         revision = history.revision
@@ -72,7 +72,7 @@ def test_history_loading(workspace_path: str, project_name: str):
             print(f"  - Latest message ID: {latest_info.get('message_id')}")
 
         # Load latest 5 messages
-        messages = AgentChatHistoryService.get_latest_messages(
+        messages = FastMessageHistoryService.get_latest_messages(
             workspace_path, project_name, count=5
         )
 
