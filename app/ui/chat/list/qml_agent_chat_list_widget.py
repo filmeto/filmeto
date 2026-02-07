@@ -9,7 +9,7 @@ import logging
 from typing import Dict, List, Any, Optional, TYPE_CHECKING
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal, Slot, QObject, QUrl, Property
+from PySide6.QtCore import Qt, Signal, Slot, QObject, QUrl, Property, QTimer
 from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import QWidget, QVBoxLayout
 
@@ -120,10 +120,15 @@ class QmlAgentChatListWidget(BaseWidget):
         # History cache
         self._history: Optional[MessageLogHistory] = None
 
+        # New data check timer - polls for new messages using active log count
+        self._new_data_check_timer = QTimer(self)
+        self._new_data_check_timer.timeout.connect(self._check_for_new_data)
+
         # Setup UI and load data
         self._setup_ui()
         self._load_crew_member_metadata()
         self._load_recent_conversation()
+        self._start_new_data_check_timer()
 
     def _setup_ui(self):
         """Setup the widget layout."""
@@ -172,12 +177,14 @@ class QmlAgentChatListWidget(BaseWidget):
 
     def on_project_switched(self, project_name: str):
         """Handle project switch."""
+        self._stop_new_data_check_timer()
         self.refresh_crew_member_metadata()
         self._load_state = LoadState()
         self._loading_older = False
         self._history = None
         self._model.clear()
         self._load_recent_conversation()
+        self._start_new_data_check_timer()
 
     def refresh_crew_member_metadata(self):
         """Reload crew member metadata."""
@@ -810,9 +817,101 @@ class QmlAgentChatListWidget(BaseWidget):
         """Sync from session."""
         pass
 
+    # ─── New data polling ─────────────────────────────────────────────
+
+    def _start_new_data_check_timer(self):
+        """Start the timer to check for new data."""
+        self._new_data_check_timer.start(self.NEW_DATA_CHECK_INTERVAL_MS)
+
+    def _stop_new_data_check_timer(self):
+        """Stop the new data check timer."""
+        self._new_data_check_timer.stop()
+
+    def _check_for_new_data(self):
+        """Check for new data by comparing active log count (fast, no disk I/O)."""
+        if not self._user_at_bottom:
+            return
+
+        try:
+            history = self._get_history()
+            if not history:
+                return
+
+            # Use active log count for fast checking (O(1) cached value)
+            current_count = history.storage.get_message_count()
+
+            # Initialize on first check
+            if self._load_state.active_log_count == 0:
+                self._load_state.active_log_count = current_count
+                return
+
+            # Check if new messages were added to active log
+            if current_count > self._load_state.active_log_count:
+                self._load_state.active_log_count = current_count
+                self._load_new_messages_from_history()
+
+        except Exception as e:
+            logger.error(f"Error checking for new data: {e}")
+
+    def _load_new_messages_from_history(self):
+        """Load new messages from history that aren't in the model yet."""
+        try:
+            history = self._get_history()
+            if not history:
+                return
+
+            # Get messages after current offset
+            current_offset = self._load_state.current_line_offset
+            new_messages = history.get_messages_after(current_offset, count=100)
+
+            if not new_messages:
+                return
+
+            # Group messages by message_id
+            message_groups: Dict[str, MessageGroup] = {}
+            for msg_data in new_messages:
+                message_id = msg_data.get("message_id") or msg_data.get("metadata", {}).get("message_id", "")
+                if not message_id:
+                    continue
+
+                if message_id in self._load_state.known_message_ids:
+                    # Already in model, skip
+                    continue
+
+                if message_id not in message_groups:
+                    message_groups[message_id] = MessageGroup()
+                message_groups[message_id].add_message(msg_data)
+
+            # Process new messages
+            for message_id, group in message_groups.items():
+                if message_id in self._load_state.known_message_ids:
+                    continue
+
+                combined_msg = group.get_combined_message()
+                if combined_msg:
+                    item = self._build_item_from_history(combined_msg)
+                    if item:
+                        qml_item = QmlAgentChatListModel.from_chat_list_item(item)
+                        self._model.add_item(qml_item)
+                        self._load_state.known_message_ids.add(message_id)
+
+            # Update offset
+            if new_messages:
+                self._load_state.current_line_offset = current_offset + len(new_messages)
+                self._load_state.unique_message_count += len(message_groups)
+
+                # Scroll to bottom to show new messages
+                self._scroll_to_bottom()
+                logger.debug(f"Loaded {len(message_groups)} new messages")
+
+        except Exception as e:
+            logger.error(f"Error loading new messages from history: {e}", exc_info=True)
+
     def clear(self):
         """Clear the chat list."""
+        self._stop_new_data_check_timer()
         self._model.clear()
         self._agent_current_cards.clear()
         self._load_state = LoadState()
         self._loading_older = False
+        self._start_new_data_check_timer()
