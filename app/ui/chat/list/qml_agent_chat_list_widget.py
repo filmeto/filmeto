@@ -128,7 +128,7 @@ class QmlAgentChatListWidget(BaseWidget):
     def _setup_ui(self):
         """Setup the widget layout."""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(6, 6, 6, 6)
         layout.setSpacing(0)
         layout.addWidget(self._quick_widget)
 
