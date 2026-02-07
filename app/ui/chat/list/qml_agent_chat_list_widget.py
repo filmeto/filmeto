@@ -696,6 +696,8 @@ class QmlAgentChatListWidget(BaseWidget):
             self._handle_agent_response_event(event)
         elif event.event_type in ["skill_start", "skill_progress", "skill_end"]:
             self._handle_skill_event(event)
+        elif event.event_type in ["crew_member_typing", "crew_member_typing_end"]:
+            self._handle_typing_event(event)
         elif hasattr(event, "content") and event.content:
             self._handle_content_event(event)
 
@@ -769,6 +771,49 @@ class QmlAgentChatListWidget(BaseWidget):
             append=False,
             structured_content=skill_content,
         )
+
+    def _handle_typing_event(self, event):
+        """Handle crew_member_typing events to show/hide typing indicator."""
+        from agent.chat.content import TypingContent, TypingState
+
+        sender_id = getattr(event, "sender_id", "")
+        sender_name = getattr(event, "sender_name", "")
+
+        if not sender_id or sender_id == "user":
+            return
+
+        # Use run_id as the message_id since all events in a session share the same ID
+        run_id = getattr(event, "run_id", "")
+        if not run_id:
+            return
+
+        message_id = run_id
+
+        if event.event_type == "crew_member_typing":
+            # Create card with typing indicator
+            self.get_or_create_agent_card(message_id, sender_name, sender_name)
+            # Add TypingContent with START state
+            typing_content = TypingContent(state=TypingState.START)
+            self.update_agent_card(
+                message_id,
+                structured_content=typing_content,
+                is_complete=False,
+            )
+            logger.debug(f"Added typing indicator for {sender_name} (message_id: {message_id})")
+        elif event.event_type == "crew_member_typing_end":
+            # Remove typing indicator by filtering it out
+            item = self._model.get_item_by_message_id(message_id)
+            if item:
+                # Remove typing content from structured_content
+                current_structured = item.get(QmlAgentChatListModel.STRUCTURED_CONTENT, [])
+                filtered_structured = [
+                    sc for sc in current_structured
+                    if sc.get("content_type") != "typing"
+                ]
+                self._model.update_item(message_id, {
+                    QmlAgentChatListModel.STRUCTURED_CONTENT: filtered_structured,
+                })
+                logger.debug(f"Removed typing indicator for {sender_name} (message_id: {message_id})")
 
     def _handle_content_event(self, event):
         """Handle events with content."""
