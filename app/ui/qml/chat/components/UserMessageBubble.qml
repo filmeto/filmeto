@@ -29,7 +29,9 @@ Item {
         id: headerRow
         anchors {
             right: parent.right
+            rightMargin: 12
             top: parent.top
+            topMargin: 12
         }
         spacing: avatarSpacing
         layoutDirection: Qt.RightToLeft

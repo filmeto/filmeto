@@ -39,7 +39,9 @@ Item {
         id: headerRow
         anchors {
             left: parent.left
+            leftMargin: 12
             top: parent.top
+            topMargin: 12
         }
         spacing: 8
         height: Math.max(avatarRect.height, nameColumn.implicitHeight)

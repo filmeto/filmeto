@@ -18,12 +18,6 @@ ListView {
     height: 600
     spacing: 12
 
-    // Content margins - 12px gap from outer container
-    leftMargin: 12
-    rightMargin: 12
-    topMargin: 12
-    bottomMargin: 12
-
     // Model from Python (via contextProperty)
     model: _chatModel
 
@@ -43,7 +37,7 @@ ListView {
     // Main delegate - use Loader to select component
     delegate: Loader {
         id: loader
-        width: root.width - root.leftMargin - root.rightMargin
+        width: root.width
 
         // Expose model data to loaded component
         property var modelData: model
