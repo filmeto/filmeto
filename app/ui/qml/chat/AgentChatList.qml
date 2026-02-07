@@ -27,6 +27,9 @@ ListView {
     cacheBuffer: height * 2
     clip: true
 
+    // Bottom margin to ensure last message is fully visible
+    bottomMargin: 32
+
     // Background
     Rectangle {
         anchors.fill: parent
