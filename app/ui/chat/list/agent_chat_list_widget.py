@@ -8,11 +8,11 @@ import uuid
 import logging
 from typing import Dict, List, Any, Optional, Tuple, TYPE_CHECKING
 
-from PySide6.QtCore import (
-    Qt, Signal, Slot, QTimer, QModelIndex, QSize,
+from PySide6.QtCore import Qt, Signal, Slot, QTimer, QModelIndex, QSize
+from PySide6.QtWidgets import (
+    QVBoxLayout, QWidget, QAbstractItemView,
     QStyleOptionViewItem, QSizePolicy
 )
-from PySide6.QtWidgets import QVBoxLayout, QWidget, QAbstractItemView
 from PySide6.QtGui import QResizeEvent
 
 from agent import AgentMessage

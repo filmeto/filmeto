@@ -6,9 +6,9 @@ for items in the agent chat list.
 
 from typing import TYPE_CHECKING
 
-from PySide6.QtWidgets import QStyledItemDelegate
+from PySide6.QtWidgets import QStyledItemDelegate, QStyleOptionViewItem
 from PySide6.QtGui import QPainter
-from PySide6.QtCore import QStyleOptionViewItem, QModelIndex, QSize
+from PySide6.QtCore import QModelIndex, QSize
 
 if TYPE_CHECKING:
     from app.ui.chat.list.agent_chat_list_widget import AgentChatListWidget
