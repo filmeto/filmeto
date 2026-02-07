@@ -18,6 +18,12 @@ ListView {
     height: 600
     spacing: 12
 
+    // Content margins - 12px gap from outer container
+    leftMargin: 12
+    rightMargin: 12
+    topMargin: 12
+    bottomMargin: 12
+
     // Model from Python (via contextProperty)
     model: _chatModel
 
@@ -37,7 +43,7 @@ ListView {
     // Main delegate - use Loader to select component
     delegate: Loader {
         id: loader
-        width: root.width
+        width: root.width - root.leftMargin - root.rightMargin
 
         // Expose model data to loaded component
         property var modelData: model
@@ -52,9 +58,7 @@ ListView {
             UserMessageBubble {
                 anchors {
                     right: parent.right
-                    rightMargin: 12  // Same as agent message
                     left: parent.left
-                    leftMargin: 12
                 }
                 content: modelData.content || ""
                 isRead: modelData.isRead !== undefined ? modelData.isRead : true
@@ -70,9 +74,7 @@ ListView {
             AgentMessageBubble {
                 anchors {
                     left: parent.left
-                    leftMargin: 12
                     right: parent.right
-                    rightMargin: 12
                 }
                 senderName: modelData.senderName || ""
                 content: modelData.content || ""

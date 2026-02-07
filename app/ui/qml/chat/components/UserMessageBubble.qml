@@ -82,7 +82,7 @@ Item {
             height: contentText.implicitHeight + 24
 
             color: bubbleColor
-            radius: 18
+            radius: 9
 
             // Content
             Text {

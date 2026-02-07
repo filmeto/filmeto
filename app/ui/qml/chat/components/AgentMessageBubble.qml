@@ -106,7 +106,7 @@ Item {
         width: availableWidth
         implicitHeight: contentColumn.implicitHeight + 24
         color: backgroundColor
-        radius: 12
+        radius: 6
 
         // Content column
         Column {
