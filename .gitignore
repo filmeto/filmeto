@@ -13,3 +13,5 @@ workspace/*/resources
 
 .qwen/
 gha-creds-*.json
+tests/*
+docs/*

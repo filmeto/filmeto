@@ -185,6 +185,25 @@ class AgentChatListWidget(BaseWidget):
             option = QStyleOptionViewItem()
             option.rect = self.list_view.viewport().rect()
 
+            # CRITICAL: Ensure viewport has valid dimensions before building cache
+            viewport_width = option.rect.width()
+            if viewport_width <= 0:
+                logger.debug(
+                    f"_rebuild_positions_cache: Invalid viewport width ({viewport_width}), "
+                    f"forcing layout update"
+                )
+                # Force layout to get proper viewport dimensions
+                self.list_view.doItemsLayout()
+                option.rect = self.list_view.viewport().rect()
+                viewport_width = option.rect.width()
+                if viewport_width <= 0:
+                    # Still invalid? Use a reasonable default
+                    logger.warning(
+                        f"_rebuild_positions_cache: Viewport width still {viewport_width}, "
+                        f"using default width"
+                    )
+                    option.rect = QRect(0, 0, self.MIN_SIZING_WIDTH, self.list_view.viewport().height())
+
             for row in range(row_count):
                 index = self._model.index(row, 0)
                 size = self.get_item_size_hint(option, index)
@@ -840,6 +859,8 @@ class AgentChatListWidget(BaseWidget):
 
         Uses a 'don't destroy' approach - once created, widgets are kept around
         to prevent black screens during scrolling. Only creates new widgets as needed.
+
+        CRITICAL: Rebuild cache BEFORE creating widgets to ensure consistent sizing.
         """
         row_count = self._model.rowCount()
 
@@ -856,6 +877,11 @@ class AgentChatListWidget(BaseWidget):
                 f"cache_dirty={self._positions_cache_dirty})"
             )
             return
+
+        # CRITICAL: Rebuild cache FIRST, before creating widgets
+        # This ensures all size calculations use consistent viewport dimensions
+        if self._positions_cache_dirty:
+            self._rebuild_positions_cache()
 
         # Use larger buffer when at bottom to ensure more widgets are created
         scrollbar = self.list_view.verticalScrollBar()
@@ -912,7 +938,7 @@ class AgentChatListWidget(BaseWidget):
             widget = self._create_message_widget(item, self.list_view.viewport())
             # Set fixed width to match viewport width
             widget.setFixedWidth(widget_width)
-            # Get cached size or build sizing widget to determine height
+            # Get cached size - cache was already rebuilt above, so should be available
             cached_size = self._size_hint_cache.get(item.message_id, {}).get(widget_width)
             if cached_size:
                 item_height = cached_size.height()
@@ -925,11 +951,13 @@ class AgentChatListWidget(BaseWidget):
             self.list_view.setIndexWidget(index, widget)
             self._visible_widgets[row] = widget
 
-        # Sync positions to list view for smooth scrolling
-        if self._positions_cache_dirty:
-            self._rebuild_positions_cache()
-        elif self._row_positions_cache:
-            self.list_view.set_row_positions(self._row_positions_cache, self._total_height_cache)
+        # Sync positions to list view for smooth scrolling (cache already rebuilt above)
+        if self._row_positions_cache:
+            self.list_view.set_row_positions(
+                self._row_positions_cache,
+                self._total_height_cache,
+                restore_scroll=False  # Don't interfere with scrolling
+            )
 
         # Optional: Clean up widgets if we exceed the soft limit
         # This prevents unlimited memory growth while still avoiding black screens
@@ -1132,9 +1160,25 @@ class AgentChatListWidget(BaseWidget):
         widget.setFixedHeight(max(1, new_size.height()))
 
     def _on_rows_inserted(self, parent: QModelIndex, start: int, end: int):
-        # Mark positions cache as dirty and refresh
+        """Handle new rows inserted into the model.
+
+        When new messages are added, we need to:
+        1. Invalidate the positions cache (rows have shifted)
+        2. Schedule refresh to create widgets for new rows
+        3. Scroll to bottom if user was at bottom
+
+        NOTE: We DON'T rebuild cache here because viewport may not be ready yet.
+        Let _refresh_visible_widgets handle cache rebuild at the right time.
+        """
+        # Mark positions cache as dirty - rows have shifted
         self._invalidate_positions_cache()
-        self._schedule_visible_refresh()
+
+        # Schedule refresh to create widgets for new rows
+        # Don't rebuild cache here - let _refresh_visible_widgets do it
+        # when viewport is properly initialized
+        self._schedule_visible_refresh(immediate=True)
+
+        # Scroll to bottom if user was at bottom (for smooth chat experience)
         if self._user_at_bottom:
             self._schedule_scroll()
 
@@ -1502,7 +1546,7 @@ class AgentChatListWidget(BaseWidget):
 
         if getattr(message, "message_type", None):
             if message.message_type == MessageType.SYSTEM and message.metadata.get("event_type") in (
-                "crew_member_start", "producer_start", "mentioned_agent_start",
+                "crew_member_start", "mentioned_agent_start",
                 "responding_agent_start", "plan_update", "plan_created",
             ):
                 return

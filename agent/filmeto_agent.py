@@ -849,12 +849,13 @@ class FilmetoAgent:
             # No specific crew member mentioned - use producer if available
             producer_agent = self._get_producer_crew_member()
             if producer_agent:
-                await self._emit_system_event(
-                    "producer_start",
-                    session_id,
-                    crew_member_name=producer_agent.config.name,
-                    message=initial_prompt.get_text_content(),
-                )
+                # producer_start event removed - no longer needed
+                # await self._emit_system_event(
+                #     "producer_start",
+                #     session_id,
+                #     crew_member_name=producer_agent.config.name,
+                #     message=initial_prompt.get_text_content(),
+                # )
                 async for _ in self._handle_producer_flow(
                     initial_prompt=initial_prompt,
                     producer_agent=producer_agent,
