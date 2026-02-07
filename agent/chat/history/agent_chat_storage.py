@@ -100,7 +100,7 @@ class MessageLogStorage:
                 self._lock_fd = None
 
     def _rebuild_position_cache(self):
-        """Build file position cache for fast random access."""
+        """Build file position cache for fast random access, validating JSON format."""
         with self._cache_lock:
             self._position_cache.clear()
             self._line_count = 0
@@ -108,33 +108,74 @@ class MessageLogStorage:
             if not self.active_log_path.exists():
                 return
 
+            valid_offsets = []
+            offset = 0
+            corruption_found = False
+
             try:
                 with open(self.active_log_path, 'rb') as f:
-                    offset = 0
                     while True:
+                        line_start = f.tell()
                         line = f.readline()
                         if not line:
                             break
 
                         # Check if line ends with newline (complete line)
                         if not line.endswith(b'\n'):
-                            logger.warning(f"Found incomplete line at offset {offset}, skipping")
+                            logger.warning(f"Found incomplete line at offset {line_start}, stopping cache rebuild")
+                            corruption_found = True
                             break
 
-                        # Try to decode to check for corruption
+                        # Try to decode and validate JSON
                         try:
-                            line.decode('utf-8')
-                            self._position_cache.append(offset)
-                            offset += len(line)
+                            line_text = line.decode('utf-8').strip()
+                            # Try to parse JSON to validate
+                            json.loads(line_text)
+                            valid_offsets.append(line_start)
+                            offset = f.tell()
                             self._line_count += 1
-                        except UnicodeDecodeError:
-                            logger.warning(f"Found corrupted line at offset {offset}, stopping cache rebuild")
-                            # Truncate file at this point to recover
-                            self._truncate_file_at(offset)
-                            break
+                        except (UnicodeDecodeError, json.JSONDecodeError) as e:
+                            logger.warning(f"Found corrupted/invalid JSON line at offset {line_start}: {str(e)[:100]}")
+                            corruption_found = True
+                            # Skip this line and continue
+                            offset = f.tell()
+
+                # If corruption was found, repair the file by keeping only valid lines
+                if corruption_found and valid_offsets:
+                    logger.info(f"Recovering message.log: found {self._line_count} valid lines out of {len(valid_offsets) + 1} total")
+                    self._repair_file_keep_valid_lines(valid_offsets)
+
+                # Update position cache
+                self._position_cache = valid_offsets
 
             except Exception as e:
-                logger.error(f"Error building position cache: {e}")
+                logger.error(f"Error building position cache: {e}", exc_info=True)
+
+    def _repair_file_keep_valid_lines(self, valid_offsets: List[int]):
+        """Repair the file by keeping only valid lines at given offsets."""
+        try:
+            valid_lines = []
+            with open(self.active_log_path, 'rb') as f:
+                for offset in valid_offsets:
+                    f.seek(offset)
+                    line = f.readline()
+                    if line.endswith(b'\n'):
+                        valid_lines.append(line)
+
+            # Write back only valid lines to a temp file
+            temp_path = self.active_log_path.with_suffix('.repair.tmp')
+            with open(temp_path, 'wb') as f:
+                for line in valid_lines:
+                    f.write(line)
+                f.flush()
+                os.fsync(f.fileno())
+
+            # Atomic replace
+            temp_path.replace(self.active_log_path)
+            logger.info(f"Repaired message.log: kept {len(valid_lines)} valid lines")
+
+        except Exception as e:
+            logger.error(f"Error repairing file: {e}", exc_info=True)
 
     def _truncate_file_at(self, offset: int):
         """Truncate the active log file at a specific offset to recover from corruption."""
@@ -373,6 +414,8 @@ class MessageLogStorage:
                 for msg in old_messages:
                     line = self._escape_message(msg) + '\n'
                     f.write(line)
+                f.flush()
+                os.fsync(f.fileno())
 
             # Calculate slice offset (start of remaining messages)
             with self._cache_lock:
@@ -381,16 +424,24 @@ class MessageLogStorage:
                 else:
                     slice_offset = self._position_cache[Constants.ARCHIVE_THRESHOLD]
 
-            # Read remaining content
-            remaining_content = ""
-            if slice_offset > 0:
-                with open(self.active_log_path, 'rb') as f:
-                    f.seek(slice_offset)
-                    remaining_content = f.read().decode('utf-8')
+            # Use a safer approach: write to temp file first, then rename
+            temp_path = self.active_log_path.with_suffix('.tmp')
 
-            # Write remaining content back (truncate and rewrite)
-            with open(self.active_log_path, 'w', encoding='utf-8') as f:
-                f.write(remaining_content)
+            # Read remaining messages (not content) and rewrite cleanly
+            remaining_start = Constants.ARCHIVE_THRESHOLD
+            total_messages = self._line_count
+            remaining_messages = self.get_messages(remaining_start, total_messages - remaining_start)
+
+            # Write remaining messages to temp file
+            with open(temp_path, 'w', encoding='utf-8') as f:
+                for msg in remaining_messages:
+                    line = self._escape_message(msg) + '\n'
+                    f.write(line)
+                f.flush()
+                os.fsync(f.fileno())
+
+            # Atomic rename on Unix, replace on Windows
+            temp_path.replace(self.active_log_path)
 
             # Rebuild position cache
             self._rebuild_position_cache()
@@ -398,7 +449,7 @@ class MessageLogStorage:
             logger.info(f"Archived {len(old_messages)} messages to {archive_path.name}")
 
         except Exception as e:
-            logger.error(f"Error archiving messages: {e}")
+            logger.error(f"Error archiving messages: {e}", exc_info=True)
         finally:
             # Only release lock if we acquired it
             if not already_locked:
