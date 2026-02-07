@@ -469,13 +469,34 @@ class FilmetoAgent:
             return text
         return text[: limit - 3].rstrip() + "..."
 
-    async def _emit_system_event(self, event_type: str, session_id: str, **kwargs: Any) -> None:
-        """Emit a system event via AgentChatSignals for UI feedback."""
+    async def _emit_system_event(
+        self,
+        event_type: str,
+        session_id: str,
+        sender_id: Optional[str] = None,
+        sender_name: Optional[str] = None,
+        **kwargs: Any
+    ) -> None:
+        """Emit a system event via AgentChatSignals for UI feedback.
+
+        Args:
+            event_type: Type of the event
+            session_id: Session identifier
+            sender_id: Optional sender ID (defaults to "system")
+            sender_name: Optional sender name (defaults to "System")
+            **kwargs: Additional event metadata
+        """
+        # Default to system if no sender provided
+        if sender_id is None:
+            sender_id = "system"
+        if sender_name is None:
+            sender_name = "System"
+
         meta = {"event_type": event_type, "session_id": session_id, **kwargs}
         msg = AgentMessage(
             message_type=MessageType.SYSTEM,
-            sender_id="system",
-            sender_name="System",
+            sender_id=sender_id,
+            sender_name=sender_name,
             metadata=meta,
             structured_content=[MetadataContent(
                 metadata_type=event_type,
@@ -834,6 +855,8 @@ class FilmetoAgent:
                 await self._emit_system_event(
                     "crew_member_start",
                     session_id,
+                    sender_id=target_crew_member.config.name,
+                    sender_name=target_crew_member.config.name,
                     crew_member_name=target_crew_member.config.name,
                     message=message,
                 )
@@ -870,6 +893,8 @@ class FilmetoAgent:
                 await self._emit_system_event(
                     "responding_agent_start",
                     session_id,
+                    sender_id=responding_agent.config.name,
+                    sender_name=responding_agent.config.name,
                     crew_member_name=responding_agent.config.name,
                     message=initial_prompt.get_text_content(),
                 )
@@ -932,9 +957,12 @@ class FilmetoAgent:
                     # Update the active plan ID to the newly created plan
                     active_plan_id = latest_plan.id
 
+                    # Emit plan_update with producer as sender
                     await self._emit_system_event(
                         "plan_update",
                         session_id,
+                        sender_id=producer_agent.config.name,
+                        sender_name=producer_agent.config.name,
                         plan_id=latest_plan.id,
                     )
 
@@ -976,13 +1004,6 @@ class FilmetoAgent:
 
                 for task in ready_tasks:
                     self.plan_service.mark_task_running(plan_instance, task.id)
-                    await self._emit_system_event(
-                        "plan_update",
-                        session_id,
-                        plan_id=plan.id,
-                        task_id=task.id,
-                        task_status="running",
-                    )
                     target_agent = self._crew_member_lookup.get(task.title.lower())
                     if not target_agent:
                         error_message = f"Crew member '{task.title}' not found for task {task.id}."
@@ -996,6 +1017,17 @@ class FilmetoAgent:
                             except Exception as e:
                                 logger.error(f"❌ Exception in _execute_plan_tasks while yielding error event", exc_info=True)
                         continue
+
+                    # Emit plan_update with the crew member as sender
+                    await self._emit_system_event(
+                        "plan_update",
+                        session_id,
+                        sender_id=target_agent.config.name,
+                        sender_name=target_agent.config.name,
+                        plan_id=plan.id,
+                        task_id=task.id,
+                        task_status="running",
+                    )
 
                     task_message = self._build_task_message(task, plan.id)
                     async for event in self._stream_crew_member(
@@ -1014,6 +1046,8 @@ class FilmetoAgent:
                     await self._emit_system_event(
                         "plan_update",
                         session_id,
+                        sender_id=target_agent.config.name,
+                        sender_name=target_agent.config.name,
                         plan_id=plan.id,
                         task_id=task.id,
                         task_status="completed",
