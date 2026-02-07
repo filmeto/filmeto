@@ -7,7 +7,7 @@ Rectangle {
     id: root
 
     property string text: ""
-    property real percentage: null  // null for indeterminate
+    property var percentage: null  // null for indeterminate, or number 0-100
     property color widgetColor: "#4a90e2"
 
     readonly property color bgColor: "#2a2a2a"

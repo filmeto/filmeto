@@ -3,6 +3,8 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 
+import "../widgets"
+
 Item {
     id: root
 
@@ -21,85 +23,92 @@ Item {
     readonly property color nameColor: agentColor
     readonly property color timestampColor: "#808080"
 
-    implicitWidth: parent.width
-    implicitHeight: mainColumn.implicitHeight
+    // Width is determined by anchors, height is calculated dynamically
+    implicitHeight: headerRow.height + contentRect.implicitHeight + 8
 
-    // Main layout
-    ColumnLayout {
-        id: mainColumn
+    // Header row with avatar and name
+    Row {
+        id: headerRow
         anchors {
             left: parent.left
+            top: parent.top
+        }
+        spacing: 8
+        height: Math.max(avatarRect.height, nameColumn.implicitHeight)
+
+        // Avatar/icon
+        Rectangle {
+            id: avatarRect
+            width: 32
+            height: 32
+            radius: width / 2
+            color: root.agentColor
+            anchors.verticalCenter: parent.verticalCenter
+
+            Text {
+                anchors.centerIn: parent
+                text: root.agentIcon
+                font.pixelSize: 18
+            }
+        }
+
+        // Agent name and title column
+        Column {
+            id: nameColumn
+            spacing: 2
+            anchors.verticalCenter: parent.verticalCenter
+
+            Text {
+                text: root.senderName
+                color: nameColor
+                font.pixelSize: 13
+                font.weight: Font.Medium
+            }
+
+            // Crew title if available
+            Text {
+                visible: root.crewMetadata !== undefined && root.crewMetadata.crew_title !== undefined && root.crewMetadata.crew_title !== ""
+                text: (root.crewMetadata && root.crewMetadata.crew_title) || ""
+                color: timestampColor
+                font.pixelSize: 11
+            }
+        }
+    }
+
+    // Message content area
+    Rectangle {
+        id: contentRect
+        anchors {
+            left: parent.left
+            top: headerRow.bottom
+            topMargin: 8
             right: parent.right
         }
-        spacing: 4
+        implicitHeight: contentColumn.implicitHeight + 24
+        color: backgroundColor
+        radius: 12
 
-        // Header row with avatar and name
-        RowLayout {
+        // Content column
+        Column {
+            id: contentColumn
+            anchors {
+                left: parent.left
+                right: parent.right
+                top: parent.top
+                margins: 12
+            }
             spacing: 8
-            Layout.fillWidth: false
 
-            // Avatar/icon
-            Rectangle {
-                width: 32
-                height: 32
-                radius: width / 2
-                color: root.agentColor
+            // Render structured content or plain text
+            Loader {
+                id: contentLoader
+                width: parent.width
 
-                Text {
-                    anchors.centerIn: parent
-                    text: root.agentIcon
-                    font.pixelSize: 18
-                }
-            }
-
-            // Agent name
-            ColumnLayout {
-                spacing: 0
-
-                Text {
-                    text: root.senderName
-                    color: nameColor
-                    font.pixelSize: 13
-                    font.weight: Font.Medium
-                }
-
-                // Crew title if available
-                Text {
-                    visible: root.crewMetadata && root.crewMetadata.crew_title
-                    text: root.crewMetadata.crew_title || ""
-                    color: timestampColor
-                    font.pixelSize: 11
-                }
-            }
-        }
-
-        // Message content area
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredWidth: Math.min(parent.width, 700)
-            Layout.maximumWidth: 700
-
-            color: backgroundColor
-            radius: 12
-
-            // Content column
-            ColumnLayout {
-                anchors {
-                    fill: parent
-                    margins: 12
-                }
-                spacing: 8
-
-                // Render structured content or plain text
-                Loader {
-                    id: contentLoader
-                    Layout.fillWidth: true
-                    sourceComponent: {
-                        if (root.structuredContent && root.structuredContent.length > 0) {
-                            return structuredContentComponent
-                        } else {
-                            return textContentComponent
-                        }
+                sourceComponent: {
+                    if (root.structuredContent && root.structuredContent.length > 0) {
+                        return structuredContentComponent
+                    } else {
+                        return textContentComponent
                     }
                 }
             }
@@ -115,11 +124,10 @@ Item {
             color: textColor
             font.pixelSize: 14
             wrapMode: Text.WordWrap
-            textFormat: Text.MarkdownText
+            textFormat: Text.PlainText
             lineHeight: 1.5
             linkColor: "#87ceeb"
-
-            Layout.fillWidth: true
+            width: parent.width
 
             onLinkActivated: function(link) {
                 // Handle reference links like ref://tool_call:abc123
@@ -139,15 +147,17 @@ Item {
     Component {
         id: structuredContentComponent
 
-        ColumnLayout {
+        Column {
             spacing: 8
+            width: parent.width
+            height: childrenRect.height
 
             Repeater {
                 model: root.structuredContent || []
 
                 delegate: Loader {
                     id: widgetLoader
-                    Layout.fillWidth: true
+                    width: parent.width
 
                     sourceComponent: {
                         var type = modelData.content_type || modelData.type || "text"
@@ -171,6 +181,10 @@ Item {
                     }
 
                     property var widgetData: modelData
+                    visible: {
+                        var type = modelData.content_type || modelData.type || "text"
+                        return type !== "typing"
+                    }
 
                     onLoaded: {
                         // Pass data to the widget
@@ -202,7 +216,7 @@ Item {
             wrapMode: Text.WordWrap
             textFormat: Text.PlainText
             lineHeight: 1.5
-            Layout.fillWidth: true
+            width: parent.width
         }
     }
 
@@ -212,7 +226,7 @@ Item {
 
         CodeBlockWidget {
             property var data: ({})
-            Layout.fillWidth: true
+            width: parent.width
             code: data.code || data.data?.code || ""
             language: data.language || data.data?.language || "text"
         }
@@ -224,7 +238,7 @@ Item {
 
         ThinkingWidget {
             property var data: ({})
-            Layout.fillWidth: true
+            width: parent.width
             widgetColor: root.agentColor
             thought: data.thought || data.data?.thought || ""
             title: data.title || data.data?.title || "Thinking Process"
@@ -238,7 +252,7 @@ Item {
 
         ToolCallWidget {
             property var data: ({})
-            Layout.fillWidth: true
+            width: parent.width
             widgetColor: root.agentColor
             toolName: data.tool_name || data.data?.tool_name || ""
             toolArgs: data.tool_args || data.data?.tool_args || {}
@@ -251,7 +265,7 @@ Item {
 
         ToolResponseWidget {
             property var data: ({})
-            Layout.fillWidth: true
+            width: parent.width
             toolName: data.tool_name || data.data?.tool_name || ""
             response: data.response || data.data?.response || ""
             isError: data.is_error || data.data?.is_error || false
@@ -263,7 +277,6 @@ Item {
         id: typingIndicatorComponent
 
         TypingIndicator {
-            Layout.fillWidth: true
             active: true
         }
     }
@@ -274,7 +287,7 @@ Item {
 
         ProgressWidget {
             property var data: ({})
-            Layout.fillWidth: true
+            width: parent.width
             widgetColor: root.agentColor
             text: data.progress || data.data?.progress || ""
             percentage: data.percentage || data.data?.percentage || null
@@ -287,7 +300,7 @@ Item {
 
         ImageWidget {
             property var data: ({})
-            Layout.fillWidth: true
+            width: parent.width
             source: data.url || data.data?.url || ""
             caption: data.caption || data.data?.caption || ""
         }
@@ -299,7 +312,7 @@ Item {
 
         TableWidget {
             property var data: ({})
-            Layout.fillWidth: true
+            width: parent.width
             tableData: data.data || {}
         }
     }
@@ -310,7 +323,7 @@ Item {
 
         LinkWidget {
             property var data: ({})
-            Layout.fillWidth: true
+            width: parent.width
             url: data.url || data.data?.url || ""
             title: data.title || data.data?.title || ""
         }
@@ -322,11 +335,9 @@ Item {
 
         Button {
             property var data: ({})
-            Layout.fillWidth: false
             text: data.text || data.data?.text || "Button"
             onClicked: {
                 if (data.action) {
-                    // Handle button action via signal or callback
                     console.log("Button clicked:", data.action)
                 }
             }
@@ -339,7 +350,7 @@ Item {
 
         PlanWidget {
             property var data: ({})
-            Layout.fillWidth: true
+            width: parent.width
             widgetColor: root.agentColor
             planData: data
         }
@@ -351,7 +362,7 @@ Item {
 
         TaskWidget {
             property var data: ({})
-            Layout.fillWidth: true
+            width: parent.width
             taskData: data
         }
     }
@@ -362,7 +373,7 @@ Item {
 
         FileWidget {
             property var data: ({})
-            Layout.fillWidth: true
+            width: parent.width
             filePath: data.path || data.data?.path || ""
             fileName: data.name || data.data?.name || ""
             fileSize: data.size || data.data?.size || 0

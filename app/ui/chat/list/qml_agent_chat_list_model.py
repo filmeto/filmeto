@@ -60,20 +60,21 @@ class QmlAgentChatListModel(QAbstractListModel):
 
     def roleNames(self):
         """Return role names for QML binding."""
+        from PySide6.QtCore import QByteArray
         return {
-            Qt.UserRole + 1: self.MESSAGE_ID,
-            Qt.UserRole + 2: self.SENDER_ID,
-            Qt.UserRole + 3: self.SENDER_NAME,
-            Qt.UserRole + 4: self.IS_USER,
-            Qt.UserRole + 5: self.CONTENT,
-            Qt.UserRole + 6: self.AGENT_COLOR,
-            Qt.UserRole + 7: self.AGENT_ICON,
-            Qt.UserRole + 8: self.CREW_METADATA,
-            Qt.UserRole + 9: self.STRUCTURED_CONTENT,
-            Qt.UserRole + 10: self.CONTENT_TYPE,
-            Qt.UserRole + 11: self.IS_READ,
-            Qt.UserRole + 12: self.TIMESTAMP,
-            Qt.UserRole + 13: self.DATE_GROUP,
+            Qt.UserRole + 1: QByteArray(self.MESSAGE_ID.encode()),
+            Qt.UserRole + 2: QByteArray(self.SENDER_ID.encode()),
+            Qt.UserRole + 3: QByteArray(self.SENDER_NAME.encode()),
+            Qt.UserRole + 4: QByteArray(self.IS_USER.encode()),
+            Qt.UserRole + 5: QByteArray(self.CONTENT.encode()),
+            Qt.UserRole + 6: QByteArray(self.AGENT_COLOR.encode()),
+            Qt.UserRole + 7: QByteArray(self.AGENT_ICON.encode()),
+            Qt.UserRole + 8: QByteArray(self.CREW_METADATA.encode()),
+            Qt.UserRole + 9: QByteArray(self.STRUCTURED_CONTENT.encode()),
+            Qt.UserRole + 10: QByteArray(self.CONTENT_TYPE.encode()),
+            Qt.UserRole + 11: QByteArray(self.IS_READ.encode()),
+            Qt.UserRole + 12: QByteArray(self.TIMESTAMP.encode()),
+            Qt.UserRole + 13: QByteArray(self.DATE_GROUP.encode()),
         }
 
     def rowCount(self, parent: QModelIndex = None) -> int:
@@ -95,15 +96,13 @@ class QmlAgentChatListModel(QAbstractListModel):
 
         item = self._items[row]
 
-        # Map Qt.UserRole + N to our roles
-        role_offset = Qt.UserRole + 1
-        role_enum = role - role_offset
-
-        # Use roleNames to get the role name
+        # Use roleNames to get the role name (QByteArray)
         role_names = self.roleNames()
-        role_name = role_names.get(role)
+        role_name_bytes = role_names.get(role)
 
-        if role_name:
+        if role_name_bytes:
+            # Convert QByteArray to string for dict lookup
+            role_name = role_name_bytes.data().decode()
             return item.get(role_name)
 
         return None

@@ -11,9 +11,6 @@ Row {
     spacing: 6
     padding: 8
 
-    implicitWidth: dotRow.implicitWidth + 16
-    implicitHeight: 24
-
     // Opacity based on active state
     opacity: active ? 1.0 : 0.0
 
@@ -21,65 +18,48 @@ Row {
         NumberAnimation { duration: 150 }
     }
 
-    Row {
-        id: dotRow
-        anchors.verticalCenter: parent.verticalCenter
-        spacing: 6
+    // Dots
+    Repeater {
+        model: 3
 
-        Repeater {
-            model: 3
+        delegate: Rectangle {
+            width: 8
+            height: 8
+            radius: width / 2
+            color: root.dotColor
 
-            delegate: Rectangle {
-                width: 8
-                height: 8
-                radius: width / 2
-                color: root.dotColor
-
-                // Sequential animation for wave effect
-                SequentialAnimation on opacity {
-                    running: root.active
-                    loops: Animation.Infinite
-                    NumberAnimation {
-                        to: 0.3
-                        duration: 400
-                    }
-                    NumberAnimation {
-                        to: 1.0
-                        duration: 400
-                    }
-                    // Stagger each dot
-                    PropertyAction { }
+            // Sequential animation for wave effect
+            SequentialAnimation on opacity {
+                running: root.active
+                loops: Animation.Infinite
+                NumberAnimation {
+                    to: 0.3
+                    duration: 400
                 }
-
-                // Scale animation
-                SequentialAnimation on scale {
-                    running: root.active
-                    loops: Animation.Infinite
-                    NumberAnimation {
-                        to: 0.8
-                        duration: 400
-                    }
-                    NumberAnimation {
-                        to: 1.0
-                        duration: 400
-                    }
+                NumberAnimation {
+                    to: 1.0
+                    duration: 400
                 }
+            }
 
-                // Stagger animations based on index
-                Component.onCompleted: {
-                    // Delay each dot's animation start
-                    delayTimer.interval = index * 150
-                    delayTimer.start()
+            // Scale animation
+            SequentialAnimation on scale {
+                running: root.active
+                loops: Animation.Infinite
+                NumberAnimation {
+                    to: 0.8
+                    duration: 400
                 }
+                NumberAnimation {
+                    to: 1.0
+                    duration: 400
+                }
+            }
 
-                Timer {
-                    id: delayTimer
-                    repeat: false
-                    onTriggered: {
-                        // Trigger initial animation state
-                        parent.opacity = 0.5 + index * 0.2
-                    }
-                }
+            // Stagger animations based on index
+            Component.onCompleted: {
+                // Set initial opacity offset for staggered effect
+                opacity = 0.5 + index * 0.2
             }
         }
     }

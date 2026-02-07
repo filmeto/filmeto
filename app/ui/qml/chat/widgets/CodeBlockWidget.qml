@@ -109,7 +109,6 @@ Rectangle {
             Layout.preferredHeight: Math.min(codeText.implicitHeight + 16, 400)
 
             ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-            ScrollBar.vertical.policy: ScrollBar.AsNeeded
 
             clip: true
 
@@ -130,7 +129,6 @@ Rectangle {
 
             // Custom scrollbar
             ScrollBar.vertical: ScrollBar {
-                policy: ScrollBar.AsNeeded
                 contentItem: Rectangle {
                     implicitWidth: 8
                     radius: width / 2
