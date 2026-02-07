@@ -175,7 +175,44 @@ class MessageLogStorage:
         try:
             return json.loads(line)
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse message line: {e}")
+            # Try to recover: if line contains multiple JSON objects, extract the first one
+            # This can happen if concurrent writes cause format issues
+            if "Extra data" in str(e):
+                try:
+                    # Try to find the end of the first complete JSON object
+                    brace_count = 0
+                    in_string = False
+                    escape_next = False
+                    end_pos = 0
+
+                    for i, char in enumerate(line):
+                        if escape_next:
+                            escape_next = False
+                            continue
+                        if char == '\\':
+                            escape_next = True
+                            continue
+                        if char == '"' and not escape_next:
+                            in_string = not in_string
+                            continue
+                        if not in_string:
+                            if char == '{':
+                                brace_count += 1
+                            elif char == '}':
+                                brace_count -= 1
+                                if brace_count == 0:
+                                    end_pos = i + 1
+                                    break
+
+                    if end_pos > 0:
+                        first_json = line[:end_pos]
+                        return json.loads(first_json)
+                except Exception:
+                    pass
+
+            # Log with first 100 chars of line for debugging
+            line_preview = line[:100] if len(line) > 100 else line
+            logger.error(f"Failed to parse message line: {e}. Line preview: {line_preview}")
             return None
 
     def _incremental_cache_update(self, line_length: int):
@@ -218,7 +255,7 @@ class MessageLogStorage:
 
                 # Check if we need to archive (check without lock first for speed)
                 if self._line_count >= Constants.MAX_MESSAGES:
-                    self._archive_old_messages()
+                    self._archive_old_messages(already_locked=True)
 
                 return True
 
@@ -305,16 +342,21 @@ class MessageLogStorage:
         messages = self.get_messages(start, count)
         return list(reversed(messages))
 
-    def _archive_old_messages(self):
+    def _archive_old_messages(self, already_locked: bool = False):
         """Archive oldest ARCHIVE_THRESHOLD messages using file slice.
 
         This is much more efficient than reading and rewriting:
         1. Read the first N lines to archive
         2. Write them to archive file
         3. Slice the file to keep only the remaining lines
+
+        Args:
+            already_locked: True if the caller already holds the lock
         """
         try:
-            self._get_lock()
+            # Only acquire lock if not already held
+            if not already_locked:
+                self._get_lock()
 
             # Read oldest messages
             old_messages = self.get_messages(0, Constants.ARCHIVE_THRESHOLD)
@@ -358,7 +400,9 @@ class MessageLogStorage:
         except Exception as e:
             logger.error(f"Error archiving messages: {e}")
         finally:
-            self._release_lock()
+            # Only release lock if we acquired it
+            if not already_locked:
+                self._release_lock()
 
     def get_archived_files(self) -> List[Path]:
         """Get list of archived history files sorted by timestamp (newest first)."""
