@@ -64,9 +64,10 @@ class AgentChatListWidget(BaseWidget):
     SCROLL_BOTTOM_THRESHOLD = 50
 
     # Performance tuning
-    VISIBLE_REFRESH_DELAY_MS = 16  # ~60fps
+    VISIBLE_REFRESH_DELAY_MS = 8  # ~60fps
     SCROLL_THROTTLE_MS = 50  # Throttle scroll events
     MAX_VISIBLE_WIDGETS = 30  # Limit widgets created at once
+    MAX_TOTAL_WIDGETS = 300  # Maximum total widgets to keep (soft limit)
 
     # Signals
     reference_clicked = Signal(str, str)  # ref_type, ref_id
@@ -145,11 +146,18 @@ class AgentChatListWidget(BaseWidget):
         # Reset loading state
         self._load_state = LoadState()
         self._loading_older = False
+        self._is_prepending = False  # Reset prepend flag
         # Invalidate history cache
         self._history = None
         # Clear position cache
         self._positions_cache_dirty = True
         self._row_positions_cache.clear()
+        # Reset scroll tracking
+        self._scroll_delta_since_last_refresh = 0
+        self._pending_scroll_value = None
+        # Clear visible widgets and size hint cache
+        self._clear_visible_widgets()
+        self._size_hint_cache.clear()
         self._load_recent_conversation()
 
     def refresh_crew_member_metadata(self):
@@ -830,7 +838,8 @@ class AgentChatListWidget(BaseWidget):
     def _refresh_visible_widgets(self):
         """Refresh visible widgets with performance optimizations.
 
-        Limits the number of widgets created per refresh to avoid blocking.
+        Uses a 'don't destroy' approach - once created, widgets are kept around
+        to prevent black screens during scrolling. Only creates new widgets as needed.
         """
         row_count = self._model.rowCount()
 
@@ -849,47 +858,43 @@ class AgentChatListWidget(BaseWidget):
             return
 
         # Use larger buffer when at bottom to ensure more widgets are created
-        # This helps when viewport is small (e.g., during initialization)
         scrollbar = self.list_view.verticalScrollBar()
         is_at_bottom = (scrollbar.value() >= scrollbar.maximum() - 10)
 
-        # Detect if we're actively scrolling (by checking if scrollbar value changed recently)
+        # Detect if we're actively scrolling
         is_scrolling = (abs(scrollbar.value() - self._scroll_delta_since_last_refresh) > 20)
 
         if is_at_bottom:
             # At bottom, create widgets for more items above
-            buffer_size = min(20, row_count)  # Show up to 20 items when at bottom
+            buffer_size = min(20, row_count)
             start_row = max(0, first_row - buffer_size)
-            end_row = row_count - 1  # Always include all items to the end when at bottom
+            end_row = row_count - 1
         elif is_scrolling:
             # During scrolling, use larger buffer to prevent blank areas
-            buffer_size = 10  # Increased from 2 to 10 during scrolling
+            buffer_size = 10
             start_row = max(0, first_row - buffer_size)
             end_row = min(row_count - 1, last_row + buffer_size)
         else:
-            buffer_size = 3  # Slightly increased from 2 for normal case
+            buffer_size = 5
             start_row = max(0, first_row - buffer_size)
             end_row = min(row_count - 1, last_row + buffer_size)
 
         desired_rows = set(range(start_row, end_row + 1))
 
-        # During scrolling, allow creating more widgets to prevent blank areas
-        max_to_create = self.MAX_VISIBLE_WIDGETS * 2 if is_scrolling else self.MAX_VISIBLE_WIDGETS
+        # Only create widgets that don't exist yet - NEVER delete existing widgets
         widgets_to_create = [r for r in desired_rows if r not in self._visible_widgets]
+
+        # Limit number of widgets to create per refresh to avoid blocking
+        max_to_create = self.MAX_VISIBLE_WIDGETS * 2 if is_scrolling else self.MAX_VISIBLE_WIDGETS
         if len(widgets_to_create) > max_to_create:
             # Prioritize rows closer to the visible center
             visible_center = (first_row + last_row) // 2
             widgets_to_create.sort(key=lambda r: abs(r - visible_center))
             widgets_to_create = widgets_to_create[:max_to_create]
-            desired_rows = set(widgets_to_create) | set(self._visible_widgets.keys())
 
-        # Remove widgets that are no longer in the desired range
-        for row in list(self._visible_widgets.keys()):
-            if row not in desired_rows:
-                index = self._model.index(row, 0)
-                widget = self._visible_widgets.pop(row)
-                self.list_view.setIndexWidget(index, None)
-                widget.deleteLater()
+        # NOTE: We DON'T remove widgets that are no longer in desired range.
+        # This "don't destroy" approach prevents black screens during scrolling.
+        # Widgets are only cleared when explicitly needed (project switch, etc.)
 
         # Cache viewport dimensions and option for better performance
         widget_width = max(1, self.list_view.viewport().width())
@@ -926,10 +931,59 @@ class AgentChatListWidget(BaseWidget):
         elif self._row_positions_cache:
             self.list_view.set_row_positions(self._row_positions_cache, self._total_height_cache)
 
-        # Ensure viewport is updated to show the newly created widgets
-        if widgets_to_create or len(self._visible_widgets) < 10:
-            # Force viewport update if we created widgets or have very few widgets
-            self.list_view.viewport().update()
+        # Optional: Clean up widgets if we exceed the soft limit
+        # This prevents unlimited memory growth while still avoiding black screens
+        current_widget_count = len(self._visible_widgets)
+        if current_widget_count > self.MAX_TOTAL_WIDGETS:
+            # Remove widgets farthest from the visible range
+            # Keep widgets closest to visible range
+            all_widget_rows = sorted(self._visible_widgets.keys())
+            rows_to_keep = set()
+
+            # Always keep widgets in visible range + buffer
+            buffer = 20
+            keep_start = max(0, first_row - buffer)
+            keep_end = min(row_count - 1, last_row + buffer)
+            for r in all_widget_rows:
+                if keep_start <= r <= keep_end:
+                    rows_to_keep.add(r)
+
+            # Also keep some widgets on both sides (up to the limit)
+            remaining_slots = self.MAX_TOTAL_WIDGETS - len(rows_to_keep)
+
+            # Add closest widgets above visible range
+            for r in reversed(all_widget_rows):
+                if r < keep_start and remaining_slots > 0:
+                    rows_to_keep.add(r)
+                    remaining_slots -= 1
+
+            # Add closest widgets below visible range
+            for r in all_widget_rows:
+                if r > keep_end and remaining_slots > 0:
+                    rows_to_keep.add(r)
+                    remaining_slots -= 1
+
+            # Remove widgets not in keep set
+            removed_count = 0
+            for row in list(self._visible_widgets.keys()):
+                if row not in rows_to_keep:
+                    index = self._model.index(row, 0)
+                    widget = self._visible_widgets.pop(row)
+                    self.list_view.setIndexWidget(index, None)
+                    widget.deleteLater()
+                    removed_count += 1
+
+            if removed_count > 0:
+                logger.debug(
+                    f"_refresh_visible_widgets: Cleaned up {removed_count} old widgets, "
+                    f"kept {len(self._visible_widgets)} (limit: {self.MAX_TOTAL_WIDGETS})"
+                )
+        elif current_widget_count > 200:
+            # Just log a warning
+            logger.debug(
+                f"_refresh_visible_widgets: High widget count ({current_widget_count}), "
+                f"model rows: {row_count}, visible range: {first_row}-{last_row}"
+            )
 
     def _get_visible_row_range(self) -> Tuple[Optional[int], Optional[int]]:
         """Get the range of currently visible rows using cached positions.
@@ -1146,6 +1200,21 @@ class AgentChatListWidget(BaseWidget):
         3. The view is scrolled to the bottom
         """
         try:
+            # Ensure the widget has been properly laid out and has valid viewport size
+            self.list_view.ensurePolished()
+
+            # Force rebuild the position cache first
+            if self._positions_cache_dirty or not self._row_positions_cache:
+                self._rebuild_positions_cache(force=True)
+
+            # Check viewport size
+            viewport_height = self.list_view.viewport().height()
+            if viewport_height <= 0:
+                logger.warning(f"Viewport height is {viewport_height}, forcing layout update")
+                self.list_view.doItemsLayout()
+                viewport_height = self.list_view.viewport().height()
+                logger.info(f"After layout, viewport height is {viewport_height}")
+
             # Force refresh of visible widgets
             self._refresh_visible_widgets()
 
@@ -1157,8 +1226,15 @@ class AgentChatListWidget(BaseWidget):
             # visible range are created
             QTimer.singleShot(50, self._refresh_visible_widgets)
 
+            logger.debug(
+                f"_ensure_widgets_visible_and_scrolled completed: "
+                f"rows={self._model.rowCount()}, "
+                f"widgets={len(self._visible_widgets)}, "
+                f"viewport_height={viewport_height}"
+            )
+
         except Exception as e:
-            logger.error(f"Error in _ensure_widgets_visible_and_scrolled: {e}")
+            logger.error(f"Error in _ensure_widgets_visible_and_scrolled: {e}", exc_info=True)
 
     # ─── Public API for direct message manipulation ───────────────────
 
