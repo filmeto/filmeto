@@ -19,8 +19,10 @@ Rectangle {
     border.color: borderColor
     border.width: 1
 
-    implicitWidth: parent.width
-    implicitHeight: taskColumn.implicitHeight + 16
+    width: parent ? parent.width : 0
+    height: taskColumn.implicitHeight + 24  // 2 * margins (12)
+    implicitWidth: width
+    implicitHeight: height
 
     Layout.fillWidth: true
 

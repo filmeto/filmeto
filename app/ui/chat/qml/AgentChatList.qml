@@ -90,10 +90,7 @@ Rectangle {
             id: userComponent
 
             UserMessageBubble {
-                anchors {
-                    right: parent.right
-                    left: parent.left
-                }
+                width: parent ? parent.width : 0
                 isRead: modelData.isRead !== undefined ? modelData.isRead : true
                 userName: modelData.userName || "You"
                 userIcon: modelData.userIcon || "👤"
@@ -107,10 +104,7 @@ Rectangle {
             id: agentComponent
 
             AgentMessageBubble {
-                anchors {
-                    left: parent.left
-                    right: parent.right
-                }
+                width: parent ? parent.width : 0
                 senderName: modelData.senderName || ""
                 agentColor: modelData.agentColor || "#4a90e2"
                 agentIcon: modelData.agentIcon || "🤖"

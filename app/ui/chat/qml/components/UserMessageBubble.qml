@@ -23,8 +23,8 @@ Item {
     readonly property int avatarSpacing: 8
     readonly property int totalAvatarWidth: (avatarSize + avatarSpacing) * 2  // Both sides
 
-    // Available width for content (minus avatar space on both sides)
-    readonly property int availableWidth: parent.width - totalAvatarWidth
+    // Available width for content (minus avatar space on both sides); never negative
+    readonly property int availableWidth: Math.max(0, width - totalAvatarWidth)
 
     // Helper function to safely extract data values
     function safeGet(data, prop, defaultValue) {
@@ -41,8 +41,9 @@ Item {
         return defaultObj
     }
 
-    // Width is determined by anchors, height is calculated dynamically
-    implicitHeight: headerRow.height + bubbleContainer.height
+    // Height calculated from header + bubble content + margins (12 top + 12 gap)
+    height: headerRow.height + bubbleContainer.height + 24
+    implicitHeight: height
 
     Row {
         id: headerRow

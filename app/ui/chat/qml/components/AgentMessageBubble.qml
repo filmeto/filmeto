@@ -43,14 +43,12 @@ Item {
         return defaultObj
     }
 
-    // Explicit width from parent (Loader) so layout is valid before anchors resolve
-    width: parent ? parent.width : 0
-
     // Available width for content (minus left avatar space only); never negative
-    readonly property int availableWidth: Math.max(0, (parent ? parent.width : 0) - (avatarSize + avatarSpacing))
+    readonly property int availableWidth: Math.max(0, width - (avatarSize + avatarSpacing))
 
-    // Width is determined by anchors, height is calculated dynamically
-    implicitHeight: headerRow.height + bubbleContainer.height + 20
+    // Height calculated from header + bubble + bottom padding
+    height: headerRow.height + bubbleContainer.height + 20
+    implicitHeight: height
 
     // Header row with avatar and name
     Row {
@@ -160,7 +158,6 @@ Item {
                 margins: 12
             }
             spacing: 8
-            width: Math.max(0, parent.width - 24)
 
             // Render structured content
             Repeater {
@@ -247,7 +244,7 @@ Item {
             text: root.safeGet(data, "text", root.safeGet(data, "content", ""))
             color: textColor
             font.pixelSize: 14
-            wrapMode: Text.WordWrap
+            wrapMode: Text.Wrap
             textFormat: Text.PlainText
             lineHeight: 1.5
             width: parent ? parent.width : 0
