@@ -89,13 +89,68 @@ When creating documentation:
 2. Place tests in `tests/test_server/`
 3. Update API docs in `docs/`
 
+### Working with Agent Messages
+
+**Message System Architecture:**
+- `AgentMessage` uses `structured_content` list (not a separate `message_type` field)
+- Each item in `structured_content` has a `ContentType` enum
+- Primary content type is determined via `get_primary_content_type()` method
+
+**Creating Messages:**
+```python
+from agent.chat.agent_chat_message import AgentMessage
+from agent.chat.content import TextContent, ErrorContent, ThinkingContent
+
+# Simple text message
+msg = AgentMessage(
+    sender_id="user",
+    sender_name="User",
+    structured_content=[TextContent(text="Hello")]
+)
+
+# Error message
+error_msg = AgentMessage(
+    sender_id="system",
+    sender_name="System",
+    structured_content=[ErrorContent(error_message="Something went wrong")]
+)
+
+# Thinking message
+thinking_msg = AgentMessage(
+    sender_id="agent",
+    sender_name="Agent",
+    structured_content=[ThinkingContent(thought="Analyzing...")]
+)
+```
+
+**ContentType Values:**
+- `TEXT` - Plain text content
+- `CODE_BLOCK` - Code blocks
+- `THINKING` - Agent thinking process
+- `TOOL_CALL` - Tool/function call
+- `TOOL_RESPONSE` - Tool execution result
+- `PROGRESS` - Progress updates
+- `ERROR` - Error messages
+- `METADATA` - System metadata
+- `TYPING` - Typing indicators
+
+**Available Content Types in `agent/chat/content/__init__.py`:**
+- `TextContent` - Plain text messages
+- `ThinkingContent` - Agent thinking/reasoning
+- `ToolCallContent` - Tool invocation
+- `ToolResponseContent` - Tool execution results
+- `ProgressContent` - Progress updates
+- `ErrorContent` - Error messages
+- `MetadataContent` - System metadata
+- `TypingContent` - Typing indicators
+
 ### Working with Utilities
 1. Check `utils/` for existing utilities first:
    - `async_queue_utils.py` - async queue operations
    - `download_utils.py` - file downloads
    - `ffmpeg_utils.py` - video processing
    - `i18n_utils.py` - i18n helpers
-   - `plan_service.py` - planning logic
+   - `plan_service.py` - planning logic (moved to `agent/plan/`)
    - `queue_utils.py` - queue management
    - `signal_utils.py` - Qt signals
    - `thread_utils.py` - threading
@@ -110,3 +165,4 @@ When creating documentation:
 - Duplicating existing utilities from `utils/`
 - Over-engineering simple tasks
 - Making changes without reading existing code first
+- Adding unused utility wrapper functions (prefer direct API usage)

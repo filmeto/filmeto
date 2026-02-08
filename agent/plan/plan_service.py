@@ -163,17 +163,15 @@ class PlanService:
             return str(workspace.path)
         return str(id(workspace))
 
-    def _find_workspace_dir(self) -> Optional[Path]:
+    def _get_workspace_path(self) -> Optional[Path]:
         """
-        Find the workspace root directory by traversing up the path hierarchy.
+        Get the workspace path from the workspace object.
 
         Returns:
-            Path to workspace directory if found, None otherwise
+            Path to workspace directory if available, None otherwise
         """
-        current_path = self.flow_storage_dir.resolve()
-        for parent in current_path.parents:
-            if parent.name == 'workspace':
-                return parent
+        if self.workspace and hasattr(self.workspace, 'workspace_path'):
+            return Path(self.workspace.workspace_path)
         return None
 
     def _get_ready_tasks(self, plan_instance: PlanInstance) -> List[PlanTask]:
@@ -263,15 +261,15 @@ class PlanService:
             project_name: Name of the project (used as identifier)
             plan_id: Unique ID of the plan
         """
-        # Create directory structure as workspace/projects/项目名/plans
-        workspace_path = self._find_workspace_dir()
+        # Create directory structure as workspace/projects/项目名/agent/plans
+        workspace_path = self._get_workspace_path()
 
         if workspace_path:
-            # Use the proper workspace/projects/project_name/plans structure
-            project_plans_dir = workspace_path / "projects" / project_name / "plans"
+            # Use the proper workspace/projects/project_name/agent/plans structure
+            project_plans_dir = workspace_path / "projects" / project_name / "agent" / "plans"
         else:
             # Fallback to the original approach if we can't find workspace
-            project_plans_dir = self.flow_storage_dir.parent / "projects" / project_name / "plans"
+            project_plans_dir = self.flow_storage_dir.parent / "projects" / project_name / "agent" / "plans"
 
         project_plans_dir.mkdir(parents=True, exist_ok=True)
         return project_plans_dir / plan_id
@@ -791,19 +789,19 @@ class PlanService:
         Args:
             project_name: Name of the project (used as identifier)
         """
-        # Use the project-specific plans directory
-        workspace_path = self._find_workspace_dir()
+        # Use the project-specific agent/plans directory
+        workspace_path = self._get_workspace_path()
 
         if workspace_path:
-            project_plans_dir = workspace_path / "projects" / project_name / "plans"
+            project_plans_dir = workspace_path / "projects" / project_name / "agent" / "plans"
         else:
             # Fallback to the original approach if we can't find workspace
-            project_plans_dir = self.flow_storage_dir.parent / "projects" / project_name / "plans"
+            project_plans_dir = self.flow_storage_dir.parent / "projects" / project_name / "agent" / "plans"
 
         if not project_plans_dir.exists():
             return []
 
-        # Get all plan directories in the project's plans folder
+        # Get all plan directories in the project's agent/plans folder
         plan_dirs = [d for d in project_plans_dir.iterdir() if d.is_dir()]
 
         plans = []
