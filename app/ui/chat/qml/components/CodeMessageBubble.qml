@@ -81,8 +81,8 @@ Item {
         id: codeBlockComponent
 
         CodeBlockWidget {
-            code: itemData.code || itemData.data?.code || ""
-            language: itemData.language || itemData.data?.language || "text"
+            code: itemData.code || itemData.data.code || ""
+            language: itemData.language || itemData.data.language || "text"
         }
     }
 
@@ -90,7 +90,7 @@ Item {
         id: textComponent
 
         Text {
-            text: itemData.text || itemData.data?.text || ""
+            text: itemData.text || itemData.data.text || ""
             color: "#e0e0e0"
             font.pixelSize: 14
             wrapMode: Text.WordWrap

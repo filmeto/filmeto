@@ -90,8 +90,8 @@ Item {
 
         ProgressWidget {
             widgetColor: root.agentColor
-            text: itemData.progress || itemData.data?.progress || ""
-            percentage: itemData.percentage || itemData.data?.percentage || null
+            text: itemData.progress || itemData.data.progress || ""
+            percentage: itemData.percentage || itemData.data.percentage || null
         }
     }
 }

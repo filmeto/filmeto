@@ -134,7 +134,7 @@ Item {
                     margins: 12
                 }
 
-                text: contentData.data?.text || ""
+                text: contentData.data.text || ""
                 color: textColor
                 font.pixelSize: 14
                 wrapMode: Text.WordWrap
@@ -172,17 +172,17 @@ Item {
 
                 // Language label
                 Text {
-                    text: contentData.language || contentData.data?.language || "Code"
+                    text: contentData.language || contentData.data.language || "Code"
                     color: "#ffffff"
                     font.pixelSize: 11
                     font.weight: Font.Bold
-                    visible: contentData.language || contentData.data?.language
+                    visible: contentData.language || contentData.data.language
                 }
 
                 // Code content
                 Text {
                     width: parent.width
-                    text: contentData.code || contentData.data?.code || ""
+                    text: contentData.code || contentData.data.code || ""
                     color: "#ffffff"
                     font.pixelSize: 12
                     font.family: "Consolas, Monaco, monospace"

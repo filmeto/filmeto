@@ -92,8 +92,8 @@ Item {
 
         ToolCallWidget {
             widgetColor: root.agentColor
-            toolName: itemData.tool_name || itemData.data?.tool_name || ""
-            toolArgs: itemData.tool_args || itemData.data?.tool_args || {}
+            toolName: itemData.tool_name || itemData.data.tool_name || ""
+            toolArgs: itemData.tool_args || itemData.data.tool_args || {}
         }
     }
 
@@ -101,9 +101,9 @@ Item {
         id: toolResponseComponent
 
         ToolResponseWidget {
-            toolName: itemData.tool_name || itemData.data?.tool_name || ""
-            response: itemData.response || itemData.data?.response || ""
-            isError: itemData.is_error || itemData.data?.is_error || false
+            toolName: itemData.tool_name || itemData.data.tool_name || ""
+            response: itemData.response || itemData.data.response || ""
+            isError: itemData.is_error || itemData.data.is_error || false
         }
     }
 }
