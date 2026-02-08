@@ -3,49 +3,49 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 
-import "."  // Import current directory for components
-
-// Utility function for formatting timestamps
-function formatTimestamp(timestamp) {
-    if (!timestamp) return ""
-
-    var date = new Date(timestamp)
-    var now = new Date()
-
-    // Check if date is valid
-    if (isNaN(date.getTime())) return ""
-
-    // Get date components
-    var hours = date.getHours().toString().padStart(2, '0')
-    var minutes = date.getMinutes().toString().padStart(2, '0')
-    var seconds = date.getSeconds().toString().padStart(2, '0')
-    var day = date.getDate().toString().padStart(2, '0')
-    var month = (date.getMonth() + 1).toString().padStart(2, '0')
-    var year = date.getFullYear()
-
-    var timeStr = hours + ":" + minutes + ":" + seconds
-
-    // Same day: show "HH:mm:ss"
-    if (date.toDateString() === now.toDateString()) {
-        return timeStr
-    }
-
-    // Same month: show "DD HH:mm:ss"
-    if (date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear()) {
-        return day + " " + timeStr
-    }
-
-    // Same year: show "MM-DD HH:mm:ss"
-    if (date.getFullYear() === now.getFullYear()) {
-        return month + "-" + day + " " + timeStr
-    }
-
-    // Older: show "YYYY-MM-DD HH:mm:ss"
-    return year + "-" + month + "-" + day + " " + timeStr
-}
+import "./components"  // Import components subdirectory for bubble components
 
 ListView {
     id: root
+
+    // Utility function for formatting timestamps
+    function formatTimestamp(timestamp) {
+        if (!timestamp) return ""
+
+        var date = new Date(timestamp)
+        var now = new Date()
+
+        // Check if date is valid
+        if (isNaN(date.getTime())) return ""
+
+        // Get date components
+        var hours = date.getHours().toString().padStart(2, '0')
+        var minutes = date.getMinutes().toString().padStart(2, '0')
+        var seconds = date.getSeconds().toString().padStart(2, '0')
+        var day = date.getDate().toString().padStart(2, '0')
+        var month = (date.getMonth() + 1).toString().padStart(2, '0')
+        var year = date.getFullYear()
+
+        var timeStr = hours + ":" + minutes + ":" + seconds
+
+        // Same day: show "HH:mm:ss"
+        if (date.toDateString() === now.toDateString()) {
+            return timeStr
+        }
+
+        // Same month: show "DD HH:mm:ss"
+        if (date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear()) {
+            return day + " " + timeStr
+        }
+
+        // Same year: show "MM-DD HH:mm:ss"
+        if (date.getFullYear() === now.getFullYear()) {
+            return month + "-" + day + " " + timeStr
+        }
+
+        // Older: show "YYYY-MM-DD HH:mm:ss"
+        return year + "-" + month + "-" + day + " " + timeStr
+    }
 
     // Signals
     signal loadMoreRequested()
@@ -102,7 +102,7 @@ ListView {
                 isRead: modelData.isRead !== undefined ? modelData.isRead : true
                 userName: modelData.userName || "You"
                 userIcon: modelData.userIcon || "👤"
-                timestamp: formatTimestamp(modelData.timestamp || "")
+                timestamp: root.formatTimestamp(modelData.timestamp || "")
                 structuredContent: modelData.structuredContent || []
             }
         }
@@ -121,7 +121,7 @@ ListView {
                 agentIcon: modelData.agentIcon || "🤖"
                 crewMetadata: modelData.crewMetadata || {}
                 structuredContent: modelData.structuredContent || []
-                timestamp: formatTimestamp(modelData.timestamp || "")
+                timestamp: root.formatTimestamp(modelData.timestamp || "")
 
                 onReferenceClicked: function(refType, refId) {
                     root.referenceClicked(refType, refId)
