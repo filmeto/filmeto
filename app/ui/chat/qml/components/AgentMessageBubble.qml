@@ -43,11 +43,14 @@ Item {
         return defaultObj
     }
 
-    // Available width for content (minus left avatar space only)
-    readonly property int availableWidth: parent.width - (avatarSize + avatarSpacing)
+    // Explicit width from parent (Loader) so layout is valid before anchors resolve
+    width: parent ? parent.width : 0
+
+    // Available width for content (minus left avatar space only); never negative
+    readonly property int availableWidth: Math.max(0, (parent ? parent.width : 0) - (avatarSize + avatarSpacing))
 
     // Width is determined by anchors, height is calculated dynamically
-    implicitHeight: headerRow.height + contentRect.implicitHeight + 8
+    implicitHeight: headerRow.height + bubbleContainer.height + 20
 
     // Header row with avatar and name
     Row {
@@ -128,21 +131,26 @@ Item {
         }
     }
 
-    // Message content area - aligned with avatar
+    // Message content bubble - controls width and contains content
     Rectangle {
-        id: contentRect
+        id: bubbleContainer
         anchors {
             left: parent.left
             leftMargin: 40  // avatar (32) + spacing (8)
             top: headerRow.bottom
             topMargin: 12
         }
-        width: availableWidth
-        implicitHeight: contentColumn.implicitHeight + 24
-        color: backgroundColor
-        radius: 6
+        // Maximum width for the bubble to prevent overflow; ensure non-negative
+        width: Math.max(0, Math.min(availableWidth, 800))
+        // Height is determined by content column
+        height: contentColumn.height + 24
 
-        // Content column
+        // Bubble appearance
+        color: backgroundColor
+        radius: 12
+        clip: true
+
+        // Content column - properly constrained inside bubble
         Column {
             id: contentColumn
             anchors {
@@ -152,7 +160,7 @@ Item {
                 margins: 12
             }
             spacing: 8
-            Layout.fillWidth: true
+            width: Math.max(0, parent.width - 24)
 
             // Render structured content
             Repeater {
@@ -160,11 +168,12 @@ Item {
 
                 delegate: Loader {
                     id: widgetLoader
-                    width: parent.width
-                    Layout.fillWidth: true
+                    // Constrain width to parent column width so content does not overflow
+                    width: Math.max(0, contentColumn.width)
 
                     sourceComponent: {
-                        var type = modelData.content_type || modelData.type || "text"
+                        var raw = modelData.content_type !== undefined ? modelData.content_type : (modelData.type !== undefined ? modelData.type : "text")
+                        var type = String(raw).toLowerCase()
                         switch (type) {
                             // Basic content
                             case "text": return textWidgetComponent
@@ -207,8 +216,8 @@ Item {
 
                     property var widgetData: modelData
                     visible: {
-                        var type = modelData.content_type || modelData.type || "text"
-                        return type !== "typing"
+                        var raw = modelData.content_type !== undefined ? modelData.content_type : (modelData.type !== undefined ? modelData.type : "text")
+                        return String(raw).toLowerCase() !== "typing"
                     }
 
                     onLoaded: {
@@ -229,7 +238,7 @@ Item {
     // Widget Components
     // ─────────────────────────────────────────────────────────────
 
-    // Text widget
+    // Text widget - width bound to parent (Loader) so text wraps inside bubble
     Component {
         id: textWidgetComponent
 
@@ -241,8 +250,7 @@ Item {
             wrapMode: Text.WordWrap
             textFormat: Text.PlainText
             lineHeight: 1.5
-            width: parent.width
-            Layout.fillWidth: true
+            width: parent ? parent.width : 0
         }
     }
 
@@ -506,14 +514,14 @@ Item {
         }
     }
 
-    // Error widget
+    // Error widget (Python sends message in data.error)
     Component {
         id: errorWidgetComponent
 
         ErrorWidget {
             property var data: ({})
-            width: parent.width
-            errorMessage: root.safeGet(data, "message", "")
+            width: parent ? parent.width : 0
+            errorMessage: root.safeGet(data, "error", root.safeGet(data, "message", ""))
             errorType: root.safeGet(data, "type", "Error")
             errorDetails: root.safeGet(data, "details", {})
         }
