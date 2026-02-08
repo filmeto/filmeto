@@ -10,10 +10,12 @@ Item {
     property bool isRead: true
     property string userName: "You"
     property string userIcon: "👤"
+    property string timestamp: ""
 
     // Theme colors
     readonly property color bubbleColor: "#4a90e2"
     readonly property color textColor: "#ffffff"
+    readonly property color timestampColor: "#888888"
     readonly property color avatarColor: "#6fa8e8"
     readonly property int avatarSize: 32
     readonly property int avatarSpacing: 8
@@ -35,6 +37,16 @@ Item {
         }
         spacing: 8
         height: Math.max(avatarRect.height, nameText.implicitHeight)
+
+        // Timestamp (on the left of user name)
+        Text {
+            id: timestampText
+            text: root.timestamp
+            color: timestampColor
+            font.pixelSize: 11
+            anchors.verticalCenter: parent.verticalCenter
+            visible: root.timestamp !== ""
+        }
 
         // User name (first element, placed on left in normal layout)
         Text {
