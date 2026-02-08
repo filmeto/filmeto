@@ -32,15 +32,24 @@ ProgressMessageBubble 1.0 components/ProgressMessageBubble.qml
 DateSeparator 1.0 components/DateSeparator.qml
 
 # Widgets
+AudioWidget 1.0 widgets/AudioWidget.qml
+ChartWidget 1.0 widgets/ChartWidget.qml
 CodeBlockWidget 1.0 widgets/CodeBlockWidget.qml
+ErrorWidget 1.0 widgets/ErrorWidget.qml
+FileWidget 1.0 widgets/FileWidget.qml
+FormWidget 1.0 widgets/FormWidget.qml
+ImageWidget 1.0 widgets/ImageWidget.qml
+LinkWidget 1.0 widgets/LinkWidget.qml
+MetadataWidget 1.0 widgets/MetadataWidget.qml
+PlanWidget 1.0 widgets/PlanWidget.qml
+ProgressWidget 1.0 widgets/ProgressWidget.qml
+SkillWidget 1.0 widgets/SkillWidget.qml
+StepWidget 1.0 widgets/StepWidget.qml
+TableWidget 1.0 widgets/TableWidget.qml
+TaskListWidget 1.0 widgets/TaskListWidget.qml
+TaskWidget 1.0 widgets/TaskWidget.qml
 ThinkingWidget 1.0 widgets/ThinkingWidget.qml
-TypingIndicator 1.0 widgets/TypingIndicator.qml
 ToolCallWidget 1.0 widgets/ToolCallWidget.qml
 ToolResponseWidget 1.0 widgets/ToolResponseWidget.qml
-ProgressWidget 1.0 widgets/ProgressWidget.qml
-ImageWidget 1.0 widgets/ImageWidget.qml
-TableWidget 1.0 widgets/TableWidget.qml
-LinkWidget 1.0 widgets/LinkWidget.qml
-FileWidget 1.0 widgets/FileWidget.qml
-PlanWidget 1.0 widgets/PlanWidget.qml
-TaskWidget 1.0 widgets/TaskWidget.qml
+TypingIndicator 1.0 widgets/TypingIndicator.qml
+VideoWidget 1.0 widgets/VideoWidget.qml
