@@ -160,7 +160,7 @@ Item {
 
         Text {
             property var data: ({})
-            text: data.text || data.data?.text || ""
+            text: data.text || data.data.text || ""
             color: textColor
             font.pixelSize: 14
             wrapMode: Text.WordWrap
@@ -271,7 +271,7 @@ Item {
 
         Text {
             property var data: ({})
-            text: data.text || data.data?.text || ""
+            text: data.text || data.data.text || ""
             color: textColor
             font.pixelSize: 14
             wrapMode: Text.WordWrap
@@ -288,8 +288,8 @@ Item {
         CodeBlockWidget {
             property var data: ({})
             width: parent.width
-            code: data.code || data.data?.code || ""
-            language: data.language || data.data?.language || "text"
+            code: data.code || data.data.code || ""
+            language: data.language || data.data.language || "text"
         }
     }
 
@@ -301,8 +301,8 @@ Item {
             property var data: ({})
             width: parent.width
             widgetColor: root.agentColor
-            thought: data.thought || data.data?.thought || ""
-            title: data.title || data.data?.title || "Thinking Process"
+            thought: data.thought || data.data.thought || ""
+            title: data.title || data.data.title || "Thinking Process"
             isCollapsible: true
         }
     }
@@ -315,8 +315,8 @@ Item {
             property var data: ({})
             width: parent.width
             widgetColor: root.agentColor
-            toolName: data.tool_name || data.data?.tool_name || ""
-            toolArgs: data.tool_args || data.data?.tool_args || {}
+            toolName: data.tool_name || data.data.tool_name || ""
+            toolArgs: data.tool_args || data.data.tool_args || {}
         }
     }
 
@@ -327,9 +327,9 @@ Item {
         ToolResponseWidget {
             property var data: ({})
             width: parent.width
-            toolName: data.tool_name || data.data?.tool_name || ""
-            response: data.response || data.data?.response || ""
-            isError: data.is_error || data.data?.is_error || false
+            toolName: data.tool_name || data.data.tool_name || ""
+            response: data.response || data.data.response || ""
+            isError: data.is_error || data.data.is_error || false
         }
     }
 
@@ -350,8 +350,8 @@ Item {
             property var data: ({})
             width: parent.width
             widgetColor: root.agentColor
-            text: data.progress || data.data?.progress || ""
-            percentage: data.percentage || data.data?.percentage || null
+            text: data.progress || data.data.progress || ""
+            percentage: data.percentage || data.data.percentage || null
         }
     }
 
@@ -362,8 +362,8 @@ Item {
         ImageWidget {
             property var data: ({})
             width: parent.width
-            source: data.url || data.data?.url || ""
-            caption: data.caption || data.data?.caption || ""
+            source: data.url || data.data.url || ""
+            caption: data.caption || data.data.caption || ""
         }
     }
 
@@ -385,8 +385,8 @@ Item {
         LinkWidget {
             property var data: ({})
             width: parent.width
-            url: data.url || data.data?.url || ""
-            title: data.title || data.data?.title || ""
+            url: data.url || data.data.url || ""
+            title: data.title || data.data.title || ""
         }
     }
 
@@ -396,7 +396,7 @@ Item {
 
         Button {
             property var data: ({})
-            text: data.text || data.data?.text || "Button"
+            text: data.text || data.data.text || "Button"
             onClicked: {
                 if (data.action) {
                     console.log("Button clicked:", data.action)
@@ -435,9 +435,9 @@ Item {
         FileWidget {
             property var data: ({})
             width: parent.width
-            filePath: data.path || data.data?.path || ""
-            fileName: data.name || data.data?.name || ""
-            fileSize: data.size || data.data?.size || 0
+            filePath: data.path || data.data.path || ""
+            fileName: data.name || data.data.name || ""
+            fileSize: data.size || data.data.size || 0
         }
     }
 
@@ -448,8 +448,8 @@ Item {
         VideoWidget {
             property var data: ({})
             width: parent.width
-            source: data.url || data.data?.url || ""
-            caption: data.caption || data.data?.caption || ""
+            source: data.url || data.data.url || ""
+            caption: data.caption || data.data.caption || ""
         }
     }
 
@@ -460,8 +460,8 @@ Item {
         AudioWidget {
             property var data: ({})
             width: parent.width
-            source: data.url || data.data?.url || ""
-            caption: data.caption || data.data?.caption || ""
+            source: data.url || data.data.url || ""
+            caption: data.caption || data.data.caption || ""
         }
     }
 
@@ -473,7 +473,7 @@ Item {
             property var data: ({})
             width: parent.width
             chartData: data.data || data
-            title: data.title || data.data?.title || ""
+            title: data.title || data.data.title || ""
             agentColor: root.agentColor
         }
     }
@@ -486,7 +486,7 @@ Item {
             property var data: ({})
             width: parent.width
             formData: data.data || data
-            title: data.title || data.data?.title || ""
+            title: data.title || data.data.title || ""
             widgetColor: root.agentColor
         }
     }
@@ -498,10 +498,10 @@ Item {
         StepWidget {
             property var data: ({})
             width: parent.width
-            stepNumber: data.step_number || data.data?.step_number || ""
-            stepTitle: data.title || data.data?.title || ""
-            stepDescription: data.description || data.data?.description || ""
-            status: data.status || data.data?.status || "pending"
+            stepNumber: data.step_number || data.data.step_number || ""
+            stepTitle: data.title || data.data.title || ""
+            stepDescription: data.description || data.data.description || ""
+            status: data.status || data.data.status || "pending"
             widgetColor: root.agentColor
         }
     }
@@ -513,8 +513,8 @@ Item {
         TaskListWidget {
             property var data: ({})
             width: parent.width
-            tasks: data.tasks || data.data?.tasks || []
-            title: data.title || data.data?.title || "Tasks"
+            tasks: data.tasks || data.data.tasks || []
+            title: data.title || data.data.title || "Tasks"
             widgetColor: root.agentColor
         }
     }
@@ -526,9 +526,9 @@ Item {
         SkillWidget {
             property var data: ({})
             width: parent.width
-            skillName: data.name || data.data?.name || ""
-            skillDescription: data.description || data.data?.description || ""
-            skillParams: data.params || data.data?.params || {}
+            skillName: data.name || data.data.name || ""
+            skillDescription: data.description || data.data.description || ""
+            skillParams: data.params || data.data.params || {}
             widgetColor: root.agentColor
         }
     }
@@ -540,9 +540,9 @@ Item {
         ErrorWidget {
             property var data: ({})
             width: parent.width
-            errorMessage: data.message || data.data?.message || ""
-            errorType: data.type || data.data?.type || "Error"
-            errorDetails: data.details || data.data?.details || {}
+            errorMessage: data.message || data.data.message || ""
+            errorType: data.type || data.data.type || "Error"
+            errorDetails: data.details || data.data.details || {}
         }
     }
 
@@ -554,7 +554,7 @@ Item {
             property var data: ({})
             width: parent.width
             metadata: data.data || data || {}
-            title: data.title || data.data?.title || "Metadata"
+            title: data.title || data.data.title || "Metadata"
         }
     }
 }

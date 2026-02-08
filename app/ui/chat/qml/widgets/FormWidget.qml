@@ -8,7 +8,7 @@ Rectangle {
 
     property var formData: ({})  // Expected: {fields: [{name, type, label, value, options}]}
     property string title: ""
-    property var widgetColor: "#4a90e2"
+    property color widgetColor: "#4a90e2"
 
     color: "#2a2a2a"
     radius: 6

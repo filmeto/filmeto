@@ -8,7 +8,7 @@ Rectangle {
 
     property var tasks: []  // Array of {id, title, completed, status}
     property string title: "Tasks"
-    property var widgetColor: "#4a90e2"
+    property color widgetColor: "#4a90e2"
 
     color: "#2a2a2a"
     radius: 6

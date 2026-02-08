@@ -79,8 +79,8 @@ Item {
         id: imageComponent
 
         ImageWidget {
-            source: itemData.url || itemData.data?.url || ""
-            caption: itemData.caption || itemData.data?.caption || ""
+            source: itemData.url || itemData.data.url || ""
+            caption: itemData.caption || itemData.data.caption || ""
         }
     }
 }

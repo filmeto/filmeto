@@ -69,7 +69,7 @@ Item {
                 thought: {
                     for (var i = 0; i < root.structuredContent.length; i++) {
                         if (root.structuredContent[i].content_type === "thinking") {
-                            return root.structuredContent[i].thought || root.structuredContent[i].data?.thought || ""
+                            return root.structuredContent[i].thought || root.structuredContent[i].data.thought || ""
                         }
                     }
                     return ""
@@ -77,7 +77,7 @@ Item {
                 title: {
                     for (var i = 0; i < root.structuredContent.length; i++) {
                         if (root.structuredContent[i].content_type === "thinking") {
-                            return root.structuredContent[i].title || root.structuredContent[i].data?.title || "Thinking Process"
+                            return root.structuredContent[i].title || root.structuredContent[i].data.title || "Thinking Process"
                         }
                     }
                     return "Thinking Process"

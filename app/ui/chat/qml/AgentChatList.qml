@@ -5,8 +5,14 @@ import QtQuick.Layouts 1.15
 
 import "./components"  // Import components subdirectory for bubble components
 
-ListView {
+Rectangle {
     id: root
+    color: "#252525"
+
+    // Signals
+    signal loadMoreRequested()
+    signal referenceClicked(string refType, string refId)
+    signal messageCompleted(string messageId, string agentName)
 
     // Utility function for formatting timestamps
     function formatTimestamp(timestamp) {
@@ -47,42 +53,31 @@ ListView {
         return year + "-" + month + "-" + day + " " + timeStr
     }
 
-    // Signals
-    signal loadMoreRequested()
-    signal referenceClicked(string refType, string refId)
-    signal messageCompleted(string messageId, string agentName)
-
-    // Configuration
-    width: 400
-    height: 600
-    spacing: 12
-
-    // Model from Python (via contextProperty)
-    model: _chatModel
-
-    // Smooth scrolling
-    flickableDirection: Flickable.VerticalFlick
-    boundsBehavior: Flickable.StopAtBounds
-    cacheBuffer: height * 2
-    clip: true
-
-    // Bottom margin to ensure last message is fully visible
-    bottomMargin: 32
-
-    // Background
-    Rectangle {
-        anchors.fill: parent
-        color: "#252525"
-        z: -1
-    }
-
     // Scrollbar width
     readonly property int scrollbarWidth: 10
+
+    // Main ListView
+    ListView {
+        id: listView
+        anchors.fill: parent
+        spacing: 12
+
+        // Model from Python (via contextProperty)
+        model: _chatModel
+
+        // Smooth scrolling
+        flickableDirection: Flickable.VerticalFlick
+        boundsBehavior: Flickable.StopAtBounds
+        cacheBuffer: height * 2
+        clip: true
+
+        // Bottom margin to ensure last message is fully visible
+        bottomMargin: 32
 
     // Main delegate - use Loader to select component
     delegate: Loader {
         id: loader
-        width: root.width - root.scrollbarWidth
+        width: listView.width - listView.scrollbarWidth
 
         // Expose model data to loaded component
         property var modelData: model
@@ -159,6 +154,7 @@ ListView {
 
     // Public method to scroll to bottom
     function scrollToBottom() {
-        positionViewAtEnd()
+        listView.positionViewAtEnd()
     }
+}
 }

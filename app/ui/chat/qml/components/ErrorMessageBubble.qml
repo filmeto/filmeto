@@ -121,7 +121,7 @@ Item {
 
             Text {
                 Layout.fillWidth: true
-                text: itemData.error_message || itemData.data?.error_message || ""
+                text: itemData.error_message || itemData.data.error_message || ""
                 color: "#d0d0d0"
                 font.pixelSize: 12
                 font.family: "monospace"
@@ -130,9 +130,9 @@ Item {
 
             // Stack trace if available
             Text {
-                visible: itemData.stack_trace || itemData.data?.stack_trace
+                visible: itemData.stack_trace || itemData.data.stack_trace
                 Layout.fillWidth: true
-                text: itemData.stack_trace || itemData.data?.stack_trace || ""
+                text: itemData.stack_trace || itemData.data.stack_trace || ""
                 color: "#a0a0a0"
                 font.pixelSize: 11
                 font.family: "monospace"

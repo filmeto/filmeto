@@ -7,6 +7,7 @@ Rectangle {
 
     property var chartData: ({})  // Expected: {type: "bar|line|pie", data: {...}, labels: [...]}
     property string title: ""
+    property color agentColor: "#4a90e2"
 
     color: "#2a2a2a"
     radius: 6
@@ -62,7 +63,11 @@ Rectangle {
                         width: (barsRow.width - (barsRow.spacing * (modelData - 1))) / modelData
                         height: {
                             var keys = Object.keys(chartData.data)
-                            var maxValue = Math.max(...Object.values(chartData.data))
+                            var values = Object.values(chartData.data)
+                            var maxValue = values[0]
+                            for (var i = 1; i < values.length; i++) {
+                                if (values[i] > maxValue) maxValue = values[i]
+                            }
                             var value = chartData.data[keys[index]]
                             return (value / maxValue) * (barsRow.height - 20)
                         }
