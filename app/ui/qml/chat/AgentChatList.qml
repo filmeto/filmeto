@@ -99,11 +99,11 @@ ListView {
                     right: parent.right
                     left: parent.left
                 }
-                content: modelData.content || ""
                 isRead: modelData.isRead !== undefined ? modelData.isRead : true
                 userName: modelData.userName || "You"
                 userIcon: modelData.userIcon || "👤"
                 timestamp: formatTimestamp(modelData.timestamp || "")
+                structuredContent: modelData.structuredContent || []
             }
         }
 
@@ -117,7 +117,6 @@ ListView {
                     right: parent.right
                 }
                 senderName: modelData.senderName || ""
-                content: modelData.content || ""
                 agentColor: modelData.agentColor || "#4a90e2"
                 agentIcon: modelData.agentIcon || "🤖"
                 crewMetadata: modelData.crewMetadata || {}

@@ -22,16 +22,18 @@ class QmlAgentChatListModel(QAbstractListModel):
     This model exposes chat message data to QML with proper role names
     and automatic date grouping for message separators.
 
+    Messages are rendered using structured_content, where each content item
+    is rendered by a corresponding QML widget based on its content_type.
+
     Roles exposed to QML:
     - messageId: Unique message identifier
     - senderId: Sender's identifier
     - senderName: Display name of sender
     - isUser: Whether message is from user
-    - content: Plain text content
     - agentColor: Color for agent avatar
     - agentIcon: Icon for agent avatar
     - crewMetadata: Additional crew member metadata
-    - structuredContent: List of structured content items
+    - structuredContent: List of structured content items (each rendered by QML widget)
     - contentType: Primary content type for delegate selection
     - isRead: Read status for user messages
     - timestamp: Message timestamp for date grouping
@@ -43,7 +45,6 @@ class QmlAgentChatListModel(QAbstractListModel):
     SENDER_ID = "senderId"
     SENDER_NAME = "senderName"
     IS_USER = "isUser"
-    CONTENT = "content"
     AGENT_COLOR = "agentColor"
     AGENT_ICON = "agentIcon"
     CREW_METADATA = "crewMetadata"
@@ -66,15 +67,14 @@ class QmlAgentChatListModel(QAbstractListModel):
             Qt.UserRole + 2: QByteArray(self.SENDER_ID.encode()),
             Qt.UserRole + 3: QByteArray(self.SENDER_NAME.encode()),
             Qt.UserRole + 4: QByteArray(self.IS_USER.encode()),
-            Qt.UserRole + 5: QByteArray(self.CONTENT.encode()),
-            Qt.UserRole + 6: QByteArray(self.AGENT_COLOR.encode()),
-            Qt.UserRole + 7: QByteArray(self.AGENT_ICON.encode()),
-            Qt.UserRole + 8: QByteArray(self.CREW_METADATA.encode()),
-            Qt.UserRole + 9: QByteArray(self.STRUCTURED_CONTENT.encode()),
-            Qt.UserRole + 10: QByteArray(self.CONTENT_TYPE.encode()),
-            Qt.UserRole + 11: QByteArray(self.IS_READ.encode()),
-            Qt.UserRole + 12: QByteArray(self.TIMESTAMP.encode()),
-            Qt.UserRole + 13: QByteArray(self.DATE_GROUP.encode()),
+            Qt.UserRole + 5: QByteArray(self.AGENT_COLOR.encode()),
+            Qt.UserRole + 6: QByteArray(self.AGENT_ICON.encode()),
+            Qt.UserRole + 7: QByteArray(self.CREW_METADATA.encode()),
+            Qt.UserRole + 8: QByteArray(self.STRUCTURED_CONTENT.encode()),
+            Qt.UserRole + 9: QByteArray(self.CONTENT_TYPE.encode()),
+            Qt.UserRole + 10: QByteArray(self.IS_READ.encode()),
+            Qt.UserRole + 11: QByteArray(self.TIMESTAMP.encode()),
+            Qt.UserRole + 12: QByteArray(self.DATE_GROUP.encode()),
         }
 
     def rowCount(self, parent: QModelIndex = None) -> int:
@@ -293,6 +293,9 @@ class QmlAgentChatListModel(QAbstractListModel):
     def from_chat_list_item(cls, chat_list_item: 'ChatListItem') -> Dict[str, Any]:
         """Convert a ChatListItem to QML model item.
 
+        Simplified version - passes structured_content directly to QML,
+        letting QML render widgets based on content_type.
+
         Args:
             chat_list_item: ChatListItem instance
 
@@ -300,9 +303,7 @@ class QmlAgentChatListModel(QAbstractListModel):
             Dictionary suitable for QML model
         """
         from app.ui.chat.list.agent_chat_list_items import ChatListItem
-        from agent.chat.content import TextContent, ThinkingContent, TypingContent, ToolCallContent
         from agent.chat.content import ContentType
-        from utils.i18n_utils import tr
 
         if not isinstance(chat_list_item, ChatListItem):
             return {}
@@ -312,134 +313,40 @@ class QmlAgentChatListModel(QAbstractListModel):
         if chat_list_item.agent_message and chat_list_item.agent_message.metadata:
             timestamp = chat_list_item.agent_message.metadata.get('timestamp')
 
-        # Extract text content for quick access
-        content = ""
+        # For user messages, use user_content as a simple text content
         if chat_list_item.is_user:
-            content = chat_list_item.user_content
-        elif chat_list_item.agent_message:
-            # Extract content based on content type
-            for sc in chat_list_item.agent_message.structured_content:
-                sc_type = sc.content_type if hasattr(sc, 'content_type') else ContentType.TEXT
-
-                if sc_type == ContentType.TEXT and isinstance(sc, TextContent):
-                    content = sc.text or ""
-                    break
-                elif sc_type == ContentType.THINKING:
-                    if isinstance(sc, ThinkingContent):
-                        content = sc.thought or ""
-                    elif hasattr(sc, 'data') and isinstance(sc.data, dict):
-                        content = sc.data.get('thought', '')
-                    break
-                elif sc_type == ContentType.PROGRESS:
-                    if hasattr(sc, 'data') and isinstance(sc.data, dict):
-                        content = sc.data.get('progress', '')
-                    break
-                elif sc_type == ContentType.TOOL_CALL:
-                    if hasattr(sc, 'data') and isinstance(sc.data, dict):
-                        tool_name = sc.data.get('tool_name', '')
-                        if tool_name:
-                            content = f"调用工具: {tool_name}"
-                    break
-                elif sc_type == ContentType.TYPING:
-                    # Skip typing indicators for content display
-                    continue
-
-            # If still no content, try to get from any content item
-            if not content:
-                for sc in chat_list_item.agent_message.structured_content:
-                    if hasattr(sc, 'text') and sc.text:
-                        content = sc.text
-                        break
-                    elif hasattr(sc, 'data') and isinstance(sc.data, dict):
-                        data = sc.data
-                        if 'text' in data:
-                            text_value = data['text']
-                            # Check if text contains a JSON code block that needs parsing
-                            if text_value and isinstance(text_value, str):
-                                # Try to extract JSON from markdown code blocks
-                                import re
-                                # Match ```json\n{...}\n``` or ```\n{...}\n```
-                                json_match = re.search(r'```(?:json)?\s*\n([\s\S]*?)\n```', text_value)
-                                if json_match:
-                                    try:
-                                        inner_json = json_match.group(1).strip()
-                                        parsed = json.loads(inner_json)
-                                        # Extract 'final' field if it's a response wrapper
-                                        if isinstance(parsed, dict) and 'final' in parsed:
-                                            content = parsed['final']
-                                        elif isinstance(parsed, str):
-                                            content = parsed
-                                        else:
-                                            content = text_value
-                                    except (json.JSONDecodeError, TypeError, ValueError) as e:
-                                        logger.debug(f"Failed to parse JSON code block: {e}, using original text")
-                                        # If parsing fails, use original text
-                                        content = text_value
-                                else:
-                                    content = text_value
-                            else:
-                                content = text_value
-                            break
-                        elif 'progress' in data:
-                            content = data['progress']
-                            break
-                        elif 'thought' in data:
-                            content = data['thought']
-                            break
-                        elif 'tool_name' in data:
-                            content = f"工具: {data['tool_name']}"
-                            break
-
-            # Use "..." for command/typing messages with no extractable content
-            if not content and chat_list_item.agent_message:
-                from agent.chat.agent_chat_types import MessageType
-                if chat_list_item.agent_message.message_type == MessageType.COMMAND:
-                    # Check if there's actual content (not just typing)
-                    has_real_content = any(
-                        hasattr(sc, 'content_type') and sc.content_type != ContentType.TYPING
-                        for sc in chat_list_item.agent_message.structured_content
-                    )
-                    if not has_real_content:
-                        content = "..."  # Placeholder for processing state
-
-        # Determine primary content type for delegate selection
-        # Priority: text > thinking > progress > tool_call > typing
-        content_type = "text"
-        if not chat_list_item.is_user and chat_list_item.agent_message:
-            # Find the most relevant content type (excluding typing)
-            type_priority = [
-                ContentType.TEXT,
-                ContentType.THINKING,
-                ContentType.PROGRESS,
-                ContentType.TOOL_CALL,
-                ContentType.TYPING,
-            ]
-            for sc in chat_list_item.agent_message.structured_content:
-                if hasattr(sc, 'content_type'):
-                    ct = sc.content_type
-                    if ct in type_priority and ct != ContentType.TYPING:
-                        content_type = ct.value
-                        break
-            # Only use typing if there's nothing else
-            if content_type == "text" and not content:
-                for sc in chat_list_item.agent_message.structured_content:
-                    if hasattr(sc, 'content_type') and sc.content_type == ContentType.TYPING:
-                        content_type = "typing"
-                        break
-
-        # Serialize structured content
-        structured_content = []
-        if not chat_list_item.is_user and chat_list_item.agent_message:
+            structured_content = [{
+                "content_type": ContentType.TEXT.value,
+                "data": {"text": chat_list_item.user_content}
+            }]
+        else:
+            # For agent messages, serialize structured_content
             structured_content = cls._serialize_structured_content(
                 chat_list_item.agent_message.structured_content
             )
+
+        # Determine primary content type for delegate selection
+        # Priority: error > thinking > progress > tool_call > text > typing
+        content_type = "text"
+        if not chat_list_item.is_user and chat_list_item.agent_message:
+            type_priority = [
+                ContentType.ERROR,
+                ContentType.THINKING,
+                ContentType.PROGRESS,
+                ContentType.TOOL_CALL,
+                ContentType.TEXT,
+                ContentType.TYPING,
+            ]
+            for sc in chat_list_item.agent_message.structured_content:
+                if hasattr(sc, 'content_type') and sc.content_type in type_priority:
+                    content_type = sc.content_type.value
+                    break
 
         return {
             cls.MESSAGE_ID: chat_list_item.message_id,
             cls.SENDER_ID: chat_list_item.sender_id,
             cls.SENDER_NAME: chat_list_item.sender_name,
             cls.IS_USER: chat_list_item.is_user,
-            cls.CONTENT: content,
             cls.AGENT_COLOR: chat_list_item.agent_color,
             cls.AGENT_ICON: chat_list_item.agent_icon,
             cls.CREW_METADATA: chat_list_item.crew_member_metadata,
@@ -460,6 +367,9 @@ class QmlAgentChatListModel(QAbstractListModel):
     ) -> Dict[str, Any]:
         """Convert an AgentMessage to QML model item.
 
+        Simplified version - passes structured_content directly to QML,
+        letting QML render widgets based on content_type.
+
         Args:
             agent_message: AgentMessage instance
             agent_color: Display color for agent
@@ -473,12 +383,19 @@ class QmlAgentChatListModel(QAbstractListModel):
         if agent_message.metadata:
             timestamp = agent_message.metadata.get('timestamp')
 
-        content = agent_message.get_text_content() or ""
-
-        # Determine primary content type
+        # Determine primary content type for delegate selection
+        # Priority: error > thinking > progress > tool_call > text > typing
         content_type = "text"
+        type_priority = [
+            ContentType.ERROR,
+            ContentType.THINKING,
+            ContentType.PROGRESS,
+            ContentType.TOOL_CALL,
+            ContentType.TEXT,
+            ContentType.TYPING,
+        ]
         for sc in agent_message.structured_content:
-            if sc.content_type != ContentType.TEXT:
+            if hasattr(sc, 'content_type') and sc.content_type in type_priority:
                 content_type = sc.content_type.value
                 break
 
@@ -491,7 +408,6 @@ class QmlAgentChatListModel(QAbstractListModel):
             cls.SENDER_ID: agent_message.sender_id,
             cls.SENDER_NAME: agent_message.sender_name,
             cls.IS_USER: False,
-            cls.CONTENT: content,
             cls.AGENT_COLOR: agent_color,
             cls.AGENT_ICON: agent_icon,
             cls.CREW_METADATA: crew_metadata or {},

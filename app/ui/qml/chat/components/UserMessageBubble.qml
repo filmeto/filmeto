@@ -6,7 +6,7 @@ import QtQuick.Layouts 1.15
 Item {
     id: root
 
-    property string content: ""
+    property var structuredContent: []  // Required: structured content array
     property bool isRead: true
     property string userName: "You"
     property string userIcon: "👤"
@@ -48,7 +48,7 @@ Item {
             visible: root.timestamp !== ""
         }
 
-        // User name (first element, placed on left in normal layout)
+        // User name
         Text {
             id: nameText
             text: root.userName
@@ -59,7 +59,7 @@ Item {
             opacity: 0.9
         }
 
-        // Avatar/icon (second element, placed on right)
+        // Avatar/icon
         Rectangle {
             id: avatarRect
             width: avatarSize
@@ -76,7 +76,7 @@ Item {
         }
     }
 
-    // Message bubble container positioned on the right
+    // Message bubble container - renders structured content
     Item {
         id: bubbleContainer
         anchors {
@@ -85,19 +85,48 @@ Item {
             top: headerRow.bottom
             topMargin: 12
         }
-        width: bubble.width
-        height: bubble.height
+        width: contentColumn.width
+        height: contentColumn.height
 
-        // Message bubble
+        // Render structured content items
+        Column {
+            id: contentColumn
+            spacing: 8
+
+            Repeater {
+                model: root.structuredContent || []
+
+                delegate: Loader {
+                    id: contentLoader
+                    width: availableWidth
+
+                    sourceComponent: {
+                        var type = modelData.content_type || modelData.type || "text"
+                        switch (type) {
+                            case "text": return textContentComponent
+                            case "code_block": return codeBlockContentComponent
+                            // Add more content types as needed for user messages
+                            default: return textContentComponent
+                        }
+                    }
+
+                    property var contentData: modelData
+                }
+            }
+        }
+    }
+
+    // Text content component
+    Component {
+        id: textContentComponent
+
         Rectangle {
-            id: bubble
-            width: Math.min(Math.max(80, contentText.implicitWidth + 24), availableWidth)
+            width: Math.min(availableWidth, contentText.implicitWidth + 24)
             height: contentText.implicitHeight + 24
 
             color: bubbleColor
             radius: 9
 
-            // Content
             Text {
                 id: contentText
                 anchors {
@@ -105,7 +134,7 @@ Item {
                     margins: 12
                 }
 
-                text: root.content
+                text: contentData.data?.text || ""
                 color: textColor
                 font.pixelSize: 14
                 wrapMode: Text.WordWrap
@@ -115,6 +144,50 @@ Item {
 
                 onLinkActivated: function(link) {
                     Qt.openUrlExternally(link)
+                }
+            }
+        }
+    }
+
+    // Code block content component
+    Component {
+        id: codeBlockContentComponent
+
+        Rectangle {
+            width: availableWidth
+            height: codeColumn.height + 16
+
+            color: bubbleColor
+            radius: 9
+
+            Column {
+                id: codeColumn
+                anchors {
+                    top: parent.top
+                    left: parent.left
+                    right: parent.right
+                    margins: 12
+                }
+                spacing: 8
+
+                // Language label
+                Text {
+                    text: contentData.language || contentData.data?.language || "Code"
+                    color: "#ffffff"
+                    font.pixelSize: 11
+                    font.weight: Font.Bold
+                    visible: contentData.language || contentData.data?.language
+                }
+
+                // Code content
+                Text {
+                    width: parent.width
+                    text: contentData.code || contentData.data?.code || ""
+                    color: "#ffffff"
+                    font.pixelSize: 12
+                    font.family: "Consolas, Monaco, monospace"
+                    wrapMode: Text.Wrap
+                    textFormat: Text.PlainText
                 }
             }
         }
