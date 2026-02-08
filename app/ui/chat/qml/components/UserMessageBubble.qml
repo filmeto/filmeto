@@ -3,6 +3,8 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 
+import "../widgets"
+
 Item {
     id: root
 
@@ -23,6 +25,21 @@ Item {
 
     // Available width for content (minus avatar space on both sides)
     readonly property int availableWidth: parent.width - totalAvatarWidth
+
+    // Helper function to safely extract data values
+    function safeGet(data, prop, defaultValue) {
+        if (!data) return defaultValue
+        if (data[prop] !== undefined) return data[prop]
+        if (data.data && data.data[prop] !== undefined) return data.data[prop]
+        return defaultValue
+    }
+
+    // Helper function to safely get nested data object
+    function safeGetData(data, defaultObj) {
+        if (!data) return defaultObj
+        if (data.data !== undefined) return data.data
+        return defaultObj
+    }
 
     // Width is determined by anchors, height is calculated dynamically
     implicitHeight: headerRow.height + bubbleContainer.height
@@ -103,22 +120,45 @@ Item {
                     sourceComponent: {
                         var type = modelData.content_type || modelData.type || "text"
                         switch (type) {
-                            case "text": return textContentComponent
-                            case "code_block": return codeBlockContentComponent
-                            // Add more content types as needed for user messages
-                            default: return textContentComponent
+                            // Basic content
+                            case "text": return userTextBubbleComponent
+                            case "code_block": return userCodeBubbleComponent
+                            // Media content (user uploads)
+                            case "image": return imageWidgetComponent
+                            case "video": return videoWidgetComponent
+                            case "audio": return audioWidgetComponent
+                            // File content
+                            case "file_attachment": return fileWidgetComponent
+                            case "file": return fileWidgetComponent
+                            // Interactive content
+                            case "link": return linkWidgetComponent
+                            // Metadata content
+                            case "metadata": return metadataWidgetComponent
+                            // Default fallback
+                            default: return userTextBubbleComponent
                         }
                     }
 
                     property var contentData: modelData
+
+                    onLoaded: {
+                        // Pass data to the widget
+                        if (item.hasOwnProperty('data')) {
+                            item.data = modelData
+                        }
+                    }
                 }
             }
         }
     }
 
-    // Text content component
+    // ─────────────────────────────────────────────────────────────
+    // User Message Bubble Components (with colored background)
+    // ─────────────────────────────────────────────────────────────
+
+    // User text bubble component (with blue background)
     Component {
-        id: textContentComponent
+        id: userTextBubbleComponent
 
         Rectangle {
             width: Math.min(availableWidth, contentText.implicitWidth + 24)
@@ -134,7 +174,7 @@ Item {
                     margins: 12
                 }
 
-                text: contentData.data.text || ""
+                text: root.safeGet(contentData, "text", "")
                 color: textColor
                 font.pixelSize: 14
                 wrapMode: Text.WordWrap
@@ -149,9 +189,9 @@ Item {
         }
     }
 
-    // Code block content component
+    // User code block bubble component (with blue background)
     Component {
-        id: codeBlockContentComponent
+        id: userCodeBubbleComponent
 
         Rectangle {
             width: availableWidth
@@ -172,17 +212,17 @@ Item {
 
                 // Language label
                 Text {
-                    text: contentData.language || contentData.data.language || "Code"
+                    text: root.safeGet(contentData, "language", "Code")
                     color: "#ffffff"
                     font.pixelSize: 11
                     font.weight: Font.Bold
-                    visible: contentData.language || contentData.data.language
+                    visible: root.safeGet(contentData, "language", "") !== ""
                 }
 
                 // Code content
                 Text {
                     width: parent.width
-                    text: contentData.code || contentData.data.code || ""
+                    text: root.safeGet(contentData, "code", "")
                     color: "#ffffff"
                     font.pixelSize: 12
                     font.family: "Consolas, Monaco, monospace"
@@ -190,6 +230,83 @@ Item {
                     textFormat: Text.PlainText
                 }
             }
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Widget Components (shared)
+    // ─────────────────────────────────────────────────────────────
+
+    // Image widget
+    Component {
+        id: imageWidgetComponent
+
+        ImageWidget {
+            property var data: ({})
+            width: availableWidth
+            source: root.safeGet(data, "url", "")
+            caption: root.safeGet(data, "caption", "")
+        }
+    }
+
+    // Video widget
+    Component {
+        id: videoWidgetComponent
+
+        VideoWidget {
+            property var data: ({})
+            width: availableWidth
+            source: root.safeGet(data, "url", "")
+            caption: root.safeGet(data, "caption", "")
+        }
+    }
+
+    // Audio widget
+    Component {
+        id: audioWidgetComponent
+
+        AudioWidget {
+            property var data: ({})
+            width: availableWidth
+            source: root.safeGet(data, "url", "")
+            caption: root.safeGet(data, "caption", "")
+        }
+    }
+
+    // File widget
+    Component {
+        id: fileWidgetComponent
+
+        FileWidget {
+            property var data: ({})
+            width: availableWidth
+            filePath: root.safeGet(data, "path", "")
+            fileName: root.safeGet(data, "name", "")
+            fileSize: root.safeGet(data, "size", 0)
+        }
+    }
+
+    // Link widget (for @resource references)
+    Component {
+        id: linkWidgetComponent
+
+        LinkWidget {
+            property var data: ({})
+            width: availableWidth
+            url: root.safeGet(data, "url", "")
+            title: root.safeGet(data, "title", "")
+        }
+    }
+
+    // Metadata widget
+    Component {
+        id: metadataWidgetComponent
+
+        MetadataWidget {
+            property var data: ({})
+            width: availableWidth
+            metadata: root.safeGetData(data, data) || {}
+            title: root.safeGet(data, "title", "Metadata")
         }
     }
 }
