@@ -76,8 +76,8 @@ class QmlAgentChatListWidget(BaseWidget):
         # Register context property for model access (matches _chatModel in QML)
         self._quick_widget.rootContext().setContextProperty("_chatModel", self._model)
 
-        # Get correct QML path (qml is in app/ui/qml, widget is in app/ui/chat/list)
-        qml_path = Path(__file__).parent.parent.parent / "qml" / "chat" / "AgentChatList.qml"
+        # Get correct QML path (qml is now in app/ui/chat/qml, widget is in app/ui/chat/list)
+        qml_path = Path(__file__).parent.parent / "qml" / "AgentChatList.qml"
 
         if not qml_path.exists():
             logger.error(f"QML file not found at: {qml_path}")
@@ -99,14 +99,21 @@ class QmlAgentChatListWidget(BaseWidget):
         self._qml_root = self._quick_widget.rootObject()
         if not self._qml_root:
             logger.error("Failed to load QML root object")
+            # Initialize to None to indicate QML not loaded
+            self._qml_root = None
             return
 
         logger.info("QML loaded successfully")
 
         # Connect QML signals to Python
-        self._qml_root.referenceClicked.connect(self._on_qml_reference_clicked)
-        self._qml_root.messageCompleted.connect(self._on_qml_message_completed)
-        self._qml_root.loadMoreRequested.connect(self._on_qml_load_more)
+        try:
+            self._qml_root.referenceClicked.connect(self._on_qml_reference_clicked)
+            self._qml_root.messageCompleted.connect(self._on_qml_message_completed)
+            self._qml_root.loadMoreRequested.connect(self._on_qml_load_more)
+        except Exception as e:
+            logger.error(f"Failed to connect QML signals: {e}")
+            self._qml_root = None
+            return
 
         # State tracking
         self._load_state = LoadState()
@@ -199,6 +206,11 @@ class QmlAgentChatListWidget(BaseWidget):
 
     def _load_recent_conversation(self):
         """Load recent conversation from history."""
+        # Check if QML was loaded successfully
+        if not hasattr(self, '_qml_root') or self._qml_root is None:
+            logger.warning("QML not loaded, skipping history load")
+            return
+
         try:
             project = self.workspace.get_project()
             if not project:
@@ -266,6 +278,10 @@ class QmlAgentChatListWidget(BaseWidget):
     def _load_older_messages(self):
         """Load older messages when user scrolls to top."""
         if self._loading_older or not self._load_state.has_more_older:
+            return
+
+        # Check if QML was loaded successfully
+        if not hasattr(self, '_qml_root') or self._qml_root is None:
             return
 
         self._loading_older = True
