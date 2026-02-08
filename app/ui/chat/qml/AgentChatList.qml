@@ -151,10 +151,10 @@ Rectangle {
             root.loadMoreRequested()
         }
     }
+    }
 
     // Public method to scroll to bottom
     function scrollToBottom() {
         listView.positionViewAtEnd()
     }
-}
 }

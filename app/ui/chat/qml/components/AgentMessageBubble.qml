@@ -28,6 +28,21 @@ Item {
     readonly property int avatarSpacing: 8
     readonly property int totalAvatarWidth: (avatarSize + avatarSpacing) * 2  // Both sides
 
+    // Helper function to safely extract data values
+    function safeGet(data, prop, defaultValue) {
+        if (!data) return defaultValue
+        if (data[prop] !== undefined) return data[prop]
+        if (data.data && data.data[prop] !== undefined) return data.data[prop]
+        return defaultValue
+    }
+
+    // Helper function to safely get nested data object
+    function safeGetData(data, defaultObj) {
+        if (!data) return defaultObj
+        if (data.data !== undefined) return data.data
+        return defaultObj
+    }
+
     // Available width for content (minus avatar space on both sides)
     readonly property int availableWidth: parent.width - totalAvatarWidth
 
@@ -160,7 +175,7 @@ Item {
 
         Text {
             property var data: ({})
-            text: data.text || data.data.text || ""
+            text: root.safeGet(data, "text", "")
             color: textColor
             font.pixelSize: 14
             wrapMode: Text.WordWrap
@@ -271,7 +286,7 @@ Item {
 
         Text {
             property var data: ({})
-            text: data.text || data.data.text || ""
+            text: root.safeGet(data, "text", "")
             color: textColor
             font.pixelSize: 14
             wrapMode: Text.WordWrap
@@ -288,8 +303,8 @@ Item {
         CodeBlockWidget {
             property var data: ({})
             width: parent.width
-            code: data.code || data.data.code || ""
-            language: data.language || data.data.language || "text"
+            code: root.safeGet(data, "code", "")
+            language: root.safeGet(data, "language", "text")
         }
     }
 
@@ -301,8 +316,8 @@ Item {
             property var data: ({})
             width: parent.width
             widgetColor: root.agentColor
-            thought: data.thought || data.data.thought || ""
-            title: data.title || data.data.title || "Thinking Process"
+            thought: root.safeGet(data, "thought", "")
+            title: root.safeGet(data, "title", "Thinking Process")
             isCollapsible: true
         }
     }
@@ -315,8 +330,8 @@ Item {
             property var data: ({})
             width: parent.width
             widgetColor: root.agentColor
-            toolName: data.tool_name || data.data.tool_name || ""
-            toolArgs: data.tool_args || data.data.tool_args || {}
+            toolName: root.safeGet(data, "tool_name", "")
+            toolArgs: root.safeGet(data, "tool_args", {})
         }
     }
 
@@ -327,9 +342,9 @@ Item {
         ToolResponseWidget {
             property var data: ({})
             width: parent.width
-            toolName: data.tool_name || data.data.tool_name || ""
-            response: data.response || data.data.response || ""
-            isError: data.is_error || data.data.is_error || false
+            toolName: root.safeGet(data, "tool_name", "")
+            response: root.safeGet(data, "response", "")
+            isError: root.safeGet(data, "is_error", false)
         }
     }
 
@@ -350,8 +365,8 @@ Item {
             property var data: ({})
             width: parent.width
             widgetColor: root.agentColor
-            text: data.progress || data.data.progress || ""
-            percentage: data.percentage || data.data.percentage || null
+            text: root.safeGet(data, "progress", "")
+            percentage: root.safeGet(data, "percentage", null)
         }
     }
 
@@ -362,8 +377,8 @@ Item {
         ImageWidget {
             property var data: ({})
             width: parent.width
-            source: data.url || data.data.url || ""
-            caption: data.caption || data.data.caption || ""
+            source: root.safeGet(data, "url", "")
+            caption: root.safeGet(data, "caption", "")
         }
     }
 
@@ -374,7 +389,7 @@ Item {
         TableWidget {
             property var data: ({})
             width: parent.width
-            tableData: data.data || {}
+            tableData: root.safeGetData(data, {})
         }
     }
 
@@ -385,8 +400,8 @@ Item {
         LinkWidget {
             property var data: ({})
             width: parent.width
-            url: data.url || data.data.url || ""
-            title: data.title || data.data.title || ""
+            url: root.safeGet(data, "url", "")
+            title: root.safeGet(data, "title", "")
         }
     }
 
@@ -396,7 +411,7 @@ Item {
 
         Button {
             property var data: ({})
-            text: data.text || data.data.text || "Button"
+            text: root.safeGet(data, "text", "Button")
             onClicked: {
                 if (data.action) {
                     console.log("Button clicked:", data.action)
@@ -413,7 +428,7 @@ Item {
             property var data: ({})
             width: parent.width
             widgetColor: root.agentColor
-            planData: data
+            planData: data || {}
         }
     }
 
@@ -424,7 +439,7 @@ Item {
         TaskWidget {
             property var data: ({})
             width: parent.width
-            taskData: data
+            taskData: data || {}
         }
     }
 
@@ -435,9 +450,9 @@ Item {
         FileWidget {
             property var data: ({})
             width: parent.width
-            filePath: data.path || data.data.path || ""
-            fileName: data.name || data.data.name || ""
-            fileSize: data.size || data.data.size || 0
+            filePath: root.safeGet(data, "path", "")
+            fileName: root.safeGet(data, "name", "")
+            fileSize: root.safeGet(data, "size", 0)
         }
     }
 
@@ -448,8 +463,8 @@ Item {
         VideoWidget {
             property var data: ({})
             width: parent.width
-            source: data.url || data.data.url || ""
-            caption: data.caption || data.data.caption || ""
+            source: root.safeGet(data, "url", "")
+            caption: root.safeGet(data, "caption", "")
         }
     }
 
@@ -460,8 +475,8 @@ Item {
         AudioWidget {
             property var data: ({})
             width: parent.width
-            source: data.url || data.data.url || ""
-            caption: data.caption || data.data.caption || ""
+            source: root.safeGet(data, "url", "")
+            caption: root.safeGet(data, "caption", "")
         }
     }
 
@@ -472,8 +487,8 @@ Item {
         ChartWidget {
             property var data: ({})
             width: parent.width
-            chartData: data.data || data
-            title: data.title || data.data.title || ""
+            chartData: root.safeGetData(data, data)
+            title: root.safeGet(data, "title", "")
             agentColor: root.agentColor
         }
     }
@@ -485,8 +500,8 @@ Item {
         FormWidget {
             property var data: ({})
             width: parent.width
-            formData: data.data || data
-            title: data.title || data.data.title || ""
+            formData: root.safeGetData(data, data)
+            title: root.safeGet(data, "title", "")
             widgetColor: root.agentColor
         }
     }
@@ -498,10 +513,10 @@ Item {
         StepWidget {
             property var data: ({})
             width: parent.width
-            stepNumber: data.step_number || data.data.step_number || ""
-            stepTitle: data.title || data.data.title || ""
-            stepDescription: data.description || data.data.description || ""
-            status: data.status || data.data.status || "pending"
+            stepNumber: root.safeGet(data, "step_number", "")
+            stepTitle: root.safeGet(data, "title", "")
+            stepDescription: root.safeGet(data, "description", "")
+            status: root.safeGet(data, "status", "pending")
             widgetColor: root.agentColor
         }
     }
@@ -513,8 +528,8 @@ Item {
         TaskListWidget {
             property var data: ({})
             width: parent.width
-            tasks: data.tasks || data.data.tasks || []
-            title: data.title || data.data.title || "Tasks"
+            tasks: root.safeGet(data, "tasks", [])
+            title: root.safeGet(data, "title", "Tasks")
             widgetColor: root.agentColor
         }
     }
@@ -526,9 +541,9 @@ Item {
         SkillWidget {
             property var data: ({})
             width: parent.width
-            skillName: data.name || data.data.name || ""
-            skillDescription: data.description || data.data.description || ""
-            skillParams: data.params || data.data.params || {}
+            skillName: root.safeGet(data, "name", "")
+            skillDescription: root.safeGet(data, "description", "")
+            skillParams: root.safeGet(data, "params", {})
             widgetColor: root.agentColor
         }
     }
@@ -540,9 +555,9 @@ Item {
         ErrorWidget {
             property var data: ({})
             width: parent.width
-            errorMessage: data.message || data.data.message || ""
-            errorType: data.type || data.data.type || "Error"
-            errorDetails: data.details || data.data.details || {}
+            errorMessage: root.safeGet(data, "message", "")
+            errorType: root.safeGet(data, "type", "Error")
+            errorDetails: root.safeGet(data, "details", {})
         }
     }
 
@@ -553,8 +568,8 @@ Item {
         MetadataWidget {
             property var data: ({})
             width: parent.width
-            metadata: data.data || data || {}
-            title: data.title || data.data.title || "Metadata"
+            metadata: root.safeGetData(data, data) || {}
+            title: root.safeGet(data, "title", "Metadata")
         }
     }
 }
