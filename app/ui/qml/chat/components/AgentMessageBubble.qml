@@ -14,6 +14,7 @@ Item {
     property string agentIcon: "🤖"
     property var crewMetadata: ({})
     property var structuredContent: []
+    property string timestamp: ""
 
     signal referenceClicked(string refType, string refId)
 
@@ -21,7 +22,7 @@ Item {
     readonly property color backgroundColor: "#353535"
     readonly property color textColor: "#e0e0e0"
     readonly property color nameColor: agentColor
-    readonly property color timestampColor: "#808080"
+    readonly property color timestampColor: "#888888"
 
     // Avatar dimensions
     readonly property int avatarSize: 32
@@ -44,7 +45,7 @@ Item {
             topMargin: 12
         }
         spacing: 8
-        height: Math.max(avatarRect.height, nameColumn.implicitHeight)
+        height: Math.max(avatarRect.height, Math.max(nameColumn.implicitHeight, timestampText.implicitHeight))
 
         // Avatar/icon
         Rectangle {
@@ -68,11 +69,28 @@ Item {
             spacing: 4
             anchors.verticalCenter: parent.verticalCenter
 
-            Text {
-                text: root.senderName
-                color: nameColor
-                font.pixelSize: 13
-                font.weight: Font.Medium
+            Row {
+                spacing: 8
+                height: nameText.implicitHeight
+
+                Text {
+                    id: nameText
+                    text: root.senderName
+                    color: nameColor
+                    font.pixelSize: 13
+                    font.weight: Font.Medium
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                // Timestamp (on the right of agent name)
+                Text {
+                    id: timestampText
+                    text: root.timestamp
+                    color: timestampColor
+                    font.pixelSize: 11
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: root.timestamp !== ""
+                }
             }
 
             // Crew title color block if available
