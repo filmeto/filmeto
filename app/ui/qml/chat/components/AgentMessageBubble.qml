@@ -9,11 +9,10 @@ Item {
     id: root
 
     property string senderName: ""
-    property string content: ""
     property color agentColor: "#4a90e2"
     property string agentIcon: "🤖"
     property var crewMetadata: ({})
-    property var structuredContent: []
+    property var structuredContent: []  // Required: structured content array
     property string timestamp: ""
 
     signal referenceClicked(string refType, string refId)
@@ -160,7 +159,8 @@ Item {
         id: textContentComponent
 
         Text {
-            text: root.content || ""
+            property var data: ({})
+            text: data.text || data.data?.text || ""
             color: textColor
             font.pixelSize: 14
             wrapMode: Text.WordWrap
@@ -202,20 +202,41 @@ Item {
                     sourceComponent: {
                         var type = modelData.content_type || modelData.type || "text"
                         switch (type) {
+                            // Basic content
                             case "text": return textWidgetComponent
                             case "code_block": return codeBlockComponent
+                            // Thinking content
                             case "thinking": return thinkingWidgetComponent
+                            // Tool content
                             case "tool_call": return toolCallComponent
                             case "tool_response": return toolResponseComponent
+                            // Status content
                             case "typing": return typingIndicatorComponent
                             case "progress": return progressWidgetComponent
+                            case "error": return errorWidgetComponent
+                            // Media content
                             case "image": return imageWidgetComponent
+                            case "video": return videoWidgetComponent
+                            case "audio": return audioWidgetComponent
+                            // Data content
                             case "table": return tableWidgetComponent
+                            case "chart": return chartWidgetComponent
+                            // Interactive content
                             case "link": return linkWidgetComponent
                             case "button": return buttonWidgetComponent
+                            case "form": return formWidgetComponent
+                            // Task and plan content
                             case "plan": return planWidgetComponent
                             case "task": return taskWidgetComponent
+                            case "step": return stepWidgetComponent
+                            case "task_list": return taskListWidgetComponent
+                            case "skill": return skillWidgetComponent
+                            // File content
+                            case "file_attachment": return fileWidgetComponent
                             case "file": return fileWidgetComponent
+                            // Metadata content
+                            case "metadata": return metadataWidgetComponent
+                            // Default fallback
                             default: return textWidgetComponent
                         }
                     }
@@ -417,6 +438,123 @@ Item {
             filePath: data.path || data.data?.path || ""
             fileName: data.name || data.data?.name || ""
             fileSize: data.size || data.data?.size || 0
+        }
+    }
+
+    // Video widget
+    Component {
+        id: videoWidgetComponent
+
+        VideoWidget {
+            property var data: ({})
+            width: parent.width
+            source: data.url || data.data?.url || ""
+            caption: data.caption || data.data?.caption || ""
+        }
+    }
+
+    // Audio widget
+    Component {
+        id: audioWidgetComponent
+
+        AudioWidget {
+            property var data: ({})
+            width: parent.width
+            source: data.url || data.data?.url || ""
+            caption: data.caption || data.data?.caption || ""
+        }
+    }
+
+    // Chart widget
+    Component {
+        id: chartWidgetComponent
+
+        ChartWidget {
+            property var data: ({})
+            width: parent.width
+            chartData: data.data || data
+            title: data.title || data.data?.title || ""
+            agentColor: root.agentColor
+        }
+    }
+
+    // Form widget
+    Component {
+        id: formWidgetComponent
+
+        FormWidget {
+            property var data: ({})
+            width: parent.width
+            formData: data.data || data
+            title: data.title || data.data?.title || ""
+            widgetColor: root.agentColor
+        }
+    }
+
+    // Step widget
+    Component {
+        id: stepWidgetComponent
+
+        StepWidget {
+            property var data: ({})
+            width: parent.width
+            stepNumber: data.step_number || data.data?.step_number || ""
+            stepTitle: data.title || data.data?.title || ""
+            stepDescription: data.description || data.data?.description || ""
+            status: data.status || data.data?.status || "pending"
+            widgetColor: root.agentColor
+        }
+    }
+
+    // Task list widget
+    Component {
+        id: taskListWidgetComponent
+
+        TaskListWidget {
+            property var data: ({})
+            width: parent.width
+            tasks: data.tasks || data.data?.tasks || []
+            title: data.title || data.data?.title || "Tasks"
+            widgetColor: root.agentColor
+        }
+    }
+
+    // Skill widget
+    Component {
+        id: skillWidgetComponent
+
+        SkillWidget {
+            property var data: ({})
+            width: parent.width
+            skillName: data.name || data.data?.name || ""
+            skillDescription: data.description || data.data?.description || ""
+            skillParams: data.params || data.data?.params || {}
+            widgetColor: root.agentColor
+        }
+    }
+
+    // Error widget
+    Component {
+        id: errorWidgetComponent
+
+        ErrorWidget {
+            property var data: ({})
+            width: parent.width
+            errorMessage: data.message || data.data?.message || ""
+            errorType: data.type || data.data?.type || "Error"
+            errorDetails: data.details || data.data?.details || {}
+        }
+    }
+
+    // Metadata widget
+    Component {
+        id: metadataWidgetComponent
+
+        MetadataWidget {
+            property var data: ({})
+            width: parent.width
+            metadata: data.data || data || {}
+            title: data.title || data.data?.title || "Metadata"
         }
     }
 }
