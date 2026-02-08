@@ -69,29 +69,35 @@ class FastMessageHistoryService:
 
     @classmethod
     def _message_to_dict(cls, message: AgentMessage) -> dict:
-        """Convert AgentMessage to dictionary for storage."""
-        # The UI expects data in a specific format with nested metadata
-        # We store flattened and maintain compatibility
+        """
+        Convert AgentMessage to dictionary for storage.
+
+        Creates a simple, non-redundant JSON structure:
+        - Message properties are at top level only
+        - metadata contains only user-defined metadata (not message properties)
+        - structured_content is the single source of truth for message content
+        """
         serialized_content = cls._serialize_content(message.structured_content)
 
-        # Create the dict format that matches what the UI expects from AgentChatHistory
-        return {
+        # Create clean dict without redundancy
+        result = {
             "message_id": message.message_id,
             "message_type": message.message_type.value if hasattr(message.message_type, "value") else str(message.message_type),
             "sender_id": message.sender_id,
             "sender_name": message.sender_name,
             "timestamp": message.timestamp.isoformat(),
-            "metadata": {
-                "message_id": message.message_id,
-                "message_type": message.message_type.value if hasattr(message.message_type, "value") else str(message.message_type),
-                "sender_id": message.sender_id,
-                "sender_name": message.sender_name,
-                **(message.metadata or {})
-            },
             "structured_content": serialized_content,
-            # Also include 'content' for UI compatibility
-            "content": serialized_content,
         }
+
+        # Add user-defined metadata only (exclude message properties to avoid duplication)
+        if message.metadata:
+            # Filter out any keys that duplicate message properties
+            excluded_keys = {"message_id", "message_type", "sender_id", "sender_name", "timestamp"}
+            filtered_metadata = {k: v for k, v in message.metadata.items() if k not in excluded_keys}
+            if filtered_metadata:
+                result["metadata"] = filtered_metadata
+
+        return result
 
     @classmethod
     def _serialize_content(cls, content_list) -> List[dict]:
