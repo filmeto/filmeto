@@ -153,60 +153,7 @@ Item {
             }
             spacing: 8
 
-            // Render structured content or plain text
-            Loader {
-                id: contentLoader
-                width: parent.width
-
-                sourceComponent: {
-                    if (root.structuredContent && root.structuredContent.length > 0) {
-                        return structuredContentComponent
-                    } else {
-                        return textContentComponent
-                    }
-                }
-            }
-        }
-    }
-
-    // Plain text content component
-    Component {
-        id: textContentComponent
-
-        Text {
-            property var data: ({})
-            text: root.safeGet(data, "text", "")
-            color: textColor
-            font.pixelSize: 14
-            wrapMode: Text.WordWrap
-            textFormat: Text.PlainText
-            lineHeight: 1.5
-            linkColor: "#87ceeb"
-            width: parent.width
-
-            onLinkActivated: function(link) {
-                // Handle reference links like ref://tool_call:abc123
-                if (link.startsWith("ref://")) {
-                    var parts = link.substring(6).split(":")
-                    if (parts.length >= 2) {
-                        root.referenceClicked(parts[0], parts[1])
-                    }
-                } else {
-                    Qt.openUrlExternally(link)
-                }
-            }
-        }
-    }
-
-    // Structured content component (renders widgets)
-    Component {
-        id: structuredContentComponent
-
-        Column {
-            spacing: 8
-            width: parent.width
-            height: childrenRect.height
-
+            // Render structured content
             Repeater {
                 model: root.structuredContent || []
 
