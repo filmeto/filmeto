@@ -82,7 +82,6 @@ class FastMessageHistoryService:
         # Create clean dict without redundancy
         result = {
             "message_id": message.message_id,
-            "message_type": message.message_type.value if hasattr(message.message_type, "value") else str(message.message_type),
             "sender_id": message.sender_id,
             "sender_name": message.sender_name,
             "timestamp": message.timestamp.isoformat(),
@@ -92,7 +91,7 @@ class FastMessageHistoryService:
         # Add user-defined metadata only (exclude message properties to avoid duplication)
         if message.metadata:
             # Filter out any keys that duplicate message properties
-            excluded_keys = {"message_id", "message_type", "sender_id", "sender_name", "timestamp"}
+            excluded_keys = {"message_id", "sender_id", "sender_name", "timestamp"}
             filtered_metadata = {k: v for k, v in message.metadata.items() if k not in excluded_keys}
             if filtered_metadata:
                 result["metadata"] = filtered_metadata

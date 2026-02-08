@@ -13,7 +13,7 @@ from agent.chat.content import (
     ToolResponseContent, ProgressContent, MetadataContent, ErrorContent,
     create_content
 )
-from agent.chat.agent_chat_types import ContentType, MessageType
+from agent.chat.agent_chat_types import ContentType
 from agent.chat.agent_chat_signals import AgentChatSignals
 from agent.chat.history.agent_chat_history_listener import AgentChatHistoryListener
 from agent.llm.llm_service import LlmService
@@ -301,8 +301,6 @@ class FilmetoAgent:
         Raises:
             ValueError: If event.content is None
         """
-        from agent.react import AgentEventType
-
         # All events must have content now
         if not event.content:
             raise ValueError(
@@ -310,26 +308,7 @@ class FilmetoAgent:
                 f"Event content cannot be None."
             )
 
-        # Determine message type from content type
-        content_type_to_message_type = {
-            ContentType.TEXT: MessageType.TEXT,
-            ContentType.THINKING: MessageType.THINKING,
-            ContentType.TOOL_CALL: MessageType.TOOL_CALL,
-            ContentType.TOOL_RESPONSE: MessageType.TOOL_RESPONSE,
-            ContentType.PROGRESS: MessageType.COMMAND,
-            ContentType.TYPING: MessageType.COMMAND,  # Typing indicator
-            ContentType.METADATA: MessageType.SYSTEM,
-            ContentType.ERROR: MessageType.ERROR,
-            ContentType.CODE_BLOCK: MessageType.CODE,
-        }
-
-        message_type = content_type_to_message_type.get(
-            event.content.content_type,
-            MessageType.TEXT
-        )
-
         return AgentMessage(
-            message_type=message_type,
             sender_id=sender_id,
             sender_name=sender_name,
             metadata={"message_id": message_id},
@@ -494,7 +473,6 @@ class FilmetoAgent:
 
         meta = {"event_type": event_type, "session_id": session_id, **kwargs}
         msg = AgentMessage(
-            message_type=MessageType.SYSTEM,
             sender_id=sender_id,
             sender_name=sender_name,
             metadata=meta,
@@ -593,7 +571,8 @@ class FilmetoAgent:
             await self.signals.send_agent_message(response)
 
             # Convert AgentMessage to ReactEvent for upstream consumption
-            if response.message_type == MessageType.TEXT:
+            primary_type = response.get_primary_content_type()
+            if primary_type == ContentType.TEXT:
                 yield AgentEvent.final(
                     final_response=response.get_text_content(),
                     project_name=self._resolve_project_name() or "default",
@@ -602,7 +581,7 @@ class FilmetoAgent:
                     sender_id=response.sender_id,
                     sender_name=response.sender_name,
                 )
-            elif response.message_type == MessageType.ERROR:
+            elif primary_type == ContentType.ERROR:
                 yield AgentEvent.error(
                     error_message=response.get_text_content(),
                     project_name=self._resolve_project_name() or "default",
@@ -753,7 +732,7 @@ class FilmetoAgent:
 
             if agent_message:
                 logger.info(
-                    f"📤 Sending message: type={agent_message.message_type.value}, "
+                    f"📤 Sending message: type={agent_message.get_primary_content_type().value}, "
                     f"id={agent_message.message_id}, sender='{agent_message.sender_id}', "
                     f"content_id={enhanced_event.content.content_id if enhanced_event.content else 'N/A'}"
                 )
@@ -774,10 +753,9 @@ class FilmetoAgent:
         from agent.react import AgentEvent, AgentEventType
 
         error_msg = AgentMessage(
-            message_type=MessageType.ERROR,
             sender_id="system",
             sender_name="System",
-            structured_content=[TextContent(text=message)]
+            structured_content=[ErrorContent(error_message=message)]
         )
         logger.info(f"❌ Sending error message: id={error_msg.message_id}, sender='system', content_preview='{message[:50]}{'...' if len(message) > 50 else ''}'")
         self.conversation_history.append(error_msg)
@@ -825,7 +803,6 @@ class FilmetoAgent:
             # Create an AgentMessage from the string
             from agent.chat.content import TextContent
             initial_prompt = AgentMessage(
-                message_type=MessageType.TEXT,
                 sender_id="user",
                 sender_name="User",
                 structured_content=[TextContent(text=message)]
@@ -1154,7 +1131,6 @@ class FilmetoAgent:
                         final_text = event.payload.get("final_response", "")
                         if final_text:
                             response = AgentMessage(
-                                message_type=MessageType.TEXT,
                                 sender_id=agent.config.name,
                                 sender_name=agent.config.name.capitalize(),
                                 metadata={},
@@ -1165,11 +1141,10 @@ class FilmetoAgent:
                     elif event.event_type == AgentEventType.ERROR:
                         error_text = event.payload.get("error", "Unknown error")
                         error_msg = AgentMessage(
-                            message_type=MessageType.ERROR,
                             sender_id=agent.config.name,
                             sender_name=agent.config.name.capitalize(),
                             metadata={},
-                            structured_content=[TextContent(text=error_text)]
+                            structured_content=[ErrorContent(error_message=error_text)]
                         )
                         self.conversation_history.append(error_msg)
                         yield error_msg
@@ -1177,10 +1152,9 @@ class FilmetoAgent:
                 error_text = f"Error in agent {agent.config.name if hasattr(agent, 'config') else 'Unknown'}: {str(e)}"
                 logger.error(f"❌ Exception in broadcast_to_all_agents", exc_info=True)
                 error_msg = AgentMessage(
-                    message_type=MessageType.ERROR,
                     sender_id="system",
                     sender_name="System",
-                    structured_content=[TextContent(text=error_text)]
+                    structured_content=[ErrorContent(error_message=error_text)]
                 )
                 logger.info(f"❌ Broadcasting error message: id={error_msg.message_id}, sender='system', content_preview='{error_text[:50]}{'...' if len(error_text) > 50 else ''}'")
                 self.conversation_history.append(error_msg)

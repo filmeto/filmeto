@@ -15,7 +15,7 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout
 
 from agent import AgentMessage
 from agent.chat.agent_chat_message import AgentMessage as ChatAgentMessage
-from agent.chat.agent_chat_types import MessageType, ContentType
+from agent.chat.agent_chat_types import ContentType
 from agent.chat.content import TextContent, StructureContent
 from agent.crew.crew_title import CrewTitle
 from app.ui.base_widget import BaseWidget
@@ -385,7 +385,6 @@ class QmlAgentChatListWidget(BaseWidget):
             message_id = msg_data.get("message_id") or metadata.get("message_id", "")
             sender_id = msg_data.get("sender_id") or metadata.get("sender_id", "unknown")
             sender_name = msg_data.get("sender_name") or metadata.get("sender_name", sender_id)
-            message_type_str = msg_data.get("message_type") or metadata.get("message_type", "text")
             timestamp = msg_data.get("timestamp") or metadata.get("timestamp")
 
             if not message_id:
@@ -393,11 +392,6 @@ class QmlAgentChatListWidget(BaseWidget):
                 return None
 
             logger.debug(f"Parsing message: {message_id[:8]}... from {sender_name}")
-
-            try:
-                message_type = MessageType(message_type_str)
-            except ValueError:
-                message_type = MessageType.TEXT
 
             is_user = sender_id.lower() == "user"
 
@@ -418,13 +412,6 @@ class QmlAgentChatListWidget(BaseWidget):
                     user_content=text_content,
                 )
             else:
-                # Skip system messages that are just metadata
-                if message_type == MessageType.SYSTEM:
-                    event_type = metadata.get("event_type", "")
-                    if event_type in ("producer_start", "crew_member_start", "responding_agent_start"):
-                        logger.debug(f"  Skipping system event: {event_type}")
-                        return None
-
                 structured_content = []
                 for content_item in content_list:
                     if isinstance(content_item, dict):
@@ -434,12 +421,20 @@ class QmlAgentChatListWidget(BaseWidget):
                         except Exception as e:
                             logger.debug(f"Failed to load structured content: {e}")
 
+                # Skip system messages that are just metadata (events we don't want to display)
+                for sc in structured_content:
+                    if hasattr(sc, 'content_type') and sc.content_type == ContentType.METADATA:
+                        event_type = getattr(sc, 'metadata_type', None)
+                        if event_type in ("producer_start", "crew_member_start", "responding_agent_start"):
+                            logger.debug(f"  Skipping system event: {event_type}")
+                            return None
+                        break
+
                 # Add timestamp to metadata for QML
                 if timestamp and "timestamp" not in metadata:
                     metadata["timestamp"] = timestamp
 
                 agent_message = ChatAgentMessage(
-                    message_type=message_type,
                     sender_id=sender_id,
                     sender_name=sender_name,
                     message_id=message_id,
@@ -860,7 +855,6 @@ class QmlAgentChatListWidget(BaseWidget):
         if sender_id == "user":
             return
 
-        message_type = getattr(event, "message_type", None)
         item = self._model.get_item_by_message_id(event.message_id)
         if not item:
             agent_name = getattr(event, "agent_name", "Unknown")
@@ -870,18 +864,9 @@ class QmlAgentChatListWidget(BaseWidget):
                 getattr(event, "title", None),
             )
 
-        if message_type == MessageType.THINKING:
-            if isinstance(event.content, ThinkingContent):
-                thinking_structure = event.content.to_dict()
-            else:
-                thinking_content = event.content
-                if thinking_content.startswith("🤔 Thinking: "):
-                    thinking_content = thinking_content[len("🤔 Thinking: "):]
-                thinking_structure = ThinkingContent(
-                    thought=thinking_content,
-                    title="Thinking Process",
-                    description="Agent's thought process",
-                ).to_dict()
+        # Check if content is ThinkingContent
+        if hasattr(event, "content") and isinstance(event.content, ThinkingContent):
+            thinking_structure = event.content.to_dict()
             self.update_agent_card(event.message_id, structured_content=thinking_structure)
         else:
             text_structure = TextContent(text=event.content).to_dict()

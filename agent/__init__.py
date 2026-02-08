@@ -4,7 +4,7 @@ Contains the FilmetoAgent singleton class and related components.
 """
 from .filmeto_agent import FilmetoAgent
 from agent.chat.agent_chat_message import AgentMessage
-from agent.chat.agent_chat_types import MessageType
+from agent.chat.agent_chat_types import ContentType
 from agent.chat.agent_chat_signals import AgentChatSignals
 from .utils import (
     create_text_message,
@@ -21,7 +21,7 @@ __all__ = [
     "SkillService",
     "CrewService",
     "AgentMessage",
-    "MessageType",
+    "ContentType",
     "AgentChatSignals",
     "create_text_message",
     "create_error_message",
