@@ -1,1 +1,0 @@
-"""Message subpackage for specialized widgets in chat messages."""
