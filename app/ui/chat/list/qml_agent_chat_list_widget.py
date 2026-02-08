@@ -379,7 +379,8 @@ class QmlAgentChatListWidget(BaseWidget):
         """
         try:
             metadata = msg_data.get("metadata", {})
-            content_list = msg_data.get("content", [])
+            # The history service stores structured_content, not content
+            content_list = msg_data.get("structured_content", [])
 
             # Check both top-level and metadata for fields (top-level takes precedence)
             message_id = msg_data.get("message_id") or metadata.get("message_id", "")

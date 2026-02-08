@@ -152,6 +152,7 @@ Item {
                 margins: 12
             }
             spacing: 8
+            Layout.fillWidth: true
 
             // Render structured content
             Repeater {
@@ -160,6 +161,7 @@ Item {
                 delegate: Loader {
                     id: widgetLoader
                     width: parent.width
+                    Layout.fillWidth: true
 
                     sourceComponent: {
                         var type = modelData.content_type || modelData.type || "text"
@@ -233,13 +235,14 @@ Item {
 
         Text {
             property var data: ({})
-            text: root.safeGet(data, "text", "")
+            text: root.safeGet(data, "text", root.safeGet(data, "content", ""))
             color: textColor
             font.pixelSize: 14
             wrapMode: Text.WordWrap
             textFormat: Text.PlainText
             lineHeight: 1.5
             width: parent.width
+            Layout.fillWidth: true
         }
     }
 

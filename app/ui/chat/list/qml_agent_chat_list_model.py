@@ -208,6 +208,13 @@ class QmlAgentChatListModel(QAbstractListModel):
         """Get row index for a message ID."""
         return self._message_id_to_row.get(message_id)
 
+    def get_item_by_message_id(self, message_id: str) -> Optional[Dict[str, Any]]:
+        """Get item by message ID."""
+        row = self._message_id_to_row.get(message_id)
+        if row is not None:
+            return self.get_item(row)
+        return None
+
     def clear(self) -> None:
         """Clear all items from the model."""
         self.beginResetModel()
