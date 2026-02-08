@@ -313,10 +313,6 @@ class AgentChatPlanWidget(BaseWidget):
         if message.content and "plan" in message.content.lower():
             self.refresh_plan()
 
-        # Check message type for plan-related types
-        if hasattr(message, 'message_type') and str(message.message_type).lower() == "plan":
-            self.refresh_plan()
-
         # Process UI updates to ensure changes are reflected
         from PySide6.QtWidgets import QApplication
         QApplication.processEvents()

@@ -10,7 +10,7 @@ from typing import List, Dict, Any, Optional
 from PySide6.QtCore import Qt, QAbstractListModel, QModelIndex, QObject, Slot, Property
 
 from agent.chat.agent_chat_message import AgentMessage
-from agent.chat.agent_chat_types import MessageType, ContentType
+from agent.chat.agent_chat_types import ContentType
 from agent.chat.content import StructureContent
 
 logger = logging.getLogger(__name__)

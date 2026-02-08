@@ -76,10 +76,15 @@ class AgentChatHistoryListener:
             message: The AgentMessage to save
         """
         try:
-            # Skip system messages if needed
-            if message.message_type.value == "system":
-                # Optional: Filter out certain system messages
-                pass
+            # Check if message should be filtered (e.g., certain system messages)
+            from agent.chat.agent_chat_types import ContentType
+            primary_type = message.get_primary_content_type()
+            if primary_type == ContentType.METADATA:
+                # Optional: Filter out certain metadata messages
+                event_type = message.metadata.get("event_type", "")
+                if event_type in ("producer_start", "crew_member_start", "responding_agent_start"):
+                    # Skip these system event messages
+                    return
 
             # Save message to history using FastMessageHistoryService
             success = FastMessageHistoryService.add_message(
