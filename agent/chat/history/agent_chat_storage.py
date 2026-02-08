@@ -66,6 +66,9 @@ class MessageLogStorage:
         self._cache_lock = threading.Lock()
         self._cache_dirty: bool = False
 
+        # Track the length of the last appended line for position cache calculation
+        self._last_line_length: int = 0
+
         # File lock for concurrent access
         self._lock_fd: Optional[int] = None
 
@@ -74,9 +77,12 @@ class MessageLogStorage:
             self.active_log_path.write_text("")
             self._line_count = 0
             self._position_cache = []
+            self._last_line_length = 0
         else:
             # Build initial position cache
             self._rebuild_position_cache()
+            # Reset last line length since we don't track it during rebuild
+            self._last_line_length = 0
 
     def _get_lock(self):
         """Acquire file lock for exclusive access."""
@@ -104,11 +110,13 @@ class MessageLogStorage:
         with self._cache_lock:
             self._position_cache.clear()
             self._line_count = 0
+            self._last_line_length = 0
 
             if not self.active_log_path.exists():
                 return
 
             valid_offsets = []
+            line_lengths = []  # Track line lengths
             offset = 0
             corruption_found = False
 
@@ -132,6 +140,7 @@ class MessageLogStorage:
                             # Try to parse JSON to validate
                             json.loads(line_text)
                             valid_offsets.append(line_start)
+                            line_lengths.append(len(line))  # Store line length
                             offset = f.tell()
                             self._line_count += 1
                         except (UnicodeDecodeError, json.JSONDecodeError) as e:
@@ -147,6 +156,12 @@ class MessageLogStorage:
 
                 # Update position cache
                 self._position_cache = valid_offsets
+
+                # Set last line length if we have any lines
+                if line_lengths:
+                    self._last_line_length = line_lengths[-1]
+                else:
+                    self._last_line_length = 0
 
             except Exception as e:
                 logger.error(f"Error building position cache: {e}", exc_info=True)
@@ -204,24 +219,69 @@ class MessageLogStorage:
             logger.error(f"Error truncating file: {e}")
 
     def _escape_message(self, message: Dict[str, Any]) -> str:
-        """Escape message to single-line JSON format."""
+        """
+        Escape message to single-line JSON format.
+
+        This method converts a message dictionary to a JSON string that:
+        - Escapes all control characters (newlines, tabs, carriage returns, etc.)
+        - Ensures the output is a single line (no embedded newlines)
+        - Preserves Unicode characters (ensure_ascii=False)
+
+        JSON automatically escapes the following control characters:
+        - \\n (newline, U+000A) -> \\n
+        - \\t (tab, U+0009) -> \\t
+        - \\r (carriage return, U+000D) -> \\r
+        - \\b (backspace, U+0008) -> \\b
+        - \\f (form feed, U+000C) -> \\f
+        - Other control characters (U+0000-U+001F) -> \\uXXXX
+
+        Args:
+            message: Message dictionary to escape
+
+        Returns:
+            Single-line JSON string with all special characters properly escaped
+        """
+        # Use compact format (no extra whitespace) and preserve Unicode
         json_str = json.dumps(message, ensure_ascii=False, separators=(',', ':'))
-        # Validate that the JSON can be parsed back
+
+        # Validate that the JSON can be parsed back (round-trip verification)
         try:
-            json.loads(json_str)
+            parsed = json.loads(json_str)
+            if parsed != message:
+                logger.warning(f"Round-trip validation failed: {message} != {parsed}")
+                # Fall back to standard JSON encoding
+                json_str = json.dumps(message, ensure_ascii=False)
         except json.JSONDecodeError as e:
-            # If validation fails, try to fix common issues
             logger.warning(f"Generated invalid JSON, attempting to fix: {e}")
             # Ensure all strings are properly escaped
             json_str = json.dumps(message, ensure_ascii=False)
+
         return json_str
 
     def _unescape_message(self, line: str) -> Optional[Dict[str, Any]]:
-        """Unescape message from single-line JSON format."""
+        """
+        Unescape message from single-line JSON format.
+
+        This method parses a JSON string and restores all escaped control
+        characters to their original form:
+        - \\n -> newline (U+000A)
+        - \\t -> tab (U+0009)
+        - \\r -> carriage return (U+000D)
+        - \\b -> backspace (U+0008)
+        - \\f -> form feed (U+000C)
+        - \\uXXXX -> Unicode character
+
+        Args:
+            line: Single-line JSON string to parse
+
+        Returns:
+            Parsed message dictionary, or None if parsing fails
+        """
         line = line.strip()
         if not line:
             # Skip empty lines silently
             return None
+
         try:
             return json.loads(line)
         except json.JSONDecodeError as e:
@@ -266,14 +326,26 @@ class MessageLogStorage:
             return None
 
     def _incremental_cache_update(self, line_length: int):
-        """Update position cache incrementally after append."""
+        """Update position cache incrementally after append.
+
+        The position cache stores the byte offset of the start of each line.
+        When a new line is appended, we add its starting position to the cache.
+
+        Args:
+            line_length: Byte length of the newly appended line (including newline)
+        """
         with self._cache_lock:
             if self._line_count == 0:
+                # First line starts at 0
                 new_offset = 0
             else:
-                new_offset = self._position_cache[-1] + line_length
+                # Subsequent lines start at: last position + last line length
+                # Use the stored length of the previous line
+                new_offset = self._position_cache[-1] + self._last_line_length
             self._position_cache.append(new_offset)
             self._line_count += 1
+            # Store current line length for next iteration
+            self._last_line_length = line_length
 
     def append_message(self, message: Dict[str, Any]) -> bool:
         """
