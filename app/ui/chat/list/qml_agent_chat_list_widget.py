@@ -535,11 +535,13 @@ class QmlAgentChatListWidget(BaseWidget):
             QmlAgentChatListModel.SENDER_ID: "user",
             QmlAgentChatListModel.SENDER_NAME: tr("User"),
             QmlAgentChatListModel.IS_USER: True,
-            QmlAgentChatListModel.CONTENT: content,
             QmlAgentChatListModel.AGENT_COLOR: "#4a90e2",
             QmlAgentChatListModel.AGENT_ICON: "\ue6b3",
             QmlAgentChatListModel.CREW_METADATA: {},
-            QmlAgentChatListModel.STRUCTURED_CONTENT: [],
+            QmlAgentChatListModel.STRUCTURED_CONTENT: [{
+                "content_type": "text",
+                "data": {"text": content}
+            }],
             QmlAgentChatListModel.CONTENT_TYPE: "text",
             QmlAgentChatListModel.IS_READ: True,
             QmlAgentChatListModel.TIMESTAMP: None,
@@ -569,11 +571,13 @@ class QmlAgentChatListWidget(BaseWidget):
             QmlAgentChatListModel.SENDER_ID: sender,
             QmlAgentChatListModel.SENDER_NAME: sender,
             QmlAgentChatListModel.IS_USER: False,
-            QmlAgentChatListModel.CONTENT: message,
             QmlAgentChatListModel.AGENT_COLOR: agent_color,
             QmlAgentChatListModel.AGENT_ICON: agent_icon,
             QmlAgentChatListModel.CREW_METADATA: crew_member_data,
-            QmlAgentChatListModel.STRUCTURED_CONTENT: [],
+            QmlAgentChatListModel.STRUCTURED_CONTENT: [{
+                "content_type": "text",
+                "data": {"text": message}
+            }],
             QmlAgentChatListModel.CONTENT_TYPE: "text",
             QmlAgentChatListModel.IS_READ: True,
             QmlAgentChatListModel.TIMESTAMP: None,
@@ -585,11 +589,10 @@ class QmlAgentChatListWidget(BaseWidget):
         return message_id
 
     def update_streaming_message(self, message_id: str, content: str):
-        """Update a streaming message."""
-        self._model.update_item(message_id, {
-            QmlAgentChatListModel.CONTENT: content,
-        })
-        self._scroll_to_bottom()
+        """Update a streaming message by appending to structured_content."""
+        self.update_agent_card(message_id, structured_content=[
+            TextContent(text=content)
+        ])
 
     def get_or_create_agent_card(self, message_id: str, agent_name: str, title=None):
         """Get or create an agent message card."""
@@ -604,7 +607,6 @@ class QmlAgentChatListWidget(BaseWidget):
             QmlAgentChatListModel.SENDER_ID: agent_name,
             QmlAgentChatListModel.SENDER_NAME: agent_name,
             QmlAgentChatListModel.IS_USER: False,
-            QmlAgentChatListModel.CONTENT: "",
             QmlAgentChatListModel.AGENT_COLOR: agent_color,
             QmlAgentChatListModel.AGENT_ICON: agent_icon,
             QmlAgentChatListModel.CREW_METADATA: crew_member_data,
@@ -634,13 +636,23 @@ class QmlAgentChatListWidget(BaseWidget):
         """Update an agent message card."""
         updates = {}
 
-        # Update content
+        # Update content (convert to structured_content)
         if content is not None:
-            item = self._model.get_item(self._model.get_row_by_message_id(message_id) or 0)
-            if item:
-                current_content = item.get(QmlAgentChatListModel.CONTENT, "")
-                new_content = (current_content + content) if append else content
-                updates[QmlAgentChatListModel.CONTENT] = new_content
+            # Convert plain content to TextContent structured format
+            if isinstance(content, str):
+                content_structured = TextContent(text=content).to_dict()
+            else:
+                content_structured = content
+
+            structured_content_list = [content_structured]
+            if append:
+                item = self._model.get_item(self._model.get_row_by_message_id(message_id) or 0)
+                if item:
+                    current_structured = item.get(QmlAgentChatListModel.STRUCTURED_CONTENT, [])
+                    structured_content_list = current_structured + structured_content_list
+
+            updates[QmlAgentChatListModel.STRUCTURED_CONTENT] = structured_content_list
+            updates[QmlAgentChatListModel.CONTENT_TYPE] = "text"
 
         # Update structured content
         if structured_content is not None:
@@ -676,10 +688,16 @@ class QmlAgentChatListWidget(BaseWidget):
                     primary_type = items[0].get('content_type', 'text')
                     updates[QmlAgentChatListModel.CONTENT_TYPE] = primary_type
 
-        # Handle error
+        # Handle error (as structured content)
         if error:
-            error_text = f"❌ Error: {error}"
-            updates[QmlAgentChatListModel.CONTENT] = error_text
+            error_structured = {
+                "content_type": "error",
+                "data": {"message": error}
+            }
+            item = self._model.get_item(self._model.get_row_by_message_id(message_id) or 0)
+            if item:
+                current_structured = item.get(QmlAgentChatListModel.STRUCTURED_CONTENT, [])
+                updates[QmlAgentChatListModel.STRUCTURED_CONTENT] = current_structured + [error_structured]
             updates[QmlAgentChatListModel.CONTENT_TYPE] = "error"
 
         if updates:
@@ -866,11 +884,13 @@ class QmlAgentChatListWidget(BaseWidget):
 
     def _start_new_data_check_timer(self):
         """Start the timer to check for new data."""
-        self._new_data_check_timer.start(self.NEW_DATA_CHECK_INTERVAL_MS)
+        if hasattr(self, '_new_data_check_timer') and self._new_data_check_timer is not None:
+            self._new_data_check_timer.start(self.NEW_DATA_CHECK_INTERVAL_MS)
 
     def _stop_new_data_check_timer(self):
         """Stop the new data check timer."""
-        self._new_data_check_timer.stop()
+        if hasattr(self, '_new_data_check_timer') and self._new_data_check_timer is not None:
+            self._new_data_check_timer.stop()
 
     def _check_for_new_data(self):
         """Check for new data by comparing active log count (fast, no disk I/O)."""
