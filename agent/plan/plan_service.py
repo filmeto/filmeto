@@ -163,9 +163,9 @@ class PlanService:
             return str(workspace.path)
         return str(id(workspace))
 
-    def _get_workspace_path(self) -> Optional[Path]:
+    def _get_workspace_dir(self) -> Optional[Path]:
         """
-        Get the workspace path from the workspace object.
+        Get the workspace directory as a Path object from the stored workspace.
 
         Returns:
             Path to workspace directory if available, None otherwise
@@ -262,7 +262,7 @@ class PlanService:
             plan_id: Unique ID of the plan
         """
         # Create directory structure as workspace/projects/项目名/agent/plans
-        workspace_path = self._get_workspace_path()
+        workspace_path = self._get_workspace_dir()
 
         if workspace_path:
             # Use the proper workspace/projects/project_name/agent/plans structure
@@ -790,7 +790,7 @@ class PlanService:
             project_name: Name of the project (used as identifier)
         """
         # Use the project-specific agent/plans directory
-        workspace_path = self._get_workspace_path()
+        workspace_path = self._get_workspace_dir()
 
         if workspace_path:
             project_plans_dir = workspace_path / "projects" / project_name / "agent" / "plans"
