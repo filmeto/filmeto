@@ -43,8 +43,8 @@ Item {
         return defaultObj
     }
 
-    // Available width for content (minus avatar space on both sides)
-    readonly property int availableWidth: parent.width - totalAvatarWidth
+    // Available width for content (minus left avatar space only)
+    readonly property int availableWidth: parent.width - (avatarSize + avatarSpacing)
 
     // Width is determined by anchors, height is calculated dynamically
     implicitHeight: headerRow.height + contentRect.implicitHeight + 8
@@ -302,8 +302,15 @@ Item {
     Component {
         id: typingIndicatorComponent
 
-        TypingIndicator {
-            active: true
+        Item {
+            width: parent.width
+            height: typingIndicator.height
+
+            TypingIndicator {
+                id: typingIndicator
+                anchors.centerIn: parent
+                active: true
+            }
         }
     }
 
@@ -361,6 +368,7 @@ Item {
 
         Button {
             property var data: ({})
+            width: parent.width
             text: root.safeGet(data, "text", "Button")
             onClicked: {
                 if (data.action) {
