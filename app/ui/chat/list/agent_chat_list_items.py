@@ -89,15 +89,23 @@ class LoadState:
     This dataclass maintains the state needed for efficient pagination
     when loading messages from history.
 
+    Enhanced with GSN (Global Sequence Number) support for archive-aware
+    message tracking. The GSN is maintained across all archives, allowing
+    the UI to correctly fetch new messages even after archiving operations.
+
     Attributes:
-        active_log_count: Number of lines in the active log file
+        active_log_count: Number of lines in the active log file (legacy, kept for compatibility)
         unique_message_count: Number of unique messages currently in the model
-        current_line_offset: Current line offset in the active log
+        current_line_offset: Current line offset in the active log (legacy, kept for compatibility)
+        last_seen_gsn: The last Global Sequence Number seen by the UI (primary tracking method)
+        current_gsn: The current (latest) GSN in the system
         has_more_older: Whether there are more older messages available
         known_message_ids: Set of message IDs already loaded
     """
-    active_log_count: int = 0  # Number of lines in active log
+    active_log_count: int = 0  # Number of lines in active log (legacy)
     unique_message_count: int = 0  # Number of unique messages in model
-    current_line_offset: int = 0  # Current line offset in active log
+    current_line_offset: int = 0  # Current line offset in active log (legacy)
+    last_seen_gsn: int = 0  # Last GSN seen by UI (primary tracking method)
+    current_gsn: int = 0  # Current (latest) GSN in the system
     has_more_older: bool = True  # Whether there are more older messages
     known_message_ids: set = field(default_factory=set)  # Track known message IDs

@@ -6,13 +6,22 @@ This service provides high-performance message history access using:
 - Single-line JSON format for efficient parsing
 - Active log + archive files for management
 - Pure synchronous API for Qt compatibility
+- Global Sequence Number (GSN) for archive-aware tracking
 
 Design: UI reads from storage as single source of truth.
+
+Enhanced Signal:
+    The message_saved signal now includes:
+    - workspace_path: Path to workspace
+    - project_name: Name of project
+    - message_id: ID of the saved message
+    - gsn: Global sequence number for archive-aware tracking
+    - current_gsn: Current (latest) GSN in the system
 """
 
 import logging
 import blinker
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 
 from agent.chat.history.agent_chat_storage import MessageLogHistory
 from agent.chat.agent_chat_message import AgentMessage
@@ -21,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 # Signal emitted when a message is successfully saved to storage
-# Args: workspace_path (str), project_name (str), message_id (str)
+# Args: sender, workspace_path (str), project_name (str), message_id (str), gsn (int), current_gsn (int)
 message_saved = blinker.Signal()
 
 
@@ -31,6 +40,9 @@ class FastMessageHistoryService:
 
     This is a drop-in replacement for AgentChatHistoryService with
     significantly better performance for large message histories.
+
+    Enhanced with Global Sequence Number (GSN) support for archive-aware
+    message tracking.
     """
 
     # Class-level storage for history instances
@@ -65,6 +77,8 @@ class FastMessageHistoryService:
         After successfully writing to storage, emits a message_saved signal
         that UI components can listen to for refresh.
 
+        The enhanced signal includes GSN information for archive-aware tracking.
+
         Args:
             workspace_path: Path to workspace
             project_name: Name of project
@@ -73,22 +87,31 @@ class FastMessageHistoryService:
         Returns:
             True if successful
         """
+        # Import here to avoid circular dependency
+        from agent.chat.history.global_sequence_manager import get_enhanced_history
+
         # Convert AgentMessage to dict format
         message_dict = cls._message_to_dict(message)
-        history = cls.get_history(workspace_path, project_name)
-        success = history.append_message(message_dict)
+
+        # Use enhanced history to get GSN support
+        enhanced_history = get_enhanced_history(workspace_path, project_name)
+        success, gsn = enhanced_history.append_message(message_dict)
 
         # Emit signal after successful storage write
         # UI should listen to this signal and refresh from storage
         if success:
             try:
+                current_gsn = enhanced_history.get_current_gsn()
+
                 message_saved.send(
                     cls,
                     workspace_path=workspace_path,
                     project_name=project_name,
-                    message_id=message.message_id
+                    message_id=message.message_id,
+                    gsn=gsn,
+                    current_gsn=current_gsn
                 )
-                logger.debug(f"Emitted message_saved signal for {message.message_id}")
+                logger.debug(f"Emitted message_saved signal for {message.message_id}, GSN: {gsn}, Current: {current_gsn}")
             except Exception as e:
                 logger.error(f"Error emitting message_saved signal: {e}")
 
@@ -237,6 +260,59 @@ class FastMessageHistoryService:
         """
         history = cls.get_history(workspace_path, project_name)
         return history.get_latest_line_offset()
+
+    # ==================== GSN-based methods ====================
+
+    @classmethod
+    def get_messages_after_gsn(
+        cls,
+        workspace_path: str,
+        project_name: str,
+        last_seen_gsn: int,
+        count: int = 100
+    ) -> List[dict]:
+        """
+        Get messages that were saved after a given GSN.
+
+        This is the primary method for UI components to fetch new messages
+        in an archive-aware manner. The GSN (Global Sequence Number) is
+        maintained across all archives, so this method works correctly
+        even after archiving operations.
+
+        Args:
+            workspace_path: Path to workspace
+            project_name: Name of project
+            last_seen_gsn: The last GSN the UI has seen
+            count: Maximum number of messages to retrieve
+
+        Returns:
+            List of message dictionaries in chronological order
+        """
+        from agent.chat.history.global_sequence_manager import get_enhanced_history
+
+        enhanced_history = get_enhanced_history(workspace_path, project_name)
+        return enhanced_history.get_messages_after_gsn(last_seen_gsn, count)
+
+    @classmethod
+    def get_current_gsn(
+        cls,
+        workspace_path: str,
+        project_name: str
+    ) -> int:
+        """
+        Get the current (latest) global sequence number.
+
+        Args:
+            workspace_path: Path to workspace
+            project_name: Name of project
+
+        Returns:
+            Current GSN
+        """
+        from agent.chat.history.global_sequence_manager import get_enhanced_history
+
+        enhanced_history = get_enhanced_history(workspace_path, project_name)
+        return enhanced_history.get_current_gsn()
 
     @classmethod
     def clear_cache(cls, workspace_path: str, project_name: str):
