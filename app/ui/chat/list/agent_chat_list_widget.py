@@ -131,7 +131,8 @@ class AgentChatListWidget(BaseWidget):
         self._setup_ui()
         self._load_crew_member_metadata()
         self._load_recent_conversation()
-        self._start_new_data_check_timer()
+        # Don't start the timer - rely on message_saved signal instead
+        # self._start_new_data_check_timer()
 
     def _get_history(self) -> Optional[MessageLogHistory]:
         """Get or create cached history instance."""
