@@ -2,21 +2,29 @@
 Message Log Storage - High-performance message history storage.
 
 Design:
-1. message.log - Current active messages (max N messages)
-2. history_YYYY_MM_DD_HH_MM_SS_mmm.log - Archived message files
-3. File cursor based loading - Fast O(1) access to messages by position
-4. Single-line JSON format - One message per line with proper escaping
-5. Efficient archive using file slicing - No full file rewrite
+1. current/data.log - Current active message data
+2. current/index.idx - Fixed 8-byte offsets for fast O(1) access
+3. history_YYYY_MM_DD_HH_MM_SS_mmm/ - Archived message directories
+
+Index file format:
+- Fixed 8-byte unsigned integers (little-endian)
+- Position N (byte N*8) contains the offset of message N in data.log
+- Line N can be read by reading offset at index[N*8] and index[(N+1)*8]
+
+Concurrent strategy:
+- Write: threading.Lock protects "write data + write index" critical section
+- Read: os.pread() for concurrent offset-based reading (no lock needed)
+- Count: O(1) by index file size / 8
 """
 
 import os
 import json
 import logging
+import struct
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Dict, Any
-import threading
-import fcntl
 
 logger = logging.getLogger(__name__)
 
@@ -25,26 +33,26 @@ class Constants:
     """Constants for message log storage."""
     MAX_MESSAGES = 200  # Maximum messages in active log
     ARCHIVE_THRESHOLD = 100  # Archive oldest N/2 when MAX is reached
+    CURRENT_DIR = "current"
+    DATA_LOG = "data.log"
+    INDEX_FILE = "index.idx"
     ARCHIVE_PREFIX = "history_"
-    ACTIVE_LOG = "message.log"
-    LOCK_FILE = "message.log.lock"
+    INDEX_ENTRY_SIZE = 8  # 8 bytes per offset (uint64)
 
 
 class MessageLogStorage:
     """
-    High-performance message log storage with file cursor positioning.
+    High-performance message log storage with separate data and index files.
 
     Format:
-    - message.log: Current active messages (max MAX_MESSAGES)
-    - history_*.log: Archived message files
-
-    Each line is a JSON-encoded message with escaped newlines.
+    - current/data.log: JSON message data, one per line
+    - current/index.idx: Fixed 8-byte offsets for O(1) random access
 
     Performance optimizations:
-    - File-based locking for concurrent access
-    - Incremental position cache updates
-    - Archive using file slice (no full rewrite)
-    - Lazy cache rebuilding
+    - Separate index file for O(1) position lookup
+    - os.pread() for lock-free concurrent reads
+    - threading.Lock for atomic write operations
+    - Directory-based archiving
     """
 
     def __init__(self, history_root: str):
@@ -57,151 +65,97 @@ class MessageLogStorage:
         self.history_root = Path(history_root)
         self.history_root.mkdir(parents=True, exist_ok=True)
 
-        self.active_log_path = self.history_root / Constants.ACTIVE_LOG
-        self.lock_file_path = self.history_root / Constants.LOCK_FILE
+        self.current_dir = self.history_root / Constants.CURRENT_DIR
+        self.data_log_path = self.current_dir / Constants.DATA_LOG
+        self.index_path = self.current_dir / Constants.INDEX_FILE
 
-        # File position cache for fast access: {line_index: byte_offset}
-        self._position_cache: List[int] = []
-        self._line_count: int = 0
-        self._cache_lock = threading.Lock()
-        self._cache_dirty: bool = False
+        # Write lock for atomic "write data + write index" operations
+        self._write_lock = threading.Lock()
 
-        # File lock for concurrent access
-        self._lock_fd: Optional[int] = None
+        # Initialize current directory
+        self._init_current_directory()
 
-        # Initialize active log if not exists
-        if not self.active_log_path.exists():
-            self.active_log_path.write_text("")
-            self._line_count = 0
-            self._position_cache = []
-        else:
-            # Build initial position cache
-            self._rebuild_position_cache()
+        # Cached line count (updated on writes)
+        self._line_count: int = self._load_line_count()
 
-    def _get_lock(self):
-        """Acquire file lock for exclusive access."""
-        if self._lock_fd is None:
-            try:
-                self._lock_fd = os.open(self.lock_file_path, os.O_CREAT | os.O_WRONLY)
-                fcntl.flock(self._lock_fd, fcntl.LOCK_EX)
-            except Exception as e:
-                logger.warning(f"Could not acquire lock: {e}")
-                self._lock_fd = None
+    def _init_current_directory(self):
+        """Initialize the current directory if it doesn't exist."""
+        if not self.current_dir.exists():
+            self.current_dir.mkdir(parents=True, exist_ok=True)
 
-    def _release_lock(self):
-        """Release file lock."""
-        if self._lock_fd is not None:
-            try:
-                fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
-                os.close(self._lock_fd)
-            except Exception as e:
-                logger.warning(f"Error releasing lock: {e}")
-            finally:
-                self._lock_fd = None
+        # Initialize data log if not exists
+        if not self.data_log_path.exists():
+            self.data_log_path.write_bytes(b"")
 
-    def _rebuild_position_cache(self):
-        """Build file position cache for fast random access, validating JSON format."""
-        with self._cache_lock:
-            self._position_cache.clear()
-            self._line_count = 0
+        # Initialize index file if not exists
+        if not self.index_path.exists():
+            self.index_path.write_bytes(b"")
 
-            if not self.active_log_path.exists():
-                return
-
-            valid_offsets = []
-            offset = 0
-            corruption_found = False
-
-            try:
-                with open(self.active_log_path, 'rb') as f:
-                    while True:
-                        line_start = f.tell()
-                        line = f.readline()
-                        if not line:
-                            break
-
-                        # Check if line ends with newline (complete line)
-                        if not line.endswith(b'\n'):
-                            logger.warning(f"Found incomplete line at offset {line_start}, stopping cache rebuild")
-                            corruption_found = True
-                            break
-
-                        # Try to decode and validate JSON
-                        try:
-                            line_text = line.decode('utf-8').strip()
-                            # Try to parse JSON to validate
-                            json.loads(line_text)
-                            valid_offsets.append(line_start)
-                            offset = f.tell()
-                            self._line_count += 1
-                        except (UnicodeDecodeError, json.JSONDecodeError) as e:
-                            logger.warning(f"Found corrupted/invalid JSON line at offset {line_start}: {str(e)[:100]}")
-                            corruption_found = True
-                            # Skip this line and continue
-                            offset = f.tell()
-
-                # If corruption was found, repair the file by keeping only valid lines
-                if corruption_found and valid_offsets:
-                    logger.info(f"Recovering message.log: found {self._line_count} valid lines out of {len(valid_offsets) + 1} total")
-                    self._repair_file_keep_valid_lines(valid_offsets)
-
-                # Update position cache
-                self._position_cache = valid_offsets
-
-            except Exception as e:
-                logger.error(f"Error building position cache: {e}", exc_info=True)
-
-    def _repair_file_keep_valid_lines(self, valid_offsets: List[int]):
-        """Repair the file by keeping only valid lines at given offsets."""
+    def _load_line_count(self) -> int:
+        """Load line count from index file size (O(1) operation)."""
         try:
-            valid_lines = []
-            with open(self.active_log_path, 'rb') as f:
-                for offset in valid_offsets:
-                    f.seek(offset)
-                    line = f.readline()
-                    if line.endswith(b'\n'):
-                        valid_lines.append(line)
+            index_size = self.index_path.stat().st_size
+            return index_size // Constants.INDEX_ENTRY_SIZE
+        except Exception:
+            return 0
 
-            # Write back only valid lines to a temp file
-            temp_path = self.active_log_path.with_suffix('.repair.tmp')
-            with open(temp_path, 'wb') as f:
-                for line in valid_lines:
-                    f.write(line)
-                f.flush()
-                os.fsync(f.fileno())
+    def _append_index(self, offset: int):
+        """
+        Append an offset to the index file.
 
-            # Atomic replace
-            temp_path.replace(self.active_log_path)
-            logger.info(f"Repaired message.log: kept {len(valid_lines)} valid lines")
+        Args:
+            offset: Byte offset in data.log
+        """
+        # Pack offset as 8-byte little-endian unsigned integer
+        packed = struct.pack('<Q', offset)
+        with open(self.index_path, 'ab') as f:
+            f.write(packed)
+            f.flush()
+            os.fsync(f.fileno())
 
-        except Exception as e:
-            logger.error(f"Error repairing file: {e}", exc_info=True)
+    def _get_offset(self, line_index: int) -> Optional[int]:
+        """
+        Get the byte offset for a given line index using pread.
 
-    def _truncate_file_at(self, offset: int):
-        """Truncate the active log file at a specific offset to recover from corruption."""
+        Args:
+            line_index: Line index (0-based)
+
+        Returns:
+            Byte offset in data.log, or None if index out of range
+        """
+        if line_index < 0:
+            return None
+
+        offset_position = line_index * Constants.INDEX_ENTRY_SIZE
+
         try:
-            if not self.active_log_path.exists():
-                return
+            with open(self.index_path, 'rb') as f:
+                # Use pread to read without moving file pointer
+                data = os.pread(f.fileno(), Constants.INDEX_ENTRY_SIZE, offset_position)
+                if len(data) != Constants.INDEX_ENTRY_SIZE:
+                    return None
+                return struct.unpack('<Q', data)[0]
+        except Exception:
+            return None
 
-            # Read the valid portion of the file
-            with open(self.active_log_path, 'rb') as f:
-                f.seek(0, 2)  # Seek to end
-                file_size = f.tell()
+    def _get_offsets(self, start: int, count: int) -> List[int]:
+        """
+        Get multiple byte offsets using pread.
 
-                if offset >= file_size:
-                    return  # Nothing to truncate
+        Args:
+            start: Starting line index
+            count: Number of offsets to retrieve
 
-                f.seek(0, 0)
-                valid_content = f.read(offset)
-
-            # Write back only the valid content
-            with open(self.active_log_path, 'wb') as f:
-                f.write(valid_content)
-
-            logger.info(f"Truncated message.log at offset {offset} to recover from corruption")
-
-        except Exception as e:
-            logger.error(f"Error truncating file: {e}")
+        Returns:
+            List of byte offsets
+        """
+        offsets = []
+        for i in range(start, start + count):
+            offset = self._get_offset(i)
+            if offset is None:
+                break
+            offsets.append(offset)
+        return offsets
 
     def _escape_message(self, message: Dict[str, Any]) -> str:
         """Escape message to single-line JSON format."""
@@ -210,9 +164,7 @@ class MessageLogStorage:
         try:
             json.loads(json_str)
         except json.JSONDecodeError as e:
-            # If validation fails, try to fix common issues
             logger.warning(f"Generated invalid JSON, attempting to fix: {e}")
-            # Ensure all strings are properly escaped
             json_str = json.dumps(message, ensure_ascii=False)
         return json_str
 
@@ -220,64 +172,48 @@ class MessageLogStorage:
         """Unescape message from single-line JSON format."""
         line = line.strip()
         if not line:
-            # Skip empty lines silently
             return None
         try:
             return json.loads(line)
         except json.JSONDecodeError as e:
-            # Try to recover: if line contains multiple JSON objects, extract the first one
-            # This can happen if concurrent writes cause format issues
-            if "Extra data" in str(e):
-                try:
-                    # Try to find the end of the first complete JSON object
-                    brace_count = 0
-                    in_string = False
-                    escape_next = False
-                    end_pos = 0
-
-                    for i, char in enumerate(line):
-                        if escape_next:
-                            escape_next = False
-                            continue
-                        if char == '\\':
-                            escape_next = True
-                            continue
-                        if char == '"' and not escape_next:
-                            in_string = not in_string
-                            continue
-                        if not in_string:
-                            if char == '{':
-                                brace_count += 1
-                            elif char == '}':
-                                brace_count -= 1
-                                if brace_count == 0:
-                                    end_pos = i + 1
-                                    break
-
-                    if end_pos > 0:
-                        first_json = line[:end_pos]
-                        return json.loads(first_json)
-                except Exception:
-                    pass
-
-            # Log with first 100 chars of line for debugging
-            line_preview = line[:100] if len(line) > 100 else line
-            logger.error(f"Failed to parse message line: {e}. Line preview: {line_preview}")
+            logger.error(f"Failed to parse message line: {e}. Line preview: {line[:100]}")
             return None
 
-    def _incremental_cache_update(self, line_length: int):
-        """Update position cache incrementally after append."""
-        with self._cache_lock:
-            if self._line_count == 0:
-                new_offset = 0
-            else:
-                new_offset = self._position_cache[-1] + line_length
-            self._position_cache.append(new_offset)
-            self._line_count += 1
+    def _read_line_at_offset(self, offset: int) -> Optional[str]:
+        """
+        Read a single line starting at the given offset using pread.
+
+        Args:
+            offset: Byte offset in data.log
+
+        Returns:
+            Line content (without newline), or None if read fails
+        """
+        try:
+            with open(self.data_log_path, 'rb') as f:
+                # Read a reasonable chunk (max 64KB per line)
+                chunk = os.pread(f.fileno(), 65536, offset)
+                if not chunk:
+                    return None
+
+                # Find the newline
+                newline_pos = chunk.find(b'\n')
+                if newline_pos == -1:
+                    # No newline found, read until EOF
+                    return chunk.decode('utf-8').strip()
+
+                line_bytes = chunk[:newline_pos]
+                return line_bytes.decode('utf-8').strip()
+        except Exception as e:
+            logger.error(f"Error reading line at offset {offset}: {e}")
+            return None
 
     def append_message(self, message: Dict[str, Any]) -> bool:
         """
         Append a message to the log.
+
+        This method is thread-safe. The write lock ensures atomic
+        "write data + write index" operations.
 
         Args:
             message: Message dictionary to append
@@ -285,56 +221,52 @@ class MessageLogStorage:
         Returns:
             True if successful
         """
-        try:
-            # Escape message to single line
-            line = self._escape_message(message) + '\n'
-
-            # Validate the JSON is complete and valid
+        with self._write_lock:
             try:
-                parsed = json.loads(line.strip())
-                if not parsed:
-                    logger.error(f"Generated empty JSON, message: {message}")
-                    return False
-            except json.JSONDecodeError as e:
-                logger.error(f"Generated invalid JSON: {e}, message preview: {str(message)[:200]}")
-                return False
+                # Escape message to single line
+                line = self._escape_message(message) + '\n'
+                line_bytes = line.encode('utf-8')
 
-            line_bytes = len(line.encode('utf-8'))
+                # Get current data.log size (offset for this message)
+                with open(self.data_log_path, 'rb') as f:
+                    offset = f.seek(0, os.SEEK_END)
 
-            # Acquire file lock before writing to prevent concurrent writes
-            self._get_lock()
-
-            try:
-                # Append to file with buffering for performance
-                with open(self.active_log_path, 'a', encoding='utf-8', buffering=1) as f:
-                    f.write(line)
+                # Append to data.log
+                with open(self.data_log_path, 'ab') as f:
+                    f.write(line_bytes)
                     f.flush()
-                    os.fsync(f.fileno())  # Ensure data is written to disk
+                    os.fsync(f.fileno())
 
-                # Update position cache incrementally
-                self._incremental_cache_update(line_bytes)
+                # Append offset to index
+                self._append_index(offset)
 
-                # Check if we need to archive (check without lock first for speed)
-                if self._line_count >= Constants.MAX_MESSAGES:
-                    self._archive_old_messages(already_locked=True)
+                # Update cached line count
+                self._line_count += 1
+
+                # Check if we need to archive (only when exceeding MAX_MESSAGES)
+                if self._line_count > Constants.MAX_MESSAGES:
+                    self._archive_old_messages()
 
                 return True
 
-            finally:
-                self._release_lock()
-
-        except Exception as e:
-            logger.error(f"Error appending message: {e}", exc_info=True)
-            return False
+            except Exception as e:
+                logger.error(f"Error appending message: {e}", exc_info=True)
+                return False
 
     def get_message_count(self) -> int:
-        """Get total message count."""
-        with self._cache_lock:
-            return self._line_count
+        """
+        Get total message count (O(1) operation).
+
+        Returns:
+            Number of messages in the active log
+        """
+        return self._line_count
 
     def get_messages(self, start: int, count: int) -> List[Dict[str, Any]]:
         """
-        Get messages by range using file cursor.
+        Get messages by range using index-based lookups.
+
+        This method uses os.pread() for lock-free concurrent reads.
 
         Args:
             start: Starting line index (0-based)
@@ -346,37 +278,22 @@ class MessageLogStorage:
         if start < 0 or count <= 0:
             return []
 
-        messages = []
+        if start >= self._line_count:
+            return []
+
         end = min(start + count, self._line_count)
+        messages = []
 
         try:
-            # Use errors='replace' to handle corrupted UTF-8 bytes gracefully
-            with open(self.active_log_path, 'r', encoding='utf-8', errors='replace') as f:
-                # Get start offset from cache
-                with self._cache_lock:
-                    if start >= len(self._position_cache):
-                        return []
-                    start_offset = self._position_cache[start]
+            # Get offsets for all requested lines
+            offsets = self._get_offsets(start, end - start)
 
-                f.seek(start_offset)
-
-                # Read lines
-                for i in range(start, end):
-                    line = f.readline()
-                    if not line:
-                        break
-
-                    line = line.strip()
-                    if line:
-                        # Check for replacement character (indicates UTF-8 corruption)
-                        REPLACEMENT_CHAR = '\ufffd'
-                        if REPLACEMENT_CHAR in line:
-                            logger.warning(f"Skipping corrupted line at index {i}")
-                            continue
-
-                        msg = self._unescape_message(line)
-                        if msg:
-                            messages.append(msg)
+            for i, offset in enumerate(offsets):
+                line = self._read_line_at_offset(offset)
+                if line:
+                    msg = self._unescape_message(line)
+                    if msg:
+                        messages.append(msg)
 
         except Exception as e:
             logger.error(f"Error reading messages: {e}")
@@ -393,164 +310,194 @@ class MessageLogStorage:
         Returns:
             List of message dictionaries, most recent first
         """
-        with self._cache_lock:
-            total = self._line_count
-
-        if total == 0:
+        if self._line_count == 0:
             return []
 
-        start = max(0, total - count)
+        start = max(0, self._line_count - count)
         messages = self.get_messages(start, count)
         return list(reversed(messages))
 
-    def _archive_old_messages(self, already_locked: bool = False):
-        """Archive oldest ARCHIVE_THRESHOLD messages using file slice.
+    def _archive_old_messages(self):
+        """
+        Archive oldest MAX_MESSAGES messages to keep current directory small.
 
-        This is much more efficient than reading and rewriting:
-        1. Read the first N lines to archive
-        2. Write them to archive file
-        3. Slice the file to keep only the remaining lines
+        Creates a new history directory with the archived messages and
+        resets the current directory with remaining messages.
 
-        Args:
-            already_locked: True if the caller already holds the lock
+        Note: This method should only be called while holding _write_lock.
         """
         try:
-            # Only acquire lock if not already held
-            if not already_locked:
-                self._get_lock()
+            # When count exceeds MAX_MESSAGES, archive MAX_MESSAGES oldest messages
+            # This leaves only the newest messages in current
+            messages_to_archive = min(Constants.MAX_MESSAGES, self._line_count)
 
-            # Read oldest messages
-            old_messages = self.get_messages(0, Constants.ARCHIVE_THRESHOLD)
+            # Read oldest messages to archive
+            old_messages = self.get_messages(0, messages_to_archive)
 
             if not old_messages:
                 return
 
-            # Create archive filename
+            # Create archive directory
             timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S_%f")[:-3]
-            archive_path = self.history_root / f"{Constants.ARCHIVE_PREFIX}{timestamp}.log"
+            archive_dir = self.history_root / f"{Constants.ARCHIVE_PREFIX}{timestamp}"
+            archive_dir.mkdir(parents=True, exist_ok=True)
 
-            # Write to archive file
-            with open(archive_path, 'w', encoding='utf-8') as f:
+            archive_data_path = archive_dir / Constants.DATA_LOG
+            archive_index_path = archive_dir / Constants.INDEX_FILE
+
+            # Write archived data.log
+            with open(archive_data_path, 'w', encoding='utf-8') as f:
                 for msg in old_messages:
                     line = self._escape_message(msg) + '\n'
                     f.write(line)
                 f.flush()
                 os.fsync(f.fileno())
 
-            # Calculate slice offset (start of remaining messages)
-            with self._cache_lock:
-                if Constants.ARCHIVE_THRESHOLD >= len(self._position_cache):
-                    slice_offset = 0
-                else:
-                    slice_offset = self._position_cache[Constants.ARCHIVE_THRESHOLD]
+            # Write archived index.idx
+            with open(archive_index_path, 'wb') as f:
+                offset = 0
+                for msg in old_messages:
+                    line = self._escape_message(msg) + '\n'
+                    packed = struct.pack('<Q', offset)
+                    f.write(packed)
+                    offset += len(line.encode('utf-8'))
+                f.flush()
+                os.fsync(f.fileno())
 
-            # Use a safer approach: write to temp file first, then rename
-            temp_path = self.active_log_path.with_suffix('.tmp')
+            # Calculate remaining messages
+            remaining_start = messages_to_archive
+            remaining_count = self._line_count - remaining_start
 
-            # Read remaining messages (not content) and rewrite cleanly
-            remaining_start = Constants.ARCHIVE_THRESHOLD
-            total_messages = self._line_count
-            remaining_messages = self.get_messages(remaining_start, total_messages - remaining_start)
+            # Create new current directory
+            new_current_dir = self.history_root / f"{Constants.CURRENT_DIR}.new"
+            new_current_dir.mkdir(parents=True, exist_ok=True)
 
-            # Write remaining messages to temp file
-            with open(temp_path, 'w', encoding='utf-8') as f:
+            new_data_path = new_current_dir / Constants.DATA_LOG
+            new_index_path = new_current_dir / Constants.INDEX_FILE
+
+            # Write remaining messages to new current
+            remaining_messages = self.get_messages(remaining_start, remaining_count)
+
+            with open(new_data_path, 'w', encoding='utf-8') as f:
                 for msg in remaining_messages:
                     line = self._escape_message(msg) + '\n'
                     f.write(line)
                 f.flush()
                 os.fsync(f.fileno())
 
-            # Atomic rename on Unix, replace on Windows
-            temp_path.replace(self.active_log_path)
+            with open(new_index_path, 'wb') as f:
+                offset = 0
+                for msg in remaining_messages:
+                    line = self._escape_message(msg) + '\n'
+                    packed = struct.pack('<Q', offset)
+                    f.write(packed)
+                    offset += len(line.encode('utf-8'))
+                f.flush()
+                os.fsync(f.fileno())
 
-            # Rebuild position cache
-            self._rebuild_position_cache()
+            # Atomic rename: replace old current with new
+            # First remove old current directory
+            import shutil
+            if self.current_dir.exists():
+                shutil.rmtree(self.current_dir)
+            new_current_dir.replace(self.current_dir)
 
-            logger.info(f"Archived {len(old_messages)} messages to {archive_path.name}")
+            # Update cached line count
+            self._line_count = remaining_count
+
+            logger.info(f"Archived {len(old_messages)} messages to {archive_dir.name}")
 
         except Exception as e:
             logger.error(f"Error archiving messages: {e}", exc_info=True)
-        finally:
-            # Only release lock if we acquired it
-            if not already_locked:
-                self._release_lock()
 
-    def get_archived_files(self) -> List[Path]:
-        """Get list of archived history files sorted by timestamp (newest first)."""
+    def get_archived_directories(self) -> List[Path]:
+        """Get list of archived directories sorted by timestamp (newest first)."""
         try:
-            archives = list(self.history_root.glob(f"{Constants.ARCHIVE_PREFIX}*.log"))
+            archives = list(self.history_root.glob(f"{Constants.ARCHIVE_PREFIX}*"))
+            archives = [a for a in archives if a.is_dir()]
             archives.sort(key=lambda p: p.stat().st_mtime, reverse=True)
             return archives
         except Exception as e:
             logger.error(f"Error listing archives: {e}")
             return []
 
-    def load_archive(self, archive_path: Path) -> 'MessageLogArchive':
-        """Load an archive file for reading."""
-        return MessageLogArchive(archive_path)
+    def load_archive(self, archive_dir: Path) -> 'MessageLogArchive':
+        """Load an archive directory for reading."""
+        return MessageLogArchive(archive_dir)
 
     def get_total_count(self) -> int:
         """Get total message count including archives."""
         active_count = self.get_message_count()
         archive_count = 0
-        for archive_path in self.get_archived_files():
-            archive = self.load_archive(archive_path)
+        for archive_dir in self.get_archived_directories():
+            archive = self.load_archive(archive_dir)
             archive_count += archive.get_line_count()
         return active_count + archive_count
-
-    def clear_cache(self):
-        """Clear position cache (will be rebuilt on next access)."""
-        with self._cache_lock:
-            self._position_cache.clear()
-            self._line_count = 0
-            self._cache_dirty = True
 
 
 class MessageLogArchive:
     """
-    Read-only access to archived message log files.
+    Read-only access to archived message log directories.
 
-    Uses the same cursor-based loading logic as active log.
+    Uses the same index-based reading logic as active log.
     """
 
-    def __init__(self, archive_path: Path):
+    def __init__(self, archive_dir: Path):
         """
         Initialize archive reader.
 
         Args:
-            archive_path: Path to the archive file
+            archive_dir: Path to the archive directory
         """
-        self.archive_path = archive_path
+        self.archive_dir = archive_dir
+        self.data_log_path = archive_dir / Constants.DATA_LOG
+        self.index_path = archive_dir / Constants.INDEX_FILE
+        self._line_count: int = self._load_line_count()
 
-        # Build position cache
-        self._position_cache: List[int] = []
-        self._line_count: int = 0
-        self._build_cache()
-
-    def _build_cache(self):
-        """Build file position cache."""
-        self._position_cache.clear()
-        self._line_count = 0
-
-        if not self.archive_path.exists():
-            return
-
+    def _load_line_count(self) -> int:
+        """Load line count from index file size (O(1) operation)."""
         try:
-            with open(self.archive_path, 'rb') as f:
-                offset = 0
-                while True:
-                    line = f.readline()
-                    if not line:
-                        break
-                    self._position_cache.append(offset)
-                    offset += len(line)
-                    self._line_count += 1
-        except Exception as e:
-            logger.error(f"Error building archive position cache: {e}")
+            index_size = self.index_path.stat().st_size
+            return index_size // Constants.INDEX_ENTRY_SIZE
+        except Exception:
+            return 0
 
     def get_line_count(self) -> int:
         """Get total line count in archive."""
         return self._line_count
+
+    def _get_offset(self, line_index: int) -> Optional[int]:
+        """Get the byte offset for a given line index."""
+        if line_index < 0:
+            return None
+
+        offset_position = line_index * Constants.INDEX_ENTRY_SIZE
+
+        try:
+            with open(self.index_path, 'rb') as f:
+                data = os.pread(f.fileno(), Constants.INDEX_ENTRY_SIZE, offset_position)
+                if len(data) != Constants.INDEX_ENTRY_SIZE:
+                    return None
+                return struct.unpack('<Q', data)[0]
+        except Exception:
+            return None
+
+    def _read_line_at_offset(self, offset: int) -> Optional[str]:
+        """Read a single line starting at the given offset using pread."""
+        try:
+            with open(self.data_log_path, 'rb') as f:
+                chunk = os.pread(f.fileno(), 65536, offset)
+                if not chunk:
+                    return None
+
+                newline_pos = chunk.find(b'\n')
+                if newline_pos == -1:
+                    return chunk.decode('utf-8').strip()
+
+                line_bytes = chunk[:newline_pos]
+                return line_bytes.decode('utf-8').strip()
+        except Exception:
+            return None
 
     def get_messages(self, start: int, count: int) -> List[Dict[str, Any]]:
         """Get messages from archive by range."""
@@ -560,29 +507,22 @@ class MessageLogArchive:
         if start >= self._line_count:
             return []
 
-        messages = []
         end = min(start + count, self._line_count)
+        messages = []
 
         try:
-            with open(self.archive_path, 'r', encoding='utf-8') as f:
-                if start >= len(self._position_cache):
-                    return []
+            for i in range(start, end):
+                offset = self._get_offset(i)
+                if offset is None:
+                    break
 
-                start_offset = self._position_cache[start]
-                f.seek(start_offset)
-
-                for i in range(start, end):
-                    line = f.readline()
-                    if not line:
-                        break
-
-                    line = line.strip()
-                    if line:
-                        try:
-                            msg = json.loads(line)
-                            messages.append(msg)
-                        except json.JSONDecodeError:
-                            pass  # Skip invalid lines
+                line = self._read_line_at_offset(offset)
+                if line:
+                    try:
+                        msg = json.loads(line)
+                        messages.append(msg)
+                    except json.JSONDecodeError:
+                        pass
 
         except Exception as e:
             logger.error(f"Error reading archive: {e}")
@@ -603,7 +543,7 @@ class MessageLogHistory:
     """
     Message log history manager combining active log and archives.
 
-    Manages seamless loading across active log and archive files.
+    Manages seamless loading across active log and archive directories.
     """
 
     def __init__(self, workspace_path: str, project_name: str):
@@ -633,8 +573,8 @@ class MessageLogHistory:
         self._refresh_archives()
 
     def _refresh_archives(self):
-        """Refresh the list of archive files."""
-        self._archives = self.storage.get_archived_files()
+        """Refresh the list of archive directories."""
+        self._archives = self.storage.get_archived_directories()
 
     def get_total_count(self) -> int:
         """Get total message count across all files."""
@@ -666,7 +606,6 @@ class MessageLogHistory:
         active_count = self.storage.get_message_count()
 
         if line_offset >= active_count:
-            # Beyond active log, no more messages
             return []
 
         end = min(line_offset + count, active_count)
@@ -699,8 +638,8 @@ class MessageLogHistory:
 
         # If we still need more, get from archives
         if remaining > 0 and self._archives:
-            for archive_path in self._archives:
-                archive = self.storage.load_archive(archive_path)
+            for archive_dir in self._archives:
+                archive = self.storage.load_archive(archive_dir)
                 archive_count = archive.get_line_count()
 
                 if archive_count > 0:
@@ -714,7 +653,7 @@ class MessageLogHistory:
                     if remaining <= 0:
                         break
 
-        # Messages were loaded in reverse order (archives first), reverse back
+        # Messages were loaded in reverse order, reverse back
         return list(reversed(messages))
 
     def append_message(self, message: Dict[str, Any]) -> bool:
@@ -732,26 +671,55 @@ class MessageLogHistory:
     def invalidate_cache(self):
         """Invalidate all caches."""
         self._refresh_archives()
-        self.storage.clear_cache()
 
     def recover_from_corruption(self) -> bool:
         """
-        Attempt to recover from a corrupted message.log file.
+        Attempt to recover from corrupted data files.
 
-        This method will:
-        1. Rebuild the position cache, which will detect corruption
-        2. Truncate the file at the last valid position
-        3. Return True if recovery was successful
+        Since the new design uses separate index and data files with
+        os.pread for reading, corruption is less likely. This method
+        rebuilds the index file from the data log if needed.
 
         Returns:
             True if recovery was successful, False otherwise
         """
         try:
-            logger.info(f"Attempting to recover message.log for project '{self.project_name}'")
-            # Force a cache rebuild which will handle corruption
-            self.storage._rebuild_position_cache()
-            logger.info(f"Recovery completed for project '{self.project_name}'")
-            return True
+            logger.info(f"Attempting to recover storage for project '{self.project_name}'")
+            history_root = self.storage.history_root
+            data_path = self.storage.data_log_path
+            index_path = self.storage.index_path
+
+            # Rebuild index from data.log
+            if data_path.exists():
+                offsets = []
+                offset = 0
+
+                with open(data_path, 'rb') as f:
+                    while True:
+                        line_start = f.tell()
+                        line = f.readline()
+                        if not line:
+                            break
+
+                        # Only add complete lines ending with newline
+                        if line.endswith(b'\n'):
+                            offsets.append(line_start)
+                            offset = f.tell()
+
+                # Write rebuilt index
+                with open(index_path, 'wb') as f:
+                    for off in offsets:
+                        packed = struct.pack('<Q', off)
+                        f.write(packed)
+                    f.flush()
+                    os.fsync(f.fileno())
+
+                # Update cached line count
+                self.storage._line_count = len(offsets)
+
+                logger.info(f"Recovery completed: rebuilt index with {len(offsets)} entries")
+                return True
+
         except Exception as e:
             logger.error(f"Error during recovery: {e}")
             return False
