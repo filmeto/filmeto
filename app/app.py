@@ -5,6 +5,10 @@ import logging
 import traceback
 import time
 
+# Set Qt Quick Controls style before any Qt imports
+# This prevents warnings about customization not being supported by native styles
+os.environ['QT_QUICK_CONTROLS_STYLE'] = 'Basic'
+
 from qasync import QEventLoop
 from PySide6.QtGui import QFontDatabase, QIcon
 from PySide6.QtWidgets import QApplication
