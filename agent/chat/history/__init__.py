@@ -1,12 +1,12 @@
 """
 Agent Chat History package.
 
-Provides high-performance message history storage using message.log files.
+Provides high-performance message history storage using log + index file structure.
 
 Components:
 - FastMessageHistoryService: Main service API for accessing history
 - MessageLogHistory: Low-level history manager
-- MessageLogStorage: Storage engine with message.log + history_*.log files
+- MessageLogStorage: Storage engine with current/data.log + current/index.idx + history_* directories
 - AgentChatHistoryListener: Auto-saves messages from signals
 """
 

@@ -89,7 +89,7 @@ class AgentChatHistoryListener:
             )
 
             if success:
-                logger.debug(f"Saved message {message.message_id} to message.log")
+                logger.debug(f"Saved message {message.message_id} to history storage")
             else:
                 logger.warning(f"Failed to save message {message.message_id}")
 
