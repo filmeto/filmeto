@@ -107,7 +107,7 @@ Item {
                 }
 
                 Repeater {
-                    model: effectiveStructuredContent
+                    model: structuredContentColumn.effectiveStructuredContent
 
                     delegate: Loader {
                         id: widgetLoader

@@ -135,6 +135,7 @@ Item {
         id: structuredContentComponent
 
         Column {
+            id: contentColumn
             spacing: 8
             width: parent.width
             height: childrenRect.height
@@ -149,7 +150,7 @@ Item {
             }
 
             Repeater {
-                model: effectiveStructuredContent
+                model: contentColumn.effectiveStructuredContent
 
                 delegate: Loader {
                     id: widgetLoader
