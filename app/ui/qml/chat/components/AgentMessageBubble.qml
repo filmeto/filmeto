@@ -184,20 +184,48 @@ Item {
                     sourceComponent: {
                         var type = modelData.content_type || modelData.type || "text"
                         switch (type) {
+                            // Basic content
                             case "text": return textWidgetComponent
                             case "code_block": return codeBlockComponent
+
+                            // Thinking content
                             case "thinking": return thinkingWidgetComponent
+
+                            // Tool content
                             case "tool_call": return toolCallComponent
                             case "tool_response": return toolResponseComponent
-                            case "typing": return typingIndicatorComponent
-                            case "progress": return progressWidgetComponent
+
+                            // Media content
                             case "image": return imageWidgetComponent
+                            case "video": return videoWidgetComponent
+                            case "audio": return audioWidgetComponent
+
+                            // Data display
                             case "table": return tableWidgetComponent
+                            case "chart": return chartWidgetComponent
+
+                            // Interactive elements
                             case "link": return linkWidgetComponent
                             case "button": return buttonWidgetComponent
-                            case "plan": return planWidgetComponent
-                            case "task": return taskWidgetComponent
+                            case "form": return formWidgetComponent
+
+                            // Files
+                            case "file_attachment":
                             case "file": return fileWidgetComponent
+
+                            // Tasks and plans
+                            case "plan": return planWidgetComponent
+                            case "task_list":
+                            case "task": return taskWidgetComponent
+                            case "step": return stepWidgetComponent
+                            case "skill": return skillWidgetComponent
+
+                            // Status and metadata
+                            case "progress": return progressWidgetComponent
+                            case "typing": return typingIndicatorComponent
+                            case "metadata": return metadataWidgetComponent
+                            case "error": return errorWidgetComponent
+
                             default: return textWidgetComponent
                         }
                     }
@@ -396,9 +424,126 @@ Item {
         FileWidget {
             property var data: ({})
             width: parent.width
-            filePath: data.path || data.data?.path || ""
-            fileName: data.name || data.data?.name || ""
-            fileSize: data.size || data.data?.size || 0
+            filePath: data.path || (data.data && data.data.path) ? data.data.path : ""
+            fileName: data.name || (data.data && data.data.name) ? data.data.name : ""
+            fileSize: data.size || (data.data && data.data.size) ? data.data.size : 0
+        }
+    }
+
+    // Video widget
+    Component {
+        id: videoWidgetComponent
+
+        VideoWidget {
+            property var data: ({})
+            width: parent.width
+            widgetColor: root.agentColor
+            source: (data.data && data.data.url) ? data.data.url : ""
+            caption: data.description || ""
+        }
+    }
+
+    // Audio widget
+    Component {
+        id: audioWidgetComponent
+
+        AudioWidget {
+            property var data: ({})
+            width: parent.width
+            widgetColor: root.agentColor
+            source: (data.data && data.data.url) ? data.data.url : ""
+            caption: data.description || ""
+        }
+    }
+
+    // Chart widget
+    Component {
+        id: chartWidgetComponent
+
+        ChartWidget {
+            property var data: ({})
+            width: parent.width
+            widgetColor: root.agentColor
+            chartType: (data.data && data.data.chart_type) ? data.data.chart_type : "bar"
+            chartData: (data.data && data.data.data) ? data.data.data : {}
+            title: data.title || ""
+        }
+    }
+
+    // Form widget
+    Component {
+        id: formWidgetComponent
+
+        FormWidget {
+            property var data: ({})
+            width: parent.width
+            widgetColor: root.agentColor
+            formData: data.data || {}
+        }
+    }
+
+    // Step widget
+    Component {
+        id: stepWidgetComponent
+
+        StepWidget {
+            property var data: ({})
+            width: parent.width
+            widgetColor: root.agentColor
+            stepData: ({
+                title: data.title || "",
+                description: data.description || "",
+                status: (data.data && data.data.status) ? data.data.status : "pending",
+                step_number: (data.data && data.data.step_number) ? data.data.step_number : 0
+            })
+        }
+    }
+
+    // Skill widget
+    Component {
+        id: skillWidgetComponent
+
+        SkillWidget {
+            property var data: ({})
+            width: parent.width
+            widgetColor: root.agentColor
+            skillData: ({
+                name: (data.data && data.data.skill_name) ? data.data.skill_name : (data.title || ""),
+                status: data.status || "pending",
+                progress: 0
+            })
+        }
+    }
+
+    // Metadata widget
+    Component {
+        id: metadataWidgetComponent
+
+        MetadataWidget {
+            property var data: ({})
+            width: parent.width
+            widgetColor: root.agentColor
+            metadataData: ({
+                metadata_type: (data.data && data.data.metadata_type) ? data.data.metadata_type : (data.title || ""),
+                title: data.title || "",
+                description: data.description || "",
+                metadata_data: (data.data && data.data.data) ? data.data.data : ({})
+            })
+        }
+    }
+
+    // Error widget
+    Component {
+        id: errorWidgetComponent
+
+        ErrorWidget {
+            property var data: ({})
+            width: parent.width
+            errorData: ({
+                error_message: (data.data && data.data.error) ? data.data.error : "",
+                error_type: (data.data && data.data.error_type) ? data.data.error_type : (data.title || "Error"),
+                details: data.description || ""
+            })
         }
     }
 }
