@@ -191,7 +191,7 @@ class QmlAgentChatListWidget(BaseWidget):
         # Reconnect to storage signals for new project
         self._connect_to_storage_signals()
         self._load_recent_conversation()
-        self._start_new_data_check_timer()
+        # Don't restart timer - rely on message_saved signal instead
 
     def refresh_crew_member_metadata(self):
         """Reload crew member metadata."""
@@ -992,4 +992,4 @@ class QmlAgentChatListWidget(BaseWidget):
         self._agent_current_cards.clear()
         self._load_state = LoadState()
         self._loading_older = False
-        self._start_new_data_check_timer()
+        # Don't restart timer - rely on message_saved signal instead
