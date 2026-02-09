@@ -149,8 +149,33 @@ Item {
                 return [{ content_type: "text", text: root.content || "" }]
             }
 
+            // Filter out non-typing content
+            property var nonTypingContent: {
+                var items = []
+                for (var i = 0; i < effectiveStructuredContent.length; i++) {
+                    var type = effectiveStructuredContent[i].content_type || effectiveStructuredContent[i].type || "text"
+                    if (type !== "typing") {
+                        items.push(effectiveStructuredContent[i])
+                    }
+                }
+                return items.length > 0 ? items : [{ content_type: "text", text: "" }]
+            }
+
+            // Filter typing content (always last)
+            property var typingContent: {
+                var items = []
+                for (var i = 0; i < effectiveStructuredContent.length; i++) {
+                    var type = effectiveStructuredContent[i].content_type || effectiveStructuredContent[i].type || "text"
+                    if (type === "typing") {
+                        items.push(effectiveStructuredContent[i])
+                    }
+                }
+                return items
+            }
+
+            // Non-typing content (displayed first)
             Repeater {
-                model: contentColumn.effectiveStructuredContent
+                model: nonTypingContent
 
                 delegate: Loader {
                     id: widgetLoader
@@ -197,7 +222,6 @@ Item {
 
                             // Status and metadata
                             case "progress": return progressWidgetComponent
-                            case "typing": return typingIndicatorComponent
                             case "metadata": return metadataWidgetComponent
                             case "error": return errorWidgetComponent
 
@@ -206,16 +230,31 @@ Item {
                     }
 
                     property var widgetData: modelData
-                    visible: {
-                        var type = modelData.content_type || modelData.type || "text"
-                        return type !== "typing"
-                    }
 
                     onLoaded: {
                         // Pass data to the widget
                         if (item.hasOwnProperty('data')) {
                             item.data = modelData
                         }
+                        if (item.hasOwnProperty('widgetColor')) {
+                            item.widgetColor = root.agentColor
+                        }
+                    }
+                }
+            }
+
+            // Typing indicators (always displayed last)
+            Repeater {
+                model: typingContent
+
+                delegate: Loader {
+                    id: typingLoader
+                    width: parent.width
+                    sourceComponent: typingIndicatorComponent
+
+                    property var widgetData: modelData
+
+                    onLoaded: {
                         if (item.hasOwnProperty('widgetColor')) {
                             item.widgetColor = root.agentColor
                         }
@@ -315,7 +354,9 @@ Item {
         id: typingIndicatorComponent
 
         TypingIndicator {
+            property var widgetColor: "#4a90e2"
             active: true
+            dotColor: widgetColor
         }
     }
 
