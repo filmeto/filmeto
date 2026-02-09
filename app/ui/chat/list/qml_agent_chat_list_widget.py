@@ -931,7 +931,16 @@ class QmlAgentChatListWidget(BaseWidget):
             logger.error(f"Error checking for new data: {e}")
 
     def _load_new_messages_from_history(self):
-        """Load new messages from history that aren't in the model yet."""
+        """Load new messages from history that aren't in the model yet.
+
+        This method handles two scenarios:
+        1. New messages (not in model) - creates new bubbles
+        2. Existing messages (same message_id) - merges new content into existing bubbles
+
+        For streaming responses that are saved in chunks with the same message_id,
+        this method ensures all content chunks are properly merged into the existing
+        message bubble instead of being ignored.
+        """
         try:
             history = self._get_history()
             if not history:
@@ -944,45 +953,141 @@ class QmlAgentChatListWidget(BaseWidget):
             if not new_messages:
                 return
 
-            # Group messages by message_id
+            # Group messages by message_id (don't skip known ones yet)
+            # We need to collect all messages including ones for existing bubbles
             message_groups: Dict[str, MessageGroup] = {}
             for msg_data in new_messages:
                 message_id = msg_data.get("message_id") or msg_data.get("metadata", {}).get("message_id", "")
                 if not message_id:
                     continue
 
-                if message_id in self._load_state.known_message_ids:
-                    # Already in model, skip
-                    continue
-
+                # Always add to groups for processing
                 if message_id not in message_groups:
                     message_groups[message_id] = MessageGroup()
                 message_groups[message_id].add_message(msg_data)
 
-            # Process new messages
+            # Process messages - handle both new and existing message_ids
             for message_id, group in message_groups.items():
-                if message_id in self._load_state.known_message_ids:
+                combined_msg = group.get_combined_message()
+                if not combined_msg:
                     continue
 
-                combined_msg = group.get_combined_message()
-                if combined_msg:
+                # Check if this message already exists in the model
+                existing_row = self._model.get_row_by_message_id(message_id)
+
+                if existing_row is not None:
+                    # Message bubble already exists - merge new content
+                    self._merge_content_into_existing_bubble(message_id, combined_msg)
+                    logger.debug(f"Merged new content into existing bubble: {message_id[:8]}...")
+                else:
+                    # New message - create new bubble
                     item = self._build_item_from_history(combined_msg)
                     if item:
                         qml_item = QmlAgentChatListModel.from_chat_list_item(item)
                         self._model.add_item(qml_item)
                         self._load_state.known_message_ids.add(message_id)
+                        logger.debug(f"Created new bubble: {message_id[:8]}...")
 
             # Update offset
             if new_messages:
                 self._load_state.current_line_offset = current_offset + len(new_messages)
-                self._load_state.unique_message_count += len(message_groups)
+                # Only count unique new messages (not updates to existing ones)
+                new_unique_count = sum(1 for msg_id in message_groups.keys()
+                                      if msg_id not in self._load_state.known_message_ids)
+                self._load_state.unique_message_count += new_unique_count
+                # Add all processed message_ids to known set
+                for msg_id in message_groups.keys():
+                    self._load_state.known_message_ids.add(msg_id)
 
                 # Scroll to bottom to show new messages
                 self._scroll_to_bottom()
-                logger.debug(f"Loaded {len(message_groups)} new messages")
+                logger.debug(f"Processed {len(message_groups)} message groups from history")
 
         except Exception as e:
             logger.error(f"Error loading new messages from history: {e}", exc_info=True)
+
+    def _merge_content_into_existing_bubble(self, message_id: str, combined_msg: Dict[str, Any]) -> None:
+        """Merge new content into an existing message bubble.
+
+        Args:
+            message_id: The ID of the message to update
+            combined_msg: The combined message data with new content
+        """
+        try:
+            # Build item from the combined message to get structured content
+            item = self._build_item_from_history(combined_msg)
+            if not item:
+                return
+
+            # Convert to QML format to extract structured content
+            qml_item = QmlAgentChatListModel.from_chat_list_item(item)
+            new_structured_content = qml_item.get(QmlAgentChatListModel.STRUCTURED_CONTENT, [])
+
+            if not new_structured_content:
+                return
+
+            # Get current item from model
+            existing_row = self._model.get_row_by_message_id(message_id)
+            if existing_row is None:
+                return
+
+            current_item = self._model.get_item(existing_row)
+            if not current_item:
+                return
+
+            # Get existing structured content
+            current_structured = current_item.get(QmlAgentChatListModel.STRUCTURED_CONTENT, [])
+
+            # Merge content items - add new items that aren't already present
+            merged_content = list(current_structured)
+
+            # Track existing content types to avoid duplicates
+            # For streaming text, we want to append; for other types, we might want to replace
+            for new_content in new_structured_content:
+                content_type = new_content.get('content_type', '')
+
+                # Special handling for text content - always append (streaming)
+                if content_type == 'text':
+                    merged_content.append(new_content)
+                # For other content types, check if we should replace or append
+                elif content_type == 'thinking':
+                    # Replace existing thinking content with new one
+                    merged_content = [c for c in merged_content
+                                    if c.get('content_type') != 'thinking']
+                    merged_content.append(new_content)
+                elif content_type == 'typing':
+                    # Remove old typing indicators before adding new one
+                    merged_content = [c for c in merged_content
+                                    if c.get('content_type') != 'typing']
+                    merged_content.append(new_content)
+                else:
+                    # For other types (progress, tool_call, etc.), append if not duplicate
+                    # Simple check: compare string representation
+                    new_str = str(new_content)
+                    if not any(str(c) == new_str for c in merged_content):
+                        merged_content.append(new_content)
+
+            # Update the model with merged content
+            self._model.update_item(message_id, {
+                QmlAgentChatListModel.STRUCTURED_CONTENT: merged_content
+            })
+
+            # Also update the plain text content if needed
+            # Extract text from the new content and append
+            new_text = qml_item.get(QmlAgentChatListModel.CONTENT, "")
+            if new_text:
+                current_text = current_item.get(QmlAgentChatListModel.CONTENT, "")
+                # Only append if the new text adds something meaningful
+                if new_text not in current_text:
+                    updated_text = current_text + new_text if current_text else new_text
+                    self._model.update_item(message_id, {
+                        QmlAgentChatListModel.CONTENT: updated_text
+                    })
+
+            logger.debug(f"Merged {len(new_structured_content)} content items into {message_id[:8]}...")
+
+        except Exception as e:
+            logger.error(f"Error merging content for {message_id[:8]}...: {e}", exc_info=True)
 
     def clear(self):
         """Clear the chat list."""
