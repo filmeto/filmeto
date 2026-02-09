@@ -6,15 +6,23 @@ This service provides high-performance message history access using:
 - Single-line JSON format for efficient parsing
 - Active log + archive files for management
 - Pure synchronous API for Qt compatibility
+
+Design: UI reads from storage as single source of truth.
 """
 
 import logging
+import blinker
 from typing import Dict, List
 
 from agent.chat.history.agent_chat_storage import MessageLogHistory
 from agent.chat.agent_chat_message import AgentMessage
 
 logger = logging.getLogger(__name__)
+
+
+# Signal emitted when a message is successfully saved to storage
+# Args: workspace_path (str), project_name (str), message_id (str)
+message_saved = blinker.Signal()
 
 
 class FastMessageHistoryService:
@@ -54,6 +62,9 @@ class FastMessageHistoryService:
         """
         Add a message to history.
 
+        After successfully writing to storage, emits a message_saved signal
+        that UI components can listen to for refresh.
+
         Args:
             workspace_path: Path to workspace
             project_name: Name of project
@@ -65,7 +76,23 @@ class FastMessageHistoryService:
         # Convert AgentMessage to dict format
         message_dict = cls._message_to_dict(message)
         history = cls.get_history(workspace_path, project_name)
-        return history.append_message(message_dict)
+        success = history.append_message(message_dict)
+
+        # Emit signal after successful storage write
+        # UI should listen to this signal and refresh from storage
+        if success:
+            try:
+                message_saved.send(
+                    cls,
+                    workspace_path=workspace_path,
+                    project_name=project_name,
+                    message_id=message.message_id
+                )
+                logger.debug(f"Emitted message_saved signal for {message.message_id}")
+            except Exception as e:
+                logger.error(f"Error emitting message_saved signal: {e}")
+
+        return success
 
     @classmethod
     def _message_to_dict(cls, message: AgentMessage) -> dict:
