@@ -10,6 +10,9 @@ Item {
     property bool isRead: true
     property string userName: "You"
     property string userIcon: "👤"
+    property var structuredContent: []
+
+    signal referenceClicked(string refType, string refId)
 
     // Theme colors
     readonly property color bubbleColor: "#4a90e2"
@@ -79,30 +82,222 @@ Item {
         // Message bubble
         Rectangle {
             id: bubble
-            width: Math.min(Math.max(80, contentText.implicitWidth + 24), availableWidth)
-            height: contentText.implicitHeight + 24
+            width: Math.min(Math.max(80, structuredContentColumn.implicitWidth + 24), availableWidth)
+            height: structuredContentColumn.implicitHeight + 24
 
             color: bubbleColor
             radius: 9
 
-            // Content
-            Text {
-                id: contentText
+            // Always render through structured content
+            Column {
+                id: structuredContentColumn
                 anchors {
                     fill: parent
                     margins: 12
                 }
+                spacing: 8
 
-                text: root.content
-                color: textColor
-                font.pixelSize: 14
-                wrapMode: Text.WordWrap
-                textFormat: Text.PlainText
-                lineHeight: 1.4
-                linkColor: "#87ceeb"
+                // Use a computed property that always has at least one item
+                property var effectiveStructuredContent: {
+                    if (root.structuredContent && root.structuredContent.length > 0) {
+                        return root.structuredContent
+                    }
+                    // Fallback: convert content to a simple text item
+                    return [{ content_type: "text", text: root.content || "" }]
+                }
 
-                onLinkActivated: function(link) {
+                Repeater {
+                    model: effectiveStructuredContent
+
+                    delegate: Loader {
+                        id: widgetLoader
+                        width: parent.width
+
+                        sourceComponent: {
+                            var type = modelData.content_type || modelData.type || "text"
+                            switch (type) {
+                                case "text": return textWidgetComponent
+                                case "code_block": return codeBlockComponent
+                                case "image": return imageWidgetComponent
+                                case "link": return linkWidgetComponent
+                                case "file_attachment":
+                                case "file": return fileWidgetComponent
+                                default: return textWidgetComponent
+                            }
+                        }
+
+                        property var widgetData: modelData
+
+                        onLoaded: {
+                            if (item.hasOwnProperty('data')) {
+                                item.data = modelData
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Widget Components
+    // ─────────────────────────────────────────────────────────────
+
+    // Text widget
+    Component {
+        id: textWidgetComponent
+
+        Text {
+            property var data: ({})
+            text: data.text || data.data?.text || ""
+            color: textColor
+            font.pixelSize: 14
+            wrapMode: Text.WordWrap
+            textFormat: Text.PlainText
+            lineHeight: 1.4
+            linkColor: "#87ceeb"
+            width: parent.width
+
+            onLinkActivated: function(link) {
+                if (link.startsWith("ref://")) {
+                    var parts = link.substring(6).split(":")
+                    if (parts.length >= 2) {
+                        root.referenceClicked(parts[0], parts[1])
+                    }
+                } else {
                     Qt.openUrlExternally(link)
+                }
+            }
+        }
+    }
+
+    // Code block widget (simplified for user messages)
+    Component {
+        id: codeBlockComponent
+
+        Rectangle {
+            property var data: ({})
+            width: parent.width
+            color: "#2a2a2a"
+            radius: 4
+
+            Column {
+                anchors {
+                    fill: parent
+                    margins: 8
+                }
+                spacing: 4
+
+                Text {
+                    text: (data.language || data.data?.language || "text").toUpperCase()
+                    color: "#888888"
+                    font.pixelSize: 10
+                    font.weight: Font.Bold
+                }
+
+                Text {
+                    text: data.code || data.data?.code || ""
+                    color: "#e0e0e0"
+                    font.pixelSize: 12
+                    font.family: "monospace"
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                }
+            }
+        }
+    }
+
+    // Image widget
+    Component {
+        id: imageWidgetComponent
+
+        Column {
+            property var data: ({})
+            width: parent.width
+            spacing: 4
+
+            Image {
+                width: Math.min(parent.width, 300)
+                height: width * 0.75
+                source: data.url || data.data?.url || ""
+                fillMode: Image.PreserveAspectCrop
+                anchors.horizontalCenter: parent.horizontalCenter
+            }
+
+            Text {
+                text: data.caption || data.data?.caption || ""
+                color: "#cccccc"
+                font.pixelSize: 11
+                font.italic: true
+                anchors.horizontalCenter: parent.horizontalCenter
+                visible: text !== ""
+            }
+        }
+    }
+
+    // Link widget
+    Component {
+        id: linkWidgetComponent
+
+        Text {
+            property var data: ({})
+            text: "<a href=\"" + (data.url || data.data?.url || "") + "\">" +
+                  (data.title || data.data?.title || data.url || data.data?.url || "Link") +
+                  "</a>"
+            color: textColor
+            font.pixelSize: 14
+            textFormat: Text.RichText
+            linkColor: "#87ceeb"
+            width: parent.width
+
+            onLinkActivated: function(link) {
+                Qt.openUrlExternally(link)
+            }
+        }
+    }
+
+    // File widget
+    Component {
+        id: fileWidgetComponent
+
+        Row {
+            property var data: ({})
+            spacing: 8
+
+            Rectangle {
+                width: 40
+                height: 40
+                color: "#ffffff"
+                radius: 4
+                opacity: 0.2
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "📄"
+                    font.pixelSize: 20
+                }
+            }
+
+            Column {
+                spacing: 2
+                anchors.verticalCenter: parent.verticalCenter
+
+                Text {
+                    text: data.name || data.data?.name || "File"
+                    color: textColor
+                    font.pixelSize: 13
+                    font.weight: Font.Medium
+                }
+
+                Text {
+                    text: {
+                        var size = data.size || data.data?.size || 0
+                        if (size < 1024) return size + " B"
+                        if (size < 1024 * 1024) return (size / 1024).toFixed(1) + " KB"
+                        return (size / (1024 * 1024)).toFixed(1) + " MB"
+                    }
+                    color: "#cccccc"
+                    font.pixelSize: 11
                 }
             }
         }

@@ -121,46 +121,11 @@ Item {
             }
             spacing: 8
 
-            // Render structured content or plain text
+                    // Always render through structured content
             Loader {
                 id: contentLoader
                 width: parent.width
-
-                sourceComponent: {
-                    if (root.structuredContent && root.structuredContent.length > 0) {
-                        return structuredContentComponent
-                    } else {
-                        return textContentComponent
-                    }
-                }
-            }
-        }
-    }
-
-    // Plain text content component
-    Component {
-        id: textContentComponent
-
-        Text {
-            text: root.content || ""
-            color: textColor
-            font.pixelSize: 14
-            wrapMode: Text.WordWrap
-            textFormat: Text.PlainText
-            lineHeight: 1.5
-            linkColor: "#87ceeb"
-            width: parent.width
-
-            onLinkActivated: function(link) {
-                // Handle reference links like ref://tool_call:abc123
-                if (link.startsWith("ref://")) {
-                    var parts = link.substring(6).split(":")
-                    if (parts.length >= 2) {
-                        root.referenceClicked(parts[0], parts[1])
-                    }
-                } else {
-                    Qt.openUrlExternally(link)
-                }
+                sourceComponent: structuredContentComponent
             }
         }
     }
@@ -174,8 +139,17 @@ Item {
             width: parent.width
             height: childrenRect.height
 
+            // Use a computed property that always has at least one item
+            property var effectiveStructuredContent: {
+                if (root.structuredContent && root.structuredContent.length > 0) {
+                    return root.structuredContent
+                }
+                // Fallback: convert content to a simple text item
+                return [{ content_type: "text", text: root.content || "" }]
+            }
+
             Repeater {
-                model: root.structuredContent || []
+                model: effectiveStructuredContent
 
                 delegate: Loader {
                     id: widgetLoader
@@ -266,7 +240,20 @@ Item {
             wrapMode: Text.WordWrap
             textFormat: Text.PlainText
             lineHeight: 1.5
+            linkColor: "#87ceeb"
             width: parent.width
+
+            onLinkActivated: function(link) {
+                // Handle reference links like ref://tool_call:abc123
+                if (link.startsWith("ref://")) {
+                    var parts = link.substring(6).split(":")
+                    if (parts.length >= 2) {
+                        root.referenceClicked(parts[0], parts[1])
+                    }
+                } else {
+                    Qt.openUrlExternally(link)
+                }
+            }
         }
     }
 
