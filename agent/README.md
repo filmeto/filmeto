@@ -27,9 +27,10 @@ Represents individual AI agents with:
 - LLM interaction capabilities
 - Conversation history management
 
-### AgentMessage & MessageType
+### AgentMessage & ContentType
 - Standardized message format used throughout the system
-- Supports multiple content types (text, code, image, video, audio, file, command, error, system, tool_call, tool_response)
+- Message type is determined from the structured_content (defaults to TEXT if empty)
+- Supports multiple content types (text, code_block, thinking, tool_call, tool_response, progress, typing, metadata, error, image, video, audio, table, chart, link, button, form, file_attachment, plan, step, task_list, skill)
 - Includes metadata, timestamps, and sender information
 
 ### StreamEvent

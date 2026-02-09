@@ -313,9 +313,15 @@ class AgentChatPlanWidget(BaseWidget):
         if message.content and "plan" in message.content.lower():
             self.refresh_plan()
 
-        # Check message type for plan-related types
-        if hasattr(message, 'message_type') and str(message.message_type).lower() == "plan":
-            self.refresh_plan()
+        # Check structured_content for plan-related types
+        if hasattr(message, 'structured_content') and message.structured_content:
+            from agent.chat.agent_chat_types import ContentType
+            for content in message.structured_content:
+                if hasattr(content, 'content_type'):
+                    content_type_str = str(content.content_type).lower()
+                    if content_type_str == "plan" or "plan" in content_type_str:
+                        self.refresh_plan()
+                        break
 
         # Process UI updates to ensure changes are reflected
         from PySide6.QtWidgets import QApplication

@@ -124,16 +124,21 @@ class FastMessageHistoryService:
         # We store flattened and maintain compatibility
         serialized_content = cls._serialize_content(message.structured_content)
 
+        # Derive message_type from structured_content for storage compatibility
+        message_type_value = "text"  # Default
+        if message.structured_content:
+            message_type_value = message.structured_content[0].content_type.value
+
         # Create the dict format that matches what the UI expects from AgentChatHistory
         return {
             "message_id": message.message_id,
-            "message_type": message.message_type.value if hasattr(message.message_type, "value") else str(message.message_type),
+            "message_type": message_type_value,
             "sender_id": message.sender_id,
             "sender_name": message.sender_name,
             "timestamp": message.timestamp.isoformat(),
             "metadata": {
                 "message_id": message.message_id,
-                "message_type": message.message_type.value if hasattr(message.message_type, "value") else str(message.message_type),
+                "message_type": message_type_value,
                 "sender_id": message.sender_id,
                 "sender_name": message.sender_name,
                 **(message.metadata or {})

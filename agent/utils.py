@@ -3,8 +3,8 @@ Utility functions for the Filmeto agent system.
 """
 
 from .chat.agent_chat_message import AgentMessage
-from .chat.content import TextContent
-from .chat.agent_chat_types import MessageType, ContentType
+from .chat.content import TextContent, ErrorContent, MetadataContent
+from .chat.agent_chat_types import ContentType
 
 
 def create_text_message(content: str, sender_id: str, sender_name: str = "") -> AgentMessage:
@@ -20,7 +20,6 @@ def create_text_message(content: str, sender_id: str, sender_name: str = "") -> 
         AgentMessage: A new text message
     """
     return AgentMessage(
-        message_type=MessageType.TEXT,
         sender_id=sender_id,
         sender_name=sender_name,
         structured_content=[TextContent(text=content)]
@@ -40,10 +39,9 @@ def create_error_message(content: str, sender_id: str, sender_name: str = "") ->
         AgentMessage: A new error message
     """
     return AgentMessage(
-        message_type=MessageType.ERROR,
         sender_id=sender_id,
         sender_name=sender_name,
-        structured_content=[TextContent(text=content)]
+        structured_content=[ErrorContent(error_message=content)]
     )
 
 
@@ -60,7 +58,6 @@ def create_system_message(content: str, sender_id: str, sender_name: str = "") -
         AgentMessage: A new system message
     """
     return AgentMessage(
-        message_type=MessageType.SYSTEM,
         sender_id=sender_id,
         sender_name=sender_name,
         structured_content=[TextContent(text=content)]

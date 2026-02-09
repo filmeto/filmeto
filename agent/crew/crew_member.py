@@ -8,7 +8,7 @@ import yaml
 
 from agent.chat.agent_chat_message import AgentMessage, StructureContent
 from agent.chat.agent_chat_signals import AgentChatSignals
-from agent.chat.agent_chat_types import ContentType, MessageType
+from agent.chat.agent_chat_types import ContentType
 from agent.llm.llm_service import LlmService
 from agent.plan.plan_service import PlanService
 from agent.skill.skill_service import SkillService, Skill

@@ -10,7 +10,7 @@ from typing import List, Dict, Any, Optional
 from PySide6.QtCore import Qt, QAbstractListModel, QModelIndex, QObject, Slot, Property
 
 from agent.chat.agent_chat_message import AgentMessage
-from agent.chat.agent_chat_types import MessageType, ContentType
+from agent.chat.agent_chat_types import ContentType
 from agent.chat.content import StructureContent
 
 logger = logging.getLogger(__name__)
@@ -392,8 +392,13 @@ class QmlAgentChatListModel(QAbstractListModel):
 
             # Use "..." for command/typing messages with no extractable content
             if not content and chat_list_item.agent_message:
-                from agent.chat.agent_chat_types import MessageType
-                if chat_list_item.agent_message.message_type == MessageType.COMMAND:
+                # Check if message is system/typing/metadata type without real content
+                # Derive from first structured content item
+                message_type = None
+                if chat_list_item.agent_message.structured_content:
+                    message_type = chat_list_item.agent_message.structured_content[0].content_type
+
+                if message_type in {ContentType.METADATA, ContentType.TYPING, ContentType.PROGRESS}:
                     # Check if there's actual content (not just typing)
                     has_real_content = any(
                         hasattr(sc, 'content_type') and sc.content_type != ContentType.TYPING

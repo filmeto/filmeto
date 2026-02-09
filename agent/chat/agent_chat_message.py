@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
 import uuid
 from datetime import datetime
-from agent.chat.agent_chat_types import MessageType, ContentType
+from agent.chat.agent_chat_types import ContentType
 from agent.chat.content import StructureContent, TextContent
 
 
@@ -14,8 +14,10 @@ from agent.chat.content import StructureContent, TextContent
 class AgentMessage:
     """
     Represents a message in the agent communication system.
+
+    Message content is fully represented by structured_content.
+    The message type is determined by the content_type of the first item in structured_content.
     """
-    message_type: MessageType
     sender_id: str
     sender_name: str = ""
     timestamp: datetime = field(default_factory=datetime.now)

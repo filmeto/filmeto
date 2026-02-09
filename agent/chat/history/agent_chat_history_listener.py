@@ -12,6 +12,7 @@ from typing import Optional
 from agent.chat.history.agent_chat_history_service import FastMessageHistoryService
 from agent.chat.agent_chat_signals import AgentChatSignals
 from agent.chat.agent_chat_message import AgentMessage
+from agent.chat.agent_chat_types import ContentType
 
 logger = logging.getLogger(__name__)
 
@@ -76,8 +77,10 @@ class AgentChatHistoryListener:
             message: The AgentMessage to save
         """
         try:
-            # Skip system messages if needed
-            if message.message_type.value == "system":
+            # Skip system messages if needed (now identified by ContentType.METADATA)
+            # Check first content item's type
+            if (message.structured_content and
+                message.structured_content[0].content_type == ContentType.METADATA):
                 # Optional: Filter out certain system messages
                 pass
 
