@@ -213,19 +213,36 @@ class QmlAgentChatListWidget(BaseWidget):
         except Exception:
             pass  # Signal might not be connected
 
-    def _on_message_saved(self, sender, workspace_path: str, project_name: str, message_id: str):
+    def _on_message_saved(self, sender, workspace_path: str, project_name: str, message_id: str,
+                         gsn: int = 0, current_gsn: int = 0):
         """Handle message_saved signal from storage.
 
         This is called after a message is successfully written to storage.
         We trigger a data refresh to load the new message from storage.
+
+        Enhanced with GSN (Global Sequence Number) support for archive-aware
+        message tracking. The GSN allows correct message fetching even after
+        archiving operations.
+
+        Args:
+            sender: Signal sender
+            workspace_path: Path to workspace
+            project_name: Name of project
+            message_id: ID of the saved message
+            gsn: Global sequence number of the saved message
+            current_gsn: Current (latest) GSN in the system
         """
         # Only refresh if this message belongs to our current project
         if (workspace_path == self.workspace.workspace_path and
             project_name == self.workspace.project_name):
-            # Load new messages from storage
+            # Update current GSN tracking
+            if current_gsn > 0:
+                self._load_state.current_gsn = current_gsn
+
+            # Load new messages from storage using GSN-based fetching
             # Unlike the polling version, we always attempt to load (no _user_at_bottom check)
             # This ensures messages are loaded even when user is viewing history
-            self._load_new_messages_from_history()
+            self._load_new_messages_from_history(gsn, current_gsn)
 
     def _clear_all_caches_and_model(self):
         """Clear all caches and the model."""
@@ -233,9 +250,15 @@ class QmlAgentChatListWidget(BaseWidget):
         self._load_state.known_message_ids.clear()
         self._load_state.unique_message_count = 0
         self._load_state.has_more_older = False
+        # Note: GSN tracking is NOT reset here to maintain state across UI refreshes
+        # GSN reset only happens on project switch
 
     def _load_recent_conversation(self):
-        """Load recent conversation from history."""
+        """Load recent conversation from history.
+
+        Enhanced with GSN tracking initialization for archive-aware
+        message loading.
+        """
         try:
             project = self.workspace.get_project()
             if not project:
@@ -253,19 +276,45 @@ class QmlAgentChatListWidget(BaseWidget):
             self._load_state.active_log_count = history.storage.get_message_count()
             self._load_state.current_line_offset = self._load_state.active_log_count
 
-            if raw_messages:
-                self._clear_all_caches_and_model()
+            # Initialize GSN tracking if not already set
+            if self._load_state.current_gsn == 0:
+                try:
+                    from agent.chat.history.agent_chat_history_service import FastMessageHistoryService
+                    self._load_state.current_gsn = FastMessageHistoryService.get_current_gsn(
+                        self.workspace.workspace_path,
+                        self.workspace.project_name
+                    )
+                    logger.debug(f"Initialized current GSN: {self._load_state.current_gsn}")
+                except Exception as e:
+                    logger.debug(f"Could not initialize GSN tracking (using legacy mode): {e}")
 
+            # Clear model for fresh load
+            self._model.clear()
+            self._load_state.known_message_ids.clear()
+            self._load_state.unique_message_count = 0
+            self._load_state.has_more_older = False
+
+            if raw_messages:
                 # Group messages by message_id
                 message_groups: Dict[str, MessageGroup] = {}
+                max_gsn = 0
                 for msg_data in raw_messages:
                     message_id = msg_data.get("message_id") or msg_data.get("metadata", {}).get("message_id", "")
                     if not message_id:
                         continue
 
+                    # Track maximum GSN in loaded messages
+                    msg_gsn = msg_data.get('metadata', {}).get('gsn', 0)
+                    if msg_gsn > max_gsn:
+                        max_gsn = msg_gsn
+
                     if message_id not in message_groups:
                         message_groups[message_id] = MessageGroup()
                     message_groups[message_id].add_message(msg_data)
+
+                # Update last_seen_gsn to match the loaded messages
+                self._load_state.last_seen_gsn = max_gsn
+                logger.debug(f"Updated last_seen GSN to: {self._load_state.last_seen_gsn}")
 
                 # Convert to ordered list
                 ordered_messages = []
@@ -294,7 +343,8 @@ class QmlAgentChatListWidget(BaseWidget):
                 self._scroll_to_bottom()
 
             else:
-                self._clear_all_caches_and_model()
+                self._model.clear()
+                self._load_state.known_message_ids.clear()
                 logger.info("No messages found in history")
 
         except Exception as e:
@@ -913,8 +963,25 @@ class QmlAgentChatListWidget(BaseWidget):
         """Check for new data by comparing active log count.
 
         This method is called both by the timer (backup) and by message_saved signal.
+
+        Enhanced with GSN support for archive-aware checking.
         """
         try:
+            # Try to use GSN-based checking first
+            from agent.chat.history.agent_chat_history_service import FastMessageHistoryService
+
+            current_gsn = FastMessageHistoryService.get_current_gsn(
+                self.workspace.workspace_path,
+                self.workspace.project_name
+            )
+
+            # Check if we have new messages via GSN
+            if current_gsn > self._load_state.current_gsn:
+                self._load_state.current_gsn = current_gsn
+                self._load_new_messages_from_history(current_gsn, current_gsn)
+                return
+
+            # Fallback to legacy line-based checking
             history = self._get_history()
             if not history:
                 return
@@ -930,7 +997,7 @@ class QmlAgentChatListWidget(BaseWidget):
         except Exception as e:
             logger.error(f"Error checking for new data: {e}")
 
-    def _load_new_messages_from_history(self):
+    def _load_new_messages_from_history(self, trigger_gsn: int = 0, current_gsn: int = 0):
         """Load new messages from history that aren't in the model yet.
 
         This method handles two scenarios:
@@ -940,15 +1007,30 @@ class QmlAgentChatListWidget(BaseWidget):
         For streaming responses that are saved in chunks with the same message_id,
         this method ensures all content chunks are properly merged into the existing
         message bubble instead of being ignored.
+
+        Enhanced with GSN (Global Sequence Number) support for archive-aware
+        message fetching. When GSN parameters are provided, uses GSN-based fetching
+        which correctly handles archived messages.
+
+        Args:
+            trigger_gsn: The GSN that triggered this load (optional)
+            current_gsn: The current (latest) GSN in the system (optional)
         """
         try:
-            history = self._get_history()
-            if not history:
-                return
+            use_gsn_fetching = trigger_gsn > 0 or current_gsn > 0
 
-            # Get messages after current offset
-            current_offset = self._load_state.current_line_offset
-            new_messages = history.get_messages_after(current_offset, count=100)
+            if use_gsn_fetching:
+                # Use GSN-based fetching (archive-aware)
+                new_messages = self._fetch_messages_by_gsn(trigger_gsn, current_gsn)
+            else:
+                # Legacy line-offset-based fetching
+                history = self._get_history()
+                if not history:
+                    return
+
+                # Get messages after current offset
+                current_offset = self._load_state.current_line_offset
+                new_messages = history.get_messages_after(current_offset, count=100)
 
             if not new_messages:
                 return
@@ -988,9 +1070,18 @@ class QmlAgentChatListWidget(BaseWidget):
                         self._load_state.known_message_ids.add(message_id)
                         logger.debug(f"Created new bubble: {message_id[:8]}...")
 
-            # Update offset
+            # Update tracking
+            if not use_gsn_fetching:
+                # Legacy offset tracking
+                if new_messages:
+                    current_offset = self._load_state.current_line_offset
+                    self._load_state.current_line_offset = current_offset + len(new_messages)
+            else:
+                # GSN tracking
+                self._load_state.last_seen_gsn = current_gsn
+
+            # Update unique message count
             if new_messages:
-                self._load_state.current_line_offset = current_offset + len(new_messages)
                 # Only count unique new messages (not updates to existing ones)
                 new_unique_count = sum(1 for msg_id in message_groups.keys()
                                       if msg_id not in self._load_state.known_message_ids)
@@ -1001,10 +1092,41 @@ class QmlAgentChatListWidget(BaseWidget):
 
                 # Scroll to bottom to show new messages
                 self._scroll_to_bottom()
-                logger.debug(f"Processed {len(message_groups)} message groups from history")
+                fetch_method = "GSN" if use_gsn_fetching else "line-offset"
+                logger.debug(f"Processed {len(message_groups)} message groups from history using {fetch_method} fetching")
 
         except Exception as e:
             logger.error(f"Error loading new messages from history: {e}", exc_info=True)
+
+    def _fetch_messages_by_gsn(self, trigger_gsn: int, current_gsn: int) -> List[Dict[str, Any]]:
+        """Fetch messages using GSN-based (archive-aware) method.
+
+        Args:
+            trigger_gsn: The GSN that triggered this fetch
+            current_gsn: The current (latest) GSN
+
+        Returns:
+            List of message dictionaries
+        """
+        try:
+            from agent.chat.history.agent_chat_history_service import FastMessageHistoryService
+
+            # Get messages after the last seen GSN
+            last_seen = self._load_state.last_seen_gsn
+            new_messages = FastMessageHistoryService.get_messages_after_gsn(
+                self.workspace.workspace_path,
+                self.workspace.project_name,
+                last_seen_gsn=last_seen,
+                count=100
+            )
+
+            logger.debug(f"GSN fetch: last_seen={last_seen}, current={current_gsn}, found={len(new_messages)} messages")
+            return new_messages
+
+        except Exception as e:
+            logger.error(f"Error in GSN-based fetching: {e}")
+            # Fallback to legacy method
+            return []
 
     def _merge_content_into_existing_bubble(self, message_id: str, combined_msg: Dict[str, Any]) -> None:
         """Merge new content into an existing message bubble.
