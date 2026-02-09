@@ -18,7 +18,7 @@ from PySide6.QtGui import QResizeEvent
 from agent import AgentMessage
 from app.ui.base_widget import BaseWidget
 from utils.i18n_utils import tr
-from agent.chat.history.agent_chat_history_service import FastMessageHistoryService
+from agent.chat.history.agent_chat_history_service import FastMessageHistoryService, message_saved
 from agent.chat.history.agent_chat_storage import MessageLogHistory
 
 # Late imports for agent chat components (avoid circular imports)
@@ -125,6 +125,9 @@ class AgentChatListWidget(BaseWidget):
         # Cache history instance for reduced overhead
         self._history: Optional[MessageLogHistory] = None
 
+        # Connect to message_saved signal for storage-driven refresh
+        self._connect_to_storage_signals()
+
         self._setup_ui()
         self._load_crew_member_metadata()
         self._load_recent_conversation()
@@ -158,10 +161,40 @@ class AgentChatListWidget(BaseWidget):
         # Clear visible widgets and size hint cache
         self._clear_visible_widgets()
         self._size_hint_cache.clear()
+        # Reconnect to storage signals for new project
+        self._connect_to_storage_signals()
         self._load_recent_conversation()
 
     def refresh_crew_member_metadata(self):
         self._load_crew_member_metadata()
+
+    def _connect_to_storage_signals(self):
+        """Connect to storage signals for storage-driven refresh."""
+        try:
+            message_saved.connect(self._on_message_saved, weak=False)
+            logger.debug("Connected to message_saved signal")
+        except Exception as e:
+            logger.error(f"Error connecting to message_saved signal: {e}")
+
+    def _disconnect_from_storage_signals(self):
+        """Disconnect from storage signals."""
+        try:
+            message_saved.disconnect(self._on_message_saved)
+            logger.debug("Disconnected from message_saved signal")
+        except Exception:
+            pass  # Signal might not be connected
+
+    def _on_message_saved(self, sender, workspace_path: str, project_name: str, message_id: str):
+        """Handle message_saved signal from storage.
+
+        This is called after a message is successfully written to storage.
+        We trigger a data refresh to load the new message from storage.
+        """
+        # Only refresh if this message belongs to our current project
+        if (workspace_path == self.workspace.workspace_path and
+            project_name == self.workspace.project_name):
+            # Trigger immediate data refresh from storage
+            self._check_for_new_data()
 
     def _invalidate_positions_cache(self):
         """Mark the positions cache as dirty - needs rebuild."""
@@ -1688,6 +1721,7 @@ class AgentChatListWidget(BaseWidget):
 
     def clear(self):
         self._stop_new_data_check_timer()
+        self._disconnect_from_storage_signals()
         self._clear_visible_widgets()
         self._size_hint_cache.clear()
         self._agent_current_cards.clear()
