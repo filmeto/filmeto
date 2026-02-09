@@ -121,6 +121,7 @@ class QmlAgentChatListWidget(BaseWidget):
         self._history: Optional[MessageLogHistory] = None
 
         # New data check timer - polls for new messages using active log count
+        # NOTE: This is kept as backup but primary loading is driven by message_saved signal
         self._new_data_check_timer = QTimer(self)
         self._new_data_check_timer.timeout.connect(self._check_for_new_data)
 
@@ -131,7 +132,8 @@ class QmlAgentChatListWidget(BaseWidget):
         self._setup_ui()
         self._load_crew_member_metadata()
         self._load_recent_conversation()
-        self._start_new_data_check_timer()
+        # Don't start the timer - rely on message_saved signal instead
+        # self._start_new_data_check_timer()
 
     def _setup_ui(self):
         """Setup the widget layout."""
@@ -220,8 +222,10 @@ class QmlAgentChatListWidget(BaseWidget):
         # Only refresh if this message belongs to our current project
         if (workspace_path == self.workspace.workspace_path and
             project_name == self.workspace.project_name):
-            # Trigger immediate data refresh from storage
-            self._check_for_new_data()
+            # Load new messages from storage
+            # Unlike the polling version, we always attempt to load (no _user_at_bottom check)
+            # This ensures messages are loaded even when user is viewing history
+            self._load_new_messages_from_history()
 
     def _clear_all_caches_and_model(self):
         """Clear all caches and the model."""
@@ -906,10 +910,10 @@ class QmlAgentChatListWidget(BaseWidget):
         self._new_data_check_timer.stop()
 
     def _check_for_new_data(self):
-        """Check for new data by comparing active log count (fast, no disk I/O)."""
-        if not self._user_at_bottom:
-            return
+        """Check for new data by comparing active log count.
 
+        This method is called both by the timer (backup) and by message_saved signal.
+        """
         try:
             history = self._get_history()
             if not history:
@@ -917,11 +921,6 @@ class QmlAgentChatListWidget(BaseWidget):
 
             # Use active log count for fast checking (O(1) cached value)
             current_count = history.storage.get_message_count()
-
-            # Initialize on first check
-            if self._load_state.active_log_count == 0:
-                self._load_state.active_log_count = current_count
-                return
 
             # Check if new messages were added to active log
             if current_count > self._load_state.active_log_count:
