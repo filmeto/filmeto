@@ -295,10 +295,11 @@ class QmlAgentChatListWidget(BaseWidget):
             self._load_state.has_more_older = False
 
             if raw_messages:
-                # Group messages by message_id
+                # Group messages by message_id (in chronological order)
                 message_groups: Dict[str, MessageGroup] = {}
                 max_gsn = 0
-                for msg_data in raw_messages:
+                # Reverse to get chronological order (oldest first)
+                for msg_data in reversed(raw_messages):
                     message_id = msg_data.get("message_id") or msg_data.get("metadata", {}).get("message_id", "")
                     if not message_id:
                         continue
@@ -316,7 +317,7 @@ class QmlAgentChatListWidget(BaseWidget):
                 self._load_state.last_seen_gsn = max_gsn
                 logger.debug(f"Updated last_seen GSN to: {self._load_state.last_seen_gsn}")
 
-                # Convert to ordered list
+                # Convert to ordered list (in chronological order)
                 ordered_messages = []
                 for msg_data in reversed(raw_messages):
                     message_id = msg_data.get("message_id") or msg_data.get("metadata", {}).get("message_id", "")
@@ -1054,7 +1055,6 @@ class QmlAgentChatListWidget(BaseWidget):
                         qml_item = QmlAgentChatListModel.from_chat_list_item(item)
                         self._model.add_item(qml_item)
                         self._load_state.known_message_ids.add(message_id)
-                        logger.debug(f"Created new bubble: {message_id[:8]}...")
 
             # Update tracking
             if not use_gsn_fetching:
