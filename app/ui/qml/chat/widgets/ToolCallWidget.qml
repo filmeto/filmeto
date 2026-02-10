@@ -73,6 +73,8 @@ Rectangle {
         // Tool arguments (collapsible)
         Loader {
             Layout.fillWidth: true
+            Layout.preferredHeight: active ? implicitHeight : 0
+            visible: active
             active: root.expanded
             sourceComponent: ColumnLayout {
                 spacing: 4
