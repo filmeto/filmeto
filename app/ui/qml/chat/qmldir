@@ -34,6 +34,7 @@ DateSeparator 1.0 components/DateSeparator.qml
 # Widgets
 CodeBlockWidget 1.0 widgets/CodeBlockWidget.qml
 ThinkingWidget 1.0 widgets/ThinkingWidget.qml
+TodoWriteWidget 1.0 widgets/TodoWriteWidget.qml
 TypingIndicator 1.0 widgets/TypingIndicator.qml
 ToolCallWidget 1.0 widgets/ToolCallWidget.qml
 ToolResponseWidget 1.0 widgets/ToolResponseWidget.qml

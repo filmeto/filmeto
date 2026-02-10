@@ -25,6 +25,7 @@ from .skill_content import SkillContent
 from .plan_content import PlanContent, StepContent, TaskListContent
 from .typing_content import TypingContent, TypingState
 from .llm_output_content import LlmOutputContent
+from .todo_write_content import TodoWriteContent
 
 
 # Mapping of ContentType to appropriate subclass
@@ -52,6 +53,7 @@ _CONTENT_CLASS_MAP: Dict[ContentType, type] = {
     ContentType.TASK_LIST: TaskListContent,
     ContentType.TYPING: TypingContent,
     ContentType.LLM_OUTPUT: LlmOutputContent,
+    ContentType.TODO_WRITE: TodoWriteContent,
 }
 
 
@@ -82,6 +84,7 @@ __all__ = [
     'TypingContent',
     'TypingState',
     'LlmOutputContent',
+    'TodoWriteContent',
     'create_content',
 ]
 

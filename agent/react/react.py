@@ -18,6 +18,7 @@ from agent.chat.content import (
     ProgressContent,
     MetadataContent,
     ErrorContent,
+    TodoWriteContent,
 )
 
 
@@ -509,13 +510,14 @@ class React:
 
                             # Check for pending TODO update and emit event
                             if self._pending_todo_update:
+                                from agent.react.todo import TodoState
+                                todo_state = TodoState.from_dict(self._pending_todo_update)
                                 yield self._create_event(
-                                    AgentEventType.TODO_UPDATE,
-                                    content=MetadataContent(
-                                        metadata_type="todo_update",
-                                        metadata_data=self._pending_todo_update,
-                                        title="TODO Update",
-                                        description="TODO list has been updated"
+                                    AgentEventType.TODO_WRITE,
+                                    content=TodoWriteContent.from_todo_state(
+                                        todo_state,
+                                        title="Task Progress",
+                                        description="Current task status"
                                     )
                                 )
                                 self._pending_todo_update = None

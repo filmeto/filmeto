@@ -46,3 +46,4 @@ class ContentType(Enum):
     METADATA = "metadata"
     ERROR = "error"
     LLM_OUTPUT = "llm_output"
+    TODO_WRITE = "todo_write"  # TODO列表写入/更新
