@@ -46,7 +46,7 @@ class AgentEventType(str, Enum):
     STEP_START = "step_start"           # 当前步骤开始
     STEP_END = "step_end"               # 当前步骤结束
     STATUS_CHANGE = "status_change"     # 状态变更
-    TODO_UPDATE = "todo_update"         # TODO更新
+    TODO_WRITE = "todo_write"           # TODO写入/更新
 
     # === 终止相关 ===
     FINAL = "final"                     # 最终响应

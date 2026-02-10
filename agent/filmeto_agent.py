@@ -11,7 +11,7 @@ from agent.chat.agent_chat_message import AgentMessage
 from agent.chat.content import (
     StructureContent, TextContent, ThinkingContent, ToolCallContent,
     ToolResponseContent, ProgressContent, MetadataContent, ErrorContent,
-    LlmOutputContent, create_content
+    LlmOutputContent, TodoWriteContent, create_content
 )
 from agent.chat.agent_chat_types import ContentType
 from agent.chat.agent_chat_signals import AgentChatSignals
@@ -718,14 +718,29 @@ class FilmetoAgent:
                         description="An error occurred"
                     )
 
-                elif event.event_type == AgentEventType.TODO_UPDATE:
-                    # Create MetadataContent
-                    content = MetadataContent(
-                        metadata_type="todo_update",
-                        metadata_data=event.payload.get("todo", {}),
-                        title="Task Update",
-                        description="Task list has been updated"
-                    )
+                elif event.event_type == AgentEventType.TODO_WRITE:
+                    # Create TodoWriteContent from event content or payload
+                    if event.content and isinstance(event.content, TodoWriteContent):
+                        content = event.content
+                    else:
+                        # Fallback: create from payload (backward compatibility)
+                        from agent.react.todo import TodoState
+                        todo_dict = event.payload.get("todo", {})
+                        if isinstance(todo_dict, dict):
+                            todo_state = TodoState.from_dict(todo_dict)
+                            content = TodoWriteContent.from_todo_state(
+                                todo_state,
+                                title="Task Progress",
+                                description="Current task status"
+                            )
+                        else:
+                            # Fallback to MetadataContent for compatibility
+                            content = MetadataContent(
+                                metadata_type="todo_write",
+                                metadata_data=event.payload.get("todo", {}),
+                                title="Task Update",
+                                description="Task list has been updated"
+                            )
 
             # Create enhanced event with content
             enhanced_event = AgentEvent.create(

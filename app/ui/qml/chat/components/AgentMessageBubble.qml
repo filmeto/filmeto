@@ -222,6 +222,7 @@ Item {
 
                             // Status and metadata
                             case "progress": return progressWidgetComponent
+                            case "todo_write": return todoWriteWidgetComponent
                             case "metadata": return metadataWidgetComponent
                             case "error": return errorWidgetComponent
                             case "llm_output": return llmOutputComponent
@@ -371,6 +372,18 @@ Item {
             widgetColor: root.agentColor
             text: data.progress || data.data?.progress || ""
             percentage: data.percentage || data.data?.percentage || null
+        }
+    }
+
+    // TodoWrite widget
+    Component {
+        id: todoWriteWidgetComponent
+
+        TodoWriteWidget {
+            property var data: ({})
+            width: parent.width
+            widgetColor: root.agentColor
+            todoData: data
         }
     }
 
