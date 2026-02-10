@@ -478,8 +478,6 @@ class QmlAgentChatListModel(QAbstractListModel):
         if agent_message.metadata:
             timestamp = agent_message.metadata.get('timestamp')
 
-        content = agent_message.get_text_content() or ""
-
         # Determine primary content type
         content_type = "text"
         for sc in agent_message.structured_content:
@@ -496,7 +494,7 @@ class QmlAgentChatListModel(QAbstractListModel):
             cls.SENDER_ID: agent_message.sender_id,
             cls.SENDER_NAME: agent_message.sender_name,
             cls.IS_USER: False,
-            cls.CONTENT: content,
+            cls.CONTENT: "",  # Use structuredContent instead
             cls.AGENT_COLOR: agent_color,
             cls.AGENT_ICON: agent_icon,
             cls.CREW_METADATA: crew_metadata or {},

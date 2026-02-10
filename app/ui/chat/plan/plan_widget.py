@@ -309,12 +309,8 @@ class AgentChatPlanWidget(BaseWidget):
                     self._preferred_plan_id = plan_id
                 self.refresh_plan()
 
-        # Check message content for plan-related information
-        if message.content and "plan" in message.content.lower():
-            self.refresh_plan()
-
         # Check structured_content for plan-related types
-        if hasattr(message, 'structured_content') and message.structured_content:
+        if message.structured_content:
             from agent.chat.agent_chat_types import ContentType
             for content in message.structured_content:
                 if hasattr(content, 'content_type'):

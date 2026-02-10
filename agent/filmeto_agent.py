@@ -38,6 +38,16 @@ _MENTION_PATTERN = re.compile(r"@([\w\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac
 _PRODUCER_NAME = "producer"
 
 
+def _extract_text_content(message: AgentMessage) -> str:
+    """Extract text content from a message's structured_content."""
+    if not message.structured_content:
+        return ""
+    for sc in message.structured_content:
+        if sc.content_type == ContentType.TEXT and isinstance(sc, TextContent):
+            return sc.text
+    return ""
+
+
 
 
 class FilmetoAgent:
@@ -579,7 +589,7 @@ class FilmetoAgent:
 
             if response_content_type == ContentType.TEXT:
                 yield AgentEvent.final(
-                    final_response=response.get_text_content(),
+                    final_response=_extract_text_content(response),
                     project_name=self._resolve_project_name() or "default",
                     react_type=response.sender_id,
                     run_id=getattr(self, "_run_id", ""),
@@ -588,7 +598,7 @@ class FilmetoAgent:
                 )
             elif response_content_type == ContentType.ERROR:
                 yield AgentEvent.error(
-                    error_message=response.get_text_content(),
+                    error_message=_extract_text_content(response),
                     project_name=self._resolve_project_name() or "default",
                     react_type=response.sender_id,
                     run_id=getattr(self, "_run_id", ""),
@@ -866,7 +876,7 @@ class FilmetoAgent:
                 #     "producer_start",
                 #     session_id,
                 #     crew_member_name=producer_agent.config.name,
-                #     message=initial_prompt.get_text_content(),
+                #     message=_extract_text_content(initial_prompt),
                 # )
                 async for _ in self._handle_producer_flow(
                     initial_prompt=initial_prompt,
@@ -885,11 +895,11 @@ class FilmetoAgent:
                     sender_id=responding_agent.config.name,
                     sender_name=responding_agent.config.name,
                     crew_member_name=responding_agent.config.name,
-                    message=initial_prompt.get_text_content(),
+                    message=_extract_text_content(initial_prompt),
                 )
                 async for _ in self._stream_crew_member(
                     responding_agent,
-                    initial_prompt.get_text_content(),
+                    _extract_text_content(initial_prompt),
                     plan_id=initial_prompt.metadata.get("plan_id") if initial_prompt.metadata else None,
                     session_id=session_id,
                     metadata=initial_prompt.metadata
@@ -926,7 +936,7 @@ class FilmetoAgent:
             # The producer will decide whether to create a plan using the create_execution_plan skill
             async for event in self._stream_crew_member(
                 producer_agent,
-                initial_prompt.get_text_content(),
+                _extract_text_content(initial_prompt),
                 plan_id=active_plan_id,
                 session_id=session_id,
             ):
@@ -1058,7 +1068,7 @@ class FilmetoAgent:
         Returns:
             CrewMember: The selected agent or None if no agent should respond
         """
-        mentioned_agent = self._resolve_mentioned_title(message.get_text_content())
+        mentioned_agent = self._resolve_mentioned_title(_extract_text_content(message))
         if mentioned_agent:
             return mentioned_agent
 
@@ -1066,7 +1076,7 @@ class FilmetoAgent:
         if producer_agent:
             return producer_agent
 
-        content_lower = message.get_text_content().lower()
+        content_lower = _extract_text_content(message).lower()
         for agent in self.members.values():
             if (hasattr(agent, 'config') and
                 (agent.config.name.lower() in content_lower or
