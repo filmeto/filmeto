@@ -107,6 +107,7 @@ class QmlAgentChatListWidget(BaseWidget):
         self._qml_root.referenceClicked.connect(self._on_qml_reference_clicked)
         self._qml_root.messageCompleted.connect(self._on_qml_message_completed)
         self._qml_root.loadMoreRequested.connect(self._on_qml_load_more)
+        self._qml_root.scrollPositionChanged.connect(self._on_qml_scroll_position_changed)
 
         # State tracking
         self._load_state = LoadState()
@@ -166,6 +167,11 @@ class QmlAgentChatListWidget(BaseWidget):
         """Handle load more request from QML (scroll to top)."""
         if not self._loading_older and self._load_state.has_more_older:
             self._load_older_messages()
+
+    @Slot(bool)
+    def _on_qml_scroll_position_changed(self, at_bottom: bool):
+        """Handle scroll position change from QML."""
+        self._user_at_bottom = at_bottom
 
     # ─── Data Loading (same as original implementation) ───────────────────
 
@@ -340,8 +346,8 @@ class QmlAgentChatListWidget(BaseWidget):
                 # Force QML to update model binding
                 self._refresh_qml_model()
 
-                # Scroll to bottom after loading
-                self._scroll_to_bottom()
+                # Scroll to bottom after loading (force since user just opened/refreshed chat)
+                self._scroll_to_bottom(force=True)
 
             else:
                 self._model.clear()
@@ -621,7 +627,7 @@ class QmlAgentChatListWidget(BaseWidget):
         }
 
         self._model.add_item(item)
-        self._scroll_to_bottom()
+        self._scroll_to_bottom(force=True)  # User sent a message, always scroll
         return message_id
 
     def append_message(self, sender: str, message: str, message_id: str = None):
@@ -655,7 +661,7 @@ class QmlAgentChatListWidget(BaseWidget):
         }
 
         self._model.add_item(item)
-        self._scroll_to_bottom()
+        self._scroll_to_bottom(force=True)  # User action, always scroll
         return message_id
 
     def update_streaming_message(self, message_id: str, content: str):
@@ -663,7 +669,7 @@ class QmlAgentChatListWidget(BaseWidget):
         self._model.update_item(message_id, {
             QmlAgentChatListModel.CONTENT: content,
         })
-        self._scroll_to_bottom()
+        self._scroll_to_bottom(force=True)  # Streaming update, always scroll
 
     def get_or_create_agent_card(self, message_id: str, agent_name: str, title=None):
         """Get or create an agent message card."""
@@ -691,7 +697,7 @@ class QmlAgentChatListWidget(BaseWidget):
 
         self._model.add_item(item)
         self._agent_current_cards[agent_name] = message_id
-        self._scroll_to_bottom()
+        self._scroll_to_bottom(force=True)  # AI started responding, always scroll
         return message_id
 
     def update_agent_card(
@@ -759,7 +765,7 @@ class QmlAgentChatListWidget(BaseWidget):
         if updates:
             self._model.update_item(message_id, updates)
 
-        self._scroll_to_bottom()
+        self._scroll_to_bottom(force=True)  # Real-time AI response update, always scroll
 
     @Slot(object, object)
     def handle_stream_event(self, event, session):
@@ -927,9 +933,14 @@ class QmlAgentChatListWidget(BaseWidget):
             text_structure = TextContent(text=event.content).to_dict()
             self.update_agent_card(event.message_id, structured_content=text_structure)
 
-    def _scroll_to_bottom(self):
-        """Scroll the chat list to bottom."""
-        if self._qml_root:
+    def _scroll_to_bottom(self, force: bool = False):
+        """Scroll the chat list to bottom.
+
+        Args:
+            force: If True, scroll regardless of user position.
+                   If False, only scroll if user is already at bottom.
+        """
+        if self._qml_root and (force or self._user_at_bottom):
             self._qml_root.scrollToBottom()
 
     def sync_from_session(self, session):
@@ -1076,8 +1087,8 @@ class QmlAgentChatListWidget(BaseWidget):
                 for msg_id in message_groups.keys():
                     self._load_state.known_message_ids.add(msg_id)
 
-                # Scroll to bottom to show new messages
-                self._scroll_to_bottom()
+                # Scroll to bottom only if user is already there (don't interrupt reading history)
+                self._scroll_to_bottom(force=False)
                 fetch_method = "GSN" if use_gsn_fetching else "line-offset"
                 logger.debug(f"Processed {len(message_groups)} message groups from history using {fetch_method} fetching")
 

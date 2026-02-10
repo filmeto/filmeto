@@ -12,6 +12,7 @@ ListView {
     signal loadMoreRequested()
     signal referenceClicked(string refType, string refId)
     signal messageCompleted(string messageId, string agentName)
+    signal scrollPositionChanged(bool atBottom)
 
     // Configuration
     width: 400
@@ -29,6 +30,21 @@ ListView {
 
     // Bottom margin to ensure last message is fully visible
     bottomMargin: 32
+
+    // Track if user is at bottom (within threshold pixels)
+    readonly property int bottomThreshold: 50
+    readonly property bool isAtBottom: contentHeight - contentY - height < bottomThreshold
+
+    // Notify Python when scroll position changes
+    onContentYChanged: {
+        scrollPositionChanged(isAtBottom)
+    }
+    onHeightChanged: {
+        scrollPositionChanged(isAtBottom)
+    }
+    onContentHeightChanged: {
+        scrollPositionChanged(isAtBottom)
+    }
 
     // Background
     Rectangle {
