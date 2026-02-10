@@ -45,3 +45,4 @@ class ContentType(Enum):
     TYPING = "typing"
     METADATA = "metadata"
     ERROR = "error"
+    LLM_OUTPUT = "llm_output"
