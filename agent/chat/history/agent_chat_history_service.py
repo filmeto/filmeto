@@ -136,13 +136,7 @@ class FastMessageHistoryService:
             "sender_id": message.sender_id,
             "sender_name": message.sender_name,
             "timestamp": message.timestamp.isoformat(),
-            "metadata": {
-                "message_id": message.message_id,
-                "message_type": message_type_value,
-                "sender_id": message.sender_id,
-                "sender_name": message.sender_name,
-                **(message.metadata or {})
-            },
+            "metadata": message.metadata or {},
             "structured_content": serialized_content,
             # Also include 'content' for UI compatibility
             "content": serialized_content,

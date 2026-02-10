@@ -313,7 +313,6 @@ class FilmetoAgent:
         return AgentMessage(
             sender_id=sender_id,
             sender_name=sender_name,
-            metadata={"message_id": message_id},
             message_id=message_id,
             structured_content=[event.content]
         )
