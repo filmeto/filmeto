@@ -60,7 +60,7 @@ Rectangle {
 
             // Output preview (first 50 chars when collapsed)
             Text {
-                visible: !root.expanded && root.isCollapsible
+                visible: false  // Hide preview when collapsed
                 text: root.output.length > 50 ? root.output.substring(0, 50) + "..." : root.output
                 color: textColor
                 font.pixelSize: 11
