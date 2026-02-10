@@ -14,7 +14,6 @@ Modules:
 - agent_chat_list_items: Data classes and helpers
 - qml_agent_chat_list_model: QML-compatible Qt model
 - qml_agent_chat_list_widget: QML-based widget
-- agent_chat_list: Backward compatibility layer
 """
 
 from app.ui.chat.list.agent_chat_list_items import (
@@ -27,9 +26,6 @@ from app.ui.chat.list.agent_chat_list_items import (
 from app.ui.chat.list.qml_agent_chat_list_model import QmlAgentChatListModel
 from app.ui.chat.list.qml_agent_chat_list_widget import QmlAgentChatListWidget
 
-# Use QML implementation
-AgentChatListWidget = QmlAgentChatListWidget
-
 __all__ = [
     # Data classes
     "ChatListItem",
@@ -38,5 +34,4 @@ __all__ = [
     # QML-based
     "QmlAgentChatListModel",
     "QmlAgentChatListWidget",
-    "AgentChatListWidget",  # Points to QML version
 ]
