@@ -11,7 +11,7 @@ from agent.chat.agent_chat_message import AgentMessage
 from agent.chat.content import (
     StructureContent, TextContent, ThinkingContent, ToolCallContent,
     ToolResponseContent, ProgressContent, MetadataContent, ErrorContent,
-    create_content
+    LlmOutputContent, create_content
 )
 from agent.chat.agent_chat_types import ContentType
 from agent.chat.agent_chat_signals import AgentChatSignals
@@ -639,9 +639,11 @@ class FilmetoAgent:
                     )
 
                 elif event.event_type == AgentEventType.LLM_OUTPUT:
-                    # Create TextContent for LLM output
-                    content = TextContent(
-                        text=event.payload.get("content", "")
+                    # Create LlmOutputContent for LLM output
+                    content = LlmOutputContent(
+                        output=event.payload.get("content", ""),
+                        title="LLM Output",
+                        description="Raw LLM output"
                     )
 
                 elif event.event_type == AgentEventType.TOOL_START:

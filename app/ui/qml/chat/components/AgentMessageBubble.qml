@@ -224,6 +224,7 @@ Item {
                             case "progress": return progressWidgetComponent
                             case "metadata": return metadataWidgetComponent
                             case "error": return errorWidgetComponent
+                            case "llm_output": return llmOutputComponent
 
                             default: return textWidgetComponent
                         }
@@ -573,6 +574,19 @@ Item {
                 error_type: (data.data && data.data.error_type) ? data.data.error_type : (data.title || "Error"),
                 details: data.description || ""
             })
+        }
+    }
+
+    // LLM output widget (collapsible)
+    Component {
+        id: llmOutputComponent
+
+        LlmOutputWidget {
+            property var data: ({})
+            width: parent.width
+            widgetColor: root.agentColor
+            output: data.output || data.data?.output || ""
+            title: data.title || data.data?.title || "LLM Output"
         }
     }
 }
