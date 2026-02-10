@@ -91,6 +91,8 @@ Rectangle {
         // Description (collapsible)
         Loader {
             Layout.fillWidth: true
+            Layout.preferredHeight: active ? implicitHeight : 0
+            visible: active
             active: root.expanded && root.taskData.description
             sourceComponent: ColumnLayout {
                 spacing: 6

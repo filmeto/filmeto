@@ -75,6 +75,8 @@ Rectangle {
         Loader {
             id: contentLoader
             Layout.fillWidth: true
+            Layout.preferredHeight: active ? implicitHeight : 0
+            visible: active
             active: root.expanded || !root.isCollapsible
             sourceComponent: ColumnLayout {
                 spacing: 4
