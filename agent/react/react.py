@@ -12,6 +12,7 @@ from agent.chat.content import (
     StructureContent,
     TextContent,
     ThinkingContent,
+    LlmOutputContent,
     ToolCallContent,
     ToolResponseContent,
     ProgressContent,
@@ -411,8 +412,8 @@ class React:
 
                     yield self._create_event(
                         AgentEventType.LLM_OUTPUT,
-                        content=TextContent(
-                            text=response_text,
+                        content=LlmOutputContent(
+                            output=response_text,
                             title="LLM Output",
                             description="Raw LLM response"
                         )
