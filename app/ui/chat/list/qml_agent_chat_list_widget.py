@@ -372,7 +372,8 @@ class QmlAgentChatListWidget(BaseWidget):
                 self._refresh_qml_model()
 
                 # Scroll to bottom after loading (force since user just opened/refreshed chat)
-                self._scroll_to_bottom(force=True)
+                # Use QTimer.singleShot to ensure QML has completed layout updates
+                QTimer.singleShot(0, lambda: self._scroll_to_bottom(force=True))
 
             else:
                 self._model.clear()
