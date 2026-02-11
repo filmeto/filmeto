@@ -34,7 +34,6 @@ Item {
 
             radius: width / 2
             color: bulletColor
-            anchors.verticalCenter: parent.verticalCenter
         }
 
         // Progress text with percentage
