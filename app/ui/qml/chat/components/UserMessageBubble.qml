@@ -22,11 +22,14 @@ Item {
     readonly property int avatarSpacing: 8
     readonly property int totalAvatarWidth: (avatarSize + avatarSpacing) * 2  // Both sides
 
-    // Available width for content (minus avatar space on both sides)
-    readonly property int availableWidth: parent.width - totalAvatarWidth
+    // Internal bubble padding
+    readonly property int bubblePadding: 12
+
+    // Available width for bubble (total width minus avatar space on both sides)
+    readonly property int availableWidth: Math.max(80, width - totalAvatarWidth)
 
     // Width is determined by anchors, height is calculated dynamically
-    implicitHeight: headerRow.height + bubbleContainer.height
+    implicitHeight: 12 + headerRow.height + 12 + bubbleContainer.height + 8
 
     Row {
         id: headerRow
@@ -72,18 +75,18 @@ Item {
         id: bubbleContainer
         anchors {
             right: parent.right
-            rightMargin: 40  // avatar (32) + spacing (8)
+            rightMargin: avatarSize + avatarSpacing  // avatar space on the right side
             top: headerRow.bottom
             topMargin: 12
         }
         width: bubble.width
         height: bubble.height
 
-        // Message bubble
+        // Message bubble — width adapts to content, max = availableWidth
         Rectangle {
             id: bubble
-            width: Math.min(Math.max(80, structuredContentColumn.implicitWidth + 24), availableWidth)
-            height: structuredContentColumn.implicitHeight + 24
+            width: Math.min(Math.max(80, structuredContentColumn.implicitWidth + bubblePadding * 2), availableWidth)
+            height: structuredContentColumn.implicitHeight + bubblePadding * 2
 
             color: bubbleColor
             radius: 9
@@ -91,10 +94,10 @@ Item {
             // Always render through structured content
             Column {
                 id: structuredContentColumn
-                anchors {
-                    fill: parent
-                    margins: 12
-                }
+                x: bubblePadding
+                y: bubblePadding
+                // Width follows bubble minus padding; adapts when bubble resizes
+                width: bubble.width - bubblePadding * 2
                 spacing: 8
 
                 // Use a computed property that always has at least one item
@@ -111,7 +114,10 @@ Item {
 
                     delegate: Loader {
                         id: widgetLoader
-                        width: parent.width
+                        width: structuredContentColumn.width
+                        // Propagate loaded item's implicitWidth so the Column
+                        // reports a correct implicitWidth for bubble sizing
+                        implicitWidth: item ? item.implicitWidth : 0
 
                         sourceComponent: {
                             var type = modelData.content_type || modelData.type || "text"
