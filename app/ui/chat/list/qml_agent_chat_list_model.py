@@ -34,6 +34,7 @@ class QmlAgentChatListModel(QAbstractListModel):
     - structuredContent: List of structured content items
     - contentType: Primary content type for delegate selection
     - isRead: Read status for user messages
+    - isTyping: Whether the agent is currently typing (show typing indicator)
     - timestamp: Message timestamp for date grouping
     - dateGroup: Date group key for section headers
     """
@@ -50,6 +51,7 @@ class QmlAgentChatListModel(QAbstractListModel):
     STRUCTURED_CONTENT = "structuredContent"
     CONTENT_TYPE = "contentType"
     IS_READ = "isRead"
+    IS_TYPING = "isTyping"
     TIMESTAMP = "timestamp"
     DATE_GROUP = "dateGroup"
 
@@ -73,8 +75,9 @@ class QmlAgentChatListModel(QAbstractListModel):
             Qt.UserRole + 9: QByteArray(self.STRUCTURED_CONTENT.encode()),
             Qt.UserRole + 10: QByteArray(self.CONTENT_TYPE.encode()),
             Qt.UserRole + 11: QByteArray(self.IS_READ.encode()),
-            Qt.UserRole + 12: QByteArray(self.TIMESTAMP.encode()),
-            Qt.UserRole + 13: QByteArray(self.DATE_GROUP.encode()),
+            Qt.UserRole + 12: QByteArray(self.IS_TYPING.encode()),
+            Qt.UserRole + 13: QByteArray(self.TIMESTAMP.encode()),
+            Qt.UserRole + 14: QByteArray(self.DATE_GROUP.encode()),
         }
 
     def rowCount(self, parent: QModelIndex = None) -> int:
@@ -451,6 +454,7 @@ class QmlAgentChatListModel(QAbstractListModel):
             cls.STRUCTURED_CONTENT: structured_content,
             cls.CONTENT_TYPE: content_type,
             cls.IS_READ: True,
+            cls.IS_TYPING: False,
             cls.TIMESTAMP: timestamp,
             cls.DATE_GROUP: cls._get_date_group(timestamp),
         }
@@ -501,6 +505,7 @@ class QmlAgentChatListModel(QAbstractListModel):
             cls.STRUCTURED_CONTENT: structured_content,
             cls.CONTENT_TYPE: content_type,
             cls.IS_READ: True,
+            cls.IS_TYPING: False,
             cls.TIMESTAMP: timestamp,
             cls.DATE_GROUP: cls._get_date_group(timestamp),
         }
