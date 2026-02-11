@@ -271,6 +271,7 @@ class QmlAgentChatListWidget(BaseWidget):
         self._model.clear()
         self._load_state.known_message_ids.clear()
         self._load_state.unique_message_count = 0
+        self._load_state.total_loaded_count = 0
         self._load_state.has_more_older = False
         # Note: GSN tracking is NOT reset here to maintain state across UI refreshes
         # GSN reset only happens on project switch
@@ -314,6 +315,7 @@ class QmlAgentChatListWidget(BaseWidget):
             self._model.clear()
             self._load_state.known_message_ids.clear()
             self._load_state.unique_message_count = 0
+            self._load_state.total_loaded_count = 0
             self._load_state.has_more_older = False
 
             if raw_messages:
@@ -354,9 +356,11 @@ class QmlAgentChatListWidget(BaseWidget):
                     self._load_message_from_history(msg_data)
 
                 self._load_state.unique_message_count = len(ordered_messages)
-                self._load_state.has_more_older = len(raw_messages) >= self.PAGE_SIZE
-
+                self._load_state.total_loaded_count = len(ordered_messages)
+                # Fix has_more_older logic: compare total loaded with total in storage
                 total_count = history.get_total_count()
+                self._load_state.has_more_older = self._load_state.total_loaded_count < total_count
+
                 logger.info(f"Loaded {len(ordered_messages)} unique messages (total: {total_count})")
 
                 # Force QML to update model binding
@@ -425,6 +429,7 @@ class QmlAgentChatListWidget(BaseWidget):
                 self._model.prepend_items(qml_items)
 
                 self._load_state.unique_message_count += len(items)
+                self._load_state.total_loaded_count += len(items)
                 self._load_state.current_line_offset = current_offset - len(older_messages)
 
                 self._prune_model_bottom()
@@ -435,8 +440,9 @@ class QmlAgentChatListWidget(BaseWidget):
 
                 logger.debug(f"Prepended {len(items)} older messages")
 
-            if len(older_messages) < self.PAGE_SIZE:
-                self._load_state.has_more_older = False
+            # Fix has_more_older logic: use total_loaded_count (not affected by prune)
+            total_count = history.get_total_count()
+            self._load_state.has_more_older = self._load_state.total_loaded_count < total_count
 
         except Exception as e:
             logger.error(f"Error loading older messages: {e}", exc_info=True)
