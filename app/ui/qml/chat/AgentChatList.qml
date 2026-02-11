@@ -19,6 +19,9 @@ ListView {
     height: 600
     spacing: 12
 
+    // Loading state property (set from Python)
+    property bool isLoadingOlder: false
+
     // Model from Python (via contextProperty)
     model: _chatModel
 
@@ -126,6 +129,40 @@ ListView {
         }
     }
 
+    // Loading indicator at top (shown when loading older messages)
+    Item {
+        id: loadingIndicator
+        anchors.top: parent.top
+        width: parent.width
+        height: 40
+        visible: root.isLoadingOlder
+        z: 10
+
+        Rectangle {
+            anchors.fill: parent
+            color: "#252525"
+            opacity: 0.9
+        }
+
+        Row {
+            anchors.centerIn: parent
+            spacing: 8
+
+            BusyIndicator {
+                width: 20
+                height: 20
+                running: root.isLoadingOlder
+            }
+
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Loading older messages..."
+                color: "#888888"
+                font.pixelSize: 13
+            }
+        }
+    }
+
     // Load more trigger at top
     onAtYBeginningChanged: {
         if (atYBeginning) {
@@ -136,5 +173,11 @@ ListView {
     // Public method to scroll to bottom
     function scrollToBottom() {
         positionViewAtEnd()
+    }
+
+    // Public method to position view at a specific index
+    // mode: 0 = Center, 1 = Beginning, 2 = End
+    function positionViewAtIndex(index, mode) {
+        positionViewAtIndex(index, mode)
     }
 }

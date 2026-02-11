@@ -51,10 +51,11 @@ class QmlAgentChatListWidget(BaseWidget):
     """
 
     # Configuration
-    PAGE_SIZE = 30
+    PAGE_SIZE = 200
     MAX_MODEL_ITEMS = 300
     NEW_DATA_CHECK_INTERVAL_MS = 500
     SCROLL_TOP_THRESHOLD = 50
+    LOAD_MORE_DEBOUNCE_MS = 300  # Debounce delay for load more requests
 
     # Signals
     reference_clicked = Signal(str, str)  # ref_type, ref_id
@@ -126,6 +127,14 @@ class QmlAgentChatListWidget(BaseWidget):
         self._new_data_check_timer = QTimer(self)
         self._new_data_check_timer.timeout.connect(self._check_for_new_data)
 
+        # Load more debounce timer - prevents excessive load requests during scroll
+        self._load_more_timer = QTimer(self)
+        self._load_more_timer.setSingleShot(True)
+        self._load_more_timer.timeout.connect(self._do_load_older_messages)
+
+        # For scroll position preservation
+        self._first_visible_message_id_before_load: Optional[str] = None
+
         # Connect to message_saved signal for storage-driven refresh
         self._connect_to_storage_signals()
 
@@ -164,7 +173,14 @@ class QmlAgentChatListWidget(BaseWidget):
 
     @Slot()
     def _on_qml_load_more(self):
-        """Handle load more request from QML (scroll to top)."""
+        """Handle load more request from QML (scroll to top) with debounce."""
+        if not self._load_state.has_more_older or self._loading_older:
+            return
+        # Restart debounce timer
+        self._load_more_timer.start(self.LOAD_MORE_DEBOUNCE_MS)
+
+    def _do_load_older_messages(self):
+        """Actually load older messages after debounce."""
         if not self._loading_older and self._load_state.has_more_older:
             self._load_older_messages()
 
@@ -401,6 +417,9 @@ class QmlAgentChatListWidget(BaseWidget):
                         self._load_state.known_message_ids.add(message_id)
 
             if items:
+                # Save the first visible message ID before prepending for scroll position preservation
+                self._first_visible_message_id_before_load = self._get_first_visible_message_id()
+
                 # Convert to QML format and prepend
                 qml_items = [QmlAgentChatListModel.from_chat_list_item(item) for item in items]
                 self._model.prepend_items(qml_items)
@@ -409,6 +428,11 @@ class QmlAgentChatListWidget(BaseWidget):
                 self._load_state.current_line_offset = current_offset - len(older_messages)
 
                 self._prune_model_bottom()
+
+                # Restore scroll position after a delay to let QML update
+                if self._first_visible_message_id_before_load:
+                    QTimer.singleShot(0, self._restore_scroll_position)
+
                 logger.debug(f"Prepended {len(items)} older messages")
 
             if len(older_messages) < self.PAGE_SIZE:
@@ -942,6 +966,40 @@ class QmlAgentChatListWidget(BaseWidget):
         """
         if self._qml_root and (force or self._user_at_bottom):
             self._qml_root.scrollToBottom()
+
+    def _get_first_visible_message_id(self) -> Optional[str]:
+        """Get the first visible message ID (approximated as first item in model)."""
+        if self._model.rowCount() > 0:
+            item = self._model.get_item(0)
+            if item:
+                return item.get(QmlAgentChatListModel.MESSAGE_ID)
+        return None
+
+    def _restore_scroll_position(self):
+        """Restore scroll position to the previously visible message."""
+        if not self._qml_root or not self._first_visible_message_id_before_load:
+            return
+
+        # Find the new index of the message that was at the top
+        message_id = self._first_visible_message_id_before_load
+        row = self._model.get_row_by_message_id(message_id)
+
+        if row is not None and row >= 0:
+            # Position the view so this message is near the top
+            self._qml_root.positionViewAtIndex(row, 1)  # 1 = Beginning
+        else:
+            # Message not found (might have been pruned), scroll to a reasonable position
+            # Scroll to show about the same amount of content as before
+            new_items_count = len([
+                i for i in range(self._model.rowCount())
+                if (item := self._model.get_item(i)) and
+                item.get(QmlAgentChatListModel.MESSAGE_ID) not in self._load_state.known_message_ids
+            ])
+            if new_items_count > 0:
+                target_row = min(new_items_count - 1, self._model.rowCount() - 1)
+                self._qml_root.positionViewAtIndex(target_row, 1)  # 1 = Beginning
+
+        self._first_visible_message_id_before_load = None
 
     def sync_from_session(self, session):
         """Sync from session."""
