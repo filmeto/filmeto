@@ -465,6 +465,7 @@ class FilmetoAgent:
         session_id: str,
         sender_id: Optional[str] = None,
         sender_name: Optional[str] = None,
+        message_id: Optional[str] = None,
         **kwargs: Any
     ) -> None:
         """Emit a system event via AgentChatSignals for UI feedback.
@@ -474,6 +475,7 @@ class FilmetoAgent:
             session_id: Session identifier
             sender_id: Optional sender ID (defaults to "system")
             sender_name: Optional sender name (defaults to "System")
+            message_id: Optional message ID to reuse (for crew member message chaining)
             **kwargs: Additional event metadata
         """
         # Default to system if no sender provided
@@ -487,6 +489,7 @@ class FilmetoAgent:
             sender_id=sender_id,
             sender_name=sender_name,
             metadata=meta,
+            message_id=message_id if message_id else str(uuid.uuid4()),
             structured_content=[MetadataContent(
                 metadata_type=event_type,
                 metadata_data={"event_type": event_type, **kwargs},
@@ -613,11 +616,14 @@ class FilmetoAgent:
         plan_id: Optional[str],
         session_id: str,
         metadata: Optional[Dict[str, Any]] = None,
+        message_id: Optional[str] = None,
     ) -> AsyncGenerator["AgentEvent", None]:
         from agent.react import AgentEvent, AgentEventType
 
         # Set the current message ID on the crew member for content tracking
-        message_id = str(uuid.uuid4())
+        # Use provided message_id or generate a new one
+        if message_id is None:
+            message_id = str(uuid.uuid4())
         crew_member._current_message_id = message_id
 
         # Track content IDs for hierarchical relationships (e.g., tool → progress updates)
@@ -947,6 +953,9 @@ class FilmetoAgent:
             active_plan = self.plan_service.get_last_active_plan_for_project(project_name) if project_name else None
             active_plan_id = active_plan.id if active_plan else None
 
+            # Generate message_id for producer's messages
+            producer_message_id = str(uuid.uuid4())
+
             # Stream directly to the producer agent without creating a plan automatically
             # The producer will decide whether to create a plan using the create_execution_plan skill
             async for event in self._stream_crew_member(
@@ -954,6 +963,7 @@ class FilmetoAgent:
                 _extract_text_content(initial_prompt),
                 plan_id=active_plan_id,
                 session_id=session_id,
+                message_id=producer_message_id,
             ):
                 try:
                     yield event
@@ -971,12 +981,13 @@ class FilmetoAgent:
                     # Update the active plan ID to the newly created plan
                     active_plan_id = latest_plan.id
 
-                    # Emit plan_update with producer as sender
+                    # Emit plan_update with producer as sender, using same message_id
                     await self._emit_system_event(
                         "plan_update",
                         session_id,
                         sender_id=producer_agent.config.name,
                         sender_name=producer_agent.config.name,
+                        message_id=producer_message_id,
                         plan_id=latest_plan.id,
                     )
 
@@ -1032,12 +1043,16 @@ class FilmetoAgent:
                                 logger.error(f"❌ Exception in _execute_plan_tasks while yielding error event", exc_info=True)
                         continue
 
-                    # Emit plan_update with the crew member as sender
+                    # Generate message_id for this task's crew member messages
+                    task_message_id = str(uuid.uuid4())
+
+                    # Emit plan_update with the crew member as sender, using same message_id
                     await self._emit_system_event(
                         "plan_update",
                         session_id,
                         sender_id=target_agent.config.name,
                         sender_name=target_agent.config.name,
+                        message_id=task_message_id,
                         plan_id=plan.id,
                         task_id=task.id,
                         task_status="running",
@@ -1050,6 +1065,7 @@ class FilmetoAgent:
                         plan_id=plan.id,
                         session_id=session_id,
                         metadata={"plan_id": plan.id, "task_id": task.id},
+                        message_id=task_message_id,
                     ):
                         try:
                             yield event
@@ -1062,6 +1078,7 @@ class FilmetoAgent:
                         session_id,
                         sender_id=target_agent.config.name,
                         sender_name=target_agent.config.name,
+                        message_id=task_message_id,
                         plan_id=plan.id,
                         task_id=task.id,
                         task_status="completed",
