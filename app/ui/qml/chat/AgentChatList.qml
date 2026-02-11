@@ -98,6 +98,7 @@ ListView {
                 agentIcon: modelData.agentIcon || "🤖"
                 crewMetadata: modelData.crewMetadata || {}
                 structuredContent: modelData.structuredContent || []
+                isTyping: modelData.isTyping || false
 
                 onReferenceClicked: function(refType, refId) {
                     root.referenceClicked(refType, refId)

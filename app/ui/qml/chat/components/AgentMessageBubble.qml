@@ -14,6 +14,7 @@ Item {
     property string agentIcon: "🤖"
     property var crewMetadata: ({})
     property var structuredContent: []
+    property bool isTyping: false
 
     signal referenceClicked(string refType, string refId)
 
@@ -143,39 +144,23 @@ Item {
             // Use a computed property that always has at least one item
             property var effectiveStructuredContent: {
                 if (root.structuredContent && root.structuredContent.length > 0) {
-                    return root.structuredContent
+                    // Filter out typing content from structured content
+                    var items = []
+                    for (var i = 0; i < root.structuredContent.length; i++) {
+                        var type = root.structuredContent[i].content_type || root.structuredContent[i].type || "text"
+                        if (type !== "typing") {
+                            items.push(root.structuredContent[i])
+                        }
+                    }
+                    return items.length > 0 ? items : [{ content_type: "text", text: root.content || "" }]
                 }
                 // Fallback: convert content to a simple text item
                 return [{ content_type: "text", text: root.content || "" }]
             }
 
-            // Filter out non-typing content
-            property var nonTypingContent: {
-                var items = []
-                for (var i = 0; i < effectiveStructuredContent.length; i++) {
-                    var type = effectiveStructuredContent[i].content_type || effectiveStructuredContent[i].type || "text"
-                    if (type !== "typing") {
-                        items.push(effectiveStructuredContent[i])
-                    }
-                }
-                return items.length > 0 ? items : [{ content_type: "text", text: "" }]
-            }
-
-            // Filter typing content (always last)
-            property var typingContent: {
-                var items = []
-                for (var i = 0; i < effectiveStructuredContent.length; i++) {
-                    var type = effectiveStructuredContent[i].content_type || effectiveStructuredContent[i].type || "text"
-                    if (type === "typing") {
-                        items.push(effectiveStructuredContent[i])
-                    }
-                }
-                return items
-            }
-
-            // Non-typing content (displayed first)
+            // Render all content items
             Repeater {
-                model: nonTypingContent
+                model: effectiveStructuredContent
 
                 delegate: Loader {
                     id: widgetLoader
@@ -245,22 +230,20 @@ Item {
                 }
             }
 
-            // Typing indicators (always displayed last)
-            Repeater {
-                model: typingContent
+            // Typing indicator (displayed last, controlled by isTyping property)
+            Item {
+                width: parent.width
+                height: root.isTyping ? 30 : 0
+                visible: root.isTyping
+                Behavior on height {
+                    NumberAnimation { duration: 150 }
+                }
 
-                delegate: Loader {
-                    id: typingLoader
-                    width: parent.width
-                    sourceComponent: typingIndicatorComponent
-
-                    property var widgetData: modelData
-
-                    onLoaded: {
-                        if (item.hasOwnProperty('widgetColor')) {
-                            item.widgetColor = root.agentColor
-                        }
-                    }
+                TypingIndicator {
+                    id: typingIndicator
+                    anchors.centerIn: parent
+                    widgetColor: root.agentColor
+                    active: root.isTyping
                 }
             }
         }
@@ -348,17 +331,6 @@ Item {
             toolName: data.tool_name || data.data?.tool_name || ""
             response: data.response || data.data?.response || ""
             isError: data.is_error || data.data?.is_error || false
-        }
-    }
-
-    // Typing indicator widget
-    Component {
-        id: typingIndicatorComponent
-
-        TypingIndicator {
-            property var widgetColor: "#4a90e2"
-            active: true
-            dotColor: widgetColor
         }
     }
 
