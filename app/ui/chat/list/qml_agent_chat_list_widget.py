@@ -145,10 +145,12 @@ class QmlAgentChatListWidget(BaseWidget):
 
     def _refresh_qml_model(self):
         """Force QML to refresh the model binding."""
-        if self._qml_root and self._quick_widget:
+        qml_root = getattr(self, '_qml_root', None)
+        quick_widget = getattr(self, '_quick_widget', None)
+        if qml_root and quick_widget:
             # Re-set the context property to trigger QML update
-            self._quick_widget.rootContext().setContextProperty("_chatModel", None)
-            self._quick_widget.rootContext().setContextProperty("_chatModel", self._model)
+            quick_widget.rootContext().setContextProperty("_chatModel", None)
+            quick_widget.rootContext().setContextProperty("_chatModel", self._model)
 
     # ─── QML Signal Handlers ─────────────────────────────────────────────
 
@@ -189,7 +191,7 @@ class QmlAgentChatListWidget(BaseWidget):
     def on_project_switched(self, project_name: str):
         """Handle project switch."""
         # Check if QML and model are initialized
-        if not self._qml_root or not self._model:
+        if not getattr(self, '_qml_root', None) or not getattr(self, '_model', None):
             logger.debug("QML or model not yet initialized, skipping project switch handling")
             return
 
@@ -905,14 +907,15 @@ class QmlAgentChatListWidget(BaseWidget):
 
     def _clear_all_typing_indicators(self):
         """Clear isTyping for all existing messages."""
-        if not self._model:
+        model = getattr(self, '_model', None)
+        if not model:
             return
-        for row in range(self._model.rowCount()):
-            item = self._model.get_item(row)
+        for row in range(model.rowCount()):
+            item = model.get_item(row)
             if item and item.get(QmlAgentChatListModel.IS_TYPING, False):
                 msg_id = item.get(QmlAgentChatListModel.MESSAGE_ID)
                 if msg_id:
-                    self._model.update_item(msg_id, {
+                    model.update_item(msg_id, {
                         QmlAgentChatListModel.IS_TYPING: False
                     })
 
@@ -961,8 +964,10 @@ class QmlAgentChatListWidget(BaseWidget):
             force: If True, scroll regardless of user position.
                    If False, only scroll if user is already at bottom.
         """
-        if self._qml_root and (force or self._user_at_bottom):
-            self._qml_root.scrollToBottom()
+        qml_root = getattr(self, '_qml_root', None)
+        user_at_bottom = getattr(self, '_user_at_bottom', True)
+        if qml_root and (force or user_at_bottom):
+            qml_root.scrollToBottom()
 
     def sync_from_session(self, session):
         """Sync from session."""
@@ -1232,7 +1237,7 @@ class QmlAgentChatListWidget(BaseWidget):
     def clear(self):
         """Clear the chat list."""
         # Check if model is initialized
-        if not self._model:
+        if not getattr(self, '_model', None):
             return
 
         self._stop_new_data_check_timer()
