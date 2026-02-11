@@ -145,7 +145,7 @@ class QmlAgentChatListWidget(BaseWidget):
 
     def _refresh_qml_model(self):
         """Force QML to refresh the model binding."""
-        if self._qml_root:
+        if self._qml_root and self._quick_widget:
             # Re-set the context property to trigger QML update
             self._quick_widget.rootContext().setContextProperty("_chatModel", None)
             self._quick_widget.rootContext().setContextProperty("_chatModel", self._model)
@@ -188,6 +188,11 @@ class QmlAgentChatListWidget(BaseWidget):
 
     def on_project_switched(self, project_name: str):
         """Handle project switch."""
+        # Check if QML and model are initialized
+        if not self._qml_root or not self._model:
+            logger.debug("QML or model not yet initialized, skipping project switch handling")
+            return
+
         self._stop_new_data_check_timer()
         self.refresh_crew_member_metadata()
         self._load_state = LoadState()
@@ -900,6 +905,8 @@ class QmlAgentChatListWidget(BaseWidget):
 
     def _clear_all_typing_indicators(self):
         """Clear isTyping for all existing messages."""
+        if not self._model:
+            return
         for row in range(self._model.rowCount()):
             item = self._model.get_item(row)
             if item and item.get(QmlAgentChatListModel.IS_TYPING, False):
@@ -1224,6 +1231,10 @@ class QmlAgentChatListWidget(BaseWidget):
 
     def clear(self):
         """Clear the chat list."""
+        # Check if model is initialized
+        if not self._model:
+            return
+
         self._stop_new_data_check_timer()
         self._disconnect_from_storage_signals()
         self._model.clear()
