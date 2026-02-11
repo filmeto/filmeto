@@ -102,6 +102,7 @@ class LoadState:
         has_more_older: Whether there are more older messages available
         known_message_ids: Set of message IDs currently in the model (affected by prune)
         total_loaded_count: Total unique messages ever loaded (not affected by prune)
+        min_loaded_gsn: Minimum GSN among loaded messages (for loading older messages)
     """
     active_log_count: int = 0  # Number of lines in active log (legacy)
     unique_message_count: int = 0  # Number of unique messages in model
@@ -111,3 +112,4 @@ class LoadState:
     has_more_older: bool = True  # Whether there are more older messages
     known_message_ids: set = field(default_factory=set)  # Track message IDs in model (affected by prune)
     total_loaded_count: int = 0  # Total unique messages ever loaded (not affected by prune)
+    min_loaded_gsn: int = 0  # Minimum GSN among loaded messages (for loading older)

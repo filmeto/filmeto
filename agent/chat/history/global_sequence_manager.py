@@ -325,6 +325,78 @@ class EnhancedMessageLogHistory:
         """Get the current (latest) global sequence number."""
         return self._gsn_manager.get_current_gsn()
 
+    def get_messages_before_gsn(self, max_gsn: int, count: int = 100) -> List[Dict[str, Any]]:
+        """
+        Get messages with GSN less than or equal to max_gsn (older messages).
+
+        This method is used for loading older messages when scrolling up.
+
+        Args:
+            max_gsn: The maximum GSN to fetch (exclusive boundary - messages with GSN < max_gsn)
+            count: Maximum number of messages to retrieve
+
+        Returns:
+            List of message dictionaries in chronological order (oldest first)
+        """
+        if max_gsn <= 0:
+            # No GSN reference, fall back to latest messages
+            return self._history.get_latest_messages(count)
+
+        messages = []
+        seen_gsns = set()
+
+        # Calculate fetch range - we need messages with GSN < max_gsn
+        # Fetch more than needed because we'll filter by GSN
+        fetch_count = count * 3
+
+        # Get messages from active log
+        active_messages = self._history.get_latest_messages(fetch_count)
+
+        # Filter by GSN (< max_gsn) and track oldest
+        for msg in active_messages:
+            msg_gsn = msg.get('metadata', {}).get('gsn', 0)
+            if 0 < msg_gsn < max_gsn and msg_gsn not in seen_gsns:
+                messages.append(msg)
+                seen_gsns.add(msg_gsn)
+
+        # If we need more messages and there are archives, check them
+        if len(messages) < count and self._archives:
+            remaining = count - len(messages)
+
+            # Check archives (oldest first for older messages)
+            for archive_dir in reversed(self._archives):
+                if remaining <= 0:
+                    break
+
+                archive = self._history.storage.load_archive(archive_dir)
+                if not archive:
+                    continue
+
+                archive_count = archive.get_line_count()
+                if archive_count == 0:
+                    continue
+
+                # Fetch messages from archive
+                fetch_from_archive = min(archive_count, remaining * 2)
+                start = max(0, archive_count - fetch_from_archive)
+                archive_messages = archive.get_messages(start, fetch_from_archive)
+
+                # Filter by GSN
+                for msg in reversed(archive_messages):
+                    msg_gsn = msg.get('metadata', {}).get('gsn', 0)
+                    if 0 < msg_gsn < max_gsn and msg_gsn not in seen_gsns:
+                        messages.append(msg)
+                        seen_gsns.add(msg_gsn)
+                        remaining -= 1
+                        if remaining <= 0:
+                            break
+
+        # Sort by GSN to get chronological order
+        messages.sort(key=lambda m: m.get('metadata', {}).get('gsn', 0))
+
+        # Return only the requested count
+        return messages[:count]
+
     # Delegate methods to underlying history
     def get_latest_messages(self, count: int = 20) -> list:
         """Get latest messages from active log."""
