@@ -23,7 +23,9 @@ from utils.i18n_utils import tr
 
 from app.ui.chat.list.agent_chat_list_items import ChatListItem, MessageGroup, LoadState
 from app.ui.chat.list.qml_agent_chat_list_model import QmlAgentChatListModel
+from app.ui.chat.list.model_update_batcher import ModelUpdateBatcher
 from agent.chat.history.agent_chat_history_service import FastMessageHistoryService, message_saved
+from agent.chat.history.message_saved_signal_bridge import get_signal_bridge
 from agent.chat.history.agent_chat_storage import MessageLogHistory
 
 logger = logging.getLogger(__name__)
@@ -69,6 +71,9 @@ class QmlAgentChatListWidget(BaseWidget):
 
         # QML Model
         self._model = QmlAgentChatListModel(self)
+
+        # Model update batcher - reduces QML rendering frequency
+        self._update_batcher = ModelUpdateBatcher(self._model, batch_interval_ms=50, parent=self)
 
         # QML View widget
         self._quick_widget = QQuickWidget(self)
@@ -222,15 +227,18 @@ class QmlAgentChatListWidget(BaseWidget):
     def _connect_to_storage_signals(self):
         """Connect to storage signals for storage-driven refresh."""
         try:
-            message_saved.connect(self._on_message_saved, weak=False)
-            logger.debug("QML: Connected to message_saved signal")
+            # Use Qt signal bridge instead of blinker for thread-safe UI updates
+            signal_bridge = get_signal_bridge()
+            signal_bridge.message_saved.connect(self._on_message_saved, Qt.QueuedConnection)
+            logger.debug("QML: Connected to Qt message_saved signal")
         except Exception as e:
             logger.error(f"QML: Error connecting to message_saved signal: {e}")
 
     def _disconnect_from_storage_signals(self):
         """Disconnect from storage signals."""
         try:
-            message_saved.disconnect(self._on_message_saved)
+            signal_bridge = get_signal_bridge()
+            signal_bridge.message_saved.disconnect(self._on_message_saved)
             logger.debug("QML: Disconnected from message_saved signal")
         except Exception:
             pass  # Signal might not be connected
@@ -269,6 +277,7 @@ class QmlAgentChatListWidget(BaseWidget):
     def _clear_all_caches_and_model(self):
         """Clear all caches and the model."""
         self._model.clear()
+        self._update_batcher.clear_pending()
         self._load_state.known_message_ids.clear()
         self._load_state.unique_message_count = 0
         self._load_state.total_loaded_count = 0
@@ -718,8 +727,8 @@ class QmlAgentChatListWidget(BaseWidget):
         return message_id
 
     def update_streaming_message(self, message_id: str, content: str):
-        """Update a streaming message."""
-        self._model.update_item(message_id, {
+        """Update a streaming message using batcher to reduce render frequency."""
+        self._update_batcher.schedule_update(message_id, {
             QmlAgentChatListModel.CONTENT: content,
         })
         self._scroll_to_bottom(force=True)  # Streaming update, always scroll
@@ -816,7 +825,14 @@ class QmlAgentChatListWidget(BaseWidget):
             updates[QmlAgentChatListModel.CONTENT_TYPE] = "error"
 
         if updates:
-            self._model.update_item(message_id, updates)
+            # Use batcher for streaming updates, flush immediately on completion
+            if is_complete:
+                # Flush any pending updates first, then apply this update
+                self._update_batcher.flush_now()
+                self._model.update_item(message_id, updates)
+            else:
+                # Batch the update to reduce render frequency during streaming
+                self._update_batcher.schedule_update(message_id, updates)
 
         self._scroll_to_bottom(force=True)  # Real-time AI response update, always scroll
 
@@ -1307,6 +1323,7 @@ class QmlAgentChatListWidget(BaseWidget):
         self._stop_new_data_check_timer()
         self._disconnect_from_storage_signals()
         self._model.clear()
+        self._update_batcher.clear_pending()
         self._agent_current_cards.clear()
         self._load_state = LoadState()
         self._loading_older = False

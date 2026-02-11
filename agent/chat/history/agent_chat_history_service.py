@@ -25,6 +25,7 @@ from typing import Dict, List, Optional, Tuple
 
 from agent.chat.history.agent_chat_storage import MessageLogHistory
 from agent.chat.agent_chat_message import AgentMessage
+from agent.chat.history.message_cache import get_cache
 
 logger = logging.getLogger(__name__)
 
@@ -278,6 +279,9 @@ class FastMessageHistoryService:
         maintained across all archives, so this method works correctly
         even after archiving operations.
 
+        Uses an in-memory cache to reduce disk access for frequently
+        accessed messages.
+
         Args:
             workspace_path: Path to workspace
             project_name: Name of project
@@ -289,8 +293,21 @@ class FastMessageHistoryService:
         """
         from agent.chat.history.global_sequence_manager import get_enhanced_history
 
-        enhanced_history = get_enhanced_history(workspace_path, project_name)
-        return enhanced_history.get_messages_after_gsn(last_seen_gsn, count)
+        # Get cache for this workspace/project
+        cache = get_cache(workspace_path, project_name)
+
+        # Define fetch function for cache miss
+        def fetch_from_storage(gsn: int, cnt: int) -> List[dict]:
+            enhanced_history = get_enhanced_history(workspace_path, project_name)
+            return enhanced_history.get_messages_after_gsn(gsn, cnt)
+
+        # Use cache-first approach
+        messages = cache.get_messages_after_gsn(
+            last_seen_gsn,
+            count,
+            fetch_from_storage
+        )
+        return messages
 
     @classmethod
     def get_current_gsn(
@@ -318,6 +335,9 @@ class FastMessageHistoryService:
         """Clear caches for a specific history instance."""
         history = cls.get_history(workspace_path, project_name)
         history.invalidate_cache()
+        # Also clear the message cache
+        from agent.chat.history.message_cache import clear_cache
+        clear_cache(workspace_path, project_name)
 
     @classmethod
     def remove_history(cls, workspace_path: str, project_name: str):

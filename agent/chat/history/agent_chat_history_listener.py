@@ -3,13 +3,13 @@ Agent Chat History Listener module.
 
 Integrates with AgentChatSignals to automatically listen and save messages.
 
-Uses FastMessageHistoryService for high-performance message log storage.
+Uses AsyncMessageHistoryService for non-blocking message saves.
 """
 
 import logging
 from typing import Optional
 
-from agent.chat.history.agent_chat_history_service import FastMessageHistoryService
+from agent.chat.history.async_message_history_service import get_async_service
 from agent.chat.agent_chat_signals import AgentChatSignals
 from agent.chat.agent_chat_message import AgentMessage
 from agent.chat.agent_chat_types import ContentType
@@ -72,6 +72,8 @@ class AgentChatHistoryListener:
         """
         Handle incoming message signal and save to history.
 
+        Uses async message save to avoid blocking the signal handler.
+
         Args:
             sender: The signal sender (typically the AgentChatSignals instance)
             message: The AgentMessage to save
@@ -84,20 +86,19 @@ class AgentChatHistoryListener:
                 # Optional: Filter out certain system messages
                 pass
 
-            # Save message to history using FastMessageHistoryService
-            success = FastMessageHistoryService.add_message(
+            # Save message to history using async service (non-blocking)
+            # File I/O happens in background thread
+            async_service = get_async_service()
+            async_service.add_message_async(
                 self.workspace_path,
                 self.project_name,
                 message
             )
 
-            if success:
-                logger.debug(f"Saved message {message.message_id} to history storage")
-            else:
-                logger.warning(f"Failed to save message {message.message_id}")
+            logger.debug(f"Submitted async save for message {message.message_id}")
 
         except Exception as e:
-            logger.error(f"Failed to save message to history: {e}", exc_info=True)
+            logger.error(f"Failed to submit async save for message: {e}", exc_info=True)
 
     def __enter__(self):
         """Context manager entry."""

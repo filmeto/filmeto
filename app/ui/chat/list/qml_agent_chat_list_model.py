@@ -176,12 +176,13 @@ class QmlAgentChatListModel(QAbstractListModel):
         self._items = self._items[:start]
         self.endRemoveRows()
 
-    def update_item(self, message_id: str, updates: Dict[str, Any]) -> bool:
+    def update_item(self, message_id: str, updates: Dict[str, Any], use_batcher: bool = False) -> bool:
         """Update an existing item.
 
         Args:
             message_id: ID of message to update
             updates: Dictionary of fields to update
+            use_batcher: If True, delay update for batching (reduces render frequency)
 
         Returns:
             True if item was found and updated
@@ -194,8 +195,9 @@ class QmlAgentChatListModel(QAbstractListModel):
             return False
 
         self._items[row].update(updates)
-        index = self.index(row, 0)
-        self.dataChanged.emit(index, index)
+        if not use_batcher:
+            index = self.index(row, 0)
+            self.dataChanged.emit(index, index)
         return True
 
     def get_item(self, row: int) -> Optional[Dict[str, Any]]:
