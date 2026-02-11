@@ -272,6 +272,7 @@ class QmlAgentChatListWidget(BaseWidget):
         self._load_state.known_message_ids.clear()
         self._load_state.unique_message_count = 0
         self._load_state.total_loaded_count = 0
+        self._load_state.min_loaded_gsn = 0
         self._load_state.has_more_older = False
         # Note: GSN tracking is NOT reset here to maintain state across UI refreshes
         # GSN reset only happens on project switch
@@ -322,24 +323,28 @@ class QmlAgentChatListWidget(BaseWidget):
                 # Group messages by message_id (in chronological order)
                 message_groups: Dict[str, MessageGroup] = {}
                 max_gsn = 0
+                min_gsn = float('inf')
                 # Reverse to get chronological order (oldest first)
                 for msg_data in reversed(raw_messages):
                     message_id = msg_data.get("message_id") or msg_data.get("metadata", {}).get("message_id", "")
                     if not message_id:
                         continue
 
-                    # Track maximum GSN in loaded messages
+                    # Track GSN range in loaded messages
                     msg_gsn = msg_data.get('metadata', {}).get('gsn', 0)
                     if msg_gsn > max_gsn:
                         max_gsn = msg_gsn
+                    if msg_gsn > 0 and msg_gsn < min_gsn:
+                        min_gsn = msg_gsn
 
                     if message_id not in message_groups:
                         message_groups[message_id] = MessageGroup()
                     message_groups[message_id].add_message(msg_data)
 
-                # Update last_seen_gsn to match the loaded messages
+                # Update GSN tracking
                 self._load_state.last_seen_gsn = max_gsn
-                logger.debug(f"Updated last_seen GSN to: {self._load_state.last_seen_gsn}")
+                self._load_state.min_loaded_gsn = min_gsn if min_gsn != float('inf') else 0
+                logger.debug(f"Updated GSN range: min={self._load_state.min_loaded_gsn}, max={self._load_state.last_seen_gsn}")
 
                 # Convert to ordered list (in chronological order)
                 ordered_messages = []
@@ -386,16 +391,24 @@ class QmlAgentChatListWidget(BaseWidget):
         self._qml_root.setProperty("isLoadingOlder", True)
 
         try:
-            history = self._get_history()
-            if not history:
-                return
+            # Use enhanced history with GSN support
+            from agent.chat.history.global_sequence_manager import get_enhanced_history
 
-            current_offset = self._load_state.current_line_offset
-            older_messages = history.get_messages_before(current_offset, count=self.PAGE_SIZE)
+            enhanced_history = get_enhanced_history(
+                self.workspace.workspace_path,
+                self.workspace.project_name
+            )
+
+            # Use GSN-based cursor instead of line_offset
+            max_gsn = self._load_state.min_loaded_gsn
+            older_messages = enhanced_history.get_messages_before_gsn(max_gsn, count=self.PAGE_SIZE)
 
             if not older_messages:
                 self._load_state.has_more_older = False
                 return
+
+            # Track min GSN in this batch for next load
+            batch_min_gsn = self._load_state.min_loaded_gsn
 
             # Group and build items
             message_groups: Dict[str, MessageGroup] = {}
@@ -403,6 +416,11 @@ class QmlAgentChatListWidget(BaseWidget):
                 message_id = msg_data.get("message_id") or msg_data.get("metadata", {}).get("message_id", "")
                 if not message_id:
                     continue
+
+                # Track min GSN in this batch
+                msg_gsn = msg_data.get('metadata', {}).get('gsn', 0)
+                if msg_gsn > 0 and msg_gsn < batch_min_gsn:
+                    batch_min_gsn = msg_gsn
 
                 if message_id not in message_groups:
                     message_groups[message_id] = MessageGroup()
@@ -430,7 +448,8 @@ class QmlAgentChatListWidget(BaseWidget):
 
                 self._load_state.unique_message_count += len(items)
                 self._load_state.total_loaded_count += len(items)
-                self._load_state.current_line_offset = current_offset - len(older_messages)
+                # Update GSN cursor
+                self._load_state.min_loaded_gsn = batch_min_gsn
 
                 self._prune_model_bottom()
 
@@ -438,10 +457,10 @@ class QmlAgentChatListWidget(BaseWidget):
                 if self._first_visible_message_id_before_load:
                     QTimer.singleShot(0, self._restore_scroll_position)
 
-                logger.debug(f"Prepended {len(items)} older messages")
+                logger.debug(f"Prepended {len(items)} older messages, new min_gsn={self._load_state.min_loaded_gsn}")
 
             # Fix has_more_older logic: use total_loaded_count (not affected by prune)
-            total_count = history.get_total_count()
+            total_count = enhanced_history.get_total_count()
             self._load_state.has_more_older = self._load_state.total_loaded_count < total_count
 
         except Exception as e:
