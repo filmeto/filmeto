@@ -3,7 +3,7 @@
 This module provides a QAbstractListModel that exposes chat data to QML,
 with proper role names and automatic date grouping for separators.
 """
-
+import json
 import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional

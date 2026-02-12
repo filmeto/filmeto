@@ -3,6 +3,8 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 
+import "../widgets"
+
 Item {
     id: root
 
@@ -85,59 +87,102 @@ Item {
         // Message bubble — width adapts to content, max = availableWidth
         Rectangle {
             id: bubble
-            width: Math.min(Math.max(80, structuredContentColumn.implicitWidth + bubblePadding * 2), availableWidth)
-            height: structuredContentColumn.implicitHeight + bubblePadding * 2
+
+            // Calculate content width based on actual content
+            property real calculatedContentWidth: 150
+
+            width: Math.min(Math.max(80, calculatedContentWidth + bubblePadding * 2), availableWidth)
+            height: contentLoader.height + bubblePadding * 2
 
             color: bubbleColor
             radius: 9
 
-            // Always render through structured content
-            Column {
-                id: structuredContentColumn
-                x: bubblePadding
-                y: bubblePadding
-                // Width follows bubble minus padding; adapts when bubble resizes
-                width: bubble.width - bubblePadding * 2
-                spacing: 8
+            // Structured content column
+            Loader {
+                id: contentLoader
+                anchors {
+                    left: parent.left
+                    top: parent.top
+                    margins: bubblePadding
+                }
+                width: availableWidth - bubblePadding * 2
+                sourceComponent: structuredContentComponent
 
-                // Use a computed property that always has at least one item
-                property var effectiveStructuredContent: {
-                    if (root.structuredContent && root.structuredContent.length > 0) {
-                        return root.structuredContent
-                    }
-                    // Fallback: convert content to a simple text item
-                    return [{ content_type: "text", text: root.content || "" }]
+                onLoaded: {
+                    // Use a timer to ensure all nested items are fully loaded
+                    calcWidthTimer.start()
                 }
 
-                Repeater {
-                    model: structuredContentColumn.effectiveStructuredContent
-
-                    delegate: Loader {
-                        id: widgetLoader
-                        width: structuredContentColumn.width
-                        // Propagate loaded item's implicitWidth so the Column
-                        // reports a correct implicitWidth for bubble sizing
-                        implicitWidth: item ? item.implicitWidth : 0
-
-                        sourceComponent: {
-                            var type = modelData.content_type || modelData.type || "text"
-                            switch (type) {
-                                case "text": return textWidgetComponent
-                                case "code_block": return codeBlockComponent
-                                case "image": return imageWidgetComponent
-                                case "link": return linkWidgetComponent
-                                case "file_attachment":
-                                case "file": return fileWidgetComponent
-                                default: return textWidgetComponent
+                Timer {
+                    id: calcWidthTimer
+                    interval: 50
+                    onTriggered: {
+                        if (contentLoader.item && contentLoader.item.children) {
+                            var maxW = 80
+                            for (var i = 0; i < contentLoader.item.children.length; i++) {
+                                var child = contentLoader.item.children[i]
+                                // For Loaders, check their item's implicitWidth
+                                if (child.item && child.item.implicitWidth !== undefined) {
+                                    var w = child.item.implicitWidth
+                                    if (w > maxW) maxW = w
+                                }
+                                // Also check the Loader's own implicitWidth
+                                else if (child.implicitWidth !== undefined) {
+                                    var w = child.implicitWidth
+                                    if (w > maxW) maxW = w
+                                }
                             }
+                            bubble.calculatedContentWidth = maxW
                         }
+                    }
+                }
+            }
+        }
+    }
 
-                        property var widgetData: modelData
+    // Structured content component (renders widgets)
+    Component {
+        id: structuredContentComponent
 
-                        onLoaded: {
-                            if (item.hasOwnProperty('data')) {
-                                item.data = modelData
-                            }
+        Column {
+            id: contentColumn
+            spacing: 8
+            width: parent.width
+
+            // Use a computed property that always has at least one item
+            property var effectiveStructuredContent: {
+                if (root.structuredContent && root.structuredContent.length > 0) {
+                    return root.structuredContent
+                }
+                // Fallback: convert content to a simple text item
+                return [{ content_type: "text", text: root.content || "" }]
+            }
+
+            Repeater {
+                model: effectiveStructuredContent
+
+                delegate: Loader {
+                    id: widgetLoader
+                    width: parent.width
+
+                    sourceComponent: {
+                        var type = modelData.content_type || modelData.type || "text"
+                        switch (type) {
+                            case "text": return textWidgetComponent
+                            case "code_block": return codeBlockComponent
+                            case "image": return imageWidgetComponent
+                            case "link": return linkWidgetComponent
+                            case "file_attachment":
+                            case "file": return fileWidgetComponent
+                            default: return textWidgetComponent
+                        }
+                    }
+
+                    property var widgetData: modelData
+
+                    onLoaded: {
+                        if (item.hasOwnProperty('data')) {
+                            item.data = modelData
                         }
                     }
                 }
@@ -217,27 +262,11 @@ Item {
     Component {
         id: imageWidgetComponent
 
-        Column {
+        ImageWidget {
             property var data: ({})
             width: parent.width
-            spacing: 4
-
-            Image {
-                width: Math.min(parent.width, 300)
-                height: width * 0.75
-                source: data.url || data.data?.url || ""
-                fillMode: Image.PreserveAspectCrop
-                anchors.horizontalCenter: parent.horizontalCenter
-            }
-
-            Text {
-                text: data.caption || data.data?.caption || ""
-                color: "#cccccc"
-                font.pixelSize: 11
-                font.italic: true
-                anchors.horizontalCenter: parent.horizontalCenter
-                visible: text !== ""
-            }
+            source: data.url || data.data?.url || ""
+            caption: data.caption || data.data?.caption || ""
         }
     }
 
@@ -266,46 +295,12 @@ Item {
     Component {
         id: fileWidgetComponent
 
-        Row {
+        FileWidget {
             property var data: ({})
-            spacing: 8
-
-            Rectangle {
-                width: 40
-                height: 40
-                color: "#ffffff"
-                radius: 4
-                opacity: 0.2
-
-                Text {
-                    anchors.centerIn: parent
-                    text: "📄"
-                    font.pixelSize: 20
-                }
-            }
-
-            Column {
-                spacing: 2
-                anchors.verticalCenter: parent.verticalCenter
-
-                Text {
-                    text: data.name || data.data?.name || "File"
-                    color: textColor
-                    font.pixelSize: 13
-                    font.weight: Font.Medium
-                }
-
-                Text {
-                    text: {
-                        var size = data.size || data.data?.size || 0
-                        if (size < 1024) return size + " B"
-                        if (size < 1024 * 1024) return (size / 1024).toFixed(1) + " KB"
-                        return (size / (1024 * 1024)).toFixed(1) + " MB"
-                    }
-                    color: "#cccccc"
-                    font.pixelSize: 11
-                }
-            }
+            width: parent.width
+            filePath: data.path || (data.data && data.data.path) ? data.data.path : ""
+            fileName: data.name || (data.data && data.data.name) ? data.data.name : ""
+            fileSize: data.size || (data.data && data.data.size) ? data.data.size : 0
         }
     }
 }
