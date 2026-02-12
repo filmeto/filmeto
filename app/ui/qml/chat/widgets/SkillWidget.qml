@@ -6,7 +6,7 @@ import QtQuick.Layouts 1.15
 Rectangle {
     id: root
 
-    property var skillData: ({})  // {name, status, progress, result, error}
+    property var skillData: ({})  // Maps to SkillContent.data: {skill_name, state, progress_text, progress_percentage, result, error_message}
     property color widgetColor: "#4a90e2"
 
     implicitWidth: parent.width
@@ -48,7 +48,7 @@ Rectangle {
             // Skill name
             Text {
                 width: parent.width - 24 - parent.spacing
-                text: root.skillData.name || "Skill"
+                text: root.skillData.skill_name || root.skillData.name || "Skill"
                 color: "#e0e0e0"
                 font.pixelSize: 13
                 font.weight: Font.Medium
@@ -59,7 +59,7 @@ Rectangle {
 
         // Status indicator
         Row {
-            visible: root.skillData.status > ""
+            visible: (root.skillData.state || root.skillData.status) > ""
             width: parent.width
             spacing: 8
 
@@ -68,12 +68,12 @@ Rectangle {
                 width: 8
                 height: 8
                 radius: width / 2
-                color: getStatusColor(root.skillData.status)
+                color: getStatusColor(root.skillData.state || root.skillData.status)
                 anchors.verticalCenter: parent.verticalCenter
 
                 // Animation for in_progress
                 SequentialAnimation on opacity {
-                    running: root.skillData.status === "in_progress"
+                    running: (root.skillData.state || root.skillData.status) === "in_progress"
                     loops: Animation.Infinite
                     NumberAnimation { from: 1.0; to: 0.3; duration: 500 }
                     NumberAnimation { from: 0.3; to: 1.0; duration: 500 }
@@ -82,8 +82,8 @@ Rectangle {
 
             // Status text
             Text {
-                text: formatSkillStatus(root.skillData.status || "")
-                color: getStatusColor(root.skillData.status)
+                text: formatSkillStatus(root.skillData.state || root.skillData.status || "")
+                color: getStatusColor(root.skillData.state || root.skillData.status)
                 font.pixelSize: 11
                 anchors.verticalCenter: parent.verticalCenter
             }
@@ -91,14 +91,14 @@ Rectangle {
 
         // Progress bar
         Rectangle {
-            visible: root.skillData.status === "in_progress"
+            visible: (root.skillData.state || root.skillData.status) === "in_progress"
             width: parent.width
             height: 4
             color: "#404040"
             radius: 2
 
             Rectangle {
-                width: parent.width * ((root.skillData.progress || 0) / 100)
+                width: parent.width * ((root.skillData.progress_percentage || root.skillData.progress || 0) / 100)
                 height: parent.height
                 color: root.widgetColor
                 radius: parent.radius
@@ -111,7 +111,7 @@ Rectangle {
 
         // Progress text
         Text {
-            visible: root.skillData.status === "in_progress" && (root.skillData.progress_text || "") > ""
+            visible: (root.skillData.state || root.skillData.status) === "in_progress" && (root.skillData.progress_text || "") > ""
             width: parent.width
             text: root.skillData.progress_text || ""
             color: "#a0a0a0"
@@ -121,7 +121,7 @@ Rectangle {
 
         // Result (shown when completed)
         Text {
-            visible: root.skillData.status === "completed" && (root.skillData.result || "") > ""
+            visible: (root.skillData.state || root.skillData.status) === "completed" && (root.skillData.result || "") > ""
             width: parent.width
             text: "✓ " + (root.skillData.result || "")
             color: "#4ecdc4"
@@ -131,9 +131,9 @@ Rectangle {
 
         // Error (shown when failed)
         Text {
-            visible: root.skillData.status === "error" && (root.skillData.error || "") > ""
+            visible: (root.skillData.state || root.skillData.status) === "error" && (root.skillData.error_message || root.skillData.error || "") > ""
             width: parent.width
-            text: "✗ " + (root.skillData.error || "")
+            text: "✗ " + (root.skillData.error_message || root.skillData.error || "")
             color: "#ff6b6b"
             font.pixelSize: 12
             wrapMode: Text.WordWrap

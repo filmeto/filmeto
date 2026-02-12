@@ -97,7 +97,7 @@ class SkillChat:
         skill_sender_name = crew_member_name if crew_member_name else f"Skill: {skill.name}"
 
         # Emit SKILL_START event
-        from agent.chat.content import TextContent
+        from agent.chat.content import SkillContent, SkillExecutionState
         yield AgentEvent.create(
             event_type=AgentEventType.SKILL_START.value,
             project_name=project_name,
@@ -106,8 +106,10 @@ class SkillChat:
             step_id=step_id,
             sender_id=skill_sender_id,
             sender_name=skill_sender_name,
-            content=TextContent(
-                text=f"Starting skill: {skill.name}",
+            content=SkillContent(
+                skill_name=skill.name,
+                state=SkillExecutionState.IN_PROGRESS,
+                progress_text="Starting execution...",
                 title=f"Skill: {skill.name}",
                 description=skill.description
             )
@@ -172,10 +174,10 @@ class SkillChat:
 
                     # Create progress message with tool information
                     if tool_name != "unknown":
-                        progress_text = f"Skill progress: Executing tool [{tool_count}] - {tool_name}"
+                        progress_text = f"Executing tool [{tool_count}] - {tool_name}"
                         description_text = f"Tool {tool_name} execution in progress"
                     else:
-                        progress_text = f"Skill progress: {tool_count} tool execution(s) completed"
+                        progress_text = f"{tool_count} tool execution(s) completed"
                         description_text = f"Executed {tool_count} tool(s)"
 
                     yield AgentEvent.create(
@@ -186,8 +188,11 @@ class SkillChat:
                         step_id=step_id,
                         sender_id=skill_sender_id,
                         sender_name=skill_sender_name,
-                        content=TextContent(
-                            text=progress_text,
+                        content=SkillContent(
+                            skill_name=skill.name,
+                            state=SkillExecutionState.IN_PROGRESS,
+                            progress_text=progress_text,
+                            progress_percentage=None,
                             title=f"Skill Progress: {skill.name}",
                             description=description_text
                         )
@@ -199,10 +204,10 @@ class SkillChat:
             # Prepare completion message with tool summary
             if executed_tools:
                 tools_summary = ", ".join(executed_tools)
-                completion_text = f"Skill {skill.name} completed successfully. Executed tools: {tools_summary}"
+                result_text = f"Executed {len(executed_tools)} tool(s): {tools_summary}"
                 description_text = f"Completed {len(executed_tools)} tool(s): {tools_summary}"
             else:
-                completion_text = f"Skill {skill.name} completed successfully"
+                result_text = "Skill execution completed successfully"
                 description_text = f"Skill {skill.name} finished execution"
 
             yield AgentEvent.create(
@@ -213,8 +218,11 @@ class SkillChat:
                 step_id=step_id,
                 sender_id=skill_sender_id,
                 sender_name=skill_sender_name,
-                content=TextContent(
-                    text=completion_text,
+                content=SkillContent(
+                    skill_name=skill.name,
+                    state=SkillExecutionState.COMPLETED,
+                    result=result_text,
+                    progress_percentage=100,
                     title=f"Skill Completed: {skill.name}",
                     description=description_text
                 )
@@ -224,7 +232,7 @@ class SkillChat:
             logger.error(f"Error in skill chat_stream for '{skill.name}': {e}", exc_info=True)
             # Emit SKILL_ERROR event
             step_id += 1
-            from agent.chat.content import ErrorContent
+            from agent.chat.content import SkillContent, SkillExecutionState
             yield AgentEvent.create(
                 event_type=AgentEventType.SKILL_ERROR.value,
                 project_name=project_name,
@@ -233,7 +241,9 @@ class SkillChat:
                 step_id=step_id,
                 sender_id=skill_sender_id,
                 sender_name=skill_sender_name,
-                content=ErrorContent(
+                content=SkillContent(
+                    skill_name=skill.name,
+                    state=SkillExecutionState.ERROR,
                     error_message=str(e),
                     title=f"Skill Error: {skill.name}",
                     description=f"Error executing skill: {skill.name}"

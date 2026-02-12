@@ -21,7 +21,7 @@ from .data_content import TableContent, ChartContent
 from .link_content import LinkContent
 from .button_content import ButtonContent
 from .form_content import FormContent
-from .skill_content import SkillContent
+from .skill_content import SkillContent, SkillExecutionState
 from .plan_content import PlanContent, StepContent, TaskListContent
 from .typing_content import TypingContent, TypingState
 from .llm_output_content import LlmOutputContent
@@ -78,6 +78,7 @@ __all__ = [
     'ErrorContent',
     'FileAttachmentContent',
     'SkillContent',
+    'SkillExecutionState',
     'PlanContent',
     'StepContent',
     'TaskListContent',

@@ -827,7 +827,7 @@ class QmlAgentChatListWidget(BaseWidget):
             self._handle_error_event(event)
         elif event.event_type == "agent_response":
             self._handle_agent_response_event(event)
-        elif event.event_type in ["skill_start", "skill_progress", "skill_end"]:
+        elif event.event_type in ["skill_start", "skill_progress", "skill_end", "skill_error"]:
             self._handle_skill_event(event)
         elif event.event_type in ["crew_member_typing", "crew_member_typing_end"]:
             self._handle_typing_event(event)
@@ -870,40 +870,121 @@ class QmlAgentChatListWidget(BaseWidget):
         self.update_agent_card(message_id, structured_content=text_structure)
 
     def _handle_skill_event(self, event):
-        """Handle skill events."""
-        from agent.chat.content import ProgressContent
+        """Handle skill events - merges consecutive skill events into single content."""
+        from agent.chat.content import SkillContent, SkillExecutionState
 
-        skill_name = event.data.get("skill_name", "Unknown")
-        sender_name = event.data.get("sender_name", "Unknown")
-        sender_id = event.data.get("sender_id", sender_name.lower())
-        message_id = event.data.get("message_id", str(uuid.uuid4()))
+        # Extract data from event content (SkillContent is already in event.content)
+        skill_content = getattr(event, 'content', None)
+        if not skill_content or not isinstance(skill_content, SkillContent):
+            # Fallback to data-based parsing for legacy events
+            skill_name = event.data.get("skill_name", "Unknown")
+            sender_name = event.data.get("sender_name", "Unknown")
+            sender_id = event.data.get("sender_id", sender_name.lower())
+            run_id = getattr(event, "run_id", "")
+            message_id = event.data.get("message_id") or f"skill_{run_id}_{skill_name}"
 
-        if sender_id == "user":
-            return
+            if sender_id == "user":
+                return
 
-        if event.event_type == "skill_start":
-            content = f"[Skill: {skill_name}] Starting execution..."
-        elif event.event_type == "skill_progress":
-            message = event.data.get("progress_text", "Processing...")
-            content = f"[Skill: {skill_name}] {message}"
-        elif event.event_type == "skill_end":
-            result = event.data.get("result", "No result returned")
-            content = f"[Skill: {skill_name}] Completed. Result: {result}"
+            # Determine state based on event type
+            if event.event_type == "skill_start":
+                state = SkillExecutionState.IN_PROGRESS
+                progress_text = "Starting execution..."
+                progress_percentage = None
+                result = ""
+                error_message = ""
+            elif event.event_type == "skill_progress":
+                state = SkillExecutionState.IN_PROGRESS
+                progress_text = event.data.get("progress_text", "Processing...")
+                progress_percentage = event.data.get("progress_percentage")
+                result = ""
+                error_message = ""
+            elif event.event_type == "skill_end":
+                state = SkillExecutionState.COMPLETED
+                progress_text = ""
+                progress_percentage = 100
+                result = event.data.get("result", "")
+                error_message = ""
+            elif event.event_type == "skill_error":
+                state = SkillExecutionState.ERROR
+                progress_text = ""
+                progress_percentage = None
+                result = ""
+                error_message = event.data.get("error", "Execution failed")
+            else:
+                return  # Unknown event type
+
+            skill_content = SkillContent(
+                skill_name=skill_name,
+                state=state,
+                progress_text=progress_text,
+                progress_percentage=progress_percentage,
+                result=result,
+                error_message=error_message,
+                title=f"Skill: {skill_name}",
+                description=f"Skill execution: {skill_name}",
+            )
         else:
-            content = f"[Skill: {skill_name}] Unknown skill status"
+            # Use event.content directly (SkillContent from skill_chat.py)
+            skill_name = skill_content.skill_name
+            sender_name = getattr(event, 'sender_name', 'Unknown')
+            sender_id = getattr(event, 'sender_id', sender_name.lower())
+            run_id = getattr(event, "run_id", "")
+            message_id = f"skill_{run_id}_{skill_name}"
+
+            if sender_id == "user":
+                return
+
+        # Get existing item to check for existing skill content
+        existing_row = self._model.get_row_by_message_id(message_id)
+        existing_skill_content = None
+
+        if existing_row is not None:
+            item = self._model.get_item(existing_row)
+            if item:
+                # Find existing skill content with same skill_name
+                for sc in item.get(QmlAgentChatListModel.STRUCTURED_CONTENT, []):
+                    if sc.get("content_type") == "skill" and sc.get("data", {}).get("skill_name") == skill_name:
+                        existing_skill_content = sc
+                        break
 
         self.get_or_create_agent_card(message_id, sender_name, sender_name)
-        skill_content = ProgressContent(
-            progress=content,
-            percentage=None,
-            tool_name=skill_name,
-        )
-        self.update_agent_card(
-            message_id,
-            content=content,
-            append=False,
-            structured_content=skill_content,
-        )
+
+        # Update or append skill content
+        if existing_skill_content:
+            # Replace existing skill content with updated state
+            self._update_skill_content(message_id, skill_content)
+        else:
+            # Append new skill content
+            self.update_agent_card(
+                message_id,
+                structured_content=skill_content,
+                is_complete=False,
+            )
+
+    def _update_skill_content(self, message_id: str, skill_content):
+        """Update existing skill content by replacing it with new state."""
+        from agent.chat.content import SkillContent
+
+        item = self._model.get_item(self._model.get_row_by_message_id(message_id) or 0)
+        if not item:
+            return
+
+        current_structured = item.get(QmlAgentChatListModel.STRUCTURED_CONTENT, [])
+        skill_name = skill_content.skill_name
+
+        # Replace existing skill content with same skill_name
+        new_structured = []
+        for sc in current_structured:
+            if sc.get("content_type") == "skill" and sc.get("data", {}).get("skill_name") == skill_name:
+                # Replace with new content
+                new_structured.append(skill_content.to_dict())
+            else:
+                new_structured.append(sc)
+
+        self._model.update_item(message_id, {
+            QmlAgentChatListModel.STRUCTURED_CONTENT: new_structured,
+        })
 
     def _handle_typing_event(self, event):
         """Handle crew_member_typing events to show/hide typing indicator."""
