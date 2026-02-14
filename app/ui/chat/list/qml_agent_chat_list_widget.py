@@ -1075,6 +1075,9 @@ class QmlAgentChatListWidget(BaseWidget):
                    If False, only scroll if user is already at bottom.
         """
         if self._qml_root and (force or self._user_at_bottom):
+            # Flush any pending model updates so QML has the latest content
+            # before we scroll (ensures correct content height for positioning)
+            self._model.flush_updates()
             self._qml_root.scrollToBottom()
 
     def _get_first_visible_message_id(self) -> Optional[str]:
