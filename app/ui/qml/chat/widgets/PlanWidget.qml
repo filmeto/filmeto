@@ -22,8 +22,11 @@ Rectangle {
     border.color: borderColor
     border.width: 1
 
-    implicitWidth: parent.width
-    implicitHeight: planColumn.implicitHeight + 16
+    // Calculate height based on content
+    readonly property real headerHeight: 40
+    readonly property real stepHeight: (planData.steps || []).length > 0 ? (planData.steps || []).length * 28 + 10 : 0
+    readonly property real separatorHeight: 1
+    implicitHeight: (expanded ? headerHeight + separatorHeight + stepHeight : headerHeight) + 24
 
     Layout.fillWidth: true
 
@@ -36,6 +39,7 @@ Rectangle {
             margins: 12
         }
         spacing: 10
+        width: parent.width
 
         // Header
         RowLayout {

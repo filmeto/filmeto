@@ -125,19 +125,20 @@ Item {
                 }
 
                 property var widgetData: modelData
+                property var loadedItem: null
 
                 onLoaded: {
+                    loadedItem = item
                     if (item.hasOwnProperty('data')) {
                         item.data = modelData
                     }
                     if (item.hasOwnProperty('widgetColor')) {
                         item.widgetColor = root.widgetColor
                     }
-                    // Set height from loaded item to avoid binding loop
-                    if (item && (item.implicitHeight !== undefined || item.height !== undefined)) {
-                        height = item.implicitHeight || item.height || 0
-                    }
                 }
+
+                // Bind height to item's implicitHeight, updates when item's height changes
+                height: loadedItem ? (loadedItem.implicitHeight || loadedItem.height || 0) : 0
             }
         }
 
@@ -151,16 +152,16 @@ Item {
                 sourceComponent: typingIndicatorComponent
 
                 property var widgetData: modelData
+                property var loadedItem: null
 
                 onLoaded: {
+                    loadedItem = item
                     if (item.hasOwnProperty('widgetColor')) {
                         item.widgetColor = root.widgetColor
                     }
-                    // Set height from loaded item to avoid binding loop
-                    if (item && (item.implicitHeight !== undefined || item.height !== undefined)) {
-                        height = item.implicitHeight || item.height || 0
-                    }
                 }
+
+                height: loadedItem ? (loadedItem.implicitHeight || loadedItem.height || 0) : 0
             }
         }
     }
