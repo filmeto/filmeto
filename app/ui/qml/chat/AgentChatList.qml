@@ -28,7 +28,9 @@ ListView {
     // Smooth scrolling
     flickableDirection: Flickable.VerticalFlick
     boundsBehavior: Flickable.StopAtBounds
-    cacheBuffer: height * 2
+    // Cache 3x viewport height above/below for smoother scrolling with complex delegates.
+    // Increased from 2x to 3x to pre-render more delegates and reduce pop-in during fast scrolling.
+    cacheBuffer: height * 3
     clip: true
 
     // Bottom margin to ensure last message is fully visible
