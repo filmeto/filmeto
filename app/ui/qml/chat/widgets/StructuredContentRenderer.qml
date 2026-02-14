@@ -73,7 +73,6 @@ Item {
             delegate: Loader {
                 id: widgetLoader
                 width: parent.width
-                height: item ? (item.implicitHeight || item.height || 0) : 0
 
                 sourceComponent: {
                     var type = modelData.content_type || modelData.type || "text"
@@ -134,6 +133,10 @@ Item {
                     if (item.hasOwnProperty('widgetColor')) {
                         item.widgetColor = root.widgetColor
                     }
+                    // Set height from loaded item to avoid binding loop
+                    if (item && (item.implicitHeight !== undefined || item.height !== undefined)) {
+                        height = item.implicitHeight || item.height || 0
+                    }
                 }
             }
         }
@@ -145,7 +148,6 @@ Item {
             delegate: Loader {
                 id: typingLoader
                 width: parent.width
-                height: item ? (item.implicitHeight || item.height || 0) : 0
                 sourceComponent: typingIndicatorComponent
 
                 property var widgetData: modelData
@@ -153,6 +155,10 @@ Item {
                 onLoaded: {
                     if (item.hasOwnProperty('widgetColor')) {
                         item.widgetColor = root.widgetColor
+                    }
+                    // Set height from loaded item to avoid binding loop
+                    if (item && (item.implicitHeight !== undefined || item.height !== undefined)) {
+                        height = item.implicitHeight || item.height || 0
                     }
                 }
             }
