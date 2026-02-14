@@ -1,4 +1,11 @@
 // StructuredContentRenderer.qml - Reusable component for rendering structured message content
+//
+// PERFORMANCE NOTE: The Repeater uses a count-based model (integer) instead of a JS array.
+// When the model is a JS array, QML's Repeater destroys ALL delegates and recreates them
+// whenever the array property re-evaluates (which creates a new JS array object).
+// With a count-based model, the Repeater only creates/destroys delegates when the count
+// actually changes. Existing delegates are preserved and their data bindings re-evaluated
+// in-place, which is orders of magnitude faster.
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
@@ -60,6 +67,56 @@ Item {
         return items
     }
 
+    // Helper: resolve the correct Component for a content type string
+    function _resolveComponent(type) {
+        switch (type) {
+            // Basic content
+            case "text": return textWidgetComponent
+            case "code_block": return codeBlockComponent
+
+            // Thinking content (full support only)
+            case "thinking": return widgetSupport === "full" ? thinkingWidgetComponent : textWidgetComponent
+
+            // Tool content (full support only)
+            case "tool_call": return widgetSupport === "full" ? toolCallComponent : textWidgetComponent
+            case "tool_response": return widgetSupport === "full" ? toolResponseComponent : textWidgetComponent
+
+            // Media content
+            case "image": return imageWidgetComponent
+            case "video": return widgetSupport === "full" ? videoWidgetComponent : textWidgetComponent
+            case "audio": return widgetSupport === "full" ? audioWidgetComponent : textWidgetComponent
+
+            // Data display (full support only)
+            case "table": return widgetSupport === "full" ? tableWidgetComponent : textWidgetComponent
+            case "chart": return widgetSupport === "full" ? chartWidgetComponent : textWidgetComponent
+
+            // Interactive elements
+            case "link": return linkWidgetComponent
+            case "button": return widgetSupport === "full" ? buttonWidgetComponent : textWidgetComponent
+            case "form": return widgetSupport === "full" ? formWidgetComponent : textWidgetComponent
+
+            // Files
+            case "file_attachment":
+            case "file": return fileWidgetComponent
+
+            // Tasks and plans (full support only)
+            case "plan": return widgetSupport === "full" ? planWidgetComponent : textWidgetComponent
+            case "task_list":
+            case "task": return widgetSupport === "full" ? taskWidgetComponent : textWidgetComponent
+            case "step": return widgetSupport === "full" ? stepWidgetComponent : textWidgetComponent
+            case "skill": return widgetSupport === "full" ? skillWidgetComponent : textWidgetComponent
+
+            // Status and metadata (full support only)
+            case "progress": return widgetSupport === "full" ? progressWidgetComponent : textWidgetComponent
+            case "todo_write": return widgetSupport === "full" ? todoWriteWidgetComponent : textWidgetComponent
+            case "metadata": return widgetSupport === "full" ? metadataWidgetComponent : textWidgetComponent
+            case "error": return widgetSupport === "full" ? errorWidgetComponent : textWidgetComponent
+            case "llm_output": return widgetSupport === "full" ? llmOutputComponent : textWidgetComponent
+
+            default: return textWidgetComponent
+        }
+    }
+
     Column {
         id: contentColumn
         spacing: 8
@@ -67,73 +124,48 @@ Item {
         // Don't set height - let it be determined by children
 
         // Non-typing content (displayed first)
+        // PERFORMANCE: model is an integer (count), NOT a JS array.
+        // When structuredContent changes, nonTypingContent.length is re-evaluated.
+        // If the count is unchanged, NO delegates are created or destroyed.
+        // If the count increased by N, only N new delegates are created at the end.
+        // Existing delegates stay alive and simply re-read their data via widgetData binding.
         Repeater {
-            model: nonTypingContent
+            model: nonTypingContent.length
 
             delegate: Loader {
                 id: widgetLoader
-                width: parent.width
+                width: contentColumn.width
 
-                sourceComponent: {
-                    var type = modelData.content_type || modelData.type || "text"
-                    switch (type) {
-                        // Basic content
-                        case "text": return textWidgetComponent
-                        case "code_block": return codeBlockComponent
-
-                        // Thinking content (full support only)
-                        case "thinking": return widgetSupport === "full" ? thinkingWidgetComponent : textWidgetComponent
-
-                        // Tool content (full support only)
-                        case "tool_call": return widgetSupport === "full" ? toolCallComponent : textWidgetComponent
-                        case "tool_response": return widgetSupport === "full" ? toolResponseComponent : textWidgetComponent
-
-                        // Media content
-                        case "image": return imageWidgetComponent
-                        case "video": return widgetSupport === "full" ? videoWidgetComponent : textWidgetComponent
-                        case "audio": return widgetSupport === "full" ? audioWidgetComponent : textWidgetComponent
-
-                        // Data display (full support only)
-                        case "table": return widgetSupport === "full" ? tableWidgetComponent : textWidgetComponent
-                        case "chart": return widgetSupport === "full" ? chartWidgetComponent : textWidgetComponent
-
-                        // Interactive elements
-                        case "link": return linkWidgetComponent
-                        case "button": return widgetSupport === "full" ? buttonWidgetComponent : textWidgetComponent
-                        case "form": return widgetSupport === "full" ? formWidgetComponent : textWidgetComponent
-
-                        // Files
-                        case "file_attachment":
-                        case "file": return fileWidgetComponent
-
-                        // Tasks and plans (full support only)
-                        case "plan": return widgetSupport === "full" ? planWidgetComponent : textWidgetComponent
-                        case "task_list":
-                        case "task": return widgetSupport === "full" ? taskWidgetComponent : textWidgetComponent
-                        case "step": return widgetSupport === "full" ? stepWidgetComponent : textWidgetComponent
-                        case "skill": return widgetSupport === "full" ? skillWidgetComponent : textWidgetComponent
-
-                        // Status and metadata (full support only)
-                        case "progress": return widgetSupport === "full" ? progressWidgetComponent : textWidgetComponent
-                        case "todo_write": return widgetSupport === "full" ? todoWriteWidgetComponent : textWidgetComponent
-                        case "metadata": return widgetSupport === "full" ? metadataWidgetComponent : textWidgetComponent
-                        case "error": return widgetSupport === "full" ? errorWidgetComponent : textWidgetComponent
-                        case "llm_output": return widgetSupport === "full" ? llmOutputComponent : textWidgetComponent
-
-                        default: return textWidgetComponent
-                    }
-                }
-
-                property var widgetData: modelData
+                // Access data by index from the filtered array.
+                // This binding re-evaluates when nonTypingContent changes,
+                // but the Loader only reloads if sourceComponent actually changes.
+                property var widgetData: root.nonTypingContent[index] || ({})
                 property var loadedItem: null
+
+                sourceComponent: root._resolveComponent(
+                    widgetData.content_type || widgetData.type || "text"
+                )
 
                 onLoaded: {
                     loadedItem = item
-                    if (item.hasOwnProperty('data')) {
-                        item.data = modelData
+                    _applyDataToItem()
+                }
+
+                // PERFORMANCE: When data changes but the content type stays the same,
+                // the Loader does NOT reload (sourceComponent is the same Component ref).
+                // We imperatively update the loaded widget's data property to reflect changes.
+                onWidgetDataChanged: {
+                    if (loadedItem) {
+                        _applyDataToItem()
                     }
-                    if (item.hasOwnProperty('widgetColor')) {
-                        item.widgetColor = root.widgetColor
+                }
+
+                function _applyDataToItem() {
+                    if (loadedItem.hasOwnProperty('data')) {
+                        loadedItem.data = widgetData
+                    }
+                    if (loadedItem.hasOwnProperty('widgetColor')) {
+                        loadedItem.widgetColor = root.widgetColor
                     }
                 }
 
@@ -143,15 +175,15 @@ Item {
         }
 
         // Typing indicators (always displayed last, full support only)
+        // PERFORMANCE: Same count-based model optimization as above.
         Repeater {
-            model: typingContent
+            model: typingContent.length
 
             delegate: Loader {
                 id: typingLoader
-                width: parent.width
+                width: contentColumn.width
                 sourceComponent: typingIndicatorComponent
 
-                property var widgetData: modelData
                 property var loadedItem: null
 
                 onLoaded: {
