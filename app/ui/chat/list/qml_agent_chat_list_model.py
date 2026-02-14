@@ -2,12 +2,17 @@
 
 This module provides a QAbstractListModel that exposes chat data to QML,
 with proper role names and automatic date grouping for separators.
+
+Performance optimizations:
+- Batched dataChanged emission: Multiple rapid update_item calls within
+  a single frame (~16ms) are batched into a single dataChanged signal,
+  reducing redundant QML binding re-evaluations during streaming.
 """
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
-from PySide6.QtCore import Qt, QAbstractListModel, QModelIndex, QObject, Slot, Property
+from typing import List, Dict, Any, Optional, Set
+from PySide6.QtCore import Qt, QAbstractListModel, QModelIndex, QObject, Slot, Property, QTimer, Signal
 
 from agent.chat.agent_chat_message import AgentMessage
 from agent.chat.agent_chat_types import ContentType
@@ -21,6 +26,10 @@ class QmlAgentChatListModel(QAbstractListModel):
 
     This model exposes chat message data to QML with proper role names
     and automatic date grouping for message separators.
+
+    Performance: update_item() batches dataChanged signals using a 16ms timer
+    (~1 frame at 60fps). Multiple updates within a frame result in a single
+    dataChanged emission covering the entire dirty range.
 
     Roles exposed to QML:
     - messageId: Unique message identifier
@@ -38,6 +47,9 @@ class QmlAgentChatListModel(QAbstractListModel):
     - dateGroup: Date group key for section headers
     """
 
+    # Batched dataChanged interval (~1 frame at 60fps)
+    BATCH_UPDATE_INTERVAL_MS = 16
+
     # Role names for QML
     MESSAGE_ID = "messageId"
     SENDER_ID = "senderId"
@@ -53,10 +65,20 @@ class QmlAgentChatListModel(QAbstractListModel):
     TIMESTAMP = "timestamp"
     DATE_GROUP = "dateGroup"
 
+    # Signal emitted after a batch of updates is flushed to QML
+    batchFlushed = Signal()
+
     def __init__(self, parent: Optional[QObject] = None):
         super().__init__(parent)
         self._items: List[Dict[str, Any]] = []
         self._message_id_to_row: Dict[str, int] = {}
+
+        # Batched dataChanged support
+        self._dirty_rows: Set[int] = set()
+        self._batch_timer = QTimer(self)
+        self._batch_timer.setInterval(self.BATCH_UPDATE_INTERVAL_MS)
+        self._batch_timer.setSingleShot(True)
+        self._batch_timer.timeout.connect(self._flush_dirty_rows)
 
     def roleNames(self):
         """Return role names for QML binding."""
@@ -177,7 +199,11 @@ class QmlAgentChatListModel(QAbstractListModel):
         self.endRemoveRows()
 
     def update_item(self, message_id: str, updates: Dict[str, Any]) -> bool:
-        """Update an existing item.
+        """Update an existing item with batched dataChanged emission.
+
+        The internal data is updated immediately, but the dataChanged signal
+        is deferred and batched with other updates within ~16ms. This prevents
+        redundant QML binding re-evaluations during rapid streaming updates.
 
         Args:
             message_id: ID of message to update
@@ -194,9 +220,37 @@ class QmlAgentChatListModel(QAbstractListModel):
             return False
 
         self._items[row].update(updates)
-        index = self.index(row, 0)
-        self.dataChanged.emit(index, index)
+
+        # Mark row as dirty and schedule batched emission
+        self._dirty_rows.add(row)
+        if not self._batch_timer.isActive():
+            self._batch_timer.start()
+
         return True
+
+    def flush_updates(self) -> None:
+        """Force immediate emission of any pending batched dataChanged signals.
+
+        Call this before operations that depend on QML having received the latest
+        data (e.g., scroll-to-bottom after content update).
+        """
+        if self._dirty_rows:
+            self._batch_timer.stop()
+            self._flush_dirty_rows()
+
+    def _flush_dirty_rows(self) -> None:
+        """Emit a single dataChanged signal covering all dirty rows."""
+        if not self._dirty_rows:
+            return
+
+        min_row = min(self._dirty_rows)
+        max_row = max(self._dirty_rows)
+        self._dirty_rows.clear()
+
+        top_left = self.index(min_row, 0)
+        bottom_right = self.index(max_row, 0)
+        self.dataChanged.emit(top_left, bottom_right)
+        self.batchFlushed.emit()
 
     def get_item(self, row: int) -> Optional[Dict[str, Any]]:
         """Get item at the specified row."""
@@ -210,6 +264,10 @@ class QmlAgentChatListModel(QAbstractListModel):
 
     def clear(self) -> None:
         """Clear all items from the model."""
+        # Stop any pending batch updates
+        self._batch_timer.stop()
+        self._dirty_rows.clear()
+
         self.beginResetModel()
         self._items = []
         self._message_id_to_row = {}
