@@ -92,13 +92,13 @@ Item {
             property real calculatedContentWidth: 150
 
             width: Math.min(Math.max(80, calculatedContentWidth + bubblePadding * 2), availableWidth)
-            height: contentLoader.height + bubblePadding * 2
+            height: contentLoader.implicitHeight + bubblePadding * 2
 
             color: bubbleColor
             radius: 9
 
-            // Structured content column
-            Loader {
+            // Structured content column - render through structured content
+            StructuredContentRenderer {
                 id: contentLoader
                 anchors {
                     left: parent.left
@@ -106,10 +106,17 @@ Item {
                     margins: bubblePadding
                 }
                 width: availableWidth - bubblePadding * 2
-                sourceComponent: structuredContentComponent
+                structuredContent: root.structuredContent
+                content: root.content
+                textColor: root.textColor
+                widgetColor: root.bubbleColor
+                widgetSupport: "basic"
+                onReferenceClicked: function(refType, refId) {
+                    root.referenceClicked(refType, refId)
+                }
 
-                onLoaded: {
-                    // Use a timer to ensure all nested items are fully loaded
+                onImplicitHeightChanged: {
+                    // Trigger bubble width recalculation when content changes
                     calcWidthTimer.start()
                 }
 
@@ -117,19 +124,23 @@ Item {
                     id: calcWidthTimer
                     interval: 50
                     onTriggered: {
-                        if (contentLoader.item && contentLoader.item.children) {
+                        if (contentLoader.children && contentLoader.children.length > 0) {
                             var maxW = 80
-                            for (var i = 0; i < contentLoader.item.children.length; i++) {
-                                var child = contentLoader.item.children[i]
-                                // For Loaders, check their item's implicitWidth
-                                if (child.item && child.item.implicitWidth !== undefined) {
-                                    var w = child.item.implicitWidth
-                                    if (w > maxW) maxW = w
-                                }
-                                // Also check the Loader's own implicitWidth
-                                else if (child.implicitWidth !== undefined) {
-                                    var w = child.implicitWidth
-                                    if (w > maxW) maxW = w
+                            // contentLoader.children[0] is the contentColumn
+                            var contentColumn = contentLoader.children[0]
+                            if (contentColumn && contentColumn.children) {
+                                for (var i = 0; i < contentColumn.children.length; i++) {
+                                    var child = contentColumn.children[i]
+                                    // For Loaders, check their item's implicitWidth
+                                    if (child.item && child.item.implicitWidth !== undefined) {
+                                        var w = child.item.implicitWidth
+                                        if (w > maxW) maxW = w
+                                    }
+                                    // Also check the Loader's own implicitWidth
+                                    else if (child.implicitWidth !== undefined) {
+                                        var w = child.implicitWidth
+                                        if (w > maxW) maxW = w
+                                    }
                                 }
                             }
                             bubble.calculatedContentWidth = maxW
@@ -137,170 +148,6 @@ Item {
                     }
                 }
             }
-        }
-    }
-
-    // Structured content component (renders widgets)
-    Component {
-        id: structuredContentComponent
-
-        Column {
-            id: contentColumn
-            spacing: 8
-            width: parent.width
-
-            // Use a computed property that always has at least one item
-            property var effectiveStructuredContent: {
-                if (root.structuredContent && root.structuredContent.length > 0) {
-                    return root.structuredContent
-                }
-                // Fallback: convert content to a simple text item
-                return [{ content_type: "text", text: root.content || "" }]
-            }
-
-            Repeater {
-                model: effectiveStructuredContent
-
-                delegate: Loader {
-                    id: widgetLoader
-                    width: parent.width
-
-                    sourceComponent: {
-                        var type = modelData.content_type || modelData.type || "text"
-                        switch (type) {
-                            case "text": return textWidgetComponent
-                            case "code_block": return codeBlockComponent
-                            case "image": return imageWidgetComponent
-                            case "link": return linkWidgetComponent
-                            case "file_attachment":
-                            case "file": return fileWidgetComponent
-                            default: return textWidgetComponent
-                        }
-                    }
-
-                    property var widgetData: modelData
-
-                    onLoaded: {
-                        if (item.hasOwnProperty('data')) {
-                            item.data = modelData
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // Widget Components
-    // ─────────────────────────────────────────────────────────────
-
-    // Text widget
-    Component {
-        id: textWidgetComponent
-
-        Text {
-            property var data: ({})
-            text: data.text || data.data?.text || ""
-            color: textColor
-            font.pixelSize: 14
-            wrapMode: Text.WordWrap
-            textFormat: Text.PlainText
-            lineHeight: 1.4
-            linkColor: "#87ceeb"
-            width: parent.width
-
-            onLinkActivated: function(link) {
-                if (link.startsWith("ref://")) {
-                    var parts = link.substring(6).split(":")
-                    if (parts.length >= 2) {
-                        root.referenceClicked(parts[0], parts[1])
-                    }
-                } else {
-                    Qt.openUrlExternally(link)
-                }
-            }
-        }
-    }
-
-    // Code block widget (simplified for user messages)
-    Component {
-        id: codeBlockComponent
-
-        Rectangle {
-            property var data: ({})
-            width: parent.width
-            color: "#2a2a2a"
-            radius: 4
-
-            Column {
-                anchors {
-                    fill: parent
-                    margins: 8
-                }
-                spacing: 4
-
-                Text {
-                    text: (data.language || data.data?.language || "text").toUpperCase()
-                    color: "#888888"
-                    font.pixelSize: 10
-                    font.weight: Font.Bold
-                }
-
-                Text {
-                    text: data.code || data.data?.code || ""
-                    color: "#e0e0e0"
-                    font.pixelSize: 12
-                    font.family: "monospace"
-                    wrapMode: Text.WordWrap
-                    width: parent.width
-                }
-            }
-        }
-    }
-
-    // Image widget
-    Component {
-        id: imageWidgetComponent
-
-        ImageWidget {
-            property var data: ({})
-            width: parent.width
-            source: data.url || data.data?.url || ""
-            caption: data.caption || data.data?.caption || ""
-        }
-    }
-
-    // Link widget
-    Component {
-        id: linkWidgetComponent
-
-        Text {
-            property var data: ({})
-            text: "<a href=\"" + (data.url || data.data?.url || "") + "\">" +
-                  (data.title || data.data?.title || data.url || data.data?.url || "Link") +
-                  "</a>"
-            color: textColor
-            font.pixelSize: 14
-            textFormat: Text.RichText
-            linkColor: "#87ceeb"
-            width: parent.width
-
-            onLinkActivated: function(link) {
-                Qt.openUrlExternally(link)
-            }
-        }
-    }
-
-    // File widget
-    Component {
-        id: fileWidgetComponent
-
-        FileWidget {
-            property var data: ({})
-            width: parent.width
-            filePath: data.path || (data.data && data.data.path) ? data.data.path : ""
-            fileName: data.name || (data.data && data.data.name) ? data.data.name : ""
-            fileSize: data.size || (data.data && data.data.size) ? data.data.size : 0
         }
     }
 }
