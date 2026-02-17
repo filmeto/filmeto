@@ -1,11 +1,18 @@
 // StructuredContentRenderer.qml - Reusable component for rendering structured message content
 //
-// PERFORMANCE NOTE: The Repeater uses a count-based model (integer) instead of a JS array.
+// Content is divided into two sections:
+// 1. Content section (top, flat): text, code_block, image, video, audio,
+//    link, button, form, file, file_attachment, todo_write
+// 2. Thinking section (bottom, collapsible): all other types
+//
+// The thinking section shows animated bouncing dots while streaming
+// and a static thinking icon when the message is complete.
+//
+// PERFORMANCE NOTE: The Repeaters use count-based models (integer) instead of JS arrays.
 // When the model is a JS array, QML's Repeater destroys ALL delegates and recreates them
 // whenever the array property re-evaluates (which creates a new JS array object).
 // With a count-based model, the Repeater only creates/destroys delegates when the count
-// actually changes. Existing delegates are preserved and their data bindings re-evaluated
-// in-place, which is orders of magnitude faster.
+// actually changes.
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
@@ -29,6 +36,17 @@ Item {
 
     implicitHeight: contentColumn.height
 
+    // Content types that display as main content (flat, top section)
+    readonly property var _mainContentTypes: [
+        "text", "code_block", "image", "video", "audio",
+        "link", "button", "form", "file", "file_attachment", "todo_write"
+    ]
+
+    // Helper to check if a type is main content
+    function _isMainContentType(type) {
+        return _mainContentTypes.indexOf(type) >= 0
+    }
+
     // Effective structured content (fallback to text if no structured content)
     property var effectiveStructuredContent: {
         if (root.structuredContent && root.structuredContent.length > 0) {
@@ -37,26 +55,37 @@ Item {
         return [{ content_type: "text", text: root.content || "" }]
     }
 
-    // Filter out non-typing content
-    property var nonTypingContent: {
+    // Main content items (displayed flat in content section)
+    property var mainContentItems: {
         if (widgetSupport !== "full") {
             return effectiveStructuredContent
         }
         var items = []
         for (var i = 0; i < effectiveStructuredContent.length; i++) {
             var type = effectiveStructuredContent[i].content_type || effectiveStructuredContent[i].type || "text"
-            if (type !== "typing") {
+            if (type !== "typing" && root._isMainContentType(type)) {
                 items.push(effectiveStructuredContent[i])
             }
         }
-        return items.length > 0 ? items : [{ content_type: "text", text: "" }]
+        return items
     }
 
-    // Filter typing content (always last)
-    property var typingContent: {
-        if (widgetSupport !== "full") {
-            return []
+    // Thinking process items (displayed in collapsible section)
+    property var thinkingItems: {
+        if (widgetSupport !== "full") return []
+        var items = []
+        for (var i = 0; i < effectiveStructuredContent.length; i++) {
+            var type = effectiveStructuredContent[i].content_type || effectiveStructuredContent[i].type || "text"
+            if (type !== "typing" && !root._isMainContentType(type)) {
+                items.push(effectiveStructuredContent[i])
+            }
         }
+        return items
+    }
+
+    // Typing content (presence indicates streaming state)
+    property var typingContent: {
+        if (widgetSupport !== "full") return []
         var items = []
         for (var i = 0; i < effectiveStructuredContent.length; i++) {
             var type = effectiveStructuredContent[i].content_type || effectiveStructuredContent[i].type || "text"
@@ -66,6 +95,15 @@ Item {
         }
         return items
     }
+
+    // Whether message is still streaming
+    readonly property bool isStreaming: typingContent.length > 0
+
+    // Whether thinking section should be visible
+    readonly property bool hasThinkingSection: (thinkingItems.length > 0 || isStreaming) && widgetSupport === "full"
+
+    // Thinking section expanded/collapsed state
+    property bool thinkingExpanded: false
 
     // Helper: resolve the correct Component for a content type string
     function _resolveComponent(type) {
@@ -121,25 +159,16 @@ Item {
         id: contentColumn
         spacing: 8
         width: parent.width
-        // Don't set height - let it be determined by children
 
-        // Non-typing content (displayed first)
-        // PERFORMANCE: model is an integer (count), NOT a JS array.
-        // When structuredContent changes, nonTypingContent.length is re-evaluated.
-        // If the count is unchanged, NO delegates are created or destroyed.
-        // If the count increased by N, only N new delegates are created at the end.
-        // Existing delegates stay alive and simply re-read their data via widgetData binding.
+        // ─── Content Section (flat display, always visible) ─────────
         Repeater {
-            model: nonTypingContent.length
+            model: mainContentItems.length
 
             delegate: Loader {
-                id: widgetLoader
+                id: mainWidgetLoader
                 width: contentColumn.width
 
-                // Access data by index from the filtered array.
-                // This binding re-evaluates when nonTypingContent changes,
-                // but the Loader only reloads if sourceComponent actually changes.
-                property var widgetData: root.nonTypingContent[index] || ({})
+                property var widgetData: root.mainContentItems[index] || ({})
                 property var loadedItem: null
 
                 sourceComponent: root._resolveComponent(
@@ -151,9 +180,6 @@ Item {
                     _applyDataToItem()
                 }
 
-                // PERFORMANCE: When data changes but the content type stays the same,
-                // the Loader does NOT reload (sourceComponent is the same Component ref).
-                // We imperatively update the loaded widget's data property to reflect changes.
                 onWidgetDataChanged: {
                     if (loadedItem) {
                         _applyDataToItem()
@@ -169,31 +195,193 @@ Item {
                     }
                 }
 
-                // Bind height to item's implicitHeight, updates when item's height changes
                 height: loadedItem ? (loadedItem.implicitHeight || loadedItem.height || 0) : 0
             }
         }
 
-        // Typing indicators (always displayed last, full support only)
-        // PERFORMANCE: Same count-based model optimization as above.
-        Repeater {
-            model: typingContent.length
+        // ─── Thinking Section (collapsible, below content) ──────────
+        Item {
+            id: thinkingSection
+            visible: root.hasThinkingSection
+            width: contentColumn.width
+            height: visible ? thinkingSectionCol.height : 0
 
-            delegate: Loader {
-                id: typingLoader
-                width: contentColumn.width
-                sourceComponent: typingIndicatorComponent
+            Column {
+                id: thinkingSectionCol
+                width: parent.width
+                spacing: 0
 
-                property var loadedItem: null
+                // Thinking header bar
+                Rectangle {
+                    id: thinkingHeaderBar
+                    width: parent.width
+                    height: 34
+                    radius: root.thinkingExpanded ? 8 : 17
+                    color: Qt.rgba(root.widgetColor.r, root.widgetColor.g, root.widgetColor.b, 0.08)
+                    border.color: Qt.rgba(root.widgetColor.r, root.widgetColor.g, root.widgetColor.b, 0.15)
+                    border.width: 1
 
-                onLoaded: {
-                    loadedItem = item
-                    if (item.hasOwnProperty('widgetColor')) {
-                        item.widgetColor = root.widgetColor
+                    Behavior on radius {
+                        NumberAnimation { duration: 150; easing.type: Easing.InOutQuad }
+                    }
+
+                    Row {
+                        anchors.centerIn: parent
+                        spacing: 8
+
+                        // Animated bouncing dots (shown while streaming)
+                        Row {
+                            id: bouncingDotsRow
+                            spacing: 4
+                            visible: root.isStreaming
+                            anchors.verticalCenter: parent.verticalCenter
+
+                            Repeater {
+                                model: 3
+
+                                delegate: Rectangle {
+                                    id: dot
+                                    width: 6
+                                    height: 6
+                                    radius: 3
+                                    color: root.widgetColor
+                                    anchors.verticalCenter: parent.verticalCenter
+
+                                    property int dotIndex: index
+
+                                    SequentialAnimation on opacity {
+                                        running: root.isStreaming && bouncingDotsRow.visible
+                                        loops: Animation.Infinite
+                                        NumberAnimation { to: 0.3; duration: 350 }
+                                        NumberAnimation { to: 1.0; duration: 350 }
+                                    }
+
+                                    SequentialAnimation on scale {
+                                        running: root.isStreaming && bouncingDotsRow.visible
+                                        loops: Animation.Infinite
+                                        NumberAnimation { to: 0.6; duration: 350 }
+                                        NumberAnimation { to: 1.0; duration: 350 }
+                                    }
+
+                                    Component.onCompleted: {
+                                        opacity = 0.4 + dotIndex * 0.25
+                                    }
+                                }
+                            }
+                        }
+
+                        // Static thinking icon (shown when finished)
+                        Text {
+                            id: thinkingIcon
+                            text: "💭"
+                            font.pixelSize: 14
+                            visible: !root.isStreaming
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        // Label text
+                        Text {
+                            text: {
+                                if (root.isStreaming) {
+                                    return root.thinkingItems.length > 0
+                                        ? "Thinking (" + root.thinkingItems.length + ")"
+                                        : "Thinking..."
+                                }
+                                var count = root.thinkingItems.length
+                                return count > 0
+                                    ? "Thinking Process (" + count + ")"
+                                    : "Thinking Process"
+                            }
+                            color: Qt.rgba(root.textColor.r, root.textColor.g, root.textColor.b, 0.5)
+                            font.pixelSize: 12
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        // Expand/collapse arrow (only when there are items)
+                        Text {
+                            visible: root.thinkingItems.length > 0
+                            text: root.thinkingExpanded ? "▲" : "▼"
+                            color: Qt.rgba(root.textColor.r, root.textColor.g, root.textColor.b, 0.4)
+                            font.pixelSize: 9
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: root.thinkingItems.length > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
+                        onClicked: {
+                            if (root.thinkingItems.length > 0) {
+                                root.thinkingExpanded = !root.thinkingExpanded
+                            }
+                        }
                     }
                 }
 
-                height: loadedItem ? (loadedItem.implicitHeight || loadedItem.height || 0) : 0
+                // Expanded thinking content area
+                Rectangle {
+                    id: thinkingContentArea
+                    visible: root.thinkingExpanded && root.thinkingItems.length > 0
+                    width: parent.width
+                    height: visible ? thinkingContentCol.height + 16 : 0
+                    color: Qt.rgba(root.widgetColor.r, root.widgetColor.g, root.widgetColor.b, 0.04)
+                    border.color: Qt.rgba(root.widgetColor.r, root.widgetColor.g, root.widgetColor.b, 0.1)
+                    border.width: 1
+                    radius: 8
+
+                    Behavior on height {
+                        NumberAnimation { duration: 200; easing.type: Easing.InOutQuad }
+                    }
+
+                    Column {
+                        id: thinkingContentCol
+                        anchors {
+                            left: parent.left
+                            right: parent.right
+                            top: parent.top
+                            margins: 8
+                        }
+                        spacing: 8
+
+                        Repeater {
+                            model: root.thinkingItems.length
+
+                            delegate: Loader {
+                                id: thinkingWidgetLoader
+                                width: thinkingContentCol.width
+
+                                property var widgetData: root.thinkingItems[index] || ({})
+                                property var loadedItem: null
+
+                                sourceComponent: root._resolveComponent(
+                                    widgetData.content_type || widgetData.type || "text"
+                                )
+
+                                onLoaded: {
+                                    loadedItem = item
+                                    _applyDataToItem()
+                                }
+
+                                onWidgetDataChanged: {
+                                    if (loadedItem) {
+                                        _applyDataToItem()
+                                    }
+                                }
+
+                                function _applyDataToItem() {
+                                    if (loadedItem.hasOwnProperty('data')) {
+                                        loadedItem.data = widgetData
+                                    }
+                                    if (loadedItem.hasOwnProperty('widgetColor')) {
+                                        loadedItem.widgetColor = root.widgetColor
+                                    }
+                                }
+
+                                height: loadedItem ? (loadedItem.implicitHeight || loadedItem.height || 0) : 0
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -282,7 +470,7 @@ Item {
         }
     }
 
-    // Typing indicator widget
+    // Typing indicator widget (kept for compatibility but no longer rendered separately)
     Component {
         id: typingIndicatorComponent
 
