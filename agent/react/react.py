@@ -269,8 +269,12 @@ class React:
         """
         Execute tool with timing and metrics tracking.
 
-        ToolService.execute_tool now returns AsyncGenerator[ReactEvent, None],
-        which we process to extract results and progress updates.
+        Tool completion is determined by the completion of this method call,
+        not by receiving a tool_end event in the stream. This ensures that
+        nested tool calls (e.g., tools called within a skill) don't cause
+        premature termination of the parent tool execution.
+
+        All events are still yielded for real-time display.
         """
         start_time = time.time()
         tool_context = ToolContext(
@@ -280,10 +284,13 @@ class React:
         )
 
         try:
-            # ToolService.execute_tool now yields ReactEvent objects
+            # Track the final result from this specific tool execution
+            # (not from nested tools within the tool)
             final_result = None
             has_error = False
 
+            # The async for loop completes when tool.execute() completes
+            # This is the definitive signal that the tool is done
             async for event in self.tool_service.execute_tool(
                 tool_name,
                 tool_args,
@@ -295,56 +302,79 @@ class React:
             ):
                 # Process different event types from ToolService
                 if event.event_type == "tool_start":
-                    # Tool started - yield progress
-                    yield {"progress": f"Starting tool: {tool_name}"}
+                    # Only emit progress for the top-level tool being executed
+                    # (identified by matching tool_name)
+                    if (event.content and hasattr(event.content, 'tool_name') and
+                            event.content.tool_name == tool_name):
+                        yield {"progress": f"Starting tool: {tool_name}"}
 
                 elif event.event_type == "tool_progress":
-                    # Tool progress update
                     progress = event.payload.get("progress")
                     if progress:
                         yield {"progress": progress}
 
                 elif event.event_type == "tool_end":
-                    # Tool completed successfully
-                    # Extract result from content or payload (backward compat)
-                    if event.content and hasattr(event.content, 'result'):
-                        final_result = event.content.result
-                    elif event.payload:
-                        final_result = event.payload.get("result")
+                    # Check if this is the top-level tool_end or a nested one
+                    # by comparing the tool_name in the event
+                    is_top_level_end = (
+                        event.content and
+                        hasattr(event.content, 'tool_name') and
+                        event.content.tool_name == tool_name
+                    )
+
+                    if is_top_level_end:
+                        # This is the actual end of the tool we're executing
+                        # Extract result from content or payload (backward compat)
+                        if event.content and hasattr(event.content, 'result'):
+                            final_result = event.content.result
+                        elif event.payload:
+                            final_result = event.payload.get("result")
+                        else:
+                            final_result = None
+
+                        duration_ms = (time.time() - start_time) * 1000
+                        self._total_tool_calls += 1
+                        self._tool_duration_ms += duration_ms
+                        logger.debug(f"Tool '{tool_name}' completed in {duration_ms:.2f}ms")
+
+                        # Forward the tool_end event and return - this is safe now
+                        # because we've verified it's the top-level tool_end
+                        yield event
+                        return
                     else:
-                        final_result = None
-
-                    duration_ms = (time.time() - start_time) * 1000
-                    self._total_tool_calls += 1
-                    self._tool_duration_ms += duration_ms
-                    logger.debug(f"Tool '{tool_name}' completed in {duration_ms:.2f}ms")
-
-                    # Forward the tool_end event (which contains ToolResponseContent with result)
-                    # This ensures the result is preserved for UI display
-                    yield event
-                    return
+                        # This is a nested tool_end (e.g., from a tool called within a skill)
+                        # Forward it for display but don't return
+                        yield event
 
                 elif event.event_type == "error":
-                    # Tool execution error
-                    # Extract error from content or payload (backward compat)
-                    if event.content and hasattr(event.content, 'error_message'):
-                        error_msg = event.content.error_message
-                    elif event.payload:
-                        error_msg = event.payload.get("error", "Unknown error")
+                    # Check if this error is for the top-level tool
+                    is_top_level_error = (
+                        event.content and
+                        hasattr(event.content, 'tool_name') and
+                        event.content.tool_name == tool_name
+                    )
+
+                    if is_top_level_error:
+                        # Extract error from content or payload (backward compat)
+                        if event.content and hasattr(event.content, 'error_message'):
+                            error_msg = event.content.error_message
+                        elif event.payload:
+                            error_msg = event.payload.get("error", "Unknown error")
+                        else:
+                            error_msg = "Unknown error"
+
+                        duration_ms = (time.time() - start_time) * 1000
+                        logger.error(f"Tool '{tool_name}' failed after {duration_ms:.2f}ms: {error_msg}")
+
+                        yield event
+                        has_error = True
+                        return
                     else:
-                        error_msg = "Unknown error"
-
-                    duration_ms = (time.time() - start_time) * 1000
-                    logger.error(f"Tool '{tool_name}' failed after {duration_ms:.2f}ms: {error_msg}")
-
-                    # Forward the error event
-                    yield event
-                    has_error = True
-                    return
+                        # Nested error - forward for display but don't return
+                        yield event
 
                 else:
                     # Forward all other events directly (e.g., LLM_THINKING, nested TOOL_START/PROGRESS/END from skill_chat)
-                    # These will be converted to AgentEvent by chat_stream
                     yield event
 
             # If we get here without a tool_end event, something went wrong
