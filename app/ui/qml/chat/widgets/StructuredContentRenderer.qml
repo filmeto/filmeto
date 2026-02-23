@@ -672,11 +672,7 @@ Item {
             property var data: ({})
             width: parent.width
             widgetColor: root.widgetColor
-            skillData: ({
-                name: (data.data && data.data.skill_name) ? data.data.skill_name : (data.title || ""),
-                status: data.status || "pending",
-                progress: 0
-            })
+            skillData: (data.data || {})
         }
     }
 

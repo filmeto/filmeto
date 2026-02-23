@@ -13,192 +13,211 @@ Rectangle {
     property string error: ""
     property color widgetColor: "#4a90e2"
 
-    readonly property color bgColor: {
-        if (toolStatus === "failed") return "#2a1a1a"
-        if (toolStatus === "completed") return "#1a2a1a"
-        return "#2a2a2a"
-    }
-    readonly property color borderColor: {
-        if (toolStatus === "failed") return "#804040"
-        if (toolStatus === "completed") return "#406040"
-        return Qt.rgba(widgetColor.r, widgetColor.g, widgetColor.b, 0.3)
-    }
-    readonly property color textColor: "#d0d0d0"
+    readonly property color bgColor: "#2a2a2a"
+    readonly property color borderColor: Qt.rgba(widgetColor.r, widgetColor.g, widgetColor.b, 0.3)
+    readonly property color textColor: "#e0e0e0"
     readonly property color accentColor: widgetColor
+
+    // Tool icon based on tool name patterns
+    readonly property string toolIcon: {
+        var name = root.toolName.toLowerCase();
+        if (name.includes("search") || name.includes("fetch")) return "🔍";
+        if (name.includes("write") || name.includes("save") || name.includes("create")) return "📝";
+        if (name.includes("read") || name.includes("load") || name.includes("get")) return "📖";
+        if (name.includes("code") || name.includes("execute") || name.includes("run")) return "⚙️";
+        if (name.includes("plan")) return "📋";
+        if (name.includes("todo") || name.includes("task")) return "✅";
+        if (name.includes("media") || name.includes("video") || name.includes("audio")) return "🎬";
+        if (name.includes("image") || name.includes("picture")) return "🖼️";
+        return "🔧";
+    }
+
+    // Status text
+    readonly property string statusText: {
+        if (toolStatus === "failed") return "Failed";
+        if (toolStatus === "completed") return "Completed";
+        return "Running..."
+    }
+
+    // Status color
     readonly property color statusColor: {
-        if (toolStatus === "failed") return "#ff6b6b"
-        if (toolStatus === "completed") return "#51cf66"
-        return widgetColor
+        if (toolStatus === "failed") return "#ff6b6b";
+        if (toolStatus === "completed") return "#4ecdc4";
+        return widgetColor;
     }
 
     color: bgColor
-    radius: 8
+    radius: 6
     border.color: borderColor
     border.width: 1
 
     implicitWidth: parent.width
-    implicitHeight: column.implicitHeight + 12
+    implicitHeight: toolColumn.implicitHeight + 24
 
     Layout.fillWidth: true
 
     property bool expanded: false
 
-    // Status icon based on tool status
-    readonly property string statusIcon: {
-        if (toolStatus === "failed") return "❌"
-        if (toolStatus === "completed") return "✅"
-        return "🔧"
-    }
-
-    // Status text
-    readonly property string statusText: {
-        if (toolStatus === "failed") return "failed"
-        if (toolStatus === "completed") return "completed"
-        return "running"
-    }
-
-    ColumnLayout {
-        id: column
+    Column {
+        id: toolColumn
         anchors {
             fill: parent
-            margins: 8
+            margins: 12
         }
         spacing: 8
 
-        // Header row
-        RowLayout {
-            Layout.fillWidth: true
+        // Header row with icon and tool name
+        Row {
+            width: parent.width
             spacing: 8
 
-            // Status/Tool icon
-            Text {
-                text: root.statusIcon
-                font.pixelSize: 14
+            // Tool icon with colored background
+            Rectangle {
+                width: 24
+                height: 24
+                radius: 4
+                color: root.widgetColor
+                anchors.verticalCenter: parent.verticalCenter
+
+                Text {
+                    anchors.centerIn: parent
+                    text: root.toolIcon
+                    font.pixelSize: 14
+                }
             }
 
-            // Tool name and status
+            // Tool name
             Text {
-                text: {
-                    if (root.toolStatus === "started")
-                        return "Calling: <b>" + root.toolName + "</b>"
-                    return root.toolName + " <font color='" + root.statusColor + "'>" + root.statusText + "</font>"
-                }
+                width: parent.width - 24 - parent.spacing - (expandIndicator.width + expandIndicator.spacing)
+                text: root.toolName || "Tool"
                 color: textColor
                 font.pixelSize: 13
-                textFormat: Text.RichText
+                font.weight: Font.Medium
+                wrapMode: Text.WordWrap
+                anchors.verticalCenter: parent.verticalCenter
             }
-
-            Item { Layout.fillWidth: true }
 
             // Expand/collapse indicator
             Text {
+                id: expandIndicator
                 text: root.expanded ? "▼" : "▶"
                 color: textColor
                 font.pixelSize: 10
+                anchors.verticalCenter: parent.verticalCenter
+
+                property real spacing: 4
 
                 MouseArea {
                     anchors.fill: parent
+                    anchors.margins: -8
                     cursorShape: Qt.PointingHandCursor
                     onClicked: root.expanded = !root.expanded
                 }
             }
         }
 
-        // Expanded content
-        Loader {
-            Layout.fillWidth: true
-            Layout.preferredHeight: active ? implicitHeight : 0
-            visible: active
-            active: root.expanded
-            sourceComponent: ColumnLayout {
+        // Status indicator
+        Row {
+            visible: root.toolStatus > ""
+            width: parent.width
+            spacing: 8
+
+            // Status dot
+            Rectangle {
+                width: 8
+                height: 8
+                radius: width / 2
+                color: root.statusColor
+                anchors.verticalCenter: parent.verticalCenter
+
+                // Animation for running state
+                SequentialAnimation on opacity {
+                    running: root.toolStatus === "started"
+                    loops: Animation.Infinite
+                    NumberAnimation { from: 1.0; to: 0.3; duration: 500 }
+                    NumberAnimation { from: 0.3; to: 1.0; duration: 500 }
+                }
+            }
+
+            // Status text
+            Text {
+                text: root.statusText
+                color: root.statusColor
+                font.pixelSize: 11
+                anchors.verticalCenter: parent.verticalCenter
+            }
+        }
+
+        // Expanded content (arguments and result)
+        Column {
+            visible: root.expanded
+            width: parent.width
+            spacing: 8
+
+            // Separator
+            Rectangle {
+                width: parent.width
+                height: 1
+                color: "#404040"
+            }
+
+            // Arguments display
+            Column {
+                visible: Object.keys(root.toolArgs || {}).length > 0
+                width: parent.width
                 spacing: 4
 
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 1
-                    color: borderColor
+                Text {
+                    text: "Arguments:"
+                    color: "#a0a0a0"
+                    font.pixelSize: 11
                 }
 
-                // Arguments display
-                ColumnLayout {
-                    spacing: 4
-                    visible: Object.keys(root.toolArgs || {}).length > 0
+                Repeater {
+                    model: Object.keys(root.toolArgs || {})
 
-                    Text {
-                        text: "Arguments:"
-                        color: accentColor
-                        font.pixelSize: 12
-                        font.bold: true
-                    }
-
-                    Repeater {
-                        model: Object.keys(root.toolArgs || {})
-
-                        delegate: RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 8
-
-                            Text {
-                                text: modelData + ":"
-                                color: accentColor
-                                font.pixelSize: 12
-                                font.family: "monospace"
-                            }
-
-                            Text {
-                                Layout.fillWidth: true
-                                text: JSON.stringify(root.toolArgs[modelData])
-                                color: textColor
-                                font.pixelSize: 12
-                                font.family: "monospace"
-                                wrapMode: Text.Wrap
-                            }
-                        }
-                    }
-                }
-
-                // Result/Error display
-                ColumnLayout {
-                    spacing: 4
-                    visible: root.result !== null || root.error !== ""
-
-                    Text {
-                        text: root.error ? "Error:" : "Result:"
-                        color: root.error ? "#ff6b6b" : "#51cf66"
-                        font.pixelSize: 12
-                        font.bold: true
-                    }
-
-                    ScrollView {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: Math.min(resultText.implicitHeight + 8, 300)
-                        visible: root.result !== null || root.error !== ""
-
-                        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                    delegate: Row {
+                        width: parent.width
+                        spacing: 8
 
                         Text {
-                            id: resultText
-                            width: parent.width
-                            padding: 4
-                            text: root.error || JSON.stringify(root.result, null, 2)
-                            color: textColor
-                            font.pixelSize: 12
+                            text: modelData + ":"
+                            color: root.accentColor
+                            font.pixelSize: 11
                             font.family: "monospace"
-                            wrapMode: Text.Wrap
-                            textFormat: Text.PlainText
+                            anchors.verticalCenter: parent.verticalCenter
                         }
 
-                        ScrollBar.vertical: ScrollBar {
-                            policy: ScrollBar.AsNeeded
-                            contentItem: Rectangle {
-                                implicitWidth: 8
-                                radius: width / 2
-                                color: parent.hovered ? "#606060" : "#505050"
-                                opacity: parent.active ? 1.0 : 0.5
-                            }
+                        Text {
+                            width: parent.width - modelData.width - parent.spacing
+                            text: JSON.stringify(root.toolArgs[modelData])
+                            color: "#d0d0d0"
+                            font.pixelSize: 11
+                            font.family: "monospace"
+                            wrapMode: Text.WordWrap
                         }
                     }
                 }
+            }
+
+            // Result display (when completed)
+            Text {
+                visible: root.toolStatus === "completed" && root.result !== null
+                width: parent.width
+                text: "✓ " + (typeof root.result === "string" ? root.result : JSON.stringify(root.result))
+                color: "#4ecdc4"
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+            }
+
+            // Error display (when failed)
+            Text {
+                visible: root.toolStatus === "failed" && root.error !== ""
+                width: parent.width
+                text: "✗ " + root.error
+                color: "#ff6b6b"
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
             }
         }
     }
@@ -208,7 +227,7 @@ Rectangle {
         anchors.fill: parent
         propagateComposedEvents: true
         onPressed: function(mouse) {
-            if (mouse.y < 40) {
+            if (mouse.y < 50) {
                 root.expanded = !root.expanded
                 mouse.accepted = true
             } else {
