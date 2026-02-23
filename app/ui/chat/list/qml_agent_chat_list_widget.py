@@ -119,6 +119,9 @@ class QmlAgentChatListWidget(BaseWidget):
         self._crew_member_metadata: Dict[str, Dict[str, Any]] = {}
         self._agent_current_cards: Dict[str, str] = {}
 
+        # Active skills tracking: {run_id: {message_id, skill_name, sender_name, state}}
+        self._active_skills: Dict[str, Dict[str, Any]] = {}
+
         # History cache
         self._history: Optional[MessageLogHistory] = None
 
@@ -544,13 +547,44 @@ class QmlAgentChatListWidget(BaseWidget):
                 )
             else:
                 structured_content = []
+                # Track skills by name for merging
+                skills_by_name: Dict[str, List[Dict[str, Any]]] = {}
+                # Track tool_call entries that might belong to skills
+                tool_entries: List[Dict[str, Any]] = []
+
                 for content_item in content_list:
                     if isinstance(content_item, dict):
-                        try:
-                            sc = StructureContent.from_dict(content_item)
-                            structured_content.append(sc)
-                        except Exception as e:
-                            logger.debug(f"Failed to load structured content: {e}")
+                        content_type = content_item.get("content_type")
+                        # Group skill entries by skill_name for merging
+                        if content_type == "skill":
+                            skill_name = content_item.get("data", {}).get("skill_name", "")
+                            if skill_name:
+                                if skill_name not in skills_by_name:
+                                    skills_by_name[skill_name] = []
+                                skills_by_name[skill_name].append(content_item)
+                            else:
+                                # Skill without name, add directly
+                                try:
+                                    sc = StructureContent.from_dict(content_item)
+                                    structured_content.append(sc)
+                                except Exception as e:
+                                    logger.debug(f"Failed to load structured content: {e}")
+                        elif content_type == "tool_call":
+                            # Collect tool_call entries for potential skill association
+                            tool_entries.append(content_item)
+                        else:
+                            # Non-skill, non-tool content, add directly
+                            try:
+                                sc = StructureContent.from_dict(content_item)
+                                structured_content.append(sc)
+                            except Exception as e:
+                                logger.debug(f"Failed to load structured content: {e}")
+
+                # Merge skill entries and add to structured_content
+                for skill_name, skill_entries in skills_by_name.items():
+                    merged_skill = self._merge_skill_entries(skill_name, skill_entries, tool_entries)
+                    if merged_skill:
+                        structured_content.append(merged_skill)
 
                 # Add timestamp to metadata for QML
                 if timestamp and "timestamp" not in metadata:
@@ -590,6 +624,124 @@ class QmlAgentChatListWidget(BaseWidget):
         if item:
             qml_item = QmlAgentChatListModel.from_chat_list_item(item)
             self._model.add_item(qml_item)
+
+    def _merge_skill_entries(self, skill_name: str, skill_entries: List[Dict[str, Any]],
+                           tool_entries: List[Dict[str, Any]] = None) -> Optional['StructureContent']:
+        """Merge multiple skill entries into a single SkillContent.
+
+        Args:
+            skill_name: The name of the skill
+            skill_entries: List of skill content dictionaries
+            tool_entries: List of tool_call content dictionaries to associate as children
+
+        Returns:
+            A merged SkillContent or None if merging fails
+        """
+        from agent.chat.content import SkillContent, SkillExecutionState
+
+        if not skill_entries:
+            return None
+
+        tool_entries = tool_entries or []
+
+        # Sort entries by state priority: error > completed > in_progress > pending
+        state_priority = {
+            SkillExecutionState.ERROR.value: 4,
+            SkillExecutionState.COMPLETED.value: 3,
+            SkillExecutionState.IN_PROGRESS.value: 2,
+            SkillExecutionState.PENDING.value: 1,
+        }
+
+        # Find the entry with highest priority state (final state)
+        # If all have same priority (e.g., all in_progress), use the last one (most recent)
+        sorted_entries = sorted(
+            skill_entries,
+            key=lambda e: state_priority.get(
+                e.get("data", {}).get("state", SkillExecutionState.PENDING.value),
+                0
+            ),
+            reverse=True
+        )
+
+        # Check if all entries have the same state priority
+        highest_priority = state_priority.get(
+            sorted_entries[0].get("data", {}).get("state", SkillExecutionState.PENDING.value),
+            0
+        )
+        all_same_priority = all(
+            state_priority.get(e.get("data", {}).get("state", SkillExecutionState.PENDING.value), 0) == highest_priority
+            for e in skill_entries
+        )
+
+        # If all same priority (e.g., all in_progress), use the last entry as base (most recent)
+        # Otherwise use the first entry after sorting (highest priority)
+        if all_same_priority and highest_priority == state_priority.get(SkillExecutionState.IN_PROGRESS.value, 2):
+            # All are in_progress - use the last one (most recent progress)
+            base_entry = skill_entries[-1]
+        else:
+            base_entry = sorted_entries[0]
+        base_data = base_entry.get("data", {})
+
+        # Collect child contents from all entries
+        child_contents = []
+        for entry in skill_entries:
+            entry_children = entry.get("data", {}).get("child_contents", [])
+            if entry_children:
+                child_contents.extend(entry_children)
+
+        # Associate tool_call entries as children based on progress_text mentions
+        # For example, if skill progress_text says "Executing tool [1] - execute_skill_script"
+        # and there's a tool_call with tool_name="execute_skill_script", associate them
+        associated_tools = set()
+        for skill_entry in skill_entries:
+            progress_text = skill_entry.get("data", {}).get("progress_text", "")
+            if progress_text:
+                # Extract tool name from progress_text like "Executing tool [1] - execute_skill_script"
+                for tool_entry in tool_entries:
+                    tool_name = tool_entry.get("data", {}).get("tool_name", "")
+                    if tool_name and tool_name in progress_text and tool_entry.get("content_id") not in associated_tools:
+                        child_contents.append(tool_entry)
+                        associated_tools.add(tool_entry.get("content_id"))
+
+        # For any remaining tool_entries, add them as children (they're part of the same skill execution context)
+        for tool_entry in tool_entries:
+            if tool_entry.get("content_id") not in associated_tools:
+                # Only add if it seems related (e.g., skill might have used this tool)
+                # For now, add all tool_calls from the same message as skill children
+                child_contents.append(tool_entry)
+
+        # Determine final state and data
+        final_state = base_data.get("state", SkillExecutionState.IN_PROGRESS.value)
+        # Map skill execution state to content status
+        if final_state == SkillExecutionState.COMPLETED.value:
+            final_status = "completed"
+        elif final_state == SkillExecutionState.ERROR.value:
+            final_status = "failed"
+        elif final_state == SkillExecutionState.IN_PROGRESS.value:
+            final_status = "in_progress"
+        else:
+            final_status = "creating"
+
+        # Create merged SkillContent
+        merged = SkillContent(
+            content_type=base_entry.get("content_type", "skill"),
+            title=base_entry.get("title", f"Skill: {skill_name}"),
+            description=base_entry.get("description", f"Skill execution: {skill_name}"),
+            content_id=base_entry.get("content_id"),
+            status=final_status,
+            metadata=base_entry.get("metadata", {}),
+            skill_name=skill_name,
+            skill_description=base_data.get("description", ""),
+            state=SkillExecutionState(final_state) if isinstance(final_state, str) else final_state,
+            progress_text=base_data.get("progress_text", ""),
+            progress_percentage=base_data.get("progress_percentage"),
+            result=base_data.get("result", ""),
+            error_message=base_data.get("error_message", ""),
+            child_contents=child_contents,
+            run_id=base_data.get("run_id", ""),
+        )
+
+        return merged
 
     # ─── Crew Member Metadata ────────────────────────────────────────────
 
@@ -829,6 +981,8 @@ class QmlAgentChatListWidget(BaseWidget):
             self._handle_agent_response_event(event)
         elif event.event_type in ["skill_start", "skill_progress", "skill_end", "skill_error"]:
             self._handle_skill_event(event)
+        elif event.event_type in ["tool_start", "tool_progress", "tool_end", "tool_error"]:
+            self._handle_tool_event(event)
         elif event.event_type in ["crew_member_typing", "crew_member_typing_end"]:
             self._handle_typing_event(event)
         elif hasattr(event, "content") and event.content:
@@ -870,17 +1024,26 @@ class QmlAgentChatListWidget(BaseWidget):
         self.update_agent_card(message_id, structured_content=text_structure)
 
     def _handle_skill_event(self, event):
-        """Handle skill events - merges consecutive skill events into single content."""
+        """Handle skill events - tracks skill lifecycle with start/progress/end/error.
+
+        Each skill execution is represented by a single SkillContent that:
+        - Gets created on skill_start
+        - Gets updated on skill_progress
+        - Gets finalized on skill_end or skill_error
+        - Collects child contents (tool calls, etc.) during execution
+        """
         from agent.chat.content import SkillContent, SkillExecutionState
 
         # Extract data from event content (SkillContent is already in event.content)
         skill_content = getattr(event, 'content', None)
+        run_id = getattr(event, "run_id", "")
+
         if not skill_content or not isinstance(skill_content, SkillContent):
             # Fallback to data-based parsing for legacy events
             skill_name = event.data.get("skill_name", "Unknown")
             sender_name = event.data.get("sender_name", "Unknown")
             sender_id = event.data.get("sender_id", sender_name.lower())
-            run_id = getattr(event, "run_id", "")
+            run_id = run_id or event.data.get("run_id", "")
             message_id = event.data.get("message_id") or f"skill_{run_id}_{skill_name}"
 
             if sender_id == "user":
@@ -921,49 +1084,90 @@ class QmlAgentChatListWidget(BaseWidget):
                 progress_percentage=progress_percentage,
                 result=result,
                 error_message=error_message,
+                run_id=run_id,
                 title=f"Skill: {skill_name}",
                 description=f"Skill execution: {skill_name}",
             )
         else:
             # Use event.content directly (SkillContent from skill_chat.py)
             skill_name = skill_content.skill_name
+            # Update run_id in skill_content if not set
+            if not skill_content.run_id:
+                skill_content.run_id = run_id
             sender_name = getattr(event, 'sender_name', 'Unknown')
             sender_id = getattr(event, 'sender_id', sender_name.lower())
-            run_id = getattr(event, "run_id", "")
             message_id = f"skill_{run_id}_{skill_name}"
 
             if sender_id == "user":
                 return
 
-        # Get existing item to check for existing skill content
-        existing_row = self._model.get_row_by_message_id(message_id)
-        existing_skill_content = None
+        # Handle different event types
+        if event.event_type == "skill_start":
+            # Track the active skill
+            self._active_skills[run_id] = {
+                "message_id": message_id,
+                "skill_name": skill_name,
+                "sender_name": sender_name,
+                "state": SkillExecutionState.IN_PROGRESS,
+                "child_contents": [],
+            }
+            # Create or update the skill card
+            self.get_or_create_agent_card(message_id, sender_name, sender_name)
+            self._update_skill_content(message_id, skill_content, create_new=True)
 
-        if existing_row is not None:
-            item = self._model.get_item(existing_row)
-            if item:
-                # Find existing skill content with same skill_name
-                for sc in item.get(QmlAgentChatListModel.STRUCTURED_CONTENT, []):
-                    if sc.get("content_type") == "skill" and sc.get("data", {}).get("skill_name") == skill_name:
-                        existing_skill_content = sc
-                        break
+        elif event.event_type == "skill_progress":
+            # Update the active skill
+            if run_id in self._active_skills:
+                self._active_skills[run_id]["state"] = SkillExecutionState.IN_PROGRESS
+                self._update_skill_content(message_id, skill_content)
+            else:
+                # Skill progress without start - create new
+                self._active_skills[run_id] = {
+                    "message_id": message_id,
+                    "skill_name": skill_name,
+                    "sender_name": sender_name,
+                    "state": SkillExecutionState.IN_PROGRESS,
+                    "child_contents": [],
+                }
+                self.get_or_create_agent_card(message_id, sender_name, sender_name)
+                self._update_skill_content(message_id, skill_content, create_new=True)
 
-        self.get_or_create_agent_card(message_id, sender_name, sender_name)
+        elif event.event_type == "skill_end":
+            # Finalize the skill
+            if run_id in self._active_skills:
+                self._active_skills[run_id]["state"] = SkillExecutionState.COMPLETED
+                # Build final skill content with all child contents
+                skill_content.child_contents = self._active_skills[run_id]["child_contents"]
+                self._update_skill_content(message_id, skill_content)
+                # Remove from active skills
+                del self._active_skills[run_id]
+            else:
+                # Skill end without start - create new
+                self.get_or_create_agent_card(message_id, sender_name, sender_name)
+                self._update_skill_content(message_id, skill_content, create_new=True)
 
-        # Update or append skill content
-        if existing_skill_content:
-            # Replace existing skill content with updated state
-            self._update_skill_content(message_id, skill_content)
-        else:
-            # Append new skill content
-            self.update_agent_card(
-                message_id,
-                structured_content=skill_content,
-                is_complete=False,
-            )
+        elif event.event_type == "skill_error":
+            # Finalize the skill with error
+            if run_id in self._active_skills:
+                self._active_skills[run_id]["state"] = SkillExecutionState.ERROR
+                # Build final skill content with all child contents
+                skill_content.child_contents = self._active_skills[run_id]["child_contents"]
+                self._update_skill_content(message_id, skill_content)
+                # Remove from active skills
+                del self._active_skills[run_id]
+            else:
+                # Skill error without start - create new
+                self.get_or_create_agent_card(message_id, sender_name, sender_name)
+                self._update_skill_content(message_id, skill_content, create_new=True)
 
-    def _update_skill_content(self, message_id: str, skill_content):
-        """Update existing skill content by replacing it with new state."""
+    def _update_skill_content(self, message_id: str, skill_content, create_new=False):
+        """Update existing skill content with new state.
+
+        Args:
+            message_id: The message ID containing the skill
+            skill_content: New SkillContent with updated state
+            create_new: If True, always create new content instead of replacing
+        """
         from agent.chat.content import SkillContent
 
         item = self._model.get_item(self._model.get_row_by_message_id(message_id) or 0)
@@ -971,14 +1175,121 @@ class QmlAgentChatListWidget(BaseWidget):
             return
 
         current_structured = item.get(QmlAgentChatListModel.STRUCTURED_CONTENT, [])
-        skill_name = skill_content.skill_name
 
-        # Replace existing skill content with same skill_name
+        # Check for existing skill with same name
+        existing_skill_data = None
+        existing_skill_index = -1
+        for i, sc in enumerate(current_structured):
+            if sc.get("content_type") == "skill":
+                sc_data = sc.get("data", {})
+                # Match by run_id first, then by skill_name
+                if (sc_data.get("run_id") == skill_content.run_id and skill_content.run_id) or \
+                   (sc_data.get("skill_name") == skill_content.skill_name):
+                    existing_skill_data = sc_data
+                    existing_skill_index = i
+                    break
+
+        if existing_skill_data is not None:
+            # Found existing skill - merge and replace
+            new_structured = list(current_structured)
+            # Preserve child contents from existing if new content doesn't have them
+            if not skill_content.child_contents and existing_skill_data.get("child_contents"):
+                skill_content.child_contents = existing_skill_data.get("child_contents", [])
+            new_structured[existing_skill_index] = skill_content.to_dict()
+        elif create_new:
+            # No existing skill and create_new is True - append new
+            new_structured = list(current_structured)
+            new_structured.append(skill_content.to_dict())
+        else:
+            # No existing skill and create_new is False - append anyway
+            new_structured = list(current_structured)
+            new_structured.append(skill_content.to_dict())
+
+        self._model.update_item(message_id, {
+            QmlAgentChatListModel.STRUCTURED_CONTENT: new_structured,
+        })
+
+    def _handle_tool_event(self, event):
+        """Handle tool events - adds them as child contents to active skills.
+
+        Tool events (tool_start, tool_progress, tool_end, tool_error) are
+        associated with the active skill via run_id and stored as child contents.
+        """
+        run_id = getattr(event, "run_id", "")
+
+        # Check if this tool belongs to an active skill
+        if run_id not in self._active_skills:
+            # No active skill - handle as standalone tool event
+            # This shouldn't happen in normal flow but handle gracefully
+            logger.debug(f"Tool event without active skill: run_id={run_id}")
+            return
+
+        skill_info = self._active_skills[run_id]
+        message_id = skill_info["message_id"]
+
+        # Create tool content from event
+        from agent.chat.content import ToolCallContent
+
+        tool_content = None
+        if event.event_type == "tool_start":
+            tool_content = ToolCallContent(
+                tool_name=getattr(event, 'tool_name', event.data.get("tool_name", "unknown")),
+                tool_input=event.data.get("tool_input", {}),
+                tool_status="started",
+            )
+        elif event.event_type == "tool_progress":
+            # For progress, we might update existing tool content or create a progress entry
+            # For now, just track it
+            pass
+        elif event.event_type == "tool_end":
+            tool_content = ToolCallContent(
+                tool_name=getattr(event, 'tool_name', event.data.get("tool_name", "unknown")),
+                tool_input=event.data.get("tool_input", {}),
+                tool_status="completed",
+                result=event.data.get("result"),
+            )
+        elif event.event_type == "tool_error":
+            tool_content = ToolCallContent(
+                tool_name=getattr(event, 'tool_name', event.data.get("tool_name", "unknown")),
+                tool_input=event.data.get("tool_input", {}),
+                tool_status="failed",
+                error=event.data.get("error", "Tool execution failed"),
+            )
+
+        if tool_content:
+            # Add to child contents
+            tool_dict = tool_content.to_dict()
+            skill_info["child_contents"].append(tool_dict)
+
+            # Update the skill to show the new child content
+            self._add_child_to_skill(message_id, tool_dict)
+
+    def _add_child_to_skill(self, message_id: str, child_content: Dict[str, Any]):
+        """Add a child content to the skill's child_contents list.
+
+        Args:
+            message_id: The message ID containing the skill
+            child_content: The child content dictionary to add
+        """
+        from agent.chat.content import SkillContent
+
+        item = self._model.get_item(self._model.get_row_by_message_id(message_id) or 0)
+        if not item:
+            return
+
+        current_structured = item.get(QmlAgentChatListModel.STRUCTURED_CONTENT, [])
         new_structured = []
+
         for sc in current_structured:
-            if sc.get("content_type") == "skill" and sc.get("data", {}).get("skill_name") == skill_name:
-                # Replace with new content
-                new_structured.append(skill_content.to_dict())
+            if sc.get("content_type") == "skill":
+                # Add child content to the skill
+                new_sc = dict(sc)
+                sc_data = dict(new_sc.get("data", {}))
+                child_contents = list(sc_data.get("child_contents", []))
+                child_contents.append(child_content)
+                sc_data["child_contents"] = child_contents
+                new_sc["data"] = sc_data
+                new_structured.append(new_sc)
             else:
                 new_structured.append(sc)
 

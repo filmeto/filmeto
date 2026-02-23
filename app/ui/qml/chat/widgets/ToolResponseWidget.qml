@@ -9,110 +9,105 @@ Rectangle {
     property string toolName: ""
     property string response: ""
     property bool isError: false
+    property color widgetColor: "#4a90e2"
 
-    readonly property color bgColor: isError ? "#2a1a1a" : "#1a2a1a"
-    readonly property color borderColor: isError ? "#804040" : "#406040"
-    readonly property color textColor: "#d0d0d0"
-    readonly property color iconColor: isError ? "#ff6b6b" : "#51cf66"
+    readonly property color bgColor: "#2a2a2a"
+    readonly property color borderColor: Qt.rgba(widgetColor.r, widgetColor.g, widgetColor.b, 0.3)
+    readonly property color textColor: "#e0e0e0"
+    readonly property color iconColor: isError ? "#ff6b6b" : "#4ecdc4"
 
     color: bgColor
-    radius: 8
+    radius: 6
     border.color: borderColor
     border.width: 1
 
     implicitWidth: parent.width
-    implicitHeight: column.implicitHeight + 12
+    implicitHeight: responseColumn.implicitHeight + 24
 
     Layout.fillWidth: true
 
     property bool expanded: false
 
-    ColumnLayout {
-        id: column
+    Column {
+        id: responseColumn
         anchors {
             fill: parent
-            margins: 8
+            margins: 12
         }
         spacing: 8
 
-        // Header row
-        RowLayout {
-            Layout.fillWidth: true
+        // Header row with icon and tool name
+        Row {
+            width: parent.width
             spacing: 8
 
-            // Status icon
-            Text {
-                text: isError ? "❌" : "✅"
-                font.pixelSize: 14
+            // Status icon with colored background
+            Rectangle {
+                width: 24
+                height: 24
+                radius: 4
+                color: root.iconColor
+                anchors.verticalCenter: parent.verticalCenter
+
+                Text {
+                    anchors.centerIn: parent
+                    text: isError ? "✕" : "✓"
+                    font.pixelSize: 14
+                    color: "#ffffff"
+                }
             }
 
             // Tool name and status
             Text {
-                text: root.toolName + (root.isError ? " <font color='#ff6b6b'>failed</font>" : " <font color='#51cf66'>completed</font>")
+                width: parent.width - 24 - parent.spacing - (expandIndicator.width + expandIndicator.spacing)
+                text: root.toolName + (root.isError ? " failed" : " completed")
                 color: textColor
                 font.pixelSize: 13
-                textFormat: Text.RichText
+                font.weight: Font.Medium
+                wrapMode: Text.WordWrap
+                anchors.verticalCenter: parent.verticalCenter
             }
-
-            Item { Layout.fillWidth: true }
 
             // Expand/collapse indicator
             Text {
+                id: expandIndicator
                 text: root.expanded ? "▼" : "▶"
                 color: textColor
                 font.pixelSize: 10
+                anchors.verticalCenter: parent.verticalCenter
+
+                property real spacing: 4
 
                 MouseArea {
                     anchors.fill: parent
+                    anchors.margins: -8
                     cursorShape: Qt.PointingHandCursor
                     onClicked: root.expanded = !root.expanded
                 }
             }
         }
 
-        // Response content (collapsible)
-        Loader {
-            Layout.fillWidth: true
-            Layout.preferredHeight: active ? implicitHeight : 0
-            visible: active
-            active: root.expanded
-            sourceComponent: ColumnLayout {
-                spacing: 4
+        // Expanded content
+        Column {
+            visible: root.expanded
+            width: parent.width
+            spacing: 8
 
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 1
-                    color: borderColor
-                }
+            // Separator
+            Rectangle {
+                width: parent.width
+                height: 1
+                color: "#404040"
+            }
 
-                ScrollView {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: Math.min(responseText.implicitHeight + 8, 300)
-
-                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-
-                    Text {
-                        id: responseText
-                        width: parent.width
-                        padding: 4
-                        text: root.response
-                        color: textColor
-                        font.pixelSize: 12
-                        font.family: "monospace"
-                        wrapMode: Text.Wrap
-                        textFormat: Text.PlainText
-                    }
-
-                    ScrollBar.vertical: ScrollBar {
-                        policy: ScrollBar.AsNeeded
-                        contentItem: Rectangle {
-                            implicitWidth: 8
-                            radius: width / 2
-                            color: parent.hovered ? "#606060" : "#505050"
-                            opacity: parent.active ? 1.0 : 0.5
-                        }
-                    }
-                }
+            // Response content
+            Text {
+                width: parent.width
+                text: (root.isError ? "✗ " : "✓ ") + root.response
+                color: root.iconColor
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+                textFormat: Text.PlainText
             }
         }
     }
@@ -122,7 +117,7 @@ Rectangle {
         anchors.fill: parent
         propagateComposedEvents: true
         onPressed: function(mouse) {
-            if (mouse.y < 40) {
+            if (mouse.y < 50) {
                 root.expanded = !root.expanded
                 mouse.accepted = true
             } else {
