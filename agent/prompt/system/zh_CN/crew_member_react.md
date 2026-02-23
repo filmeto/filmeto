@@ -45,7 +45,7 @@ version: 2.0
 ## 关键说明：理解工具与技能的区别
 
 **重要区别**：
-- **工具(TOOLS)** 是您可以在React action JSON中直接调用的函数（例如：`execute_skill`、`todo_write`）
+- **工具(TOOLS)** 是您可以在React action JSON中直接调用的函数（例如：`execute_skill`、`todo`）
 - **技能(SKILLS)** 是通过 `execute_skill` 工具调用的能力
 
 **编写React action JSON时**：

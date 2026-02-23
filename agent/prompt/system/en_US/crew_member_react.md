@@ -45,7 +45,7 @@ You have access to the following skills. Review each skill's purpose to decide w
 ## CRITICAL: Understanding Tools vs Skills
 
 **IMPORTANT DISTINCTION**:
-- **TOOLS** are the functions you can call directly in your React action JSON (e.g., `execute_skill`, `todo_write`)
+- **TOOLS** are the functions you can call directly in your React action JSON (e.g., `execute_skill`, `todo`)
 - **SKILLS** are capabilities that you invoke THROUGH the `execute_skill` tool
 
 **When writing React action JSON**:
