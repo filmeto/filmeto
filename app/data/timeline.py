@@ -310,6 +310,58 @@ class Timeline:
                 items.append(item)
         return items
 
+    def list_items(self) -> dict:
+        """
+        List all timeline items with comprehensive information.
+
+        Returns:
+            A dictionary containing:
+            - total_items: Total number of items in the timeline
+            - total_duration: Total duration of the timeline in seconds
+            - current_index: Currently selected item index (may be 0 if none selected)
+            - items: List of item details, each containing:
+                - index: Item index (1-indexed)
+                - has_image: Whether the item has an image
+                - has_video: Whether the item has a video
+                - duration: Item duration in seconds
+                - preview_path: Path to the preview file (video or image)
+                - config: Item configuration dict
+                - prompt: Item prompt (if any)
+        """
+        items_info = []
+
+        for i in range(1, self.item_count + 1):
+            item = self.get_item(i)
+            has_image = os.path.exists(item.image_path)
+            has_video = os.path.exists(item.video_path)
+
+            item_info = {
+                "index": i,
+                "has_image": has_image,
+                "has_video": has_video,
+                "duration": self.project.get_item_duration(i) if hasattr(self.project, 'get_item_duration') else None,
+                "preview_path": item.get_preview_path(),
+                "config": item.get_config() if has_image or has_video else {},
+                "item_path": item.get_item_path(),
+                "layers_path": item.get_layers_path(),
+                "tasks_path": item.get_tasks_path(),
+            }
+
+            # Add prompt if available
+            prompt = item.get_prompt()
+            if prompt:
+                item_info["prompt"] = prompt
+
+            items_info.append(item_info)
+
+        return {
+            "total_items": self.item_count,
+            "total_duration": self.get_total_duration(),
+            "current_index": self.project.get_timeline_index() if hasattr(self.project, 'get_timeline_index') else 0,
+            "items": items_info,
+            "timeline_path": self.time_line_path,
+        }
+
 
     def on_task_finished(self,result:TaskResult):
         item = self.get_item(result.get_timeline_index())
@@ -366,3 +418,178 @@ class Timeline:
         # Ensure the item's own LayerManager is loaded (lazy-load will handle first-time creation)
         item.get_layer_manager()
         self.timeline_switch.send(item)
+
+    def delete_item(self, index: int) -> bool:
+        """
+        Delete a timeline item by index.
+
+        Args:
+            index: The index of the item to delete (1-indexed)
+
+        Returns:
+            True if deletion was successful, False otherwise
+        """
+        if index < 1 or index > self.item_count:
+            logger.warning(f"Invalid index {index} for deletion. Valid range: 1-{self.item_count}")
+            return False
+
+        item_path = os.path.join(self.time_line_path, str(index))
+        try:
+            # Remove the item directory
+            if os.path.exists(item_path):
+                shutil.rmtree(item_path)
+
+            # Remove from cache
+            if index in self._item_cache:
+                del self._item_cache[index]
+
+            # Renumber subsequent items to fill the gap
+            for i in range(index + 1, self.item_count + 1):
+                old_path = os.path.join(self.time_line_path, str(i))
+                new_path = os.path.join(self.time_line_path, str(i - 1))
+                if os.path.exists(old_path):
+                    os.rename(old_path, new_path)
+
+            # Update cache indices for moved items
+            new_cache = {}
+            for cached_idx, cached_item in self._item_cache.items():
+                if cached_idx < index:
+                    new_cache[cached_idx] = cached_item
+                elif cached_idx > index:
+                    # Shift index down by 1
+                    cached_item.index = cached_idx - 1
+                    cached_item.item_path = os.path.join(self.time_line_path, str(cached_item.index))
+                    cached_item.image_path = os.path.join(cached_item.item_path, "image.png")
+                    cached_item.video_path = os.path.join(cached_item.item_path, "video.mp4")
+                    cached_item.config_path = os.path.join(cached_item.item_path, "config.yml")
+                    cached_item.layers_path = os.path.join(cached_item.item_path, "layers")
+                    cached_item.tasks_path = os.path.join(cached_item.item_path, "tasks")
+                    new_cache[cached_idx - 1] = cached_item
+            self._item_cache = new_cache
+
+            # Update the current timeline index if needed
+            current_index = self.project.get_timeline_index()
+            if current_index == index:
+                # If we deleted the current item, switch to the first item or clear selection
+                if self.item_count > 1:
+                    self.project.update_config('timeline_index', 1)
+                else:
+                    self.project.update_config('timeline_index', 0)
+            elif current_index > index:
+                # Shift current index down
+                self.project.update_config('timeline_index', current_index - 1)
+
+            # Refresh count and update config
+            self.refresh_count()
+            num = self.project.config.get('timeline_size', 0)
+            self.project.update_config('timeline_size', max(0, num - 1))
+
+            # Update total timeline duration
+            self._update_timeline_duration()
+
+            logger.info(f"Deleted timeline item at index {index}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error deleting timeline item at index {index}: {e}")
+            return False
+
+    def move_item(self, from_index: int, to_index: int) -> bool:
+        """
+        Move a timeline item from one position to another.
+
+        Args:
+            from_index: The current index of the item (1-indexed)
+            to_index: The target index for the item (1-indexed)
+
+        Returns:
+            True if move was successful, False otherwise
+        """
+        if from_index < 1 or from_index > self.item_count:
+            logger.warning(f"Invalid from_index {from_index}. Valid range: 1-{self.item_count}")
+            return False
+        if to_index < 1 or to_index > self.item_count:
+            logger.warning(f"Invalid to_index {to_index}. Valid range: 1-{self.item_count}")
+            return False
+        if from_index == to_index:
+            return True  # No move needed
+
+        try:
+            # Create a temporary directory for the item being moved
+            temp_path = os.path.join(self.time_line_path, "_temp_move")
+            from_path = os.path.join(self.time_line_path, str(from_index))
+            os.rename(from_path, temp_path)
+
+            # Shift items to fill the gap or make space
+            if from_index < to_index:
+                # Moving forward: shift items from (from_index+1) to to_index down by 1
+                for i in range(from_index + 1, to_index + 1):
+                    old_path = os.path.join(self.time_line_path, str(i))
+                    new_path = os.path.join(self.time_line_path, str(i - 1))
+                    if os.path.exists(old_path):
+                        os.rename(old_path, new_path)
+            else:
+                # Moving backward: shift items from to_index to (from_index-1) up by 1
+                for i in range(from_index - 1, to_index - 1, -1):
+                    old_path = os.path.join(self.time_line_path, str(i))
+                    new_path = os.path.join(self.time_line_path, str(i + 1))
+                    if os.path.exists(old_path):
+                        os.rename(old_path, new_path)
+
+            # Move the item from temp to its final position
+            final_path = os.path.join(self.time_line_path, str(to_index))
+            os.rename(temp_path, final_path)
+
+            # Clear and rebuild cache
+            self._item_cache.clear()
+
+            # Update the current timeline index if needed
+            current_index = self.project.get_timeline_index()
+            if current_index == from_index:
+                self.project.update_config('timeline_index', to_index)
+            elif from_index < current_index <= to_index:
+                self.project.update_config('timeline_index', current_index - 1)
+            elif to_index <= current_index < from_index:
+                self.project.update_config('timeline_index', current_index + 1)
+
+            logger.info(f"Moved timeline item from index {from_index} to {to_index}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error moving timeline item from {from_index} to {to_index}: {e}")
+            return False
+
+    def update_item_content(self, index: int, image_path: str = None, video_path: str = None) -> bool:
+        """
+        Update the content of a timeline item.
+
+        Args:
+            index: The index of the item to update (1-indexed)
+            image_path: Optional path to a new image file
+            video_path: Optional path to a new video file
+
+        Returns:
+            True if update was successful, False otherwise
+        """
+        if index < 1 or index > self.item_count:
+            logger.warning(f"Invalid index {index} for update. Valid range: 1-{self.item_count}")
+            return False
+
+        try:
+            item = self.get_item(index)
+
+            if image_path and os.path.exists(image_path):
+                item.update_image(image_path)
+
+            if video_path and os.path.exists(video_path):
+                item.update_video(video_path)
+
+            # Emit timeline_changed signal to refresh UI
+            self.timeline_changed.send(self, item)
+
+            logger.info(f"Updated timeline item at index {index}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error updating timeline item at index {index}: {e}")
+            return False
