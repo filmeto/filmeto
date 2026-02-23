@@ -16,7 +16,10 @@ class PlanSignalManager(QObject):
     
     # Signal emitted when a plan is updated
     plan_updated = Signal(str, str)  # project_name, plan_id
-    
+
+    # Signal emitted when a plan is deleted
+    plan_deleted = Signal(str, str)  # project_name, plan_id
+
     # Signal emitted when a plan instance is created
     plan_instance_created = Signal(str, str, str)  # project_name, plan_id, instance_id
     

@@ -866,3 +866,31 @@ class PlanService:
 
         # If no active plan is found, return None
         return None
+
+    def delete_plan(self, project_name: str, plan_id: str) -> bool:
+        """
+        Delete a Plan and all its instances.
+
+        Args:
+            project_name: Name of the project (used as identifier)
+            plan_id: ID of the plan to delete
+
+        Returns:
+            True if the plan was deleted, False if it didn't exist
+        """
+        plan_dir = self._get_flow_dir(project_name, plan_id)
+
+        if not plan_dir.exists():
+            return False
+
+        # Remove the entire plan directory (including all instances)
+        try:
+            shutil.rmtree(plan_dir)
+
+            # Emit signal for plan deletion
+            plan_signal_manager.plan_deleted.emit(project_name, plan_id)
+
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting plan {plan_id}: {e}", exc_info=True)
+            return False
