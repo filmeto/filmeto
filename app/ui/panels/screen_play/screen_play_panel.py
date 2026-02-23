@@ -347,13 +347,16 @@ class ScreenPlayPanel(BasePanel):
 
         # Sort scenes by scene_number
         def get_scene_sort_key(scene):
-            """Get sort key for a scene."""
+            """Get sort key for a scene.
+
+            Returns a tuple (is_int, int_value, str_value) to handle mixed numeric/non-numeric scene numbers.
+            """
             try:
                 # Try to parse scene_number as integer for proper numeric sorting
-                return int(scene.scene_number)
+                return (True, int(scene.scene_number), str(scene.scene_number))
             except (ValueError, TypeError):
                 # If scene_number is not numeric, use string comparison
-                return scene.scene_number
+                return (False, 0, str(scene.scene_number))
 
         scenes.sort(key=get_scene_sort_key)
 
