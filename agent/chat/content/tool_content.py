@@ -13,14 +13,35 @@ class ToolCallContent(StructureContent):
     content_type: ContentType = ContentType.TOOL_CALL
     tool_name: str = ""
     tool_input: Dict[str, Any] = field(default_factory=dict)
-    tool_status: str = "started"  # Renamed to avoid conflict with StructureContent.status
+    tool_status: str = "started"  # started, completed, failed
+    result: Optional[Any] = None
+    error: Optional[str] = None
+
+    def set_result(self, result: Any, error: Optional[str] = None) -> None:
+        """Set the result of the tool execution.
+
+        Args:
+            result: The result value from tool execution
+            error: Optional error message if execution failed
+        """
+        self.result = result
+        if error:
+            self.error = error
+            self.tool_status = "failed"
+        else:
+            self.tool_status = "completed"
 
     def _get_data(self) -> Dict[str, Any]:
-        return {
+        data = {
             "tool_name": self.tool_name,
             "tool_input": self.tool_input,
             "status": self.tool_status
         }
+        if self.result is not None:
+            data["result"] = self.result
+        if self.error:
+            data["error"] = self.error
+        return data
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'ToolCallContent':
@@ -36,7 +57,9 @@ class ToolCallContent(StructureContent):
             parent_id=data.get("parent_id"),
             tool_name=data_dict.get("tool_name", ""),
             tool_input=data_dict.get("tool_input", {}),
-            tool_status=data_dict.get("status", "started")
+            tool_status=data_dict.get("status", "started"),
+            result=data_dict.get("result"),
+            error=data_dict.get("error")
         )
 
 

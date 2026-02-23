@@ -455,11 +455,12 @@ class AgentEvent:
         Returns:
             AgentEvent with type TOOL_END
         """
-        # Create ToolResponseContent if not provided
+        # Create ToolCallContent if not provided
         if content is None:
-            from agent.chat.content import ToolResponseContent
-            content = ToolResponseContent(
+            from agent.chat.content import ToolCallContent
+            content = ToolCallContent(
                 tool_name=tool_name,
+                tool_input={},  # tool_input was already captured in tool_start
                 result=result,
                 error=None if ok else "Execution failed",
                 tool_status="completed" if ok else "failed",

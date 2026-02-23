@@ -176,7 +176,7 @@ class BaseTool(ABC):
         """
         from agent.event.agent_event import AgentEvent, AgentEventType
         from agent.chat.content import (
-            ToolResponseContent,
+            ToolCallContent,
             ProgressContent,
             ErrorContent,
         )
@@ -184,8 +184,9 @@ class BaseTool(ABC):
         content = None
 
         if event_type == AgentEventType.TOOL_END.value:
-            content = ToolResponseContent(
+            content = ToolCallContent(
                 tool_name=self.name,
+                tool_input={},  # tool_input was already captured in tool_start
                 result=result,
                 error=None if ok else error,
                 tool_status="completed" if ok else "failed",

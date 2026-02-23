@@ -522,16 +522,17 @@ class React:
                                             tool_result = item.payload.get("error", "Unknown error")
                                         break
 
-                            # Only create a new ToolResponseContent if we didn't receive a tool_end event
+                            # Only create a new ToolCallContent if we didn't receive a tool_end event
                             # (for backward compatibility with tools that don't emit proper events)
                             if not tool_end_received:
                                 if tool_result is None:
                                     tool_result = "Tool execution completed"
-                                # Create ToolResponseContent
-                                tool_response = ToolResponseContent(
+                                # Create ToolCallContent with result
+                                tool_response = ToolCallContent(
                                     tool_name=action.tool_name,
-                                    result=tool_result,
+                                    tool_input=action.tool_args,
                                     tool_status="completed",
+                                    result=tool_result,
                                     title=f"Tool Result: {action.tool_name}",
                                     description="Tool execution completed successfully"
                                 )
@@ -556,11 +557,11 @@ class React:
                             self.messages.append({"role": "user", "content": f"Observation: {tool_result}"})
                         except Exception as exc:
                             logger.error(f"Tool execution error: {exc}", exc_info=True)
-                            tool_error_response = ToolResponseContent(
+                            tool_error_response = ToolCallContent(
                                 tool_name=action.tool_name,
-                                result=None,
-                                error=str(exc),
+                                tool_input=action.tool_args,
                                 tool_status="failed",
+                                error=str(exc),
                                 title=f"Tool Error: {action.tool_name}",
                                 description="Tool execution failed"
                             )

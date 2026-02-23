@@ -251,7 +251,7 @@ class ToolService:
         """
         from agent.event.agent_event import AgentEvent
         from agent.chat.content import (
-            ToolCallContent, ProgressContent, ToolResponseContent, ErrorContent
+            ToolCallContent, ProgressContent, ErrorContent
         )
 
         # Create appropriate content based on event type
@@ -272,8 +272,9 @@ class ToolService:
                 description="Tool execution in progress"
             )
         elif event_type == "tool_end":
-            content = ToolResponseContent(
+            content = ToolCallContent(
                 tool_name=tool_name,
+                tool_input=kwargs.get("input", {}),
                 result=kwargs.get("result"),
                 error=kwargs.get("error"),
                 tool_status="completed" if not kwargs.get("error") else "failed",
