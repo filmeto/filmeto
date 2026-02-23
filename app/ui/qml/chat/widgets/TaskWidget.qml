@@ -34,56 +34,67 @@ Rectangle {
         }
         spacing: 8
 
-        // Header row
-        RowLayout {
+        // Header row - clickable for expand/collapse
+        Item {
             Layout.fillWidth: true
-            spacing: 8
+            height: headerRow.implicitHeight
 
-            // Task icon
-            Text {
-                text: "📌"
-                font.pixelSize: 14
-            }
+            RowLayout {
+                id: headerRow
+                width: parent.width
+                spacing: 8
 
-            // Title
-            Text {
-                Layout.fillWidth: true
-                text: root.taskData.title || "Task"
-                color: textColor
-                font.pixelSize: 13
-                font.weight: Font.Medium
-                wrapMode: Text.WordWrap
-            }
-
-            // Status badge
-            Rectangle {
-                visible: root.taskData.status
-                Layout.preferredWidth: statusText.implicitWidth + 10
-                Layout.preferredHeight: 20
-                color: getStatusColor(root.taskData.status)
-                radius: 4
-
+                // Task icon
                 Text {
-                    id: statusText
-                    anchors.centerIn: parent
-                    text: (root.taskData.status || "").toUpperCase()
-                    color: "#ffffff"
-                    font.pixelSize: 9
+                    text: "📌"
+                    font.pixelSize: 14
+                }
+
+                // Title
+                Text {
+                    Layout.fillWidth: true
+                    text: root.taskData.title || "Task"
+                    color: textColor
+                    font.pixelSize: 13
                     font.weight: Font.Medium
+                    wrapMode: Text.WordWrap
+                }
+
+                // Status badge
+                Rectangle {
+                    visible: root.taskData.status
+                    Layout.preferredWidth: statusText.implicitWidth + 10
+                    Layout.preferredHeight: 20
+                    color: getStatusColor(root.taskData.status)
+                    radius: 4
+
+                    Text {
+                        id: statusText
+                        anchors.centerIn: parent
+                        text: (root.taskData.status || "").toUpperCase()
+                        color: "#ffffff"
+                        font.pixelSize: 9
+                        font.weight: Font.Medium
+                    }
+                }
+
+                // Expand toggle
+                Text {
+                    visible: root.taskData.description
+                    text: root.expanded ? "▼" : "▶"
+                    color: descColor
+                    font.pixelSize: 10
                 }
             }
 
-            // Expand toggle
-            Text {
-                visible: root.taskData.description
-                text: root.expanded ? "▼" : "▶"
-                color: descColor
-                font.pixelSize: 10
-
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.expanded = !root.expanded
+            // MouseArea only on header - child components can receive their own clicks
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                    if (root.taskData.description) {
+                        root.expanded = !root.expanded
+                    }
                 }
             }
         }
@@ -136,19 +147,6 @@ Rectangle {
             case "pending":
             case "todo": return "#ffd43b"
             default: return "#808080"
-        }
-    }
-
-    MouseArea {
-        anchors.fill: parent
-        propagateComposedEvents: true
-        onPressed: function(mouse) {
-            if (mouse.y < 40) {
-                root.expanded = !root.expanded
-                mouse.accepted = true
-            } else {
-                mouse.accepted = false
-            }
         }
     }
 }

@@ -36,49 +36,60 @@ Rectangle {
         }
         spacing: 8
 
-        // Header with title and toggle
-        RowLayout {
+        // Header with title and toggle - clickable for expand/collapse
+        Item {
             Layout.fillWidth: true
-            spacing: 8
+            height: headerRow.implicitHeight
 
-            // LLM icon
-            Text {
-                text: ""
-                font.pixelSize: 14
-                color: titleColor
+            RowLayout {
+                id: headerRow
+                width: parent.width
+                spacing: 8
+
+                // LLM icon
+                Text {
+                    text: ""
+                    font.pixelSize: 14
+                    color: titleColor
+                }
+
+                // Title
+                Text {
+                    text: root.title
+                    color: titleColor
+                    font.pixelSize: 12
+                    font.weight: Font.Medium
+                }
+
+                Item { Layout.fillWidth: true }
+
+                // Output preview (first 50 chars when collapsed)
+                Text {
+                    visible: false  // Hide preview when collapsed
+                    text: root.output.length > 50 ? root.output.substring(0, 50) + "..." : root.output
+                    color: textColor
+                    font.pixelSize: 11
+                    opacity: 0.7
+                    elide: Text.ElideRight
+                    Layout.maximumWidth: 200
+                }
+
+                // Collapse/expand indicator
+                Text {
+                    text: root.expanded ? "" : ""
+                    color: textColor
+                    font.pixelSize: 10
+                }
             }
 
-            // Title
-            Text {
-                text: root.title
-                color: titleColor
-                font.pixelSize: 12
-                font.weight: Font.Medium
-            }
-
-            Item { Layout.fillWidth: true }
-
-            // Output preview (first 50 chars when collapsed)
-            Text {
-                visible: false  // Hide preview when collapsed
-                text: root.output.length > 50 ? root.output.substring(0, 50) + "..." : root.output
-                color: textColor
-                font.pixelSize: 11
-                opacity: 0.7
-                elide: Text.ElideRight
-                Layout.maximumWidth: 200
-            }
-
-            // Collapse/expand indicator
-            Text {
-                text: root.expanded ? "" : ""
-                color: textColor
-                font.pixelSize: 10
-
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.expanded = !root.expanded
+            // MouseArea only on header - child components can receive their own clicks
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                    if (root.isCollapsible) {
+                        root.expanded = !root.expanded
+                    }
                 }
             }
         }
@@ -110,19 +121,6 @@ Rectangle {
                     lineHeight: 1.4
                 }
             }
-        }
-    }
-
-    // Click on header to toggle
-    MouseArea {
-        anchors.fill: parent
-        propagateComposedEvents: true
-        onPressed: function(mouse) {
-            // Only toggle if clicking on the header area
-            if (mouse.y < 40 && root.isCollapsible) {
-                root.expanded = !root.expanded
-            }
-            mouse.accepted = false
         }
     }
 

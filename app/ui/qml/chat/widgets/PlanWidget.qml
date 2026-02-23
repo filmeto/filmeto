@@ -41,38 +41,45 @@ Rectangle {
         spacing: 10
         width: parent.width
 
-        // Header
-        RowLayout {
+        // Header - clickable for expand/collapse
+        Item {
             Layout.fillWidth: true
-            spacing: 8
+            height: headerRow.implicitHeight
 
-            // Plan icon
-            Text {
-                text: "📋"
-                font.pixelSize: 16
-            }
+            RowLayout {
+                id: headerRow
+                width: parent.width
+                spacing: 8
 
-            // Title
-            Text {
-                text: root.planData.title || "Execution Plan"
-                color: titleColor
-                font.pixelSize: 14
-                font.weight: Font.Medium
-            }
-
-            Item { Layout.fillWidth: true }
-
-            // Toggle
-            Text {
-                text: root.expanded ? "▼" : "▶"
-                color: textColor
-                font.pixelSize: 10
-
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.expanded = !root.expanded
+                // Plan icon
+                Text {
+                    text: "📋"
+                    font.pixelSize: 16
                 }
+
+                // Title
+                Text {
+                    text: root.planData.title || "Execution Plan"
+                    color: titleColor
+                    font.pixelSize: 14
+                    font.weight: Font.Medium
+                }
+
+                Item { Layout.fillWidth: true }
+
+                // Toggle
+                Text {
+                    text: root.expanded ? "▼" : "▶"
+                    color: textColor
+                    font.pixelSize: 10
+                }
+            }
+
+            // MouseArea only on header - child components can receive their own clicks
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.expanded = !root.expanded
             }
         }
 
@@ -129,19 +136,6 @@ Rectangle {
                         }
                     }
                 }
-            }
-        }
-    }
-
-    MouseArea {
-        anchors.fill: parent
-        propagateComposedEvents: true
-        onPressed: function(mouse) {
-            if (mouse.y < 40) {
-                root.expanded = !root.expanded
-                mouse.accepted = true
-            } else {
-                mouse.accepted = false
             }
         }
     }

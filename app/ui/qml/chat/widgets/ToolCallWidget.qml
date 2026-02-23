@@ -66,53 +66,57 @@ Rectangle {
         }
         spacing: 8
 
-        // Header row with icon and tool name
-        Row {
+        // Header row with icon and tool name - clickable for expand/collapse
+        Item {
             width: parent.width
-            spacing: 8
+            height: headerRow.implicitHeight
 
-            // Tool icon with colored background
-            Rectangle {
-                width: 24
-                height: 24
-                radius: 4
-                color: root.widgetColor
-                anchors.verticalCenter: parent.verticalCenter
+            Row {
+                id: headerRow
+                width: parent.width
+                spacing: 8
 
+                // Tool icon with colored background
+                Rectangle {
+                    width: 24
+                    height: 24
+                    radius: 4
+                    color: root.widgetColor
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: root.toolIcon
+                        font.pixelSize: 14
+                    }
+                }
+
+                // Tool name
                 Text {
-                    anchors.centerIn: parent
-                    text: root.toolIcon
-                    font.pixelSize: 14
+                    width: parent.width - 24 - parent.spacing - expandIndicator.width
+                    text: root.toolName || "Tool"
+                    color: textColor
+                    font.pixelSize: 13
+                    font.weight: Font.Medium
+                    wrapMode: Text.WordWrap
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                // Expand/collapse indicator
+                Text {
+                    id: expandIndicator
+                    text: root.expanded ? "▼" : "▶"
+                    color: textColor
+                    font.pixelSize: 10
+                    anchors.verticalCenter: parent.verticalCenter
                 }
             }
 
-            // Tool name
-            Text {
-                width: parent.width - 24 - parent.spacing - (expandIndicator.width + expandIndicator.spacing)
-                text: root.toolName || "Tool"
-                color: textColor
-                font.pixelSize: 13
-                font.weight: Font.Medium
-                wrapMode: Text.WordWrap
-                anchors.verticalCenter: parent.verticalCenter
-            }
-
-            // Expand/collapse indicator
-            Text {
-                id: expandIndicator
-                text: root.expanded ? "▼" : "▶"
-                color: textColor
-                font.pixelSize: 10
-                anchors.verticalCenter: parent.verticalCenter
-
-                property real spacing: 4
-
-                MouseArea {
-                    anchors.fill: parent
-                    anchors.margins: -8
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.expanded = !root.expanded
-                }
+            // MouseArea only on header - child components can receive their own clicks
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.expanded = !root.expanded
             }
         }
 
@@ -218,20 +222,6 @@ Rectangle {
                 color: "#ff6b6b"
                 font.pixelSize: 12
                 wrapMode: Text.WordWrap
-            }
-        }
-    }
-
-    // Click header to toggle
-    MouseArea {
-        anchors.fill: parent
-        propagateComposedEvents: true
-        onPressed: function(mouse) {
-            if (mouse.y < 50) {
-                root.expanded = !root.expanded
-                mouse.accepted = true
-            } else {
-                mouse.accepted = false
             }
         }
     }
