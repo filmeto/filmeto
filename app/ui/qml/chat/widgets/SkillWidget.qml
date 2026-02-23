@@ -11,7 +11,6 @@ Rectangle {
 
     // Internal state for expand/collapse
     property bool expanded: false
-    property bool childrenExpanded: false
 
     readonly property int childCount: (root.skillData.child_contents || []).length
 
@@ -170,11 +169,11 @@ Rectangle {
             wrapMode: Text.WordWrap
         }
 
-        // Nested child contents (tool calls, etc.)
+        // Nested child contents (tool calls, etc.) - displayed flat when expanded
         Column {
             visible: root.expanded && root.childCount > 0
             width: parent.width
-            spacing: 6
+            spacing: 8
 
             // Separator
             Rectangle {
@@ -183,188 +182,224 @@ Rectangle {
                 color: "#404040"
             }
 
-            // Child contents header with expand/collapse
-            Row {
-                width: parent.width
-                spacing: 8
+            // Child contents list - using full structured content widgets
+            Repeater {
+                model: root.skillData.child_contents || []
 
-                Text {
-                    text: "Execution Steps"
-                    color: "#a0a0a0"
-                    font.pixelSize: 11
-                    font.bold: true
-                }
+                delegate: Loader {
+                    width: parent.width
+                    sourceComponent: resolveChildComponent(modelData.content_type || modelData.data?.content_type || "text")
 
-                Item { width: 1; height: 1 }
-
-                Text {
-                    text: root.childrenExpanded ? "▼" : "▶"
-                    color: "#808080"
-                    font.pixelSize: 10
-
-                    MouseArea {
-                        anchors.fill: parent
-                        anchors.margins: -8
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.childrenExpanded = !root.childrenExpanded
-                    }
+                    property var itemData: modelData
                 }
             }
+        }
+    }
 
-            // Child contents list
-            Column {
-                visible: root.childrenExpanded
-                width: parent.width
-                spacing: 4
+    // Resolve the correct widget component for a content type
+    function resolveChildComponent(contentType) {
+        switch (contentType) {
+            case "tool_call":
+                return toolCallWidgetComponent;
+            case "tool_response":
+                return toolResponseWidgetComponent;
+            case "thinking":
+                return thinkingWidgetComponent;
+            case "step":
+                return stepWidgetComponent;
+            case "plan":
+                return planWidgetComponent;
+            case "task":
+                return taskWidgetComponent;
+            case "progress":
+                return progressWidgetComponent;
+            case "error":
+                return errorWidgetComponent;
+            case "llm_output":
+                return llmOutputWidgetComponent;
+            case "metadata":
+                return metadataWidgetComponent;
+            case "skill":
+                return skillWidgetComponent;
+            default:
+                return textFallbackComponent;
+        }
+    }
 
-                Repeater {
-                    model: root.skillData.child_contents || []
+    // ─────────────────────────────────────────────────────────────
+    // Widget Components (reuse existing structured content widgets)
+    // ─────────────────────────────────────────────────────────────
 
-                    delegate: Loader {
-                        width: parent.width
-                        sourceComponent: {
-                            var contentType = modelData.content_type || modelData.data?.content_type;
-                            switch (contentType) {
-                                case "tool_call": return toolCallComponent;
-                                case "tool_response": return toolResponseComponent;
-                                default: return textFallbackComponent;
-                            }
-                        }
+    // Tool call widget
+    Component {
+        id: toolCallWidgetComponent
+        ToolCallWidget {
+            property var itemData: ({})
+            width: parent.width
+            widgetColor: Qt.rgba(root.widgetColor.r, root.widgetColor.g, root.widgetColor.b, 0.8)
+            toolName: itemData.data?.tool_name || itemData.tool_name || ""
+            toolArgs: itemData.data?.tool_args || itemData.tool_args || {}
+            toolStatus: itemData.data?.status || itemData.status || "started"
+            result: itemData.data?.result !== undefined ? itemData.data.result : (itemData.result !== undefined ? itemData.result : null)
+            error: itemData.data?.error || itemData.error || ""
+        }
+    }
 
-                        property var itemData: modelData
+    // Tool response widget
+    Component {
+        id: toolResponseWidgetComponent
+        ToolResponseWidget {
+            property var itemData: ({})
+            width: parent.width
+            widgetColor: Qt.rgba(root.widgetColor.r, root.widgetColor.g, root.widgetColor.b, 0.8)
+            toolName: itemData.data?.tool_name || itemData.tool_name || ""
+            response: itemData.data?.response || itemData.response || ""
+            isError: itemData.data?.is_error || itemData.is_error || false
+        }
+    }
 
-                        // Minimal tool call display for nested content
-                        Component {
-                            id: toolCallComponent
-                            Rectangle {
-                                width: parent.width
-                                height: toolCallColumn.implicitHeight + 8
-                                color: "#1a1a1a"
-                                radius: 4
-                                border.color: "#303030"
-                                border.width: 1
+    // Thinking widget
+    Component {
+        id: thinkingWidgetComponent
+        ThinkingWidget {
+            property var itemData: ({})
+            width: parent.width
+            widgetColor: Qt.rgba(root.widgetColor.r, root.widgetColor.g, root.widgetColor.b, 0.8)
+            thought: itemData.data?.thought || itemData.thought || ""
+            title: itemData.title || itemData.data?.title || "Thinking Process"
+            isCollapsible: true
+        }
+    }
 
-                                Column {
-                                    id: toolCallColumn
-                                    anchors {
-                                        fill: parent
-                                        margins: 8
-                                    }
-                                    spacing: 4
+    // Step widget
+    Component {
+        id: stepWidgetComponent
+        StepWidget {
+            property var itemData: ({})
+            width: parent.width
+            widgetColor: Qt.rgba(root.widgetColor.r, root.widgetColor.g, root.widgetColor.b, 0.8)
+            stepData: ({
+                title: itemData.title || itemData.data?.title || "",
+                description: itemData.description || itemData.data?.description || "",
+                status: itemData.data?.status || itemData.status || "pending",
+                step_number: itemData.data?.step_number || itemData.step_number || 0
+            })
+        }
+    }
 
-                                    Row {
-                                        width: parent.width
-                                        spacing: 6
+    // Plan widget
+    Component {
+        id: planWidgetComponent
+        PlanWidget {
+            property var itemData: ({})
+            width: parent.width
+            widgetColor: Qt.rgba(root.widgetColor.r, root.widgetColor.g, root.widgetColor.b, 0.8)
+            planData: itemData
+        }
+    }
 
-                                        Text {
-                                            text: getToolIcon(itemData.data?.tool_name || "")
-                                            font.pixelSize: 12
-                                        }
+    // Task widget
+    Component {
+        id: taskWidgetComponent
+        TaskWidget {
+            property var itemData: ({})
+            width: parent.width
+            taskData: itemData
+        }
+    }
 
-                                        Text {
-                                            text: itemData.data?.tool_name || "Tool"
-                                            color: "#d0d0d0"
-                                            font.pixelSize: 12
-                                            font.weight: Font.Medium
-                                        }
+    // Progress widget
+    Component {
+        id: progressWidgetComponent
+        ProgressWidget {
+            property var itemData: ({})
+            width: parent.width
+            widgetColor: Qt.rgba(root.widgetColor.r, root.widgetColor.g, root.widgetColor.b, 0.8)
+            text: itemData.data?.progress || itemData.progress || ""
+            percentage: itemData.data?.percentage || itemData.percentage || null
+        }
+    }
 
-                                        Item { width: 1; height: 1 }
+    // Error widget
+    Component {
+        id: errorWidgetComponent
+        ErrorWidget {
+            property var itemData: ({})
+            width: parent.width
+            errorData: ({
+                error_message: itemData.data?.error || itemData.error_message || "",
+                error_type: itemData.data?.error_type || itemData.error_type || (itemData.title || "Error"),
+                details: itemData.description || itemData.data?.description || ""
+            })
+        }
+    }
 
-                                        Text {
-                                            text: getToolStatusText(itemData.data?.status || "started")
-                                            color: getToolStatusColor(itemData.data?.status || "started")
-                                            font.pixelSize: 10
-                                        }
-                                    }
+    // LLM output widget
+    Component {
+        id: llmOutputWidgetComponent
+        LlmOutputWidget {
+            property var itemData: ({})
+            width: parent.width
+            widgetColor: Qt.rgba(root.widgetColor.r, root.widgetColor.g, root.widgetColor.b, 0.8)
+            output: itemData.data?.output || itemData.output || ""
+            title: itemData.title || itemData.data?.title || "LLM Output"
+        }
+    }
 
-                                    Text {
-                                        visible: (itemData.data?.status === "completed") && (itemData.data?.result || "")
-                                        width: parent.width
-                                        text: "✓ " + (typeof itemData.data.result === "string" ? itemData.data.result : JSON.stringify(itemData.data.result))
-                                        color: "#4ecdc4"
-                                        font.pixelSize: 11
-                                        wrapMode: Text.WordWrap
-                                    }
+    // Metadata widget
+    Component {
+        id: metadataWidgetComponent
+        MetadataWidget {
+            property var itemData: ({})
+            width: parent.width
+            widgetColor: Qt.rgba(root.widgetColor.r, root.widgetColor.g, root.widgetColor.b, 0.8)
+            metadataData: ({
+                metadata_type: itemData.data?.metadata_type || itemData.title || "",
+                title: itemData.title || "",
+                description: itemData.description || "",
+                metadata_data: itemData.data?.data || itemData.data || {}
+            })
+        }
+    }
 
-                                    Text {
-                                        visible: (itemData.data?.status === "failed") && (itemData.data?.error || "")
-                                        width: parent.width
-                                        text: "✗ " + (itemData.data.error || "")
-                                        color: "#ff6b6b"
-                                        font.pixelSize: 11
-                                        wrapMode: Text.WordWrap
-                                    }
-                                }
+    // Nested skill widget - use source property to avoid recursive instantiation
+    Component {
+        id: skillWidgetComponent
+        Loader {
+            property var itemData: ({})
+            width: parent.width
+            source: "SkillWidget.qml"
+            property var _skillData: itemData.data || itemData
+            property color _widgetColor: Qt.rgba(root.widgetColor.r, root.widgetColor.g, root.widgetColor.b, 0.7)
 
-                                function getToolIcon(name) {
-                                    name = (name || "").toLowerCase();
-                                    if (name.includes("search")) return "🔍";
-                                    if (name.includes("write")) return "📝";
-                                    if (name.includes("read")) return "📖";
-                                    if (name.includes("code")) return "⚙️";
-                                    if (name.includes("plan")) return "📋";
-                                    return "🔧";
-                                }
+            onLoaded: {
+                item.skillData = _skillData
+                item.widgetColor = _widgetColor
+            }
+        }
+    }
 
-                                function getToolStatusText(status) {
-                                    switch (status) {
-                                        case "completed": return "Done";
-                                        case "failed": return "Failed";
-                                        default: return "Running...";
-                                    }
-                                }
+    // Fallback text display
+    Component {
+        id: textFallbackComponent
+        Rectangle {
+            width: parent.width
+            height: fallbackText.implicitHeight + 12
+            color: "#1a1a1a"
+            radius: 4
+            border.color: "#303030"
+            border.width: 1
 
-                                function getToolStatusColor(status) {
-                                    switch (status) {
-                                        case "completed": return "#4ecdc4";
-                                        case "failed": return "#ff6b6b";
-                                        default: return root.widgetColor;
-                                    }
-                                }
-                            }
-                        }
-
-                        // Minimal tool response display
-                        Component {
-                            id: toolResponseComponent
-                            Rectangle {
-                                width: parent.width
-                                height: responseColumn.implicitHeight + 8
-                                color: "#1a1a1a"
-                                radius: 4
-                                border.color: "#303030"
-                                border.width: 1
-
-                                Column {
-                                    id: responseColumn
-                                    anchors {
-                                        fill: parent
-                                        margins: 8
-                                    }
-                                    spacing: 4
-
-                                    Text {
-                                        text: (itemData.data?.is_error ? "✗ " : "✓ ") + (itemData.data?.tool_name || "Tool")
-                                        color: itemData.data?.is_error ? "#ff6b6b" : "#4ecdc4"
-                                        font.pixelSize: 11
-                                    }
-                                }
-                            }
-                        }
-
-                        // Fallback text display
-                        Component {
-                            id: textFallbackComponent
-                            Text {
-                                width: parent.width
-                                text: JSON.stringify(modelData)
-                                color: "#808080"
-                                font.pixelSize: 10
-                                wrapMode: Text.WordWrap
-                            }
-                        }
-                    }
+            Text {
+                id: fallbackText
+                anchors {
+                    fill: parent
+                    margins: 8
                 }
+                text: JSON.stringify(itemData)
+                color: "#808080"
+                font.pixelSize: 10
+                wrapMode: Text.WordWrap
             }
         }
     }
