@@ -138,8 +138,8 @@ class SkillChat:
                 available_tool_names = all_tools
 
             # Add todo tool for complex task tracking (if not already in list)
-            if "todo" not in available_tool_names:
-                available_tool_names.append("todo")
+            # if "todo" not in available_tool_names:
+            #     available_tool_names.append("todo")
 
             # Add skill-specific tools based on whether skill has scripts
             if skill.scripts:
@@ -305,6 +305,5 @@ class SkillChat:
                 'script_full_paths': script_full_paths,
             },
             user_question=user_question or skill.description,
-            available_tools=available_tools,
             args=args or {},
         )
