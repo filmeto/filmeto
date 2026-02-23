@@ -39,6 +39,9 @@ class VideoTimelineCard(QFrame):
         # Add border-radius to match the outer frame's rounded corners
         self.content_label.setStyleSheet("QLabel { background-color: transparent; border: none; border-radius: 8px; }")
         self.content_label.setScaledContents(True)  # Enable scaled contents for proper clipping
+        # Make label transparent to mouse events so clicks pass through to parent card
+        # This allows the parent container's eventFilter to handle card selection
+        self.content_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         scaled_image = snapshot.scaled(QSize(90, 160), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
         self.content_label.setPixmap(scaled_image)
         self.content_label.setAlignment(Qt.AlignCenter)
