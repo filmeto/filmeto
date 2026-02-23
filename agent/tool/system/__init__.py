@@ -1,9 +1,15 @@
-from .get_project_crew_members import GetProjectCrewMembersTool
-from .create_plan import CreatePlanTool
-from .execute_skill_script import ExecuteSkillScriptTool
-from .execute_generated_code import ExecuteGeneratedCodeTool
-from .execute_skill import ExecuteSkillTool
-from .todo_write import TodoWriteTool
-from .video_timeline_tool import VideoTimelineTool
+"""
+System tools module.
 
-__all__ = ['GetProjectCrewMembersTool', 'CreatePlanTool', 'ExecuteSkillScriptTool', 'ExecuteGeneratedCodeTool', 'ExecuteSkillTool', 'TodoWriteTool', 'VideoTimelineTool']
+Tools are now auto-discovered by ToolService from subdirectories.
+Each tool has its own directory with:
+- tool.md: Metadata definition (YAML frontmatter)
+- {tool_name}.py: Tool implementation
+- __init__.py: Module exports
+
+No need to manually import and export tools here.
+"""
+
+# Tools are auto-discovered by ToolService
+# Empty __all__ indicates dynamic loading
+__all__ = []

@@ -1,12 +1,16 @@
 """VideoTimeline tool for managing video timeline items."""
+from pathlib import Path
 from typing import Any, Dict, Optional, TYPE_CHECKING, AsyncGenerator
 import logging
 import os
 
-from ..base_tool import BaseTool, ToolMetadata, ToolParameter
+from ...base_tool import BaseTool, ToolMetadata, ToolParameter
+
+# Tool directory for metadata loading
+_tool_dir = Path(__file__).parent
 
 if TYPE_CHECKING:
-    from ...tool_context import ToolContext
+    from ....tool_context import ToolContext
     from agent.event.agent_event import AgentEvent
 
 
@@ -32,85 +36,11 @@ class VideoTimelineTool(BaseTool):
             name="video_timeline",
             description="Manage video timeline items - add, delete, move, and update timeline cards"
         )
+        # Set tool directory for metadata loading from tool.md
+        self._tool_dir = _tool_dir
 
-    def metadata(self, lang: str = "en_US") -> ToolMetadata:
-        """Get metadata for the video_timeline tool."""
-        if lang == "zh_CN":
-            return ToolMetadata(
-                name=self.name,
-                description="管理视频时间线项目 - 增加、删除、移动和更新时间线卡片。时间线索引从 1 开始。",
-                parameters=[
-                    ToolParameter(
-                        name="operation",
-                        description="操作类型：add（增加）、delete（删除）、move（移动）、update（更新）、list（列出所有时间线项目）、get（获取单个时间线项目）",
-                        param_type="string",
-                        required=True
-                    ),
-                    ToolParameter(
-                        name="index",
-                        description="时间线项目的索引（从 1 开始）。用于 delete、move、update、get 操作",
-                        param_type="number",
-                        required=False
-                    ),
-                    ToolParameter(
-                        name="to_index",
-                        description="目标位置索引（从 1 开始）。仅用于 move 操作",
-                        param_type="number",
-                        required=False
-                    ),
-                    ToolParameter(
-                        name="image_path",
-                        description="图片文件路径。仅用于 update 操作",
-                        param_type="string",
-                        required=False
-                    ),
-                    ToolParameter(
-                        name="video_path",
-                        description="视频文件路径。仅用于 update 操作",
-                        param_type="string",
-                        required=False
-                    ),
-                ],
-                return_description="返回操作结果，包含成功状态、操作详情和当前时间线信息"
-            )
-        else:
-            return ToolMetadata(
-                name=self.name,
-                description="Manage video timeline items - add, delete, move, and update timeline cards. Timeline indices are 1-indexed.",
-                parameters=[
-                    ToolParameter(
-                        name="operation",
-                        description="Operation type: add, delete, move, update, list, or get",
-                        param_type="string",
-                        required=True
-                    ),
-                    ToolParameter(
-                        name="index",
-                        description="Timeline item index (1-indexed). Required for delete, move, update, get operations",
-                        param_type="number",
-                        required=False
-                    ),
-                    ToolParameter(
-                        name="to_index",
-                        description="Target position index (1-indexed). Required for move operation",
-                        param_type="number",
-                        required=False
-                    ),
-                    ToolParameter(
-                        name="image_path",
-                        description="Path to image file. Used for update operation",
-                        param_type="string",
-                        required=False
-                    ),
-                    ToolParameter(
-                        name="video_path",
-                        description="Path to video file. Used for update operation",
-                        param_type="string",
-                        required=False
-                    ),
-                ],
-                return_description="Returns operation result with success status, operation details, and current timeline info"
-            )
+    # metadata() is now handled by BaseTool using tool.md
+    # No need to override here
 
     async def execute(
         self,

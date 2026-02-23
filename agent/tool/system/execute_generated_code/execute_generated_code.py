@@ -1,11 +1,15 @@
+from pathlib import Path
 from typing import Any, Dict, Optional, TYPE_CHECKING, AsyncGenerator
 import logging
-from ..base_tool import BaseTool, ToolMetadata, ToolParameter
+from ...base_tool import BaseTool, ToolMetadata, ToolParameter
+
+# Tool directory for metadata loading
+_tool_dir = Path(__file__).parent
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from ...tool_context import ToolContext
+    from ....tool_context import ToolContext
     from agent.event.agent_event import AgentEvent
 
 
@@ -19,51 +23,11 @@ class ExecuteGeneratedCodeTool(BaseTool):
             name="execute_generated_code",
             description="Execute dynamically generated Python code"
         )
+        # Set tool directory for metadata loading from tool.md
+        self._tool_dir = _tool_dir
 
-    def metadata(self, lang: str = "en_US") -> ToolMetadata:
-        """Get metadata for the execute_generated_code tool."""
-        if lang == "zh_CN":
-            return ToolMetadata(
-                name=self.name,
-                description="执行动态生成的 Python 代码",
-                parameters=[
-                    ToolParameter(
-                        name="code",
-                        description="要执行的 Python 代码",
-                        param_type="string",
-                        required=True
-                    ),
-                    ToolParameter(
-                        name="args",
-                        description="传递给代码的参数",
-                        param_type="object",
-                        required=False,
-                        default={}
-                    ),
-                ],
-                return_description="返回代码的执行结果（流式输出）"
-            )
-        else:
-            return ToolMetadata(
-                name=self.name,
-                description="Execute dynamically generated Python code",
-                parameters=[
-                    ToolParameter(
-                        name="code",
-                        description="Python code to execute",
-                        param_type="string",
-                        required=True
-                    ),
-                    ToolParameter(
-                        name="args",
-                        description="Arguments to pass to the code",
-                        param_type="object",
-                        required=False,
-                        default={}
-                    ),
-                ],
-                return_description="Returns the execution result from the generated code (streamed)"
-            )
+    # metadata() is now handled by BaseTool using tool.md
+    # No need to override here
 
     async def execute(
         self,
@@ -93,7 +57,7 @@ class ExecuteGeneratedCodeTool(BaseTool):
         Yields:
             ReactEvent objects with progress updates and results
         """
-        from ..tool_service import ToolService
+        from ...tool_service import ToolService
 
         code = parameters.get("code")
         args = parameters.get("args", {})

@@ -1,11 +1,15 @@
+from pathlib import Path
 from typing import Any, Dict, Optional, TYPE_CHECKING, AsyncGenerator
 import logging
-from ..base_tool import BaseTool, ToolMetadata, ToolParameter
+from ...base_tool import BaseTool, ToolMetadata, ToolParameter
+
+# Tool directory for metadata loading
+_tool_dir = Path(__file__).parent
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from ...tool_context import ToolContext
+    from ....tool_context import ToolContext
     from agent.event.agent_event import AgentEvent
 
 
@@ -20,49 +24,11 @@ class ExecuteSkillTool(BaseTool):
             name="execute_skill",
             description="Execute a skill through ReAct-based chat stream"
         )
+        # Set tool directory for metadata loading from tool.md
+        self._tool_dir = _tool_dir
 
-    def metadata(self, lang: str = "en_US") -> ToolMetadata:
-        """Get metadata for the execute_skill tool."""
-        if lang == "zh_CN":
-            return ToolMetadata(
-                name=self.name,
-                description="通过 ReAct 执行一个 skill",
-                parameters=[
-                    ToolParameter(
-                        name="skill_name",
-                        description="skill 名称",
-                        param_type="string",
-                        required=True
-                    ),
-                    ToolParameter(
-                        name="prompt",
-                        description="任务描述/提示词（包含执行所需的关键信息）",
-                        param_type="string",
-                        required=True
-                    ),
-                ],
-                return_description="返回 skill 的执行结果（流式输出）"
-            )
-        else:
-            return ToolMetadata(
-                name=self.name,
-                description="Execute a skill through ReAct-based chat stream",
-                parameters=[
-                    ToolParameter(
-                        name="skill_name",
-                        description="Name of the skill to execute",
-                        param_type="string",
-                        required=True
-                    ),
-                    ToolParameter(
-                        name="prompt",
-                        description="Task prompt including required details",
-                        param_type="string",
-                        required=True
-                    ),
-                ],
-                return_description="Returns the execution result from the skill (streamed)"
-            )
+    # metadata() is now handled by BaseTool using tool.md
+    # No need to override here
 
     async def execute(
         self,

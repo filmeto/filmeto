@@ -1,12 +1,16 @@
 """TodoWrite tool for managing TODO lists in React process."""
+from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING, AsyncGenerator
 from datetime import datetime
 import logging
 
-from ..base_tool import BaseTool, ToolMetadata, ToolParameter
+from ...base_tool import BaseTool, ToolMetadata, ToolParameter
+
+# Tool directory for metadata loading
+_tool_dir = Path(__file__).parent
 
 if TYPE_CHECKING:
-    from ...tool_context import ToolContext
+    from ....tool_context import ToolContext
     from agent.event.agent_event import AgentEvent
 
 
@@ -40,37 +44,11 @@ class TodoWriteTool(BaseTool):
             name="todo_write",
             description="Create and manage structured task lists for tracking progress during complex tasks"
         )
+        # Set tool directory for metadata loading from tool.md
+        self._tool_dir = _tool_dir
 
-    def metadata(self, lang: str = "en_US") -> ToolMetadata:
-        """Get metadata for the todo_write tool."""
-        if lang == "zh_CN":
-            return ToolMetadata(
-                name=self.name,
-                description="为你当前的编码会话创建和管理结构化的任务列表。此工具帮助 AI 助手跟踪进度并组织复杂的任务。重要约束：1) TODO计划必须基于当前可用的工具来规划执行步骤；2) 不要将todo_write工具本身纳入TODO列表中。",
-                parameters=[
-                    ToolParameter(
-                        name="todos",
-                        description="待办事项列表，每个项目包含 content（任务描述）、status（状态：pending/in_progress/completed）、activeForm（进行时形式）。注意：请根据当前可用工具来规划任务，不要包含使用todo_write本身作为任务。",
-                        param_type="array",
-                        required=True
-                    ),
-                ],
-                return_description="返回任务列表的更新状态"
-            )
-        else:
-            return ToolMetadata(
-                name=self.name,
-                description="Create and manage structured task lists for your current coding session. This tool helps the AI assistant track progress and organize complex tasks. IMPORTANT CONSTRAINTS: 1) TODO planning must be based on currently available tools; 2) Do NOT include the todo_write tool itself in the TODO list.",
-                parameters=[
-                    ToolParameter(
-                        name="todos",
-                        description="Array of TODO items, each containing content (task description), status (pending/in_progress/completed), and activeForm (present continuous form). Note: Plan tasks based on available tools only, do NOT include using todo_write as a task.",
-                        param_type="array",
-                        required=True
-                    ),
-                ],
-                return_description="Returns the updated state of the task list"
-            )
+    # metadata() is now handled by BaseTool using tool.md
+    # No need to override here
 
     async def execute(
         self,
@@ -189,7 +167,7 @@ class TodoWriteTool(BaseTool):
 
     def _update_react_todo_state(self, react_instance, todos: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Update the React instance's TODO state."""
-        from ...react.types import TodoState
+        from ....react.types import TodoState
 
         existing_ids = {item.id for item in react_instance.todo_state.items}
         new_items = list(react_instance.todo_state.items)
@@ -261,7 +239,7 @@ class TodoWriteTool(BaseTool):
         Returns:
             TodoItem or None if parsing fails
         """
-        from ...react.types import TodoItem, TodoStatus
+        from ....react.types import TodoItem, TodoStatus
 
         if not isinstance(todo, dict):
             return None

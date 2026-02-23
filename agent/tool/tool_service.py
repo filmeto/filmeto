@@ -3,6 +3,8 @@ import runpy
 import io
 import contextlib
 import logging
+import importlib
+import re
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING, AsyncGenerator
@@ -26,10 +28,31 @@ class ToolService:
         self._register_system_tools()
 
     def _register_system_tools(self):
-        """Register all system tools from the system module."""
+        """Register all system tools by discovering tool directories."""
+        try:
+            system_dir = Path(__file__).parent / 'system'
+            if not system_dir.exists():
+                logger.warning(f"System tools directory not found: {system_dir}")
+                return
+
+            # Discover and register tools from subdirectories
+            for tool_dir in sorted(system_dir.iterdir()):
+                if tool_dir.is_dir() and not tool_dir.name.startswith('_'):
+                    self._register_tool_from_directory(tool_dir)
+
+            # Fallback to old __all__ based registration if no directories found
+            if not self.tools:
+                logger.info("No tool directories found, falling back to __all__ based registration")
+                self._register_system_tools_legacy()
+
+        except Exception as e:
+            # If system tools are not available, continue without registering them
+            logger.warning(f"System tools not available: {e}", exc_info=True)
+
+    def _register_system_tools_legacy(self):
+        """Legacy method to register system tools from __all__ export."""
         try:
             from .system import __all__ as system_tools
-            import importlib
 
             # Dynamically register all system tools
             for tool_class_name in system_tools:
@@ -41,8 +64,112 @@ class ToolService:
                 tool_instance = tool_class()
                 self.register_tool(tool_instance)
         except ImportError as e:
-            # If system tools are not available, continue without registering them
-            logger.warning(f"System tools not available: {e}", exc_info=True)
+            logger.warning(f"System tools not available (legacy): {e}", exc_info=True)
+
+    def _register_tool_from_directory(self, tool_dir: Path):
+        """
+        Register a tool from its directory.
+
+        The directory should contain:
+        - A Python module file (e.g., tool_name.py or __init__.py)
+        - A tool.md file with metadata (optional, for metadata-driven tools)
+
+        Args:
+            tool_dir: Path to the tool directory
+        """
+        import os
+
+        tool_name = tool_dir.name
+
+        # Try to find the tool class
+        tool_class = self._find_tool_class(tool_dir)
+        if tool_class is None:
+            logger.warning(f"No tool class found in {tool_dir}")
+            return
+
+        # Create an instance
+        try:
+            tool_instance = tool_class()
+
+            # Set _tool_dir for metadata loading
+            tool_instance._tool_dir = tool_dir
+
+            # Register the tool
+            self.register_tool(tool_instance)
+            logger.debug(f"Registered tool: {tool_name}")
+
+        except Exception as e:
+            logger.error(f"Failed to instantiate tool {tool_name}: {e}", exc_info=True)
+
+    def _find_tool_class(self, tool_dir: Path) -> Optional[type]:
+        """
+        Find the tool class in a tool directory.
+
+        The tool class can be defined in:
+        1. A Python module file matching the directory name (e.g., create_plan.py)
+        2. The __init__.py file
+
+        The tool class should follow the naming convention: {ToolName}Tool
+        (e.g., CreatePlanTool for a tool named "create_plan")
+
+        Args:
+            tool_dir: Path to the tool directory
+
+        Returns:
+            The tool class, or None if not found
+        """
+        tool_name = tool_dir.name
+
+        # Convert tool_name to class name (e.g., create_plan -> CreatePlanTool)
+        # Handle special cases
+        class_name_suffix = "Tool"
+        if tool_name == "video_timeline":
+            expected_class_name = "VideoTimelineTool"
+        else:
+            # Convert snake_case to PascalCase and add "Tool" suffix
+            expected_class_name = "".join(
+                word.capitalize() for word in tool_name.split("_")
+            ) + class_name_suffix
+
+        # Try to import from various possible module locations
+        possible_modules = []
+
+        # 1. Check for {tool_name}.py file
+        for py_file in tool_dir.glob(f"{tool_name}.py"):
+            possible_modules.append(f".system.{tool_name}.{tool_name}")
+
+        # 2. Check for {tool_name}_tool.py file (for video_timeline_tool.py)
+        for py_file in tool_dir.glob(f"{tool_name}_tool.py"):
+            module_name = py_file.stem
+            possible_modules.append(f".system.{tool_name}.{module_name}")
+
+        # 3. Check __init__.py
+        init_file = tool_dir / "__init__.py"
+        if init_file.exists():
+            possible_modules.append(f".system.{tool_name}")
+
+        # Try each possible module
+        for module_name in possible_modules:
+            try:
+                module = importlib.import_module(module_name, package=__package__)
+
+                # Look for the expected class name
+                if hasattr(module, expected_class_name):
+                    return getattr(module, expected_class_name)
+
+                # Look for any class ending with "Tool"
+                for attr_name in dir(module):
+                    attr = getattr(module, attr_name)
+                    if (isinstance(attr, type) and
+                            issubclass(attr, BaseTool) and
+                            attr is not BaseTool):
+                        return attr
+
+            except (ImportError, AttributeError) as e:
+                logger.debug(f"Failed to import {module_name}: {e}")
+                continue
+
+        return None
 
     @contextmanager
     def _sys_path_manager(self, project_root: str):

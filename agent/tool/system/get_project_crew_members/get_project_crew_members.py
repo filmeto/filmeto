@@ -1,12 +1,16 @@
-from ..base_tool import BaseTool, ToolMetadata, ToolParameter
+from pathlib import Path
+from ...base_tool import BaseTool, ToolMetadata, ToolParameter
 from typing import Any, Dict, Optional, TYPE_CHECKING, AsyncGenerator
 import logging
 from agent.crew.crew_service import CrewService
 
+# Tool directory for metadata loading
+_tool_dir = Path(__file__).parent
+
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from ...tool_context import ToolContext
+    from ....tool_context import ToolContext
     from agent.event.agent_event import AgentEvent
 
 
@@ -20,39 +24,11 @@ class GetProjectCrewMembersTool(BaseTool):
             name="get_project_crew_members",
             description="Get the list of crew members in the current project"
         )
+        # Set tool directory for metadata loading from tool.md
+        self._tool_dir = _tool_dir
 
-    def metadata(self, lang: str = "en_US") -> ToolMetadata:
-        """Get metadata for the get_project_crew_members tool."""
-        if lang == "zh_CN":
-            return ToolMetadata(
-                name=self.name,
-                description="获取当前项目中的团队成员列表",
-                parameters=[
-                    ToolParameter(
-                        name="project",
-                        description="项目对象，包含项目名称等信息",
-                        param_type="object",
-                        required=False,
-                        default=None
-                    ),
-                ],
-                return_description="返回团队成员列表，每个成员包含 id、name、role、description、soul、skills、model、temperature、max_steps、color 和 icon 等信息"
-            )
-        else:
-            return ToolMetadata(
-                name=self.name,
-                description="Get the list of crew members in the current project",
-                parameters=[
-                    ToolParameter(
-                        name="project",
-                        description="Project object containing project name and other information",
-                        param_type="object",
-                        required=False,
-                        default=None
-                    ),
-                ],
-                return_description="Returns a list of crew members, each member contains id, name, role, description, soul, skills, model, temperature, max_steps, color, and icon"
-            )
+    # metadata() is now handled by BaseTool using tool.md
+    # No need to override here
 
     async def execute(
         self,

@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING, AsyncGenerator
 from dataclasses import dataclass, field
 
@@ -70,6 +71,10 @@ class BaseTool(ABC):
     All tools must inherit from this class and implement the execute method.
     """
 
+    # Tool directory path (set by subclass or auto-discovered)
+    # When set, metadata() will load from tool.md file in this directory
+    _tool_dir: Optional[Path] = None
+
     def __init__(self, name: str, description: str):
         self.name = name
         self.description = description
@@ -119,6 +124,16 @@ class BaseTool(ABC):
         Returns:
             ToolMetadata object containing the tool's metadata
         """
+        # Try loading from tool.md if _tool_dir is set
+        if self._tool_dir:
+            try:
+                from .tool_loader import ToolMetadataLoader
+                return ToolMetadataLoader.load_metadata(self._tool_dir, lang)
+            except (FileNotFoundError, ValueError) as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Failed to load metadata from tool.md for {self.name}: {e}")
+
         # Default implementation returns basic metadata
         # Subclasses should override this to provide detailed metadata
         return ToolMetadata(

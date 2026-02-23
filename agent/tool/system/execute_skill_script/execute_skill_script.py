@@ -1,12 +1,16 @@
 import os
+from pathlib import Path
 import logging
 from typing import Any, Dict, Optional, TYPE_CHECKING, AsyncGenerator
-from ..base_tool import BaseTool, ToolMetadata, ToolParameter
+from ...base_tool import BaseTool, ToolMetadata, ToolParameter
+
+# Tool directory for metadata loading
+_tool_dir = Path(__file__).parent
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from ...tool_context import ToolContext
+    from ....tool_context import ToolContext
     from agent.event.agent_event import AgentEvent
 
 
@@ -20,75 +24,11 @@ class ExecuteSkillScriptTool(BaseTool):
             name="execute_skill_script",
             description="Execute a pre-defined script from a skill"
         )
+        # Set tool directory for metadata loading from tool.md
+        self._tool_dir = _tool_dir
 
-    def metadata(self, lang: str = "en_US") -> ToolMetadata:
-        """Get metadata for the execute_skill_script tool."""
-        if lang == "zh_CN":
-            return ToolMetadata(
-                name=self.name,
-                description="执行 skill 中预定义的脚本。可以直接指定完整脚本路径，或使用 skill_path + script_name 的组合。",
-                parameters=[
-                    ToolParameter(
-                        name="script_path",
-                        description="脚本的完整路径（优先使用此参数）",
-                        param_type="string",
-                        required=False
-                    ),
-                    ToolParameter(
-                        name="skill_path",
-                        description="skill 目录路径（当 script_path 未提供时使用）",
-                        param_type="string",
-                        required=False
-                    ),
-                    ToolParameter(
-                        name="script_name",
-                        description="要执行的脚本名称（当 script_path 未提供时使用）",
-                        param_type="string",
-                        required=False
-                    ),
-                    ToolParameter(
-                        name="args",
-                        description="传递给脚本的参数",
-                        param_type="object",
-                        required=False,
-                        default={}
-                    ),
-                ],
-                return_description="返回脚本的执行结果（流式输出）"
-            )
-        else:
-            return ToolMetadata(
-                name=self.name,
-                description="Execute a pre-defined script from a skill. Can specify full script path directly, or use skill_path + script_name combination.",
-                parameters=[
-                    ToolParameter(
-                        name="script_path",
-                        description="Full path to the script (takes priority over skill_path + script_name)",
-                        param_type="string",
-                        required=False
-                    ),
-                    ToolParameter(
-                        name="skill_path",
-                        description="Path to the skill directory (used when script_path is not provided)",
-                        param_type="string",
-                        required=False
-                    ),
-                    ToolParameter(
-                        name="script_name",
-                        description="Name of the script to execute (used when script_path is not provided)",
-                        param_type="string",
-                        required=False
-                    ),
-                    ToolParameter(
-                        name="args",
-                        description="Arguments to pass to the script",
-                        param_type="object",
-                        required=False,
-                        default={}
-                    ),
-                ],
-                return_description="Returns the execution result from the script (streamed)"
-            )
+    # metadata() is now handled by BaseTool using tool.md
+    # No need to override here
 
     async def execute(
         self,
@@ -118,7 +58,7 @@ class ExecuteSkillScriptTool(BaseTool):
         Yields:
             ReactEvent objects with progress updates and results
         """
-        from ..tool_service import ToolService
+        from ...tool_service import ToolService
 
         script_path = parameters.get("script_path")
         skill_path = parameters.get("skill_path")
