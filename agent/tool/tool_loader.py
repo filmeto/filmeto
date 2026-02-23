@@ -12,9 +12,20 @@ class ToolMetadataLoader:
 
     This module supports:
     - Loading metadata from tool.md files with YAML frontmatter
-    - Internationalization through language-suffixed variants (tool.md.en_US, tool.md.zh_CN)
+    - Internationalization through language-suffixed files (tool.md for en_US, tool_zh_CN.md for zh_CN)
     - Fallback to default tool.md when language-specific file is not available
+
+    File naming convention:
+    - tool.md: English (en_US) - default/fallback
+    - tool_zh_CN.md: Chinese (zh_CN)
+    - tool_{lang}.md: Other languages
     """
+
+    # Language code to file suffix mapping
+    LANG_FILE_SUFFIXES = {
+        "en_US": "",  # Default, no suffix
+        "zh_CN": "_zh_CN",
+    }
 
     @staticmethod
     def load_metadata(tool_dir: Path, lang: str = "en_US"):
@@ -34,13 +45,8 @@ class ToolMetadataLoader:
         """
         from .base_tool import ToolMetadata, ToolParameter
 
-        # Try language-specific file first, then fall back to default
-        metadata_file = tool_dir / f"tool.md.{lang}"
-        if not metadata_file.exists():
-            metadata_file = tool_dir / "tool.md"
-
-        if not metadata_file.exists():
-            raise FileNotFoundError(f"tool.md not found in {tool_dir}")
+        # Determine the metadata file to load based on language
+        metadata_file = ToolMetadataLoader._get_metadata_file(tool_dir, lang)
 
         # Parse the markdown file with YAML frontmatter
         data = ToolMetadataLoader._load_yaml_frontmatter(metadata_file)
@@ -50,17 +56,17 @@ class ToolMetadataLoader:
         if not name:
             raise ValueError(f"Missing 'name' field in {metadata_file}")
 
-        # Parse description with i18n support
-        description = ToolMetadataLoader._parse_localized_string(
-            data.get("description"),
-            lang
-        )
+        # In the new format, description and return_description are plain strings
+        # (no longer i18n dicts within the file)
+        description = data.get("description", "")
+        if isinstance(description, dict):
+            # Backward compatibility: handle old format with i18n dict
+            description = description.get(lang, description.get("en_US", ""))
 
-        # Parse return description with i18n support
-        return_description = ToolMetadataLoader._parse_localized_string(
-            data.get("return_description", ""),
-            lang
-        )
+        return_description = data.get("return_description", "")
+        if isinstance(return_description, dict):
+            # Backward compatibility: handle old format with i18n dict
+            return_description = return_description.get(lang, return_description.get("en_US", ""))
 
         # Parse parameters
         parameters = []
@@ -69,10 +75,11 @@ class ToolMetadataLoader:
             if not param_name:
                 raise ValueError(f"Missing parameter 'name' in {metadata_file}")
 
-            param_description = ToolMetadataLoader._parse_localized_string(
-                param_data.get("description", ""),
-                lang
-            )
+            # In the new format, description is a plain string
+            param_description = param_data.get("description", "")
+            if isinstance(param_description, dict):
+                # Backward compatibility: handle old format with i18n dict
+                param_description = param_description.get(lang, param_description.get("en_US", ""))
 
             param_type = param_data.get("type", "string")
             required = param_data.get("required", False)
@@ -94,37 +101,35 @@ class ToolMetadataLoader:
         )
 
     @staticmethod
-    def _parse_localized_string(data: Any, lang: str) -> str:
+    def _get_metadata_file(tool_dir: Path, lang: str) -> Path:
         """
-        Extract localized string from data.
-
-        The data can be:
-        - A plain string (returned as-is)
-        - A dict with language codes as keys (returns the value for the specified language)
-        - A dict with "default" key (fallback if language not found)
+        Get the metadata file path for a given language.
 
         Args:
-            data: The data to parse
+            tool_dir: Path to the tool directory
             lang: Language code (e.g., "en_US", "zh_CN")
 
         Returns:
-            Localized string, or empty string if data is None
+            Path to the metadata file
+
+        Raises:
+            FileNotFoundError: If no suitable metadata file is found
         """
-        if data is None:
-            return ""
+        # Get the file suffix for the language
+        suffix = ToolMetadataLoader.LANG_FILE_SUFFIXES.get(lang, f"_{lang}")
 
-        if isinstance(data, str):
-            return data
+        # Try language-specific file first (e.g., tool_zh_CN.md)
+        if suffix:
+            lang_file = tool_dir / f"tool{suffix}.md"
+            if lang_file.exists():
+                return lang_file
 
-        if isinstance(data, dict):
-            # Try to get the language-specific value
-            if lang in data:
-                return data[lang]
-            # Fall back to "default" or "en_US"
-            return data.get("default", data.get("en_US", ""))
+        # Fall back to default tool.md
+        default_file = tool_dir / "tool.md"
+        if default_file.exists():
+            return default_file
 
-        # Convert other types to string
-        return str(data)
+        raise FileNotFoundError(f"No tool.md found in {tool_dir}")
 
     @staticmethod
     def _load_yaml_frontmatter(file_path: Path) -> Dict[str, Any]:
