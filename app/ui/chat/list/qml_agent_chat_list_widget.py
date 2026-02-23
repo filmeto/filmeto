@@ -637,7 +637,7 @@ class QmlAgentChatListWidget(BaseWidget):
         Returns:
             A merged SkillContent or None if merging fails
         """
-        from agent.chat.content import SkillContent, SkillExecutionState
+        from agent.chat.content import SkillContent, SkillExecutionState, ContentStatus
 
         if not skill_entries:
             return None
@@ -714,17 +714,17 @@ class QmlAgentChatListWidget(BaseWidget):
         final_state = base_data.get("state", SkillExecutionState.IN_PROGRESS.value)
         # Map skill execution state to content status
         if final_state == SkillExecutionState.COMPLETED.value:
-            final_status = "completed"
+            final_status = ContentStatus.COMPLETED
         elif final_state == SkillExecutionState.ERROR.value:
-            final_status = "failed"
+            final_status = ContentStatus.FAILED
         elif final_state == SkillExecutionState.IN_PROGRESS.value:
-            final_status = "in_progress"
+            final_status = ContentStatus.UPDATING
         else:
-            final_status = "creating"
+            final_status = ContentStatus.CREATING
 
         # Create merged SkillContent
         merged = SkillContent(
-            content_type=base_entry.get("content_type", "skill"),
+            content_type=ContentType(base_entry.get("content_type", "skill")),
             title=base_entry.get("title", f"Skill: {skill_name}"),
             description=base_entry.get("description", f"Skill execution: {skill_name}"),
             content_id=base_entry.get("content_id"),
@@ -1032,7 +1032,7 @@ class QmlAgentChatListWidget(BaseWidget):
         - Gets finalized on skill_end or skill_error
         - Collects child contents (tool calls, etc.) during execution
         """
-        from agent.chat.content import SkillContent, SkillExecutionState
+        from agent.chat.content import SkillContent, SkillExecutionState, ContentStatus
 
         # Extract data from event content (SkillContent is already in event.content)
         skill_content = getattr(event, 'content', None)
