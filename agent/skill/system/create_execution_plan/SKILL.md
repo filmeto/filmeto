@@ -1,10 +1,10 @@
 ---
 name: create_execution_plan
-description: Creates an execution plan for film production projects
+description: Creates an execution plan for film production projects using the plan tool
 ---
 # Execution Plan Creation Skill
 
-This skill creates an execution plan for film production projects using the plan service. It allows producers and other crew members to define and track project milestones, tasks, and responsibilities.
+This skill creates an execution plan for film production projects using the plan tool. It allows producers and other crew members to define and track project milestones, tasks, and responsibilities.
 
 ## Capabilities
 

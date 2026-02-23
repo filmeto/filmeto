@@ -2,7 +2,7 @@
 """
 Execution Plan Creation Skill Script
 
-This script creates execution plans for film production projects using the create_plan tool.
+This script creates execution plans for film production projects using the plan tool.
 """
 import json
 import sys
@@ -23,7 +23,7 @@ def execute(context: 'ToolContext', args: Dict[str, Any]) -> Dict[str, Any]:
     Execute the create_execution_plan skill in context.
 
     This is the main entry point for in-context execution via SkillExecutor.
-    It calls the 'create_plan' tool using the execute_tool function.
+    It calls the 'plan' tool using the execute_tool function.
 
     Args:
         context: SkillContext object containing workspace and project
@@ -44,26 +44,29 @@ def execute(context: 'ToolContext', args: Dict[str, Any]) -> Dict[str, Any]:
                 "message": "plan_name is required"
             }
 
-        # Call the 'create_plan' tool using execute_tool
+        # Call the 'plan' tool using execute_tool
         # The parameters for the tool are passed in the parameters dict
         tool_params = {
+            'operation': 'create',
             'title': plan_name,
             'description': description,
             'tasks': tasks
         }
 
-        # Use execute_tool to call the create_plan tool
-        result = execute_tool("create_plan", tool_params)
+        # Use execute_tool to call the plan tool
+        result = execute_tool("plan", tool_params)
 
         # Process the result from the tool
         if result and isinstance(result, dict):
-            if 'id' in result:  # If the tool returned a plan ID, it was successful
+            # New plan tool returns result in 'plan' field with 'success' flag
+            plan_data = result.get('plan') or result
+            if result.get('success') or 'id' in plan_data:  # If the tool returned a plan ID, it was successful
                 return {
                     "success": True,
                     "message": f"Execution plan '{plan_name}' created successfully",
-                    "plan_id": result['id'],
-                    "plan_name": result.get('title', plan_name),
-                    "project": result.get('project', 'Unknown Project')
+                    "plan_id": plan_data.get('id'),
+                    "plan_name": plan_data.get('title', plan_name),
+                    "project": plan_data.get('project', 'Unknown Project')
                 }
             else:
                 return {
@@ -86,7 +89,7 @@ def execute(context: 'ToolContext', args: Dict[str, Any]) -> Dict[str, Any]:
 
 def create_execution_plan(plan_name: str, description: str = "", tasks: list = None) -> Dict[str, Any]:
     """
-    Create an execution plan using the create_plan tool.
+    Create an execution plan using the plan tool.
 
     Args:
         plan_name (str): Name of the execution plan
@@ -97,25 +100,28 @@ def create_execution_plan(plan_name: str, description: str = "", tasks: list = N
         dict: Result of the operation with success status and message
     """
     try:
-        # Call the 'create_plan' tool using execute_tool
+        # Call the 'plan' tool using execute_tool
         # The parameters for the tool are passed in the parameters dict
         tool_params = {
+            'operation': 'create',
             'title': plan_name,
             'description': description,
             'tasks': tasks or []
         }
 
-        # Use execute_tool to call the create_plan tool
-        result = execute_tool("create_plan", tool_params)
+        # Use execute_tool to call the plan tool
+        result = execute_tool("plan", tool_params)
 
         # Process the result from the tool
         if result and isinstance(result, dict):
-            if 'id' in result:  # If the tool returned a plan ID, it was successful
+            # New plan tool returns result in 'plan' field with 'success' flag
+            plan_data = result.get('plan') or result
+            if result.get('success') or 'id' in plan_data:  # If the tool returned a plan ID, it was successful
                 return {
                     "success": True,
                     "message": f"Execution plan '{plan_name}' created successfully",
-                    "plan_id": result['id'],
-                    "plan_name": result.get('title', plan_name)
+                    "plan_id": plan_data.get('id'),
+                    "plan_name": plan_data.get('title', plan_name)
                 }
             else:
                 return {
