@@ -1,7 +1,7 @@
 """Tool metadata loader for parsing tool.md files."""
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -12,20 +12,18 @@ class ToolMetadataLoader:
 
     This module supports:
     - Loading metadata from tool.md files with YAML frontmatter
-    - Internationalization through language-suffixed files (tool.md for en_US, tool_zh_CN.md for zh_CN)
-    - Fallback to default tool.md when language-specific file is not available
+    - Internationalization through language-suffixed files
+    - Fallback to default tool.md (en_US) when language-specific file is not found
 
     File naming convention:
     - tool.md: English (en_US) - default/fallback
     - tool_zh_CN.md: Chinese (zh_CN)
-    - tool_{lang}.md: Other languages
-    """
+    - tool_{lang}.md: Other languages (e.g., tool_ja_JP.md for Japanese)
 
-    # Language code to file suffix mapping
-    LANG_FILE_SUFFIXES = {
-        "en_US": "",  # Default, no suffix
-        "zh_CN": "_zh_CN",
-    }
+    Adding a new language:
+    Simply create a new file with the pattern tool_{lang}.md in the tool directory.
+    No code changes required.
+    """
 
     @staticmethod
     def load_metadata(tool_dir: Path, lang: str = "en_US"):
@@ -34,7 +32,7 @@ class ToolMetadataLoader:
 
         Args:
             tool_dir: Path to the tool directory
-            lang: Language code (e.g., "en_US", "zh_CN")
+            lang: Language code (e.g., "en_US", "zh_CN", "ja_JP")
 
         Returns:
             ToolMetadata object with localized metadata
@@ -56,17 +54,11 @@ class ToolMetadataLoader:
         if not name:
             raise ValueError(f"Missing 'name' field in {metadata_file}")
 
-        # In the new format, description and return_description are plain strings
-        # (no longer i18n dicts within the file)
+        # Get description (plain string in new format)
         description = data.get("description", "")
-        if isinstance(description, dict):
-            # Backward compatibility: handle old format with i18n dict
-            description = description.get(lang, description.get("en_US", ""))
 
+        # Get return description (plain string in new format)
         return_description = data.get("return_description", "")
-        if isinstance(return_description, dict):
-            # Backward compatibility: handle old format with i18n dict
-            return_description = return_description.get(lang, return_description.get("en_US", ""))
 
         # Parse parameters
         parameters = []
@@ -75,11 +67,8 @@ class ToolMetadataLoader:
             if not param_name:
                 raise ValueError(f"Missing parameter 'name' in {metadata_file}")
 
-            # In the new format, description is a plain string
+            # Get parameter description (plain string in new format)
             param_description = param_data.get("description", "")
-            if isinstance(param_description, dict):
-                # Backward compatibility: handle old format with i18n dict
-                param_description = param_description.get(lang, param_description.get("en_US", ""))
 
             param_type = param_data.get("type", "string")
             required = param_data.get("required", False)
@@ -115,16 +104,13 @@ class ToolMetadataLoader:
         Raises:
             FileNotFoundError: If no suitable metadata file is found
         """
-        # Get the file suffix for the language
-        suffix = ToolMetadataLoader.LANG_FILE_SUFFIXES.get(lang, f"_{lang}")
-
-        # Try language-specific file first (e.g., tool_zh_CN.md)
-        if suffix:
-            lang_file = tool_dir / f"tool{suffix}.md"
+        # For non-English languages, try language-specific file first (e.g., tool_zh_CN.md)
+        if lang != "en_US":
+            lang_file = tool_dir / f"tool_{lang}.md"
             if lang_file.exists():
                 return lang_file
 
-        # Fall back to default tool.md
+        # Fall back to default tool.md (English)
         default_file = tool_dir / "tool.md"
         if default_file.exists():
             return default_file
