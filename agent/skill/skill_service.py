@@ -154,6 +154,16 @@ class SkillService:
                     if os.path.isfile(script_path) and script_file.endswith('.py'):
                         scripts.append(script_path)
 
+            # Parse tools from metadata - list of tool names this skill can use
+            tools_meta = meta_dict.get('tools')
+            tools = None
+            if tools_meta:
+                if isinstance(tools_meta, list):
+                    tools = tools_meta
+                elif isinstance(tools_meta, str):
+                    # Split by comma if it's a string
+                    tools = [t.strip() for t in tools_meta.split(',') if t.strip()]
+
             # Create and return the skill object
             skill = Skill(
                 name=name,
@@ -162,7 +172,8 @@ class SkillService:
                 skill_path=skill_path,
                 reference=reference,
                 examples=examples,
-                scripts=scripts
+                scripts=scripts,
+                tools=tools
             )
 
             return skill
@@ -343,6 +354,10 @@ class SkillService:
             'description': skill.description,
         }
 
+        # Add tools to metadata if configured
+        if skill.tools:
+            metadata['tools'] = skill.tools
+
         # Determine the SKILL file name based on language
         skill_md_filename = f"SKILL_{language}.md" if language else "SKILL.md"
         skill_md_path = os.path.join(skill_dir, skill_md_filename)
@@ -427,6 +442,12 @@ class SkillService:
             current_metadata, _ = read_md_with_meta(skill_md_path)
             current_metadata.update(metadata)
             current_metadata.pop('parameters', None)
+
+            # Handle tools field
+            if updated_skill.tools is not None:
+                # If tools are explicitly set in updated_skill, use them
+                current_metadata['tools'] = updated_skill.tools
+            # If tools is None, keep existing tools configuration (don't remove it)
 
             # Update the SKILL.md file using md_with_meta_utils
             write_md_with_meta(skill_md_path, current_metadata, updated_skill.knowledge)

@@ -1,6 +1,9 @@
 ---
 name: create_execution_plan
 description: Creates an execution plan for film production projects using the plan tool
+tools:
+  - plan
+  - crew_member
 ---
 # Execution Plan Creation Skill
 

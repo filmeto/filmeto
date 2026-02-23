@@ -23,6 +23,7 @@ class Skill:
     reference: Optional[str] = None
     examples: Optional[str] = None
     scripts: Optional[List[str]] = None
+    tools: Optional[List[str]] = None  # List of tool names that this skill can use
 
     def get_example_call(self, prompt: Optional[str] = None) -> str:
         """Generate an example tool call for executing this skill."""

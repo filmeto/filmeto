@@ -125,16 +125,29 @@ class SkillChat:
 
             # Build available tool names based on skill type
             tool_service = ToolService()
-            available_tool_names = list(tool_service.get_available_tools())
+            all_tools = list(tool_service.get_available_tools())
 
-            # Add todo tool for complex task tracking
-            available_tool_names.append("todo")
+            # If skill has configured tools, use only those; otherwise use all tools
+            if skill.tools and len(skill.tools) > 0:
+                # Use skill-specific tool list
+                available_tool_names = list(skill.tools)
+                # Ensure the tools actually exist
+                available_tool_names = [t for t in available_tool_names if t in all_tools]
+            else:
+                # No tool restriction, use all available tools
+                available_tool_names = all_tools
+
+            # Add todo tool for complex task tracking (if not already in list)
+            if "todo" not in available_tool_names:
+                available_tool_names.append("todo")
 
             # Add skill-specific tools based on whether skill has scripts
             if skill.scripts:
-                available_tool_names.append("execute_skill_script")
+                if "execute_skill_script" not in available_tool_names:
+                    available_tool_names.append("execute_skill_script")
             else:
-                available_tool_names.append("execute_generated_code")
+                if "execute_generated_code" not in available_tool_names:
+                    available_tool_names.append("execute_generated_code")
 
             def build_prompt_function(user_question: str) -> str:
                 return self._build_skill_react_prompt(

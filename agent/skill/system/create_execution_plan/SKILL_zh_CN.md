@@ -1,6 +1,9 @@
 ---
 name: create_execution_plan
 description: 为影视制作项目创建执行计划，使用计划工具
+tools:
+  - plan
+  - crew_member
 ---
 # 执行计划创建技能
 
