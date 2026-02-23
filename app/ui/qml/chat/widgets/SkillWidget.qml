@@ -22,13 +22,6 @@ Rectangle {
     border.color: Qt.rgba(widgetColor.r, widgetColor.g, widgetColor.b, 0.3)
     border.width: 1
 
-    // Click to toggle expand
-    MouseArea {
-        anchors.fill: parent
-        cursorShape: Qt.PointingHandCursor
-        onClicked: root.expanded = !root.expanded
-    }
-
     Column {
         id: skillColumn
         anchors {
@@ -38,43 +31,57 @@ Rectangle {
         spacing: 8
 
         // Header row with icon, skill name, and expand indicator
-        Row {
+        // Click header to toggle expand/collapse
+        Item {
             width: parent.width
-            spacing: 8
+            height: headerRow.implicitHeight
 
-            // Skill icon
-            Rectangle {
-                width: 24
-                height: 24
-                radius: 4
-                color: root.widgetColor
-                anchors.verticalCenter: parent.verticalCenter
+            Row {
+                id: headerRow
+                width: parent.width
+                spacing: 8
 
+                // Skill icon
+                Rectangle {
+                    width: 24
+                    height: 24
+                    radius: 4
+                    color: root.widgetColor
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "⚡"
+                        font.pixelSize: 14
+                    }
+                }
+
+                // Skill name
                 Text {
-                    anchors.centerIn: parent
-                    text: "⚡"
-                    font.pixelSize: 14
+                    width: parent.width - 24 - expandIndicator.width - parent.spacing * 2
+                    text: root.skillData.skill_name || root.skillData.name || "Skill"
+                    color: "#e0e0e0"
+                    font.pixelSize: 13
+                    font.weight: Font.Medium
+                    wrapMode: Text.WordWrap
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                // Expand/collapse indicator
+                Text {
+                    id: expandIndicator
+                    text: root.expanded ? "▼" : "▶"
+                    color: "#a0a0a0"
+                    font.pixelSize: 10
+                    anchors.verticalCenter: parent.verticalCenter
                 }
             }
 
-            // Skill name
-            Text {
-                width: parent.width - 24 - expandIndicator.width - parent.spacing * 2
-                text: root.skillData.skill_name || root.skillData.name || "Skill"
-                color: "#e0e0e0"
-                font.pixelSize: 13
-                font.weight: Font.Medium
-                wrapMode: Text.WordWrap
-                anchors.verticalCenter: parent.verticalCenter
-            }
-
-            // Expand/collapse indicator
-            Text {
-                id: expandIndicator
-                text: root.expanded ? "▼" : "▶"
-                color: "#a0a0a0"
-                font.pixelSize: 10
-                anchors.verticalCenter: parent.verticalCenter
+            // MouseArea only on header - child components can receive their own clicks
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.expanded = !root.expanded
             }
         }
 
