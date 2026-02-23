@@ -957,7 +957,7 @@ class FilmetoAgent:
             producer_message_id = str(uuid.uuid4())
 
             # Stream directly to the producer agent without creating a plan automatically
-            # The producer will decide whether to create a plan using the create_execution_plan skill
+            # The producer will decide whether to create a plan using the production_plan skill
             async for event in self._stream_crew_member(
                 producer_agent,
                 _extract_text_content(initial_prompt),
@@ -974,7 +974,7 @@ class FilmetoAgent:
             # If a plan was created, execute the plan tasks
             if project_name:
                 # Check if any plan was created during the producer's response
-                # This would happen if the producer used the create_execution_plan skill
+                # This would happen if the producer used the production_plan skill
                 # Get the most recently created active plan for this project
                 latest_plan = self.plan_service.get_last_active_plan_for_project(project_name)
                 if latest_plan and latest_plan.id != active_plan_id:  # Only execute if a new plan was created
