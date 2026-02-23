@@ -89,22 +89,6 @@ execution:
 # Configuration schema for creating server instances
 config_schema:
   fields:
-    - name: access_key_id
-      label: AccessKey ID
-      type: string
-      required: true
-      default: ""
-      description: Alibaba Cloud AccessKey ID
-      placeholder: "LTAI..."
-    
-    - name: access_key_secret
-      label: AccessKey Secret
-      type: password
-      required: true
-      default: ""
-      description: Alibaba Cloud AccessKey Secret
-      placeholder: "Enter AccessKey Secret"
-
     - name: agent_key
       label: Agent Key / App ID
       type: string
@@ -112,7 +96,7 @@ config_schema:
       default: ""
       description: Bailian Agent Key or App ID
       placeholder: "Enter Agent Key or App ID"
-    
+
     - name: endpoint
       label: API Endpoint
       type: url

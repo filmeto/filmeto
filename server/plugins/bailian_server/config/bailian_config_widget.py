@@ -41,16 +41,9 @@ class BailianConfigWidget(QWidget):
         container.setStyleSheet("background-color: #1e1e1e;")
         container_layout = QVBoxLayout(container)
         
-        # Credentials Group
-        creds_group = self._create_form_group("Alibaba Cloud Credentials", [
-            ("access_key_id", "AccessKey ID", "text", "", True, "Your Alibaba Cloud AccessKey ID"),
-            ("access_key_secret", "AccessKey Secret", "password", "", True, "Your Alibaba Cloud AccessKey Secret (used as API Key)"),
-        ])
-        container_layout.addWidget(creds_group)
-        
-        # Bailian Group
+        # Bailian Settings
         bailian_group = self._create_form_group("Bailian Settings", [
-            ("agent_key", "Agent Key / App ID", "text", "", False, "Default Bailian App ID or Agent Key"),
+            ("agent_key", "Agent Key / App ID", "text", "", True, "Bailian Agent Key or App ID"),
             ("endpoint", "API Endpoint", "text", "https://bailian.aliyuncs.com", False, "Bailian API endpoint URL"),
         ])
         container_layout.addWidget(bailian_group)
@@ -120,7 +113,7 @@ class BailianConfigWidget(QWidget):
 
     def validate_config(self) -> bool:
         config = self.get_config()
-        if not config.get('access_key_id') or not config.get('access_key_secret'):
-            QMessageBox.warning(self, "Validation Error", "AccessKey ID and Secret are required.")
+        if not config.get('agent_key'):
+            QMessageBox.warning(self, "Validation Error", "Agent Key / App ID is required.")
             return False
         return True
