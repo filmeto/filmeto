@@ -992,11 +992,39 @@ class QmlAgentChatListWidget(BaseWidget):
         })
         self._scroll_to_bottom(force=True)  # Streaming update, always scroll
 
+    def _finalize_previous_agent_card(self, agent_name: str):
+        """Remove typing indicators from the previous card of an agent.
+
+        When a new message starts, the previous message should reach its
+        terminal state (no more bouncing dots).
+        """
+        prev_message_id = self._agent_current_cards.get(agent_name)
+        if not prev_message_id:
+            return
+        prev_item = self._model.get_item_by_message_id(prev_message_id)
+        if not prev_item:
+            return
+        current_structured = prev_item.get(QmlAgentChatListModel.STRUCTURED_CONTENT, [])
+        has_typing = any(
+            sc.get('content_type') == 'typing' for sc in current_structured
+        )
+        if has_typing:
+            filtered = [
+                sc for sc in current_structured
+                if sc.get('content_type') != 'typing'
+            ]
+            self._model.update_item(prev_message_id, {
+                QmlAgentChatListModel.STRUCTURED_CONTENT: filtered,
+            })
+
     def get_or_create_agent_card(self, message_id: str, agent_name: str, title=None):
         """Get or create an agent message card."""
         existing_row = self._model.get_row_by_message_id(message_id)
         if existing_row is not None:
             return message_id
+
+        # Finalize the previous card so its typing indicator reaches terminal state
+        self._finalize_previous_agent_card(agent_name)
 
         agent_color, agent_icon, crew_member_data = self._resolve_agent_metadata(agent_name)
 
