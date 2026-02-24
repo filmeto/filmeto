@@ -176,6 +176,7 @@ class QmlAgentChatListWidget(BaseWidget):
         load_more_timer.setSingleShot(True)
         load_more_timer.timeout.connect(self._history_manager.load_older_messages)
         self._scroll_manager.set_qml_root(self._qml_root)
+        self._scroll_manager.set_qml_handler(self._qml_handler)  # Connect scroll manager to qml handler for state access
         self._scroll_manager.connect_load_more_callback(self._history_manager.load_older_messages)
         self._qml_handler.set_debounce_timer(load_more_timer)
 

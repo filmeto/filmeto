@@ -19,15 +19,17 @@ class ScrollManager:
     """Manages scroll position for the chat list.
 
     This class handles:
-    - Tracking whether user is at bottom of list
     - Scrolling to bottom (with optional force)
     - Saving and restoring scroll position during loads
     - Load-more debouncing
 
+    Note: Scroll position state (_user_at_bottom) is managed by QmlHandler
+    which receives the scrollPositionChanged signal from QML.
+
     Attributes:
         _qml_root: Reference to QML root object
         _model: QML model instance
-        _user_at_bottom: Whether user is currently at bottom
+        _qml_handler: Reference to QmlHandler for state access
         _load_more_debounce_ms: Debounce delay for load more requests
     """
 
@@ -43,7 +45,7 @@ class ScrollManager:
         """
         self._model = model
         self._qml_root = None
-        self._user_at_bottom = True
+        self._qml_handler = None  # Will be set by widget for state access
 
         # Load more debounce timer - prevents excessive load requests during scroll
         self._load_more_timer = QTimer()
@@ -59,6 +61,14 @@ class ScrollManager:
         """
         self._qml_root = qml_root
 
+    def set_qml_handler(self, qml_handler) -> None:
+        """Set the QML handler for state access.
+
+        Args:
+            qml_handler: QmlHandler instance that manages scroll state
+        """
+        self._qml_handler = qml_handler
+
     def connect_load_more_callback(self, callback):
         """Connect the load more callback to the debounce timer.
 
@@ -67,14 +77,6 @@ class ScrollManager:
         """
         self._load_more_timer.timeout.connect(callback)
 
-    def on_scroll_position_changed(self, at_bottom: bool) -> None:
-        """Handle scroll position change from QML.
-
-        Args:
-            at_bottom: Whether user is at bottom of list
-        """
-        self._user_at_bottom = at_bottom
-
     def scroll_to_bottom(self, force: bool = False) -> None:
         """Scroll the chat list to bottom.
 
@@ -82,7 +84,12 @@ class ScrollManager:
             force: If True, scroll regardless of user position.
                    If False, only scroll if user is already at bottom.
         """
-        if self._qml_root and (force or self._user_at_bottom):
+        # Get current scroll state from QmlHandler (the source of truth)
+        user_at_bottom = False
+        if self._qml_handler:
+            user_at_bottom = self._qml_handler.get_user_at_bottom()
+
+        if self._qml_root and (force or user_at_bottom):
             # Flush any pending model updates so QML has the latest content
             # before we scroll (ensures correct content height for positioning)
             self._model.flush_updates()
@@ -143,11 +150,3 @@ class ScrollManager:
     def start_load_more_debounce(self) -> None:
         """Start the debounce timer for load more request."""
         self._load_more_timer.start(self._load_more_debounce_ms)
-
-    def get_user_at_bottom(self) -> bool:
-        """Check if user is currently at bottom of list.
-
-        Returns:
-            True if user is at bottom, False otherwise
-        """
-        return self._user_at_bottom
