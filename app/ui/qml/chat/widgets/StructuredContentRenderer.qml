@@ -105,6 +105,71 @@ Item {
     // Thinking section expanded/collapsed state
     property bool thinkingExpanded: false
 
+    // Live summary of the latest thinking item for collapsed-state display
+    readonly property string _latestThinkingSummary: {
+        var items = root.thinkingItems
+        if (items.length > 0) {
+            var latest = items[items.length - 1]
+            var type = latest.content_type || latest.type || ""
+            var data = latest.data || {}
+            switch (type) {
+                case "thinking":
+                    var thought = data.thought || latest.thought || ""
+                    return thought ? thought.replace(/\n/g, " ") : ""
+                case "tool_call":
+                    var tn = data.tool_name || latest.tool_name || ""
+                    var st = data.status || latest.status || ""
+                    if (tn) {
+                        if (st === "started" || st === "running")
+                            return "🔧 " + tn + "..."
+                        if (st === "completed" || st === "success")
+                            return "🔧 " + tn + " ✓"
+                        if (st === "error" || st === "failed")
+                            return "🔧 " + tn + " ✗"
+                        return "🔧 " + tn
+                    }
+                    return ""
+                case "tool_response":
+                    return "📋 " + (data.tool_name || latest.tool_name || "Response")
+                case "skill":
+                    return "⚡ " + (data.name || latest.title || "Skill")
+                case "step":
+                    return latest.title || data.title || ""
+                case "plan":
+                    return "📋 " + (latest.title || "Plan")
+                case "progress":
+                    return data.progress || latest.progress || ""
+                case "llm_output":
+                    return "💬 " + (latest.title || data.title || "LLM Output")
+                case "error":
+                    return "❌ " + (data.error || latest.title || "Error")
+                case "metadata":
+                    return latest.title || data.metadata_type || ""
+                default:
+                    return latest.title || latest.description || type
+            }
+        }
+        if (root.isStreaming) {
+            var mainItems = root.mainContentItems
+            if (mainItems.length > 0) {
+                var latestMain = mainItems[mainItems.length - 1]
+                var mainType = latestMain.content_type || latestMain.type || "text"
+                switch (mainType) {
+                    case "text": return "Generating text..."
+                    case "code_block": return "Generating code..."
+                    case "image": return "Processing image..."
+                    case "video": return "Processing video..."
+                    case "audio": return "Processing audio..."
+                    case "file":
+                    case "file_attachment": return "Processing file..."
+                    case "todo_write": return "Writing tasks..."
+                    default: return ""
+                }
+            }
+        }
+        return ""
+    }
+
     // Helper: resolve the correct Component for a content type string
     function _resolveComponent(type) {
         switch (type) {
@@ -225,16 +290,18 @@ Item {
                         NumberAnimation { duration: 150; easing.type: Easing.InOutQuad }
                     }
 
-                    Row {
-                        anchors.centerIn: parent
-                        spacing: 8
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 14
+                        anchors.rightMargin: 14
+                        spacing: 6
 
                         // Animated bouncing dots (shown while streaming)
                         Row {
                             id: bouncingDotsRow
                             spacing: 4
                             visible: root.isStreaming
-                            anchors.verticalCenter: parent.verticalCenter
+                            Layout.alignment: Qt.AlignVCenter
 
                             Repeater {
                                 model: 3
@@ -276,7 +343,7 @@ Item {
                             text: "💭"
                             font.pixelSize: 14
                             visible: !root.isStreaming
-                            anchors.verticalCenter: parent.verticalCenter
+                            Layout.alignment: Qt.AlignVCenter
                         }
 
                         // Label text
@@ -294,7 +361,29 @@ Item {
                             }
                             color: Qt.rgba(root.textColor.r, root.textColor.g, root.textColor.b, 0.5)
                             font.pixelSize: 12
-                            anchors.verticalCenter: parent.verticalCenter
+                            Layout.alignment: Qt.AlignVCenter
+                        }
+
+                        // Separator dot (when there's summary text)
+                        Text {
+                            visible: thinkingSummaryText.text.length > 0
+                            text: "·"
+                            color: Qt.rgba(root.textColor.r, root.textColor.g, root.textColor.b, 0.3)
+                            font.pixelSize: 12
+                            font.bold: true
+                            Layout.alignment: Qt.AlignVCenter
+                        }
+
+                        // Live summary of current thinking activity
+                        Text {
+                            id: thinkingSummaryText
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignVCenter
+                            text: root._latestThinkingSummary
+                            color: Qt.rgba(root.textColor.r, root.textColor.g, root.textColor.b, 0.38)
+                            font.pixelSize: 11
+                            elide: Text.ElideRight
+                            maximumLineCount: 1
                         }
 
                         // Expand/collapse arrow (only when there are items)
@@ -303,7 +392,7 @@ Item {
                             text: root.thinkingExpanded ? "▲" : "▼"
                             color: Qt.rgba(root.textColor.r, root.textColor.g, root.textColor.b, 0.4)
                             font.pixelSize: 9
-                            anchors.verticalCenter: parent.verticalCenter
+                            Layout.alignment: Qt.AlignVCenter
                         }
                     }
 
