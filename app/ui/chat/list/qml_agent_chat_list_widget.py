@@ -837,20 +837,25 @@ class QmlAgentChatListWidget(BaseWidget):
             if cid:
                 seen_content_ids.add(cid)
 
-        # Associate tool_call entries as children based on progress_text mentions
-        associated_tools = set()
-        for skill_entry in skill_entries:
-            progress_text = skill_entry.get("data", {}).get("progress_text", "")
-            if progress_text:
-                for tool_entry in tool_entries:
-                    tool_name = tool_entry.get("data", {}).get("tool_name", "")
-                    if tool_name and tool_name in progress_text and tool_entry.get("content_id") not in associated_tools:
-                        child_contents.append(tool_entry)
-                        associated_tools.add(tool_entry.get("content_id"))
+        # Associate unassociated tool_call entries as children only when no
+        # explicit metadata-marked children exist (backward compat for older data).
+        # With proper marking, inner tool events arrive via extra_child_contents
+        # and remaining tool_entries are outer tool events (e.g. execute_skill itself).
+        if not extra_child_contents:
+            associated_tools: set = set()
+            for skill_entry in skill_entries:
+                progress_text = skill_entry.get("data", {}).get("progress_text", "")
+                if progress_text:
+                    for tool_entry in tool_entries:
+                        tool_name = tool_entry.get("data", {}).get("tool_name", "")
+                        if (tool_name and tool_name in progress_text
+                                and tool_entry.get("content_id") not in associated_tools):
+                            child_contents.append(tool_entry)
+                            associated_tools.add(tool_entry.get("content_id"))
 
-        for tool_entry in tool_entries:
-            if tool_entry.get("content_id") not in associated_tools:
-                child_contents.append(tool_entry)
+            for tool_entry in tool_entries:
+                if tool_entry.get("content_id") not in associated_tools:
+                    child_contents.append(tool_entry)
 
         return self._create_skill_content_from_entry(base_entry, skill_name, child_contents)
 
