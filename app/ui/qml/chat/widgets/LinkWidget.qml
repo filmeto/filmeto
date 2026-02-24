@@ -45,7 +45,7 @@ Rectangle {
         }
         spacing: 4
 
-        // Link icon and URL
+        // Link icon and URL with selection support
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
@@ -55,25 +55,25 @@ Rectangle {
                 font.pixelSize: 14
             }
 
-            Text {
+            SelectableText {
                 Layout.fillWidth: true
                 text: root.url
-                color: textColor
-                font.pixelSize: 12
-                font.family: "monospace"
-                elide: Text.ElideMiddle
+                textColor: textColor
+                fontPixelSize: 12
+                wrapMode: false
+                selectionColor: root.textColor
             }
         }
 
-        // Optional title
-        Text {
+        // Optional title with selection support
+        SelectableText {
             visible: root.title !== ""
             Layout.fillWidth: true
             text: root.title
-            color: titleColor
-            font.pixelSize: 13
-            font.weight: Font.Medium
-            wrapMode: Text.WordWrap
+            textColor: titleColor
+            fontPixelSize: 13
+            wrapMode: true
+            selectionColor: root.textColor
         }
     }
 

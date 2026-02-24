@@ -81,7 +81,7 @@ Rectangle {
 
                     Text {
                         visible: !copyBtnCopied
-                        text: "Copy"
+                        text: "复制"
                         color: textColor
                         font.pixelSize: 11
                     }
@@ -90,7 +90,7 @@ Rectangle {
                 property bool copyBtnCopied: false
 
                 onClicked: {
-                    root.code = root.code // Trigger clipboard copy via Python backend
+                    root.copyToClipboard()
                     copyBtn.copyBtnCopied = true
                     copyResetTimer.restart()
                 }
@@ -103,18 +103,20 @@ Rectangle {
             }
         }
 
-        // Code content with monospace font
+        // Code content with monospace font and selection support
         ScrollView {
+            id: codeScrollView
             Layout.fillWidth: true
-            Layout.preferredHeight: Math.min(codeText.implicitHeight + 16, 400)
+            Layout.preferredHeight: Math.min(codeTextEdit.implicitHeight + 16, 400)
 
             ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
             clip: true
 
-            Text {
-                id: codeText
-                width: parent.width
+            // TextEdit for selectable code
+            TextEdit {
+                id: codeTextEdit
+                width: Math.max(codeScrollView.width - 16, codeTextEdit.implicitWidth)
                 padding: 8
                 color: textColor
                 font.pixelSize: 13
@@ -122,9 +124,68 @@ Rectangle {
                 wrapMode: Text.NoWrap
                 textFormat: Text.PlainText
                 text: root.code
+                readOnly: true
+                cursorVisible: false
+                selectionColor: root.accentColor
+                selectedTextColor: "#ffffff"
 
-                // Basic syntax highlighting (could be extended)
-                // Note: Full syntax highlighting would require a Python backend
+                // Handle text selection
+                MouseArea {
+                    anchors.fill: parent
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    cursorShape: Qt.IBeamCursor
+                    propagateComposedEvents: true
+
+                    onPressed: function(mouse) {
+                        // Let TextEdit handle the press event
+                        mouse.accepted = false
+                    }
+
+                    onDoubleClicked: function(mouse) {
+                        codeTextEdit.selectAll()
+                    }
+
+                    onRightClicked: function(mouse) {
+                        if (codeTextEdit.selectedText.length > 0) {
+                            codeContextMenu.popup()
+                        }
+                    }
+
+                    onPositionChanged: function(mouse) {
+                        if (mouse.pressed && mouse.button === Qt.LeftButton) {
+                            mouse.accepted = false
+                        }
+                    }
+                }
+
+                // Context menu for code
+                Menu {
+                    id: codeContextMenu
+
+                    MenuItem {
+                        text: "复制代码"
+                        onTriggered: {
+                            codeTextEdit.copy()
+                        }
+                    }
+
+                    MenuItem {
+                        text: "全选"
+                        onTriggered: {
+                            codeTextEdit.selectAll()
+                        }
+                    }
+                }
+
+                // Shortcut for Ctrl+C
+                Shortcut {
+                    sequence: StandardKey.Copy
+                    onActivated: {
+                        if (codeTextEdit.selectedText.length > 0) {
+                            codeTextEdit.copy()
+                        }
+                    }
+                }
             }
 
             // Custom scrollbar
@@ -139,9 +200,15 @@ Rectangle {
         }
     }
 
-    // Method to copy code to clipboard (called by the copy button)
+    // Method to copy code to clipboard
     function copyToClipboard() {
-        // This would call a Python backend method
-        // clipboard.setText(root.code)
+        if (codeTextEdit.selectedText.length > 0) {
+            codeTextEdit.copy()
+        } else {
+            // Copy all code if nothing selected
+            codeTextEdit.selectAll()
+            codeTextEdit.copy()
+            codeTextEdit.deselect()
+        }
     }
 }

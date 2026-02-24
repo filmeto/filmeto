@@ -62,14 +62,14 @@ Rectangle {
                     }
                 }
 
-                // Tool name and status
-                Text {
-                    width: parent.width - 24 - parent.spacing - expandIndicator.width
+                // Tool name with selection support
+                SelectableText {
+                    width: parent.width - 24 - parent.spacing - expandIndicator.width - 30
                     text: root.toolName + (root.isError ? " failed" : " completed")
-                    color: textColor
-                    font.pixelSize: 13
-                    font.weight: Font.Medium
-                    wrapMode: Text.WordWrap
+                    textColor: textColor
+                    fontPixelSize: 13
+                    wrapMode: true
+                    selectionColor: root.widgetColor
                     anchors.verticalCenter: parent.verticalCenter
                 }
 
@@ -105,13 +105,13 @@ Rectangle {
             }
 
             // Response content
-            Text {
+            SelectableText {
                 width: parent.width
                 text: (root.isError ? "✗ " : "✓ ") + root.response
-                color: root.iconColor
-                font.pixelSize: 12
-                wrapMode: Text.WordWrap
-                textFormat: Text.PlainText
+                textColor: root.iconColor
+                fontPixelSize: 12
+                wrapMode: true
+                selectionColor: root.iconColor
             }
         }
     }

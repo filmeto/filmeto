@@ -170,17 +170,16 @@ Rectangle {
                             anchors.verticalCenter: parent.verticalCenter
                         }
 
-                        // Task text
-                        Text {
+                        // Task text with selection and copy support
+                        SelectableText {
+                            width: parent.width - 30
                             text: modelData.title || modelData.description || ""
-                            color: (modelData.status === "completed") ?
+                            textColor: (modelData.status === "completed") ?
                                    Qt.rgba(textColor.r, textColor.g, textColor.b, 0.5) :
                                    textColor
-                            font.pixelSize: 13
-                            font.strikeout: modelData.status === "completed"
-                            wrapMode: Text.WordWrap
-                            Layout.fillWidth: true
-                            anchors.verticalCenter: parent.verticalCenter
+                            fontPixelSize: 13
+                            wrapMode: true
+                            selectionColor: root.widgetColor
                         }
                     }
                 }

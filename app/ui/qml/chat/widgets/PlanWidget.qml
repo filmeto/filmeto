@@ -57,12 +57,14 @@ Rectangle {
                     font.pixelSize: 16
                 }
 
-                // Title
-                Text {
+                // Title with selection support
+                SelectableText {
+                    Layout.fillWidth: true
                     text: root.planData.title || "Execution Plan"
-                    color: titleColor
-                    font.pixelSize: 14
-                    font.weight: Font.Medium
+                    textColor: titleColor
+                    fontPixelSize: 14
+                    wrapMode: true
+                    selectionColor: titleColor
                 }
 
                 Item { Layout.fillWidth: true }
@@ -118,11 +120,11 @@ Rectangle {
                             font.pixelSize: 14
                         }
 
-                        // Step text
-                        Text {
+                        // Step text with selection and copy support
+                        SelectableText {
                             Layout.fillWidth: true
                             text: (index + 1) + ". " + (modelData.text || "")
-                            color: {
+                            textColor: {
                                 switch (modelData.status || "pending") {
                                     case "completed": return completedColor
                                     case "running": return textColor
@@ -130,9 +132,9 @@ Rectangle {
                                     default: return Qt.rgba(textColor.r, textColor.g, textColor.b, 0.6)
                                 }
                             }
-                            font.pixelSize: 13
-                            font.strikeout: modelData.status === "failed"
-                            wrapMode: Text.WordWrap
+                            fontPixelSize: 13
+                            wrapMode: true
+                            selectionColor: root.titleColor
                         }
                     }
                 }

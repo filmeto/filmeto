@@ -94,7 +94,7 @@ Rectangle {
             }
         }
 
-        // Output content (collapsible)
+        // Output content (collapsible) with selection and copy support
         Loader {
             id: contentLoader
             Layout.fillWidth: true
@@ -110,15 +110,13 @@ Rectangle {
                     color: borderColor
                 }
 
-                Text {
+                SelectableText {
                     Layout.fillWidth: true
                     text: root.output
-                    color: textColor
-                    font.pixelSize: 12
-                    font.family: "monospace"
-                    wrapMode: Text.WordWrap
-                    textFormat: Text.PlainText
-                    lineHeight: 1.4
+                    textColor: root.textColor
+                    fontPixelSize: 12
+                    wrapMode: true
+                    selectionColor: root.titleColor
                 }
             }
         }

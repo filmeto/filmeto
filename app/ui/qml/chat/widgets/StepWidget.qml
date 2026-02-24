@@ -57,14 +57,14 @@ Rectangle {
                 width: parent.width - 28 - parent.spacing
                 spacing: 2
 
-                // Title
-                Text {
+                // Title with selection support
+                SelectableText {
                     width: parent.width
                     text: root.stepData.title || "Step"
-                    color: "#e0e0e0"
-                    font.pixelSize: 13
-                    font.weight: Font.Medium
-                    wrapMode: Text.WordWrap
+                    textColor: "#e0e0e0"
+                    fontPixelSize: 13
+                    wrapMode: true
+                    selectionColor: root.widgetColor
                 }
 
                 // Status badge
@@ -87,14 +87,15 @@ Rectangle {
             }
         }
 
-        // Description
-        Text {
+        // Description with selection and copy support
+        SelectableText {
             visible: root.stepData.description > ""
             width: parent.width
             text: root.stepData.description || ""
-            color: "#a0a0a0"
-            font.pixelSize: 12
-            wrapMode: Text.WordWrap
+            textColor: "#a0a0a0"
+            fontPixelSize: 12
+            wrapMode: true
+            selectionColor: root.widgetColor
         }
 
         // Progress bar (for in_progress status)
@@ -117,13 +118,15 @@ Rectangle {
             }
         }
 
-        // Additional info (e.g., duration)
-        Text {
+        // Additional info (e.g., duration) with selection support
+        SelectableText {
             visible: root.stepData.duration > ""
             width: parent.width
             text: "⏱ " + root.stepData.duration
-            color: "#808080"
-            font.pixelSize: 11
+            textColor: "#808080"
+            fontPixelSize: 11
+            wrapMode: true
+            selectionColor: root.widgetColor
         }
     }
 

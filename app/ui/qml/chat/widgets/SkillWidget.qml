@@ -56,14 +56,14 @@ Rectangle {
                     }
                 }
 
-                // Skill name
-                Text {
+                // Skill name with selection support
+                SelectableText {
                     width: parent.width - 24 - expandIndicator.width - parent.spacing * 2
                     text: root.skillData.skill_name || root.skillData.name || "Skill"
-                    color: "#e0e0e0"
-                    font.pixelSize: 13
-                    font.weight: Font.Medium
-                    wrapMode: Text.WordWrap
+                    textColor: "#e0e0e0"
+                    fontPixelSize: 13
+                    wrapMode: true
+                    selectionColor: root.widgetColor
                     anchors.verticalCenter: parent.verticalCenter
                 }
 
@@ -146,34 +146,37 @@ Rectangle {
             }
         }
 
-        // Progress text
-        Text {
+        // Progress text with selection support
+        SelectableText {
             visible: root.expanded && (root.skillData.state || root.skillData.status) === "in_progress" && (root.skillData.progress_text || "") > ""
             width: parent.width
             text: root.skillData.progress_text || ""
-            color: "#a0a0a0"
-            font.pixelSize: 11
-            wrapMode: Text.WordWrap
+            textColor: "#a0a0a0"
+            fontPixelSize: 11
+            wrapMode: true
+            selectionColor: root.widgetColor
         }
 
-        // Result (shown when completed and expanded)
-        Text {
+        // Result (shown when completed and expanded) with selection support
+        SelectableText {
             visible: root.expanded && (root.skillData.state || root.skillData.status) === "completed" && (root.skillData.result || "") > ""
             width: parent.width
             text: "✓ " + (root.skillData.result || "")
-            color: "#4ecdc4"
-            font.pixelSize: 12
-            wrapMode: Text.WordWrap
+            textColor: "#4ecdc4"
+            fontPixelSize: 12
+            wrapMode: true
+            selectionColor: root.widgetColor
         }
 
-        // Error (shown when failed and expanded)
-        Text {
+        // Error (shown when failed and expanded) with selection support
+        SelectableText {
             visible: root.expanded && (root.skillData.state || root.skillData.status) === "error" && (root.skillData.error_message || root.skillData.error || "") > ""
             width: parent.width
             text: "✗ " + (root.skillData.error_message || root.skillData.error || "")
-            color: "#ff6b6b"
-            font.pixelSize: 12
-            wrapMode: Text.WordWrap
+            textColor: "#ff6b6b"
+            fontPixelSize: 12
+            wrapMode: true
+            selectionColor: "#ff6b6b"
         }
 
         // Nested child contents (tool calls, etc.) - displayed flat when expanded

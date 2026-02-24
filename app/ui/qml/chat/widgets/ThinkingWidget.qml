@@ -98,14 +98,15 @@ Rectangle {
                     color: borderColor
                 }
 
-                Text {
+                // SelectableText for thought content with copy support
+                SelectableText {
                     Layout.fillWidth: true
                     text: root.thought
-                    color: textColor
-                    font.pixelSize: 13
-                    wrapMode: Text.WordWrap
-                    textFormat: Text.PlainText
+                    textColor: root.textColor
+                    fontPixelSize: 13
                     lineHeight: 1.5
+                    wrapMode: true
+                    selectionColor: root.titleColor
                 }
             }
         }

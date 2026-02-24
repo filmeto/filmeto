@@ -50,14 +50,14 @@ Rectangle {
                     font.pixelSize: 14
                 }
 
-                // Title
-                Text {
+                // Title with selection support
+                SelectableText {
                     Layout.fillWidth: true
                     text: root.taskData.title || "Task"
-                    color: textColor
-                    font.pixelSize: 13
-                    font.weight: Font.Medium
-                    wrapMode: Text.WordWrap
+                    textColor: textColor
+                    fontPixelSize: 13
+                    wrapMode: true
+                    selectionColor: root.widgetColor
                 }
 
                 // Status badge
@@ -114,22 +114,25 @@ Rectangle {
                     color: borderColor
                 }
 
-                Text {
+                SelectableText {
                     Layout.fillWidth: true
                     text: root.taskData.description || ""
-                    color: descColor
-                    font.pixelSize: 12
-                    wrapMode: Text.WordWrap
+                    textColor: descColor
+                    fontPixelSize: 12
                     lineHeight: 1.4
+                    wrapMode: true
+                    selectionColor: root.widgetColor
                 }
 
                 // Priority if available
-                Text {
+                SelectableText {
                     visible: root.taskData.priority
+                    Layout.fillWidth: true
                     text: "Priority: " + root.taskData.priority
-                    color: descColor
-                    font.pixelSize: 11
-                    font.italic: true
+                    textColor: descColor
+                    fontPixelSize: 11
+                    wrapMode: true
+                    selectionColor: root.widgetColor
                 }
             }
         }

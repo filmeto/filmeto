@@ -37,14 +37,15 @@ Item {
         }
 
         // Progress text with percentage
-        Text {
+        SelectableText {
             Layout.fillWidth: true
             text: root.percentage !== null ?
                   root.text + " (" + Math.round(root.percentage) + "%)" :
                   root.text
-            color: textColor
-            font.pixelSize: 13
-            wrapMode: Text.WordWrap
+            textColor: root.textColor
+            fontPixelSize: 13
+            wrapMode: true
+            selectionColor: root.widgetColor
         }
     }
 }

@@ -486,31 +486,19 @@ Item {
     // Widget Components
     // ─────────────────────────────────────────────────────────────
 
-    // Text widget
+    // Text widget with selection and copy support
     Component {
         id: textWidgetComponent
 
-        Text {
+        SelectableText {
             property var data: ({})
             text: data.text || data.data?.text || ""
-            color: textColor
-            font.pixelSize: 14
-            wrapMode: Text.WordWrap
-            textFormat: Text.PlainText
+            textColor: root.textColor
+            fontPixelSize: 14
             lineHeight: widgetSupport === "full" ? 1.5 : 1.4
-            linkColor: "#87ceeb"
+            wrapMode: true
+            selectionColor: root.widgetColor
             width: parent.width
-
-            onLinkActivated: function(link) {
-                if (link.startsWith("ref://")) {
-                    var parts = link.substring(6).split(":")
-                    if (parts.length >= 2) {
-                        root.referenceClicked(parts[0], parts[1])
-                    }
-                } else {
-                    Qt.openUrlExternally(link)
-                }
-            }
         }
     }
 

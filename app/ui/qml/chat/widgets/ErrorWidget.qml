@@ -49,17 +49,17 @@ Rectangle {
             }
         }
 
-        // Error message
-        Text {
+        // Error message with selection and copy support
+        SelectableText {
             width: parent.width
             text: root.errorData.error_message || ""
-            color: "#e0e0e0"
-            font.pixelSize: 13
-            wrapMode: Text.WordWrap
-            textFormat: Text.PlainText
+            textColor: "#e0e0e0"
+            fontPixelSize: 13
+            wrapMode: true
+            selectionColor: root.widgetColor
         }
 
-        // Details section (collapsible)
+        // Details section (collapsible) with selection support
         Column {
             visible: root.errorData.details > ""
             width: parent.width
@@ -80,19 +80,18 @@ Rectangle {
                 font.weight: Font.Medium
             }
 
-            // Details text
-            Text {
+            // Details text with selection support
+            SelectableText {
                 width: parent.width
                 text: root.errorData.details || ""
-                color: "#a0a0a0"
-                font.pixelSize: 11
-                font.family: "monospace"
-                wrapMode: Text.WordWrap
-                textFormat: Text.PlainText
+                textColor: "#a0a0a0"
+                fontPixelSize: 11
+                wrapMode: true
+                selectionColor: root.widgetColor
             }
         }
 
-        // Stack trace (if available)
+        // Stack trace (if available) with selection support
         Column {
             visible: root.errorData.stack_trace > ""
             width: parent.width
@@ -113,7 +112,7 @@ Rectangle {
 
             Rectangle {
                 width: parent.width
-                height: stackTraceText.implicitHeight + 16
+                height: stackTraceTextEdit.implicitHeight + 16
                 color: "#1a1a1a"
                 radius: 4
 
@@ -125,10 +124,10 @@ Rectangle {
                     width: parent.width
                     height: parent.height
                     clip: true
-                    contentHeight: stackTraceText.implicitHeight
+                    contentHeight: stackTraceTextEdit.implicitHeight
 
-                    Text {
-                        id: stackTraceText
+                    TextEdit {
+                        id: stackTraceTextEdit
                         width: parent.width
                         text: root.errorData.stack_trace || ""
                         color: "#ff6b6b"
@@ -136,6 +135,58 @@ Rectangle {
                         font.family: "monospace"
                         wrapMode: Text.WordWrap
                         textFormat: Text.PlainText
+                        readOnly: true
+                        cursorVisible: false
+                        selectionColor: root.widgetColor
+                        selectedTextColor: "#ffffff"
+
+                        MouseArea {
+                            anchors.fill: parent
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton
+                            cursorShape: Qt.IBeamCursor
+                            propagateComposedEvents: true
+
+                            onPressed: function(mouse) {
+                                mouse.accepted = false
+                            }
+
+                            onDoubleClicked: function(mouse) {
+                                stackTraceTextEdit.selectAll()
+                            }
+
+                            onRightClicked: function(mouse) {
+                                if (stackTraceTextEdit.selectedText.length > 0) {
+                                    stackTraceContextMenu.popup()
+                                }
+                            }
+
+                            onPositionChanged: function(mouse) {
+                                if (mouse.pressed && mouse.button === Qt.LeftButton) {
+                                    mouse.accepted = false
+                                }
+                            }
+                        }
+
+                        Menu {
+                            id: stackTraceContextMenu
+                            MenuItem {
+                                text: "复制"
+                                onTriggered: stackTraceTextEdit.copy()
+                            }
+                            MenuItem {
+                                text: "全选"
+                                onTriggered: stackTraceTextEdit.selectAll()
+                            }
+                        }
+
+                        Shortcut {
+                            sequence: StandardKey.Copy
+                            onActivated: {
+                                if (stackTraceTextEdit.selectedText.length > 0) {
+                                    stackTraceTextEdit.copy()
+                                }
+                            }
+                        }
                     }
 
                     ScrollBar.vertical: ScrollBar {

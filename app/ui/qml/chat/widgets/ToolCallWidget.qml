@@ -91,14 +91,14 @@ Rectangle {
                     }
                 }
 
-                // Tool name
-                Text {
-                    width: parent.width - 24 - parent.spacing - expandIndicator.width
+                // Tool name with selection support
+                SelectableText {
+                    width: parent.width - 24 - parent.spacing - expandIndicator.width - 30
                     text: root.toolName || "Tool"
-                    color: textColor
-                    font.pixelSize: 13
-                    font.weight: Font.Medium
-                    wrapMode: Text.WordWrap
+                    textColor: textColor
+                    fontPixelSize: 13
+                    wrapMode: true
+                    selectionColor: root.accentColor
                     anchors.verticalCenter: parent.verticalCenter
                 }
 
@@ -192,36 +192,39 @@ Rectangle {
                             anchors.verticalCenter: parent.verticalCenter
                         }
 
-                        Text {
-                            width: parent.width - modelData.width - parent.spacing
+                        // SelectableText for argument values with copy support
+                        SelectableText {
+                            width: parent.width - modelData.length * 8 - parent.spacing - 24
                             text: JSON.stringify(root.toolArgs[modelData])
-                            color: "#d0d0d0"
-                            font.pixelSize: 11
-                            font.family: "monospace"
-                            wrapMode: Text.WordWrap
+                            textColor: "#d0d0d0"
+                            fontPixelSize: 11
+                            wrapMode: true
+                            selectionColor: root.accentColor
                         }
                     }
                 }
             }
 
             // Result display (when completed)
-            Text {
+            SelectableText {
                 visible: root.toolStatus === "completed" && root.result !== null
                 width: parent.width
                 text: "✓ " + (typeof root.result === "string" ? root.result : JSON.stringify(root.result))
-                color: "#4ecdc4"
-                font.pixelSize: 12
-                wrapMode: Text.WordWrap
+                textColor: "#4ecdc4"
+                fontPixelSize: 12
+                wrapMode: true
+                selectionColor: root.accentColor
             }
 
             // Error display (when failed)
-            Text {
+            SelectableText {
                 visible: root.toolStatus === "failed" && root.error !== ""
                 width: parent.width
                 text: "✗ " + root.error
-                color: "#ff6b6b"
-                font.pixelSize: 12
-                wrapMode: Text.WordWrap
+                textColor: "#ff6b6b"
+                fontPixelSize: 12
+                wrapMode: true
+                selectionColor: "#ff6b6b"
             }
         }
     }

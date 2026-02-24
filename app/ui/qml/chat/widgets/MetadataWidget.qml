@@ -50,29 +50,28 @@ Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
             }
 
-            Text {
+            SelectableText {
                 width: parent.width - 26
                 text: root.metadataData.title || ""
-                color: "#808080"
-                font.pixelSize: 11
-                font.weight: Font.Medium
-                wrapMode: Text.WordWrap
-                anchors.verticalCenter: parent.verticalCenter
+                textColor: "#808080"
+                fontPixelSize: 11
+                wrapMode: true
+                selectionColor: root.widgetColor
             }
         }
 
-        // Description
-        Text {
+        // Description with selection support
+        SelectableText {
             visible: root.metadataData.description > ""
             width: parent.width
             text: root.metadataData.description || ""
-            color: "#707070"
-            font.pixelSize: 10
-            wrapMode: Text.WordWrap
-            font.italic: true
+            textColor: "#707070"
+            fontPixelSize: 10
+            wrapMode: true
+            selectionColor: root.widgetColor
         }
 
-        // Key-value pairs display
+        // Key-value pairs display with selection support
         Column {
             visible: Object.keys(root.metadataData.metadata_data || {}).length > 0
             width: parent.width
@@ -85,22 +84,22 @@ Rectangle {
                     width: parent.width
                     spacing: 4
 
-                    Text {
+                    SelectableText {
                         width: parent.width * 0.4
                         text: modelData + ":"
-                        color: "#707070"
-                        font.pixelSize: 10
-                        font.family: "monospace"
-                        elide: Text.ElideRight
+                        textColor: "#707070"
+                        fontPixelSize: 10
+                        wrapMode: true
+                        selectionColor: root.widgetColor
                     }
 
-                    Text {
+                    SelectableText {
                         width: parent.width * 0.6
                         text: formatValue(root.metadataData.metadata_data[modelData])
-                        color: "#606060"
-                        font.pixelSize: 10
-                        font.family: "monospace"
-                        elide: Text.ElideRight
+                        textColor: "#606060"
+                        fontPixelSize: 10
+                        wrapMode: true
+                        selectionColor: root.widgetColor
                     }
                 }
             }
