@@ -335,7 +335,8 @@ class AgentEvent:
         step_id: int = 0,
         sender_id: str = "",
         sender_name: str = "",
-        content: Optional['StructureContent'] = None
+        content: Optional['StructureContent'] = None,
+        tool_call_id: str = ""
     ) -> "AgentEvent":
         """
         Create a tool start event.
@@ -349,6 +350,7 @@ class AgentEvent:
             sender_id: ID of the event sender
             sender_name: Display name of the event sender
             content: Structured content for the event (optional, will be created if not provided)
+            tool_call_id: Unique identifier for tracking tool lifecycle (optional)
 
         Returns:
             AgentEvent with type TOOL_START
@@ -356,9 +358,13 @@ class AgentEvent:
         # Create ToolCallContent if not provided
         if content is None:
             from agent.chat.content import ToolCallContent
+            # Generate tool_call_id if not provided
+            if not tool_call_id:
+                tool_call_id = f"{run_id}_{step_id}_{tool_name}"
             content = ToolCallContent(
                 tool_name=tool_name,
                 tool_input={},
+                tool_call_id=tool_call_id,
                 title=f"Tool: {tool_name}",
                 description="Tool execution started"
             )
@@ -435,7 +441,8 @@ class AgentEvent:
         step_id: int = 0,
         sender_id: str = "",
         sender_name: str = "",
-        content: Optional['StructureContent'] = None
+        content: Optional['StructureContent'] = None,
+        tool_call_id: str = ""
     ) -> "AgentEvent":
         """
         Create a tool end event.
@@ -451,6 +458,7 @@ class AgentEvent:
             sender_id: ID of the event sender
             sender_name: Display name of the event sender
             content: Structured content for the event (optional, will be created if not provided)
+            tool_call_id: Unique identifier for tracking tool lifecycle (optional)
 
         Returns:
             AgentEvent with type TOOL_END
@@ -458,12 +466,16 @@ class AgentEvent:
         # Create ToolCallContent if not provided
         if content is None:
             from agent.chat.content import ToolCallContent
+            # Generate tool_call_id if not provided
+            if not tool_call_id:
+                tool_call_id = f"{run_id}_{step_id}_{tool_name}"
             content = ToolCallContent(
                 tool_name=tool_name,
                 tool_input={},  # tool_input was already captured in tool_start
                 result=result,
                 error=None if ok else "Execution failed",
                 tool_status="completed" if ok else "failed",
+                tool_call_id=tool_call_id,
                 title=f"Tool Result: {tool_name}",
                 description=f"Tool execution {'completed' if ok else 'failed'}"
             )

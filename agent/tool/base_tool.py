@@ -155,6 +155,7 @@ class BaseTool(ABC):
         error: str = "",
         ok: bool = True,
         result: Any = None,
+        tool_call_id: str = "",
     ) -> "AgentEvent":
         """
         Create a ReactEvent for tool execution.
@@ -170,6 +171,7 @@ class BaseTool(ABC):
             error: Error message (for error events)
             ok: Whether operation succeeded (for tool_end events)
             result: Operation result (for tool_end events)
+            tool_call_id: Unique identifier for tracking tool lifecycle (optional)
 
         Returns:
             ReactEvent object
@@ -181,6 +183,10 @@ class BaseTool(ABC):
             ErrorContent,
         )
 
+        # Generate tool_call_id if not provided
+        if not tool_call_id:
+            tool_call_id = f"{run_id}_{step_id}_{self.name}"
+
         content = None
 
         if event_type == AgentEventType.TOOL_END.value:
@@ -190,6 +196,7 @@ class BaseTool(ABC):
                 result=result,
                 error=None if ok else error,
                 tool_status="completed" if ok else "failed",
+                tool_call_id=tool_call_id,
                 title=f"Tool Result: {self.name}",
                 description=f"Tool execution {'completed' if ok else 'failed'}"
             )

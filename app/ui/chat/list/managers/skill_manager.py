@@ -43,6 +43,7 @@ class SkillManager:
         _active_skills: Active skills by run_id
         _skill_name_to_message_id: Mapping of skill name to message_id
         _agent_current_cards: Current agent card by agent name
+        _active_tools: Active tools by tool_call_id for merging events
     """
 
     def __init__(
@@ -68,6 +69,8 @@ class SkillManager:
         self._skill_name_to_message_id: Dict[str, str] = {}
         # Current agent cards: {agent_name: message_id}
         self._agent_current_cards: Dict[str, str] = {}
+        # Active tools tracking for merging: {tool_call_id: {run_id, message_id, tool_name, status}}
+        self._active_tools: Dict[str, Dict[str, Any]] = {}
 
     def handle_skill_event(self, event) -> None:
         """Handle skill events - tracks skill lifecycle with start/progress/end/error.
@@ -210,15 +213,18 @@ class SkillManager:
                 self._cleanup_skill_name_mapping(skill_name)
 
     def handle_tool_event(self, event) -> None:
-        """Handle tool events - adds them as child contents to active skills.
+        """Handle tool events - merges tool lifecycle events by tool_call_id.
 
         Tool events (tool_start, tool_progress, tool_end, tool_error) are
         associated with the active skill via run_id and stored as child contents.
+        Events with the same tool_call_id are merged using state priority:
+        failed > completed > started
 
         Args:
             event: Tool event from the stream
         """
         run_id = getattr(event, "run_id", "")
+        step_id = getattr(event, "step_id", 0)
 
         # Check if this tool belongs to an active skill
         if run_id not in self._active_skills:
@@ -228,35 +234,192 @@ class SkillManager:
         skill_info = self._active_skills[run_id]
         message_id = skill_info["message_id"]
 
+        # Get or generate tool_call_id for tracking
+        # Use event.content.tool_call_id if available, otherwise generate from run_id + step_id + tool_name
+        tool_name = getattr(event, 'tool_name', event.data.get("tool_name", "unknown"))
+
+        if hasattr(event, 'content') and event.content and hasattr(event.content, 'tool_call_id') and event.content.tool_call_id:
+            tool_call_id = event.content.tool_call_id
+        else:
+            # Generate tool_call_id from run_id + step_id + tool_name for legacy events
+            tool_call_id = f"{run_id}_{step_id}_{tool_name}"
+
         # Create tool content from event
         tool_content = None
         if event.event_type == "tool_start":
             tool_content = ToolCallContent(
-                tool_name=getattr(event, 'tool_name', event.data.get("tool_name", "unknown")),
+                tool_name=tool_name,
                 tool_input=event.data.get("tool_input", {}),
                 tool_status="started",
+                tool_call_id=tool_call_id,
             )
+            # Track the active tool
+            self._active_tools[tool_call_id] = {
+                "run_id": run_id,
+                "message_id": message_id,
+                "tool_name": tool_name,
+                "status": "started",
+            }
+
         elif event.event_type == "tool_progress":
-            pass  # For progress, we might update existing tool content
+            # Progress events update existing tool content
+            if tool_call_id in self._active_tools:
+                # Update progress without creating new entry
+                logger.debug(f"Tool progress for {tool_name}: {event.data.get('progress', '')}")
+            return  # Don't add progress as separate child content
+
         elif event.event_type == "tool_end":
             tool_content = ToolCallContent(
-                tool_name=getattr(event, 'tool_name', event.data.get("tool_name", "unknown")),
+                tool_name=tool_name,
                 tool_input=event.data.get("tool_input", {}),
                 tool_status="completed",
                 result=event.data.get("result"),
+                tool_call_id=tool_call_id,
             )
+            # Update tracking and cleanup
+            if tool_call_id in self._active_tools:
+                self._active_tools[tool_call_id]["status"] = "completed"
+
         elif event.event_type == "tool_error":
             tool_content = ToolCallContent(
-                tool_name=getattr(event, 'tool_name', event.data.get("tool_name", "unknown")),
+                tool_name=tool_name,
                 tool_input=event.data.get("tool_input", {}),
                 tool_status="failed",
                 error=event.data.get("error", "Tool execution failed"),
+                tool_call_id=tool_call_id,
             )
+            # Update tracking and cleanup
+            if tool_call_id in self._active_tools:
+                self._active_tools[tool_call_id]["status"] = "failed"
 
         if tool_content:
             tool_dict = tool_content.to_dict()
-            skill_info["child_contents"].append(tool_dict)
-            self.add_child_to_skill(message_id, tool_dict, run_id=run_id)
+            # Use merge logic instead of simple append
+            self._add_or_merge_tool_child(message_id, tool_dict, run_id, tool_call_id)
+
+    def _add_or_merge_tool_child(
+        self,
+        message_id: str,
+        tool_content: Dict[str, Any],
+        run_id: str,
+        tool_call_id: str
+    ) -> None:
+        """Add or merge tool content in skill's child_contents.
+
+        If a tool with the same tool_call_id already exists, merge using
+        state priority. Otherwise, add as new child.
+
+        Args:
+            message_id: The message ID containing the skill
+            tool_content: The tool content dictionary
+            run_id: The run_id to identify which skill to update
+            tool_call_id: Unique identifier for the tool call
+        """
+        item = self._model.get_item(self._model.get_row_by_message_id(message_id) or 0)
+        if not item:
+            return
+
+        current_structured = item.get(self._model.STRUCTURED_CONTENT, [])
+        new_structured = []
+
+        for sc in current_structured:
+            if sc.get("content_type") == "skill":
+                sc_data = sc.get("data", {})
+                # If run_id is provided, only update matching skills
+                if run_id is not None:
+                    if sc_data.get("run_id") != run_id:
+                        new_structured.append(copy.deepcopy(sc))
+                        continue
+
+                # Check for existing tool with same tool_call_id
+                child_contents = list(sc_data.get("child_contents", []))
+                existing_tool_index = -1
+
+                for i, child in enumerate(child_contents):
+                    if child.get("content_type") == "tool_call":
+                        child_data = child.get("data", {})
+                        if child_data.get("tool_call_id") == tool_call_id:
+                            existing_tool_index = i
+                            break
+
+                if existing_tool_index >= 0:
+                    # Merge with existing tool content
+                    merged_tool = self._merge_tool_content_with_existing(
+                        child_contents[existing_tool_index],
+                        tool_content
+                    )
+                    child_contents[existing_tool_index] = merged_tool
+                else:
+                    # Add new tool content
+                    child_contents.append(copy.deepcopy(tool_content))
+
+                # Update skill with merged child contents
+                new_sc = copy.deepcopy(sc)
+                new_sc["data"]["child_contents"] = child_contents
+                new_structured.append(new_sc)
+            else:
+                new_structured.append(copy.deepcopy(sc))
+
+        self._model.update_item(message_id, {
+            self._model.STRUCTURED_CONTENT: new_structured,
+        })
+
+    def _merge_tool_content_with_existing(
+        self,
+        existing_entry: Dict[str, Any],
+        new_content: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Merge existing tool entry with new tool content using state priority.
+
+        State priority: failed > completed > started
+
+        Args:
+            existing_entry: Existing tool entry (dict format)
+            new_content: New tool content dictionary
+
+        Returns:
+            Merged tool entry in dict format (deep copied)
+        """
+        existing_data = existing_entry.get("data", {})
+        new_data = new_content.get("data", {})
+
+        existing_status = existing_data.get("status", "started")
+        new_status = new_data.get("status", "started")
+
+        # Get state priority
+        state_priority = self._get_tool_state_priority()
+        existing_priority = state_priority.get(existing_status, 0)
+        new_priority = state_priority.get(new_status, 0)
+
+        # Determine which entry to use as base based on state priority
+        if new_priority >= existing_priority:
+            # New state has higher or equal priority, use new content as base
+            # but preserve tool_input from existing if new doesn't have it
+            merged_dict = copy.deepcopy(new_content)
+            merged_data = merged_dict.get("data", {})
+
+            # Preserve tool_input from existing if new doesn't have it
+            if not merged_data.get("tool_input") and existing_data.get("tool_input"):
+                merged_data["tool_input"] = copy.deepcopy(existing_data.get("tool_input", {}))
+
+            merged_dict["data"] = merged_data
+        else:
+            # Existing state has higher priority, keep existing
+            merged_dict = copy.deepcopy(existing_entry)
+
+        return merged_dict
+
+    def _get_tool_state_priority(self) -> Dict[str, int]:
+        """Get the priority mapping for tool execution states.
+
+        Returns:
+            Dictionary mapping state values to priority levels (higher = more important)
+        """
+        return {
+            "failed": 3,
+            "completed": 2,
+            "started": 1,
+        }
 
     def get_or_create_agent_card(
         self,
@@ -630,3 +793,4 @@ class SkillManager:
         self._active_skills.clear()
         self._skill_name_to_message_id.clear()
         self._agent_current_cards.clear()
+        self._active_tools.clear()

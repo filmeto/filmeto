@@ -16,6 +16,8 @@ class ToolCallContent(StructureContent):
     tool_status: str = "started"  # started, completed, failed
     result: Optional[Any] = None
     error: Optional[str] = None
+    # Unique identifier for tracking tool lifecycle (used for merging events)
+    tool_call_id: str = ""
 
     def set_result(self, result: Any, error: Optional[str] = None) -> None:
         """Set the result of the tool execution.
@@ -37,6 +39,8 @@ class ToolCallContent(StructureContent):
             "tool_input": self.tool_input,
             "status": self.tool_status
         }
+        if self.tool_call_id:
+            data["tool_call_id"] = self.tool_call_id
         if self.result is not None:
             data["result"] = self.result
         if self.error:
@@ -59,7 +63,8 @@ class ToolCallContent(StructureContent):
             tool_input=data_dict.get("tool_input", {}),
             tool_status=data_dict.get("status", "started"),
             result=data_dict.get("result"),
-            error=data_dict.get("error")
+            error=data_dict.get("error"),
+            tool_call_id=data_dict.get("tool_call_id", "")
         )
 
 
