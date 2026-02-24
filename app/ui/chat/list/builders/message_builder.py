@@ -24,11 +24,17 @@ logger = logging.getLogger(__name__)
 class MessageBuilder:
     """Builds chat list items from history data and handles content merging.
 
+    This class is the SINGLE SOURCE OF TRUTH for message grouping and merging logic.
+    All message combination logic should be centralized here to ensure consistency
+    between history loading and real-time streaming.
+
     This class handles:
+    - Grouping raw messages by message_id with smart deduplication
     - Converting history data to ChatListItem objects
     - Merging skill content entries
     - Merging content into existing message bubbles
     - Skill state priority handling
+    - Metadata deduplication by event_type
 
     Attributes:
         _metadata_resolver: Resolver for crew member metadata
@@ -48,6 +54,141 @@ class MessageBuilder:
         """
         self._metadata_resolver = metadata_resolver
         self._model = model
+
+    def build_items_from_raw_messages(
+        self, raw_messages: List[Dict[str, Any]]
+    ) -> List[ChatListItem]:
+        """Build chat list items from raw storage messages.
+
+        This is the PRIMARY method for loading messages from storage.
+        It handles grouping by message_id and smart deduplication.
+
+        Storage layer returns raw messages as stored (no merging).
+        This method handles ALL grouping and merging logic to ensure
+        consistency between history loading and real-time streaming.
+
+        Args:
+            raw_messages: List of raw message dictionaries from storage
+
+        Returns:
+            List of ChatListItem objects in chronological order (oldest first)
+        """
+        # Group messages by message_id with GSN tracking
+        message_groups: Dict[str, Dict[str, Any]] = {}
+        # Track content_id -> GSN mapping for deduplication
+        content_gsn_map: Dict[str, int] = {}
+
+        for msg_data in raw_messages:
+            message_id = msg_data.get("message_id") or msg_data.get("metadata", {}).get("message_id", "")
+            if not message_id:
+                continue
+
+            # Get GSN for this message
+            msg_gsn = msg_data.get("metadata", {}).get("gsn", 0)
+
+            # Initialize group if needed
+            if message_id not in message_groups:
+                message_groups[message_id] = {
+                    "base": msg_data,
+                    "content_items": [],
+                    "max_gsn": msg_gsn
+                }
+            else:
+                # Update max GSN
+                if msg_gsn > message_groups[message_id]["max_gsn"]:
+                    message_groups[message_id]["max_gsn"] = msg_gsn
+
+            # Track content_id -> GSN mapping
+            content_list = msg_data.get("content", [])
+            for content_item in content_list:
+                if isinstance(content_item, dict):
+                    content_id = content_item.get("content_id")
+                    if content_id and msg_gsn > content_gsn_map.get(content_id, 0):
+                        content_gsn_map[content_id] = msg_gsn
+
+            # Collect content items
+            message_groups[message_id]["content_items"].extend(content_list)
+
+        # Build items from grouped messages with deduplication
+        items = []
+        for message_id, group_data in message_groups.items():
+            # Apply smart deduplication
+            deduplicated_content = self._deduplicate_content_items(
+                group_data["content_items"],
+                content_gsn_map
+            )
+
+            # Create combined message
+            combined_msg = dict(group_data["base"])
+            combined_msg["content"] = deduplicated_content
+
+            # Build item from combined message
+            item = self.build_item_from_history(combined_msg)
+            if item:
+                items.append(item)
+
+        # Sort by max GSN to get chronological order
+        items.sort(key=lambda item: self._extract_item_gsn(item))
+        return items
+
+    def _deduplicate_content_items(
+        self,
+        content_items: List[Dict[str, Any]],
+        content_gsn_map: Dict[str, int]
+    ) -> List[Dict[str, Any]]:
+        """Deduplicate content items by content_id, keeping the highest GSN version.
+
+        For metadata content, we use deterministic content_id based on
+        (message_id, event_type). When multiple entries have the same content_id
+        (due to updates), we keep the one with the highest GSN.
+
+        Args:
+            content_items: List of content items to deduplicate
+            content_gsn_map: Mapping of content_id to highest GSN
+
+        Returns:
+            Deduplicated list of content items with highest GSN for each content_id
+        """
+        # Separate dict and non-dict items
+        dict_items = [item for item in content_items if isinstance(item, dict)]
+        non_dict_items = [item for item in content_items if not isinstance(item, dict)]
+
+        # Sort dict items by GSN descending (highest first)
+        # This ensures we keep the latest version for duplicates
+        dict_items.sort(
+            key=lambda x: content_gsn_map.get(x.get("content_id", ""), 0),
+            reverse=True
+        )
+
+        seen_content_ids = set()
+        deduplicated = []
+
+        for content_item in dict_items:
+            content_id = content_item.get("content_id", "")
+            if content_id and content_id in seen_content_ids:
+                # Skip duplicate (lower GSN already processed)
+                continue
+            if content_id:
+                seen_content_ids.add(content_id)
+            deduplicated.append(content_item)
+
+        # Add back non-dict items
+        deduplicated.extend(non_dict_items)
+
+        return deduplicated
+
+    def _extract_item_gsn(self, item: ChatListItem) -> int:
+        """Extract GSN from a ChatListItem for sorting.
+
+        Args:
+            item: ChatListItem to extract GSN from
+
+        Returns:
+            GSN value (0 if not found)
+        """
+        if item.agent_message and item.agent_message.metadata:
+            return item.agent_message.metadata.get("gsn", 0)
+        return 0
 
     def build_item_from_history(self, msg_data: Dict[str, Any]) -> Optional[ChatListItem]:
         """Build a ChatListItem from history data.

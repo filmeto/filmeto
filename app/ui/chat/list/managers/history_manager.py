@@ -2,6 +2,11 @@
 
 This module handles loading messages from history storage, including
 pagination, GSN-based fetching, and cache management.
+
+Architecture:
+- Storage layer: returns raw messages as stored (no merging)
+- MessageBuilder: handles ALL grouping and merging logic
+- HistoryManager: coordinates loading and delegates to MessageBuilder
 """
 
 import copy
@@ -10,7 +15,7 @@ from typing import Dict, List, Any, Optional, TYPE_CHECKING, Callable
 
 from PySide6.QtCore import QTimer
 
-from app.ui.chat.list.agent_chat_list_items import MessageGroup, LoadState
+from app.ui.chat.list.agent_chat_list_items import LoadState
 
 if TYPE_CHECKING:
     from app.data.workspace import Workspace
@@ -136,8 +141,10 @@ class HistoryManager:
     def load_recent_conversation(self) -> None:
         """Load recent conversation from history.
 
-        Enhanced with GSN tracking initialization for archive-aware
-        message loading.
+        Storage layer returns raw messages as stored (no merging).
+        MessageBuilder handles ALL grouping and merging logic.
+
+        This ensures consistency between history loading and real-time streaming.
         """
         try:
             project = self._workspace.get_project()
@@ -150,6 +157,7 @@ class HistoryManager:
                 logger.warning("Could not get history instance")
                 return
 
+            # Get raw messages from storage (no merging done by storage layer)
             raw_messages = history.get_latest_messages(count=self.PAGE_SIZE)
 
             # Update load state
@@ -176,53 +184,40 @@ class HistoryManager:
             self._load_state.has_more_older = False
 
             if raw_messages:
-                # Group messages by message_id (in chronological order)
-                message_groups: Dict[str, MessageGroup] = {}
+                # Track GSN range
                 max_gsn = 0
                 min_gsn = float('inf')
-                # Reverse to get chronological order (oldest first)
-                for msg_data in reversed(raw_messages):
-                    message_id = msg_data.get("message_id") or msg_data.get("metadata", {}).get("message_id", "")
-                    if not message_id:
-                        continue
-
-                    # Track GSN range in loaded messages
+                for msg_data in raw_messages:
                     msg_gsn = msg_data.get('metadata', {}).get('gsn', 0)
                     if msg_gsn > max_gsn:
                         max_gsn = msg_gsn
                     if msg_gsn > 0 and msg_gsn < min_gsn:
                         min_gsn = msg_gsn
 
-                    if message_id not in message_groups:
-                        message_groups[message_id] = MessageGroup()
-                    message_groups[message_id].add_message(msg_data)
-
                 # Update GSN tracking
                 self._load_state.last_seen_gsn = max_gsn
                 self._load_state.min_loaded_gsn = min_gsn if min_gsn != float('inf') else 0
                 logger.debug(f"Updated GSN range: min={self._load_state.min_loaded_gsn}, max={self._load_state.last_seen_gsn}")
 
-                # Convert to ordered list (in chronological order)
-                ordered_messages = []
-                for msg_data in reversed(raw_messages):
-                    message_id = msg_data.get("message_id") or msg_data.get("metadata", {}).get("message_id", "")
-                    if message_id in message_groups and message_id not in self._load_state.known_message_ids:
-                        combined = message_groups[message_id].get_combined_message()
-                        if combined:
-                            ordered_messages.append(combined)
-                            self._load_state.known_message_ids.add(message_id)
+                # Delegate ALL grouping and merging to MessageBuilder
+                # This ensures consistency with real-time streaming
+                items = self._message_builder.build_items_from_raw_messages(raw_messages)
 
                 # Load into model
-                for msg_data in ordered_messages:
-                    self._load_message_from_history(msg_data)
+                for item in items:
+                    if item.message_id not in self._load_state.known_message_ids:
+                        qml_item = self._model.from_chat_list_item(item)
+                        self._model.add_item(qml_item)
+                        self._load_state.known_message_ids.add(item.message_id)
 
-                self._load_state.unique_message_count = len(ordered_messages)
-                self._load_state.total_loaded_count = len(ordered_messages)
+                self._load_state.unique_message_count = len(items)
+                self._load_state.total_loaded_count = len(items)
+
                 # Fix has_more_older logic: compare total loaded with total in storage
                 total_count = history.get_total_count()
                 self._load_state.has_more_older = self._load_state.total_loaded_count < total_count
 
-                logger.info(f"Loaded {len(ordered_messages)} unique messages (total: {total_count})")
+                logger.info(f"Loaded {len(items)} unique messages (total: {total_count})")
 
                 # Force QML to update model binding
                 if self._refresh_qml_callback:
@@ -240,19 +235,12 @@ class HistoryManager:
         except Exception as e:
             logger.error(f"Error loading recent conversation: {e}", exc_info=True)
 
-    def _load_message_from_history(self, msg_data: Dict[str, Any]) -> None:
-        """Load a single message from history into model.
-
-        Args:
-            msg_data: Message data dictionary
-        """
-        item = self._message_builder.build_item_from_history(msg_data)
-        if item:
-            qml_item = self._model.from_chat_list_item(item)
-            self._model.add_item(qml_item)
-
     def load_older_messages(self) -> None:
-        """Load older messages when user scrolls to top."""
+        """Load older messages when user scrolls to top.
+
+        Storage layer returns raw messages as stored (no merging).
+        MessageBuilder handles ALL grouping and merging logic.
+        """
         if self._loading_older or not self._load_state.has_more_older:
             return
 
@@ -279,34 +267,21 @@ class HistoryManager:
 
             # Track min GSN in this batch for next load
             batch_min_gsn = self._load_state.min_loaded_gsn
-
-            # Group and build items
-            message_groups: Dict[str, MessageGroup] = {}
             for msg_data in older_messages:
-                message_id = msg_data.get("message_id") or msg_data.get("metadata", {}).get("message_id", "")
-                if not message_id:
-                    continue
-
-                # Track min GSN in this batch
                 msg_gsn = msg_data.get('metadata', {}).get('gsn', 0)
                 if msg_gsn > 0 and msg_gsn < batch_min_gsn:
                     batch_min_gsn = msg_gsn
 
-                if message_id not in message_groups:
-                    message_groups[message_id] = MessageGroup()
-                message_groups[message_id].add_message(msg_data)
+            # Delegate ALL grouping and merging to MessageBuilder
+            # This ensures consistency with real-time streaming
+            all_items = self._message_builder.build_items_from_raw_messages(older_messages)
 
+            # Filter out already known message_ids
             items = []
-            for message_id, group in message_groups.items():
-                if message_id in self._load_state.known_message_ids:
-                    continue
-
-                combined_msg = group.get_combined_message()
-                if combined_msg:
-                    item = self._message_builder.build_item_from_history(combined_msg)
-                    if item:
-                        items.append(item)
-                        self._load_state.known_message_ids.add(message_id)
+            for item in all_items:
+                if item.message_id not in self._load_state.known_message_ids:
+                    items.append(item)
+                    self._load_state.known_message_ids.add(item.message_id)
 
             if items:
                 # Save the first visible message ID and item count before prepending
@@ -522,23 +497,32 @@ class HistoryManager:
             if not new_messages:
                 return
 
-            # Group messages by message_id (don't skip known ones yet)
-            message_groups: Dict[str, MessageGroup] = {}
+            # Group messages by message_id with simple dict (no need for MessageGroup class)
+            # For streaming flow, we need to group multiple chunks with same message_id
+            message_groups: Dict[str, List[Dict[str, Any]]] = {}
             for msg_data in new_messages:
                 message_id = msg_data.get("message_id") or msg_data.get("metadata", {}).get("message_id", "")
                 if not message_id:
                     continue
 
-                # Always add to groups for processing
                 if message_id not in message_groups:
-                    message_groups[message_id] = MessageGroup()
-                message_groups[message_id].add_message(msg_data)
+                    message_groups[message_id] = []
+                message_groups[message_id].append(msg_data)
 
             # Process messages - handle both new and existing message_ids
-            for message_id, group in message_groups.items():
-                combined_msg = group.get_combined_message()
-                if not combined_msg:
-                    continue
+            for message_id, msg_list in message_groups.items():
+                # For streaming, combine content from all chunks
+                # Use MessageBuilder's build_items_from_raw_messages for consistency
+                # But since we have pre-grouped messages, handle inline
+                if len(msg_list) == 1:
+                    combined_msg = msg_list[0]
+                else:
+                    # Simple merge: combine content from all messages
+                    combined_msg = dict(msg_list[0])
+                    all_content = []
+                    for msg in msg_list:
+                        all_content.extend(msg.get("content", []))
+                    combined_msg["content"] = all_content
 
                 # Check if this message already exists in the model
                 existing_row = self._model.get_row_by_message_id(message_id)
@@ -549,6 +533,7 @@ class HistoryManager:
                     logger.debug(f"Merged new content into existing bubble: {message_id[:8]}...")
                 else:
                     # New message - create new bubble
+                    # Use build_item_from_history for single combined message
                     item = self._message_builder.build_item_from_history(combined_msg)
                     if item:
                         qml_item = self._model.from_chat_list_item(item)

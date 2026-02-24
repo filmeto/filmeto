@@ -10,10 +10,15 @@ The QML implementation offers:
 - Component-based message delegates
 - Declarative animations
 
+Architecture:
+- Storage layer: Returns raw messages as stored (no merging)
+- MessageBuilder: Handles ALL grouping and merging logic for consistency
+- HistoryManager: Coordinates loading and delegates to MessageBuilder
+
 Modules:
-- agent_chat_list_items: Data classes and helpers
-- qml_agent_chat_list_model: QML-compatible Qt model
-- qml_agent_chat_list_widget: QML-based widget (refactored with components)
+- agent_chat_list_items: Data classes
+- agent_chat_list_model: QML-compatible Qt model
+- agent_chat_list_widget: QML-based widget (refactored with components)
 
 Components:
 - handlers: QML and stream event handlers
@@ -23,7 +28,6 @@ Components:
 
 from app.ui.chat.list.agent_chat_list_items import (
     ChatListItem,
-    MessageGroup,
     LoadState,
 )
 
@@ -44,7 +48,6 @@ from app.ui.chat.list.builders import MessageBuilder
 __all__ = [
     # Data classes
     "ChatListItem",
-    "MessageGroup",
     "LoadState",
     # QML-based
     "QmlAgentChatListModel",

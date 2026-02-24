@@ -470,6 +470,9 @@ class FilmetoAgent:
     ) -> None:
         """Emit a system event via AgentChatSignals for UI feedback.
 
+        For metadata content, uses deterministic content_id based on (message_id, event_type)
+        to prevent duplicate metadata entries for the same event type in a conversation.
+
         Args:
             event_type: Type of the event
             session_id: Session identifier
@@ -484,17 +487,24 @@ class FilmetoAgent:
         if sender_name is None:
             sender_name = "System"
 
+        # Use deterministic content_id for metadata to prevent duplicates
+        # This ensures that multiple updates to the same (message_id, event_type)
+        # will have the same content_id, allowing standard deduplication to work
+        effective_message_id = message_id if message_id else str(uuid.uuid4())
+        metadata_content_id = f"meta:{effective_message_id}:{event_type}"
+
         meta = {"event_type": event_type, "session_id": session_id, **kwargs}
         msg = AgentMessage(
             sender_id=sender_id,
             sender_name=sender_name,
             metadata=meta,
-            message_id=message_id if message_id else str(uuid.uuid4()),
+            message_id=effective_message_id,
             structured_content=[MetadataContent(
                 metadata_type=event_type,
                 metadata_data={"event_type": event_type, **kwargs},
                 title=event_type,
                 description="",
+                content_id=metadata_content_id,  # Use deterministic content_id
             )],
         )
         await self.signals.send_agent_message(msg)
