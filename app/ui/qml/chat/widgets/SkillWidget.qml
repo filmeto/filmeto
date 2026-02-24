@@ -241,7 +241,7 @@ Rectangle {
     Component {
         id: toolCallWidgetComponent
         ToolCallWidget {
-            property var itemData: ({})
+            // itemData is set by Loader via property var itemData: modelData
             width: parent.width
             widgetColor: Qt.rgba(root.widgetColor.r, root.widgetColor.g, root.widgetColor.b, 0.8)
             toolName: itemData.data?.tool_name || itemData.tool_name || ""
@@ -256,7 +256,7 @@ Rectangle {
     Component {
         id: toolResponseWidgetComponent
         ToolResponseWidget {
-            property var itemData: ({})
+            // itemData is set by Loader via property var itemData: modelData
             width: parent.width
             widgetColor: Qt.rgba(root.widgetColor.r, root.widgetColor.g, root.widgetColor.b, 0.8)
             toolName: itemData.data?.tool_name || itemData.tool_name || ""
@@ -269,7 +269,7 @@ Rectangle {
     Component {
         id: thinkingWidgetComponent
         ThinkingWidget {
-            property var itemData: ({})
+            // itemData is set by Loader via property var itemData: modelData
             width: parent.width
             widgetColor: Qt.rgba(root.widgetColor.r, root.widgetColor.g, root.widgetColor.b, 0.8)
             thought: itemData.data?.thought || itemData.thought || ""
@@ -282,7 +282,7 @@ Rectangle {
     Component {
         id: stepWidgetComponent
         StepWidget {
-            property var itemData: ({})
+            // itemData is set by Loader via property var itemData: modelData
             width: parent.width
             widgetColor: Qt.rgba(root.widgetColor.r, root.widgetColor.g, root.widgetColor.b, 0.8)
             stepData: ({
@@ -298,7 +298,7 @@ Rectangle {
     Component {
         id: planWidgetComponent
         PlanWidget {
-            property var itemData: ({})
+            // itemData is set by Loader via property var itemData: modelData
             width: parent.width
             widgetColor: Qt.rgba(root.widgetColor.r, root.widgetColor.g, root.widgetColor.b, 0.8)
             planData: itemData
@@ -309,7 +309,7 @@ Rectangle {
     Component {
         id: taskWidgetComponent
         TaskWidget {
-            property var itemData: ({})
+            // itemData is set by Loader via property var itemData: modelData
             width: parent.width
             taskData: itemData
         }
@@ -319,7 +319,7 @@ Rectangle {
     Component {
         id: progressWidgetComponent
         ProgressWidget {
-            property var itemData: ({})
+            // itemData is set by Loader via property var itemData: modelData
             width: parent.width
             widgetColor: Qt.rgba(root.widgetColor.r, root.widgetColor.g, root.widgetColor.b, 0.8)
             text: itemData.data?.progress || itemData.progress || ""
@@ -331,7 +331,7 @@ Rectangle {
     Component {
         id: errorWidgetComponent
         ErrorWidget {
-            property var itemData: ({})
+            // itemData is set by Loader via property var itemData: modelData
             width: parent.width
             errorData: ({
                 error_message: itemData.data?.error || itemData.error_message || "",
@@ -345,7 +345,7 @@ Rectangle {
     Component {
         id: llmOutputWidgetComponent
         LlmOutputWidget {
-            property var itemData: ({})
+            // itemData is set by Loader via property var itemData: modelData
             width: parent.width
             widgetColor: Qt.rgba(root.widgetColor.r, root.widgetColor.g, root.widgetColor.b, 0.8)
             output: itemData.data?.output || itemData.output || ""
@@ -357,7 +357,7 @@ Rectangle {
     Component {
         id: metadataWidgetComponent
         MetadataWidget {
-            property var itemData: ({})
+            // itemData is set by Loader via property var itemData: modelData
             width: parent.width
             widgetColor: Qt.rgba(root.widgetColor.r, root.widgetColor.g, root.widgetColor.b, 0.8)
             metadataData: ({
@@ -373,7 +373,7 @@ Rectangle {
     Component {
         id: skillWidgetComponent
         Loader {
-            property var itemData: ({})
+            // itemData is set by Loader via property var itemData: modelData
             width: parent.width
             source: "SkillWidget.qml"
             property var _skillData: itemData.data || itemData
@@ -390,6 +390,7 @@ Rectangle {
     Component {
         id: textFallbackComponent
         Rectangle {
+            // itemData is set by Loader via property var itemData: modelData
             width: parent.width
             height: fallbackText.implicitHeight + 12
             color: "#1a1a1a"
