@@ -122,6 +122,8 @@ class QmlAgentChatListWidget(BaseWidget):
 
         # Active skills tracking: {run_id: {message_id, skill_name, sender_name, state}}
         self._active_skills: Dict[str, Dict[str, Any]] = {}
+        # Skill name to message_id mapping for combining skills: {skill_name: message_id}
+        self._skill_name_to_message_id: Dict[str, str] = {}
 
         # History cache
         self._history: Optional[MessageLogHistory] = None
@@ -1210,6 +1212,12 @@ class QmlAgentChatListWidget(BaseWidget):
 
         # Handle different event types
         if event.event_type == "skill_start":
+            # Check if there's already a message for this skill name
+            if skill_name in self._skill_name_to_message_id:
+                message_id = self._skill_name_to_message_id[skill_name]
+            else:
+                self._skill_name_to_message_id[skill_name] = message_id
+
             # Track the active skill
             self._active_skills[run_id] = {
                 "message_id": message_id,
@@ -1229,6 +1237,12 @@ class QmlAgentChatListWidget(BaseWidget):
                 self._update_skill_content(message_id, skill_content)
             else:
                 # Skill progress without start - create new
+                # Check if there's already a message for this skill name
+                if skill_name in self._skill_name_to_message_id:
+                    message_id = self._skill_name_to_message_id[skill_name]
+                else:
+                    self._skill_name_to_message_id[skill_name] = message_id
+
                 self._active_skills[run_id] = {
                     "message_id": message_id,
                     "skill_name": skill_name,
@@ -1248,10 +1262,34 @@ class QmlAgentChatListWidget(BaseWidget):
                 self._update_skill_content(message_id, skill_content)
                 # Remove from active skills
                 del self._active_skills[run_id]
+                
+                # Clean up skill name mapping if this was the last skill with this name
+                for r_id, skill_info in self._active_skills.items():
+                    if skill_info["skill_name"] == skill_name:
+                        break
+                else:
+                    # No other active skills with this name exist, remove from mapping
+                    if skill_name in self._skill_name_to_message_id:
+                        del self._skill_name_to_message_id[skill_name]
             else:
                 # Skill end without start - create new
+                # Check if there's already a message for this skill name
+                if skill_name in self._skill_name_to_message_id:
+                    message_id = self._skill_name_to_message_id[skill_name]
+                else:
+                    self._skill_name_to_message_id[skill_name] = message_id
+                    
                 self.get_or_create_agent_card(message_id, sender_name, sender_name)
                 self._update_skill_content(message_id, skill_content, create_new=True)
+                
+                # Clean up skill name mapping if this was the last skill with this name
+                for r_id, skill_info in self._active_skills.items():
+                    if skill_info["skill_name"] == skill_name:
+                        break
+                else:
+                    # No other active skills with this name exist, remove from mapping
+                    if skill_name in self._skill_name_to_message_id:
+                        del self._skill_name_to_message_id[skill_name]
 
         elif event.event_type == "skill_error":
             # Finalize the skill with error
@@ -1262,10 +1300,34 @@ class QmlAgentChatListWidget(BaseWidget):
                 self._update_skill_content(message_id, skill_content)
                 # Remove from active skills
                 del self._active_skills[run_id]
+                
+                # Clean up skill name mapping if this was the last skill with this name
+                for r_id, skill_info in self._active_skills.items():
+                    if skill_info["skill_name"] == skill_name:
+                        break
+                else:
+                    # No other active skills with this name exist, remove from mapping
+                    if skill_name in self._skill_name_to_message_id:
+                        del self._skill_name_to_message_id[skill_name]
             else:
                 # Skill error without start - create new
+                # Check if there's already a message for this skill name
+                if skill_name in self._skill_name_to_message_id:
+                    message_id = self._skill_name_to_message_id[skill_name]
+                else:
+                    self._skill_name_to_message_id[skill_name] = message_id
+                    
                 self.get_or_create_agent_card(message_id, sender_name, sender_name)
                 self._update_skill_content(message_id, skill_content, create_new=True)
+                
+                # Clean up skill name mapping if this was the last skill with this name
+                for r_id, skill_info in self._active_skills.items():
+                    if skill_info["skill_name"] == skill_name:
+                        break
+                else:
+                    # No other active skills with this name exist, remove from mapping
+                    if skill_name in self._skill_name_to_message_id:
+                        del self._skill_name_to_message_id[skill_name]
 
     def _update_skill_content(self, message_id: str, skill_content, create_new=False):
         """Update existing skill content with new state.
