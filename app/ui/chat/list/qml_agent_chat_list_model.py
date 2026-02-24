@@ -258,6 +258,13 @@ class QmlAgentChatListModel(QAbstractListModel):
             return self._items[row]
         return None
 
+    def get_item_by_message_id(self, message_id: str) -> Optional[Dict[str, Any]]:
+        """Get item by its message ID."""
+        row = self._message_id_to_row.get(message_id)
+        if row is not None and 0 <= row < len(self._items):
+            return self._items[row]
+        return None
+
     def get_row_by_message_id(self, message_id: str) -> Optional[int]:
         """Get row index for a message ID."""
         return self._message_id_to_row.get(message_id)
