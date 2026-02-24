@@ -251,6 +251,8 @@ class MessageBuilder:
                 skill_child_contents: Dict[str, List[Dict[str, Any]]] = {}
                 # Unassociated tool_call entries
                 tool_entries: List[Dict[str, Any]] = []
+                # Track typing content - only keep the last one (should be END state)
+                last_typing_content: Optional[Dict[str, Any]] = None
 
                 position = 0
                 for content_item in content_list:
@@ -260,7 +262,11 @@ class MessageBuilder:
                         skill_ref = (item_metadata.get("_skill_name")
                                      if isinstance(item_metadata, dict) else None)
 
-                        if content_type == "skill":
+                        # Special handling for typing content: only keep the last one
+                        if content_type == "typing":
+                            last_typing_content = content_item
+                            continue  # Don't process now, handle after the loop
+                        elif content_type == "skill":
                             skill_name = content_item.get("data", {}).get("skill_name", "")
                             if skill_name:
                                 if skill_name not in skills_by_name:
@@ -315,6 +321,15 @@ class MessageBuilder:
                             structured_content.append(sc)
                         except Exception as e:
                             logger.debug(f"Failed to load orphan child content: {e}")
+
+                # Add the last typing content (should be END state) if any
+                # This ensures only one typing indicator exists, preventing isStreaming=true
+                if last_typing_content:
+                    try:
+                        typing_sc = StructureContent.from_dict(last_typing_content)
+                        structured_content.append(typing_sc)
+                    except Exception as e:
+                        logger.debug(f"Failed to load typing content: {e}")
 
                 # Add timestamp to metadata for QML
                 if timestamp and "timestamp" not in metadata:

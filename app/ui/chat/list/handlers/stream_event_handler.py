@@ -216,12 +216,10 @@ class StreamEventHandler:
             if item:
                 # Remove existing typing START indicators to update UI state
                 current_structured = item.get(self._model.STRUCTURED_CONTENT, [])
-                logger.debug(f"[typing_end] Before filter: {len(current_structured)} items, message_id: {message_id}")
                 filtered_structured = [
                     sc for sc in current_structured
                     if sc.get('content_type') != 'typing'
                 ]
-                logger.debug(f"[typing_end] After filter: {len(filtered_structured)} items, removed {len(current_structured) - len(filtered_structured)} typing items")
 
                 # Add TypingContent with END state to record in history
                 typing_end_content = TypingContent(

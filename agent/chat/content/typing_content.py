@@ -28,8 +28,15 @@ class TypingContent(StructureContent):
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'TypingContent':
         """Create a TypingContent from a dictionary."""
-        # Parse state from data if available
-        state_value = data.get("state", "start")
+        # Parse state from data.data if available (storage format), else from top-level
+        # Storage format: {"data": {"state": "end"}}
+        # Runtime format: {"state": "end"}
+        data_field = data.get("data", {})
+        if isinstance(data_field, dict):
+            state_value = data_field.get("state", "start")
+        else:
+            state_value = data.get("state", "start")
+
         if isinstance(state_value, str):
             try:
                 state = TypingState(state_value)
