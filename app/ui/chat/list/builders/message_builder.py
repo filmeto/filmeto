@@ -166,7 +166,6 @@ class MessageBuilder:
         for content_item in dict_items:
             content_id = content_item.get("content_id", "")
             if content_id and content_id in seen_content_ids:
-                # Skip duplicate (lower GSN already processed)
                 continue
             if content_id:
                 seen_content_ids.add(content_id)
@@ -174,6 +173,11 @@ class MessageBuilder:
 
         # Add back non-dict items
         deduplicated.extend(non_dict_items)
+
+        # Restore chronological order (ascending GSN) after deduplication
+        deduplicated.sort(
+            key=lambda x: content_gsn_map.get(x.get("content_id", ""), 0)
+        )
 
         return deduplicated
 
