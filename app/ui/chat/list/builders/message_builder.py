@@ -511,7 +511,7 @@ class MessageBuilder:
         existing_children = existing_data.get('child_contents', [])
         new_children = new_data.get('child_contents', [])
 
-        merged_children = self._merge_child_contents_by_id(
+        merged_children = self.merge_child_contents_by_id(
             existing_children, new_children
         )
 

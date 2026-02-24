@@ -145,7 +145,7 @@ class VideoTimelineTool(BaseTool):
         if context is None:
             return None
 
-        project = context._project if hasattr(context, '_project') else None
+        project = context.project
         if project is None:
             return None
 

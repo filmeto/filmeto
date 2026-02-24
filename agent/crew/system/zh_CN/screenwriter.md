@@ -4,11 +4,7 @@ crew_title: screenwriter
 description: 开发故事节拍、对话和角色弧线。
 soul: amara_okello_soul
 skills:
-  - write_single_scene
-  - write_screenplay_outline
-  - read_single_scene
-  - read_screenplay_outline
-  - delete_single_scene
+  - write_screen_play
 model: gpt-4o-mini
 temperature: 0.5
 max_steps: 5

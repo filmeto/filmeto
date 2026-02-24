@@ -152,11 +152,8 @@ class ScreenPlayTool(BaseTool):
         if context is None:
             return None
 
-        project = context._project if hasattr(context, '_project') else None
-        if project is None:
-            return None
-
-        return project.get_screenplay_manager()
+        # Use the get_screenplay_manager() method from ToolContext
+        return context.get_screenplay_manager()
 
     async def _handle_create(
         self,
