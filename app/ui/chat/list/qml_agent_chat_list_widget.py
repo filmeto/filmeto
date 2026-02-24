@@ -6,6 +6,7 @@ offering superior performance with dynamic heights, smooth scrolling, and 60 FPS
 
 import uuid
 import logging
+import copy
 from typing import Dict, List, Any, Optional, TYPE_CHECKING
 from pathlib import Path
 
@@ -1305,15 +1306,18 @@ class QmlAgentChatListWidget(BaseWidget):
                 existing_skill_entry,
                 skill_content
             )
-            new_structured = list(current_structured)
+            # Deep copy all elements to ensure QML detects the change
+            new_structured = [copy.deepcopy(sc) for sc in current_structured]
             new_structured[existing_skill_index] = merged_entry
         elif create_new:
             # No existing skill and create_new is True - append new
-            new_structured = list(current_structured)
+            # Deep copy all elements to ensure QML detects the change
+            new_structured = [copy.deepcopy(sc) for sc in current_structured]
             new_structured.append(skill_content.to_dict())
         else:
             # No existing skill and create_new is False - append anyway
-            new_structured = list(current_structured)
+            # Deep copy all elements to ensure QML detects the change
+            new_structured = [copy.deepcopy(sc) for sc in current_structured]
             new_structured.append(skill_content.to_dict())
 
         self._model.update_item(message_id, {
@@ -1331,7 +1335,7 @@ class QmlAgentChatListWidget(BaseWidget):
             new_content: New SkillContent object
 
         Returns:
-            Merged skill entry in dict format
+            Merged skill entry in dict format (deep copied to ensure QML detects changes)
         """
         from agent.chat.content import SkillExecutionState
 
@@ -1344,14 +1348,27 @@ class QmlAgentChatListWidget(BaseWidget):
         existing_priority = state_priority.get(existing_state, 0)
         new_priority = state_priority.get(new_state, 0)
 
+        # Get child_contents from both sources (deep copy to avoid reference sharing)
+        existing_children = copy.deepcopy(existing_data.get("child_contents", []))
+        new_children = copy.deepcopy(new_content.child_contents or [])
+
         # Determine which entry to use as base based on state priority
         # Higher priority state wins (e.g., error overrides in_progress)
         if new_priority > existing_priority:
             # New state has higher priority, use new content as base
             # But preserve child_contents from existing if new doesn't have them
-            if not new_content.child_contents:
-                new_content.child_contents = existing_data.get("child_contents", [])
             merged_dict = new_content.to_dict()
+            merged_data = merged_dict.get("data", {})
+            if not merged_data.get("child_contents"):
+                merged_data["child_contents"] = existing_children
+            else:
+                # Merge child contents: new children take precedence, add unique existing ones
+                merged_children = self._merge_child_contents_by_id(
+                    merged_data.get("child_contents", []),
+                    existing_children
+                )
+                merged_data["child_contents"] = merged_children
+            merged_dict["data"] = merged_data
 
         elif new_priority < existing_priority:
             # Existing state has higher priority, keep existing but update certain fields
@@ -1359,61 +1376,81 @@ class QmlAgentChatListWidget(BaseWidget):
             if (new_state == SkillExecutionState.IN_PROGRESS.value and
                 existing_state == SkillExecutionState.IN_PROGRESS.value):
                 # Both are in_progress, update with latest progress info
-                merged_dict = dict(existing_entry)
-                merged_data = dict(merged_dict.get("data", {}))
+                merged_dict = copy.deepcopy(existing_entry)
+                merged_data = merged_dict.get("data", {})
                 merged_data.update({
                     "progress_text": new_content.progress_text,
                     "progress_percentage": new_content.progress_percentage,
                 })
                 # Merge child contents using common utility
-                if new_content.child_contents:
-                    # Combine existing children with new children
-                    all_children = []
-                    # Add existing children
-                    for child in existing_data.get("child_contents", []):
-                        all_children.append(child)
-                    # Add new children not already present
-                    existing_ids = {c.get("content_id") for c in all_children if c.get("content_id")}
-                    for child in new_content.child_contents:
-                        child_id = child.get("content_id") if isinstance(child, dict) else None
-                        if child_id:
-                            if child_id not in existing_ids:
-                                all_children.append(child)
-                        else:
-                            # No content_id, just append
-                            all_children.append(child)
-                    merged_data["child_contents"] = all_children
+                if new_children:
+                    merged_children = self._merge_child_contents_by_id(
+                        existing_children,
+                        new_children
+                    )
+                    merged_data["child_contents"] = merged_children
+                else:
+                    merged_data["child_contents"] = existing_children
                 merged_dict["data"] = merged_data
 
             else:
-                # Different states but existing has higher priority - keep existing unchanged
-                merged_dict = existing_entry
+                # Different states but existing has higher priority
+                # Still need to return a copy so QML detects change
+                merged_dict = copy.deepcopy(existing_entry)
 
         else:
             # Same priority - use the new content as it's more recent
             # But preserve and merge child_contents from existing
-            if not new_content.child_contents:
-                new_content.child_contents = existing_data.get("child_contents", [])
-            else:
-                # Merge child contents using common utility
-                all_children = []
-                # Add existing children
-                for child in existing_data.get("child_contents", []):
-                    all_children.append(child)
-                # Add new children not already present
-                existing_ids = {c.get("content_id") for c in all_children if c.get("content_id")}
-                for child in new_content.child_contents:
-                    child_id = child.get("content_id") if isinstance(child, dict) else None
-                    if child_id:
-                        if child_id not in existing_ids:
-                            all_children.append(child)
-                    else:
-                        # No content_id, just append
-                        all_children.append(child)
-                new_content.child_contents = all_children
             merged_dict = new_content.to_dict()
+            merged_data = merged_dict.get("data", {})
+            if not merged_data.get("child_contents"):
+                merged_data["child_contents"] = existing_children
+            else:
+                # Merge child contents
+                merged_children = self._merge_child_contents_by_id(
+                    merged_data.get("child_contents", []),
+                    existing_children
+                )
+                merged_data["child_contents"] = merged_children
+            merged_dict["data"] = merged_data
 
-        return merged_dict
+        # Deep copy final result to ensure QML detects the change
+        # This creates completely new object references throughout
+        return copy.deepcopy(merged_dict)
+
+    def _merge_child_contents_by_id(
+        self, base_children: List[Dict[str, Any]], new_children: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Merge child contents, deduplicating by content_id.
+
+        Args:
+            base_children: Base list of children (typically existing/new content)
+            new_children: New children to merge in
+
+        Returns:
+            Merged list with unique children (deep copied)
+        """
+        all_children = []
+        seen_ids = set()
+
+        # Add base children first
+        for child in base_children:
+            child_id = child.get("content_id") if isinstance(child, dict) else None
+            all_children.append(copy.deepcopy(child))
+            if child_id:
+                seen_ids.add(child_id)
+
+        # Add new children not already present
+        for child in new_children:
+            child_id = child.get("content_id") if isinstance(child, dict) else None
+            if child_id and child_id in seen_ids:
+                # Duplicate, skip
+                continue
+            all_children.append(copy.deepcopy(child))
+            if child_id:
+                seen_ids.add(child_id)
+
+        return all_children
 
     def _handle_tool_event(self, event):
         """Handle tool events - adds them as child contents to active skills.
@@ -1495,13 +1532,14 @@ class QmlAgentChatListWidget(BaseWidget):
                 # If run_id is provided, only update matching skills
                 if run_id is not None:
                     if sc_data.get("run_id") != run_id:
-                        # Not the target skill, keep as-is
-                        new_structured.append(sc)
+                        # Not the target skill, deep copy to ensure QML detects change
+                        new_structured.append(copy.deepcopy(sc))
                         continue
 
                 # Add child content to the skill
-                new_sc = dict(sc)
-                sc_data = dict(new_sc.get("data", {}))
+                # Deep copy to avoid sharing references
+                new_sc = copy.deepcopy(sc)
+                sc_data = new_sc.get("data", {})
                 child_contents = list(sc_data.get("child_contents", []))
 
                 # Avoid duplicates by content_id
@@ -1509,16 +1547,18 @@ class QmlAgentChatListWidget(BaseWidget):
                 if child_id:
                     existing_ids = {c.get("content_id") for c in child_contents if c.get("content_id")}
                     if child_id not in existing_ids:
-                        child_contents.append(child_content)
+                        # Deep copy child_content to avoid reference sharing
+                        child_contents.append(copy.deepcopy(child_content))
                 else:
-                    # No content_id, just append
-                    child_contents.append(child_content)
+                    # No content_id, deep copy and append
+                    child_contents.append(copy.deepcopy(child_content))
 
                 sc_data["child_contents"] = child_contents
                 new_sc["data"] = sc_data
                 new_structured.append(new_sc)
             else:
-                new_structured.append(sc)
+                # Deep copy non-skill items to ensure QML detects change
+                new_structured.append(copy.deepcopy(sc))
 
         self._model.update_item(message_id, {
             QmlAgentChatListModel.STRUCTURED_CONTENT: new_structured,
