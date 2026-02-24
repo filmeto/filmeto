@@ -399,8 +399,46 @@ class EnhancedMessageLogHistory:
 
     # Delegate methods to underlying history
     def get_latest_messages(self, count: int = 20) -> list:
-        """Get latest messages from active log."""
-        return self._history.get_latest_messages(count)
+        """
+        Get latest messages from active log and archives.
+
+        Returns messages from both active log and archives in reverse
+        chronological order (most recent first). The UI layer is
+        responsible for grouping messages by message_id.
+
+        Note: This method does NOT deduplicate by message_id because the
+        same message_id can have multiple content entries (e.g., skill
+        progress updates) that should all be returned.
+
+        Args:
+            count: Number of messages to retrieve
+
+        Returns:
+            List of messages, most recent first
+        """
+        messages = []
+        remaining = count
+
+        # First get from active log
+        active_messages = self._history.get_latest_messages(remaining)
+        messages.extend(active_messages)
+        remaining = count - len(active_messages)
+
+        # If we need more messages, get from archives (newest first)
+        if remaining > 0 and self._archives:
+            for archive_dir in self._archives:
+                if remaining <= 0:
+                    break
+
+                archive = self._history.storage.load_archive(archive_dir)
+                archive_messages = archive.get_latest_messages(remaining)
+                messages.extend(archive_messages)
+                remaining = count - len(messages)
+
+                if remaining <= 0:
+                    break
+
+        return messages
 
     def get_messages_after(self, line_offset: int, count: int) -> list:
         """Get messages after a line offset in active log."""
