@@ -26,6 +26,7 @@ class ChatListItem:
         agent_color: Display color for the agent
         agent_icon: Display icon for the agent
         crew_member_metadata: Additional metadata about the crew member
+        metadata: Additional metadata (including GSN for sorting)
     """
     message_id: str
     sender_id: str
@@ -36,6 +37,7 @@ class ChatListItem:
     agent_color: str = "#4a90e2"
     agent_icon: str = "🤖"
     crew_member_metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

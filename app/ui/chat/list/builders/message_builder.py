@@ -186,6 +186,10 @@ class MessageBuilder:
         Returns:
             GSN value (0 if not found)
         """
+        # First try to get GSN from item.metadata (works for both user and agent)
+        if item.metadata:
+            return item.metadata.get("gsn", 0)
+        # For agent messages, also check agent_message.metadata
         if item.agent_message and item.agent_message.metadata:
             return item.agent_message.metadata.get("gsn", 0)
         return 0
@@ -235,6 +239,7 @@ class MessageBuilder:
                     sender_name=sender_name,
                     is_user=True,
                     user_content=text_content,
+                    metadata=metadata,  # Preserve metadata for GSN sorting
                 )
             else:
                 structured_content = []
