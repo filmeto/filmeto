@@ -210,19 +210,35 @@ class StreamEventHandler:
             logger.debug(f"Added typing indicator for {sender_name} (message_id: {message_id})")
 
         elif event.event_type == "crew_member_typing_end":
-            # Remove typing indicator by filtering it out
+            # Add TypingContent with END state to mark completion in history
+            # Then filter out previous typing indicators to update UI state
             item = self._model.get_item_by_message_id(message_id)
             if item:
-                # Remove typing content from structured_content
+                # Remove existing typing START indicators to update UI state
                 current_structured = item.get(self._model.STRUCTURED_CONTENT, [])
+                logger.debug(f"[typing_end] Before filter: {len(current_structured)} items, message_id: {message_id}")
                 filtered_structured = [
                     sc for sc in current_structured
                     if sc.get('content_type') != 'typing'
                 ]
+                logger.debug(f"[typing_end] After filter: {len(filtered_structured)} items, removed {len(current_structured) - len(filtered_structured)} typing items")
+
+                # Add TypingContent with END state to record in history
+                typing_end_content = TypingContent(
+                    state=TypingState.END,
+                    title="Typing",
+                    description="Agent processing completed"
+                )
+                final_structured = filtered_structured + [typing_end_content.to_dict()]
+
                 self._model.update_item(message_id, {
-                    self._model.STRUCTURED_CONTENT: filtered_structured,
+                    self._model.STRUCTURED_CONTENT: final_structured,
                 })
-                logger.debug(f"Removed typing indicator for {sender_name} (message_id: {message_id})")
+                # Force immediate UI update to ensure typing state changes
+                self._model.flush_updates()
+                logger.debug(f"Added typing_end indicator for {sender_name} (message_id: {message_id})")
+            else:
+                logger.warning(f"[typing_end] Item not found for message_id: {message_id}")
 
     def _handle_content_event(self, event) -> None:
         """Handle events with content.

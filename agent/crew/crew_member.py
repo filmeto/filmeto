@@ -134,7 +134,17 @@ class CrewMember:
         )
 
         if not self.llm_service.validate_config():
-            # Emit typing_end event before error
+            # Yield error event first
+            yield AgentEvent.error(
+                error_message="LLM service is not configured.",
+                project_name=self.project_name,
+                react_type=self.config.name,
+                run_id=run_id,
+                step_id=0,
+                sender_id=self.config.name,
+                sender_name=self.config.name,
+            )
+            # Emit typing_end event after error to mark completion
             yield AgentEvent.create(
                 event_type=AgentEventType.CREW_MEMBER_TYPING_END.value,
                 project_name=self.project_name,
@@ -148,15 +158,6 @@ class CrewMember:
                     description="Agent processing completed",
                     state=TypingState.END
                 )
-            )
-            yield AgentEvent.error(
-                error_message="LLM service is not configured.",
-                project_name=self.project_name,
-                react_type=self.config.name,
-                run_id=run_id,
-                step_id=0,
-                sender_id=self.config.name,
-                sender_name=self.config.name,
             )
             return
 
@@ -195,21 +196,6 @@ class CrewMember:
             )
 
             if event.event_type == AgentEventType.FINAL:
-                # Emit typing_end event before final response
-                yield AgentEvent.create(
-                    event_type=AgentEventType.CREW_MEMBER_TYPING_END.value,
-                    project_name=self.project_name,
-                    react_type=self.config.name,
-                    run_id=event.run_id,
-                    step_id=event.step_id,
-                    sender_id=self.config.name,
-                    sender_name=self.config.name,
-                    content=TypingContent(
-                        title="Typing",
-                        description="Agent processing completed",
-                        state=TypingState.END
-                    )
-                )
                 # Extract from content or payload (backward compat)
                 if event.content and hasattr(event.content, 'text'):
                     final_response = event.content.text
@@ -221,10 +207,9 @@ class CrewMember:
                 if final_response:
                     self.conversation_history.append({"role": "user", "content": message})
                     self.conversation_history.append({"role": "assistant", "content": final_response})
+                # Yield final response first
                 yield enhanced_event
-                break
-            elif event.event_type == AgentEventType.ERROR:
-                # Emit typing_end event before error
+                # Emit typing_end event after final response to mark completion
                 yield AgentEvent.create(
                     event_type=AgentEventType.CREW_MEMBER_TYPING_END.value,
                     project_name=self.project_name,
@@ -239,6 +224,8 @@ class CrewMember:
                         state=TypingState.END
                     )
                 )
+                break
+            elif event.event_type == AgentEventType.ERROR:
                 # Extract from content or payload (backward compat)
                 if event.content and hasattr(event.content, 'error_message'):
                     error_message = event.content.error_message
@@ -248,7 +235,23 @@ class CrewMember:
                     error_message = "Unknown error occurred"
                 self.conversation_history.append({"role": "user", "content": message})
                 self.conversation_history.append({"role": "assistant", "content": error_message})
+                # Yield error event first
                 yield enhanced_event
+                # Emit typing_end event after error to mark completion
+                yield AgentEvent.create(
+                    event_type=AgentEventType.CREW_MEMBER_TYPING_END.value,
+                    project_name=self.project_name,
+                    react_type=self.config.name,
+                    run_id=event.run_id,
+                    step_id=event.step_id,
+                    sender_id=self.config.name,
+                    sender_name=self.config.name,
+                    content=TypingContent(
+                        title="Typing",
+                        description="Agent processing completed",
+                        state=TypingState.END
+                    )
+                )
                 break
             else:
                 # Yield all other events (LLM_THINKING, TOOL_START, TOOL_PROGRESS, TOOL_END, etc.)
@@ -258,7 +261,16 @@ class CrewMember:
             return
 
         if final_response is None:
-            # Emit typing_end event before error
+            # Yield error event first
+            yield AgentEvent.error(
+                error_message="Reached max steps without a final response.",
+                project_name=self.project_name,
+                react_type=self.config.name,
+                run_id=run_id,
+                sender_id=self.config.name,
+                sender_name=self.config.name,
+            )
+            # Emit typing_end event after error to mark completion
             yield AgentEvent.create(
                 event_type=AgentEventType.CREW_MEMBER_TYPING_END.value,
                 project_name=self.project_name,
@@ -272,15 +284,6 @@ class CrewMember:
                     description="Agent processing completed",
                     state=TypingState.END
                 )
-            )
-            # Create an error event if we didn't get a final response
-            yield AgentEvent.error(
-                error_message="Reached max steps without a final response.",
-                project_name=self.project_name,
-                react_type=self.config.name,
-                run_id=run_id,
-                sender_id=self.config.name,
-                sender_name=self.config.name,
             )
             return
 

@@ -84,13 +84,20 @@ Item {
     }
 
     // Typing content (presence indicates streaming state)
+    // Only includes typing with state="start", not state="end"
     property var typingContent: {
         if (widgetSupport !== "full") return []
         var items = []
         for (var i = 0; i < effectiveStructuredContent.length; i++) {
             var type = effectiveStructuredContent[i].content_type || effectiveStructuredContent[i].type || "text"
             if (type === "typing") {
-                items.push(effectiveStructuredContent[i])
+                // Only include typing content with state="start"
+                // state="end" is kept in history but doesn't trigger streaming state
+                var data = effectiveStructuredContent[i].data || {}
+                var state = data.state || "start"
+                if (state === "start") {
+                    items.push(effectiveStructuredContent[i])
+                }
             }
         }
         return items
