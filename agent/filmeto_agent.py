@@ -629,6 +629,12 @@ class FilmetoAgent:
         # Track content IDs for hierarchical relationships (e.g., tool → progress updates)
         content_tracking: Dict[str, str] = {}  # tool_name → content_id mapping
 
+        # Track active skill execution for marking child content with skill context.
+        # Events between SKILL_START and SKILL_END/SKILL_ERROR get metadata marking
+        # so that history loading can associate them as skill children.
+        _active_skill_name: Optional[str] = None
+        _active_skill_run_id: Optional[str] = None
+
         async for event in crew_member.chat_stream(message, plan_id=plan_id):
             # Add metadata to the event payload (kept for backward compatibility during transition)
             event_payload = dict(event.payload)
@@ -636,6 +642,18 @@ class FilmetoAgent:
                 event_payload.update(metadata)
             if plan_id:
                 event_payload["plan_id"] = plan_id
+
+            # Track skill execution boundaries
+            if event.event_type in (AgentEventType.SKILL_START.value, AgentEventType.SKILL_START):
+                if event.content and hasattr(event.content, 'skill_name'):
+                    _active_skill_name = event.content.skill_name
+                    _active_skill_run_id = getattr(event.content, 'run_id', '') or event.run_id
+            elif event.event_type in (
+                AgentEventType.SKILL_END.value, AgentEventType.SKILL_END,
+                AgentEventType.SKILL_ERROR.value, AgentEventType.SKILL_ERROR,
+            ):
+                _active_skill_name = None
+                _active_skill_run_id = None
 
             # Create appropriate content based on event type
             # First, check if event already has content (from react.py)
@@ -748,6 +766,23 @@ class FilmetoAgent:
                                 description="Task list has been updated"
                             )
 
+            # Mark non-skill content with skill context if inside a skill execution.
+            # This metadata is used during history loading to associate content
+            # (thinking, llm_output, tool_call, etc.) as children of the enclosing skill.
+            if _active_skill_name and content:
+                is_skill_event = event.event_type in (
+                    AgentEventType.SKILL_START.value, AgentEventType.SKILL_START,
+                    AgentEventType.SKILL_PROGRESS.value, AgentEventType.SKILL_PROGRESS,
+                    AgentEventType.SKILL_END.value, AgentEventType.SKILL_END,
+                    AgentEventType.SKILL_ERROR.value, AgentEventType.SKILL_ERROR,
+                )
+                if not is_skill_event:
+                    if content.metadata is None:
+                        content.metadata = {}
+                    content.metadata['_skill_name'] = _active_skill_name
+                    if _active_skill_run_id:
+                        content.metadata['_skill_run_id'] = _active_skill_run_id
+
             # Create enhanced event with content
             enhanced_event = AgentEvent.create(
                 event_type=event.event_type,
@@ -757,7 +792,7 @@ class FilmetoAgent:
                 step_id=event.step_id,
                 sender_id=event.sender_id,
                 sender_name=event.sender_name,
-                content=content,  # Always provide content
+                content=content,
             )
 
             # Convert event to message and send via AgentChatSignals

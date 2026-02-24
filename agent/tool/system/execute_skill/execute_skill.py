@@ -130,59 +130,36 @@ class ExecuteSkillTool(BaseTool):
             return
 
         try:
-            # Extract crew_member_name from sender_id/sender_name for react_type uniqueness
-            # sender_id is typically the crew member's identifier
-            # sender_name is the display name - we'll use sender_id for uniqueness
             crew_member_name = sender_id if sender_id else None
-
-            # Use run_id as conversation_id for checkpoint isolation
-            # Each unique run_id will have its own checkpoint storage
             conversation_id = run_id if run_id else None
 
-            # Use SkillService.chat_stream to execute the skill
-            # Forward events from skill_chat directly, preserving event types
             final_response = None
+            has_error = False
             async for event in skill_service.chat_stream(
                     skill=skill,
                     user_message=prompt,
                     workspace=workspace,
                     project=context.project_name if context else None,
-                    llm_service=None,  # Will use default LLM service
+                    llm_service=None,
                     max_steps=max_steps,
                     crew_member_name=crew_member_name,
                     conversation_id=conversation_id,
-                    run_id=run_id,  # Pass run_id to link all skill events together
+                    run_id=run_id,
             ):
-                # Forward the event directly, preserving original event type and content
-                # The sender_id/sender_name will be added by CrewMember upstream
                 if event.event_type == AgentEventType.FINAL:
-                    # Extract final_response from content or payload (backward compat)
                     if event.content and hasattr(event.content, 'text'):
                         final_response = event.content.text
                     elif event.payload:
                         final_response = event.payload.get("final_response")
-                    # Convert FINAL to tool_end for tool completion
-                    yield self._create_event(
-                        "tool_end",
-                        project_name,
-                        react_type,
-                        run_id,
-                        step_id,
-                        sender_id,
-                        sender_name,
-                        ok=True,
-                        result=final_response
-                    )
-                    return
+                    # Don't return yet - continue iterating so SKILL_END can be forwarded
+                    continue
                 elif event.event_type == AgentEventType.ERROR:
-                    # Extract error from content or payload (backward compat)
                     if event.content and hasattr(event.content, 'error_message'):
                         error = event.content.error_message
                     elif event.payload:
                         error = event.payload.get("error", "Unknown error")
                     else:
                         error = "Unknown error"
-                    # Convert ERROR to tool error event
                     yield self._create_event(
                         "error",
                         project_name,
@@ -193,10 +170,9 @@ class ExecuteSkillTool(BaseTool):
                         sender_name,
                         error=error
                     )
+                    has_error = True
                     return
                 else:
-                    # Forward all other events directly (LLM_THINKING, TOOL_START, TOOL_PROGRESS, TOOL_END, etc.)
-                    # Create new event with updated sender info, preserving content
                     yield AgentEvent.create(
                         event_type=event.event_type,
                         project_name=event.project_name or project_name,
@@ -208,8 +184,7 @@ class ExecuteSkillTool(BaseTool):
                         content=event.content
                     )
 
-            # If we get here without a FINAL event, return whatever we collected
-            if final_response:
+            if not has_error:
                 yield self._create_event(
                     "tool_end",
                     project_name,
@@ -219,19 +194,7 @@ class ExecuteSkillTool(BaseTool):
                     sender_id,
                     sender_name,
                     ok=True,
-                    result=final_response
-                )
-            else:
-                yield self._create_event(
-                    "tool_end",
-                    project_name,
-                    react_type,
-                    run_id,
-                    step_id,
-                    sender_id,
-                    sender_name,
-                    ok=True,
-                    result="Skill execution completed"
+                    result=final_response or "Skill execution completed"
                 )
 
         except Exception as e:
