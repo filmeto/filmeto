@@ -625,6 +625,146 @@ class QmlAgentChatListWidget(BaseWidget):
             qml_item = QmlAgentChatListModel.from_chat_list_item(item)
             self._model.add_item(qml_item)
 
+    # ─── Skill Content Merging ────────────────────────────────────────────
+    # Common utilities for merging skill content entries (used by both
+    # historical loading and real-time updates)
+
+    def _get_skill_state_priority(self) -> Dict[str, int]:
+        """Get the priority mapping for skill execution states.
+
+        Higher priority states override lower ones during merging.
+
+        Returns:
+            Dictionary mapping state values to priority levels (higher = more important)
+        """
+        from agent.chat.content import SkillExecutionState
+        return {
+            SkillExecutionState.ERROR.value: 4,
+            SkillExecutionState.COMPLETED.value: 3,
+            SkillExecutionState.IN_PROGRESS.value: 2,
+            SkillExecutionState.PENDING.value: 1,
+        }
+
+    def _determine_base_skill_entry(self, entries: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Determine which skill entry should be used as the base for merging.
+
+        Uses state priority to select the most important entry as the base.
+        If all entries have the same priority (e.g., all in_progress),
+        the last entry (most recent) is used.
+
+        Args:
+            entries: List of skill content entries (dict format)
+
+        Returns:
+            The entry that should be used as base
+        """
+        state_priority = self._get_skill_state_priority()
+
+        # Sort entries by state priority (highest first)
+        sorted_entries = sorted(
+            entries,
+            key=lambda e: state_priority.get(
+                e.get("data", {}).get("state", ""),
+                0
+            ),
+            reverse=True
+        )
+
+        # Check if all entries have the same state priority
+        highest_priority = state_priority.get(
+            sorted_entries[0].get("data", {}).get("state", ""),
+            0
+        )
+        all_same_priority = all(
+            state_priority.get(e.get("data", {}).get("state", ""), 0) == highest_priority
+            for e in entries
+        )
+
+        # If all are in_progress with same priority, use the last (most recent)
+        # Otherwise use the highest priority entry
+        if all_same_priority and highest_priority == state_priority.get("in_progress", 2):
+            return entries[-1]
+        else:
+            return sorted_entries[0]
+
+    def _merge_child_contents(self, entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Merge child contents from multiple skill entries.
+
+        Collects all child_contents from entries and removes duplicates
+        based on content_id.
+
+        Args:
+            entries: List of skill content entries (dict format)
+
+        Returns:
+            Merged list of child contents with duplicates removed
+        """
+        child_contents = []
+        seen_content_ids = set()
+
+        for entry in entries:
+            entry_children = entry.get("data", {}).get("child_contents", [])
+            for child in entry_children:
+                content_id = child.get("content_id")
+                if content_id:
+                    if content_id not in seen_content_ids:
+                        child_contents.append(child)
+                        seen_content_ids.add(content_id)
+                else:
+                    # No content_id, just append (can't deduplicate)
+                    child_contents.append(child)
+
+        return child_contents
+
+    def _create_skill_content_from_entry(
+        self,
+        entry: Dict[str, Any],
+        skill_name: str,
+        child_contents: List[Dict[str, Any]] = None
+    ) -> 'StructureContent':
+        """Create a SkillContent from an entry dictionary.
+
+        Args:
+            entry: The skill entry (dict format)
+            skill_name: The name of the skill
+            child_contents: Optional child contents to include
+
+        Returns:
+            A SkillContent object
+        """
+        from agent.chat.content import SkillContent, SkillExecutionState, ContentStatus
+
+        base_data = entry.get("data", {})
+        final_state = base_data.get("state", SkillExecutionState.IN_PROGRESS.value)
+
+        # Map skill execution state to content status
+        if final_state == SkillExecutionState.COMPLETED.value:
+            final_status = ContentStatus.COMPLETED
+        elif final_state == SkillExecutionState.ERROR.value:
+            final_status = ContentStatus.FAILED
+        elif final_state == SkillExecutionState.IN_PROGRESS.value:
+            final_status = ContentStatus.UPDATING
+        else:
+            final_status = ContentStatus.CREATING
+
+        return SkillContent(
+            content_type=ContentType(entry.get("content_type", "skill")),
+            title=entry.get("title", f"Skill: {skill_name}"),
+            description=entry.get("description", f"Skill execution: {skill_name}"),
+            content_id=entry.get("content_id"),
+            status=final_status,
+            metadata=entry.get("metadata", {}),
+            skill_name=skill_name,
+            skill_description=base_data.get("description", ""),
+            state=SkillExecutionState(final_state) if isinstance(final_state, str) else final_state,
+            progress_text=base_data.get("progress_text", ""),
+            progress_percentage=base_data.get("progress_percentage"),
+            result=base_data.get("result", ""),
+            error_message=base_data.get("error_message", ""),
+            child_contents=child_contents if child_contents is not None else [],
+            run_id=base_data.get("run_id", ""),
+        )
+
     def _merge_skill_entries(self, skill_name: str, skill_entries: List[Dict[str, Any]],
                            tool_entries: List[Dict[str, Any]] = None) -> Optional['StructureContent']:
         """Merge multiple skill entries into a single SkillContent.
@@ -637,57 +777,14 @@ class QmlAgentChatListWidget(BaseWidget):
         Returns:
             A merged SkillContent or None if merging fails
         """
-        from agent.chat.content import SkillContent, SkillExecutionState, ContentStatus
-
         if not skill_entries:
             return None
 
         tool_entries = tool_entries or []
 
-        # Sort entries by state priority: error > completed > in_progress > pending
-        state_priority = {
-            SkillExecutionState.ERROR.value: 4,
-            SkillExecutionState.COMPLETED.value: 3,
-            SkillExecutionState.IN_PROGRESS.value: 2,
-            SkillExecutionState.PENDING.value: 1,
-        }
-
-        # Find the entry with highest priority state (final state)
-        # If all have same priority (e.g., all in_progress), use the last one (most recent)
-        sorted_entries = sorted(
-            skill_entries,
-            key=lambda e: state_priority.get(
-                e.get("data", {}).get("state", SkillExecutionState.PENDING.value),
-                0
-            ),
-            reverse=True
-        )
-
-        # Check if all entries have the same state priority
-        highest_priority = state_priority.get(
-            sorted_entries[0].get("data", {}).get("state", SkillExecutionState.PENDING.value),
-            0
-        )
-        all_same_priority = all(
-            state_priority.get(e.get("data", {}).get("state", SkillExecutionState.PENDING.value), 0) == highest_priority
-            for e in skill_entries
-        )
-
-        # If all same priority (e.g., all in_progress), use the last entry as base (most recent)
-        # Otherwise use the first entry after sorting (highest priority)
-        if all_same_priority and highest_priority == state_priority.get(SkillExecutionState.IN_PROGRESS.value, 2):
-            # All are in_progress - use the last one (most recent progress)
-            base_entry = skill_entries[-1]
-        else:
-            base_entry = sorted_entries[0]
-        base_data = base_entry.get("data", {})
-
-        # Collect child contents from all entries
-        child_contents = []
-        for entry in skill_entries:
-            entry_children = entry.get("data", {}).get("child_contents", [])
-            if entry_children:
-                child_contents.extend(entry_children)
+        # Use common utilities to determine base entry and merge child contents
+        base_entry = self._determine_base_skill_entry(skill_entries)
+        child_contents = self._merge_child_contents(skill_entries)
 
         # Associate tool_call entries as children based on progress_text mentions
         # For example, if skill progress_text says "Executing tool [1] - execute_skill_script"
@@ -710,38 +807,8 @@ class QmlAgentChatListWidget(BaseWidget):
                 # For now, add all tool_calls from the same message as skill children
                 child_contents.append(tool_entry)
 
-        # Determine final state and data
-        final_state = base_data.get("state", SkillExecutionState.IN_PROGRESS.value)
-        # Map skill execution state to content status
-        if final_state == SkillExecutionState.COMPLETED.value:
-            final_status = ContentStatus.COMPLETED
-        elif final_state == SkillExecutionState.ERROR.value:
-            final_status = ContentStatus.FAILED
-        elif final_state == SkillExecutionState.IN_PROGRESS.value:
-            final_status = ContentStatus.UPDATING
-        else:
-            final_status = ContentStatus.CREATING
-
-        # Create merged SkillContent
-        merged = SkillContent(
-            content_type=ContentType(base_entry.get("content_type", "skill")),
-            title=base_entry.get("title", f"Skill: {skill_name}"),
-            description=base_entry.get("description", f"Skill execution: {skill_name}"),
-            content_id=base_entry.get("content_id"),
-            status=final_status,
-            metadata=base_entry.get("metadata", {}),
-            skill_name=skill_name,
-            skill_description=base_data.get("description", ""),
-            state=SkillExecutionState(final_state) if isinstance(final_state, str) else final_state,
-            progress_text=base_data.get("progress_text", ""),
-            progress_percentage=base_data.get("progress_percentage"),
-            result=base_data.get("result", ""),
-            error_message=base_data.get("error_message", ""),
-            child_contents=child_contents,
-            run_id=base_data.get("run_id", ""),
-        )
-
-        return merged
+        # Use common utility to create final SkillContent
+        return self._create_skill_content_from_entry(base_entry, skill_name, child_contents)
 
     # ─── Crew Member Metadata ────────────────────────────────────────────
 
@@ -1014,7 +1081,8 @@ class QmlAgentChatListWidget(BaseWidget):
             skill_info["child_contents"].append(error_dict)
 
             # Update the skill to show the new child content
-            self._add_child_to_skill(message_id, error_dict)
+            # Pass run_id to ensure we only update the matching skill
+            self._add_child_to_skill(message_id, error_dict, run_id=run_id)
             return
 
         # No active skill - handle as standalone error
@@ -1051,7 +1119,8 @@ class QmlAgentChatListWidget(BaseWidget):
             skill_info["child_contents"].append(text_dict)
 
             # Update the skill to show the new child content
-            self._add_child_to_skill(message_id, text_dict)
+            # Pass run_id to ensure we only update the matching skill
+            self._add_child_to_skill(message_id, text_dict, run_id=run_id)
             return
 
         # No active skill - handle as standalone content
@@ -1200,12 +1269,15 @@ class QmlAgentChatListWidget(BaseWidget):
     def _update_skill_content(self, message_id: str, skill_content, create_new=False):
         """Update existing skill content with new state.
 
+        Uses the same merging strategy as _merge_skill_entries to ensure
+        consistency between historical loading and real-time updates.
+
         Args:
             message_id: The message ID containing the skill
             skill_content: New SkillContent with updated state
             create_new: If True, always create new content instead of replacing
         """
-        from agent.chat.content import SkillContent
+        from agent.chat.content import SkillContent, SkillExecutionState, ContentStatus
 
         item = self._model.get_item(self._model.get_row_by_message_id(message_id) or 0)
         if not item:
@@ -1213,8 +1285,8 @@ class QmlAgentChatListWidget(BaseWidget):
 
         current_structured = item.get(QmlAgentChatListModel.STRUCTURED_CONTENT, [])
 
-        # Check for existing skill with same name
-        existing_skill_data = None
+        # Check for existing skill with same run_id or skill_name
+        existing_skill_entry = None
         existing_skill_index = -1
         for i, sc in enumerate(current_structured):
             if sc.get("content_type") == "skill":
@@ -1222,17 +1294,19 @@ class QmlAgentChatListWidget(BaseWidget):
                 # Match by run_id first, then by skill_name
                 if (sc_data.get("run_id") == skill_content.run_id and skill_content.run_id) or \
                    (sc_data.get("skill_name") == skill_content.skill_name):
-                    existing_skill_data = sc_data
+                    existing_skill_entry = sc
                     existing_skill_index = i
                     break
 
-        if existing_skill_data is not None:
-            # Found existing skill - merge and replace
+        if existing_skill_entry is not None:
+            # Found existing skill - merge using the same logic as _merge_skill_entries
+            # This ensures real-time updates use the same merging strategy as historical loading
+            merged_entry = self._merge_skill_content_with_existing(
+                existing_skill_entry,
+                skill_content
+            )
             new_structured = list(current_structured)
-            # Preserve child contents from existing if new content doesn't have them
-            if not skill_content.child_contents and existing_skill_data.get("child_contents"):
-                skill_content.child_contents = existing_skill_data.get("child_contents", [])
-            new_structured[existing_skill_index] = skill_content.to_dict()
+            new_structured[existing_skill_index] = merged_entry
         elif create_new:
             # No existing skill and create_new is True - append new
             new_structured = list(current_structured)
@@ -1245,6 +1319,101 @@ class QmlAgentChatListWidget(BaseWidget):
         self._model.update_item(message_id, {
             QmlAgentChatListModel.STRUCTURED_CONTENT: new_structured,
         })
+
+    def _merge_skill_content_with_existing(self, existing_entry: Dict[str, Any], new_content) -> Dict[str, Any]:
+        """Merge existing skill entry with new skill content.
+
+        Uses the same merging strategy as _merge_skill_entries to ensure
+        consistency between historical loading and real-time updates.
+
+        Args:
+            existing_entry: Existing skill entry (dict format from storage)
+            new_content: New SkillContent object
+
+        Returns:
+            Merged skill entry in dict format
+        """
+        from agent.chat.content import SkillExecutionState
+
+        existing_data = existing_entry.get("data", {})
+        existing_state = existing_data.get("state", SkillExecutionState.PENDING.value)
+        new_state = new_content.state.value if isinstance(new_content.state, SkillExecutionState) else new_content.state
+
+        # Get state priority using common utility
+        state_priority = self._get_skill_state_priority()
+        existing_priority = state_priority.get(existing_state, 0)
+        new_priority = state_priority.get(new_state, 0)
+
+        # Determine which entry to use as base based on state priority
+        # Higher priority state wins (e.g., error overrides in_progress)
+        if new_priority > existing_priority:
+            # New state has higher priority, use new content as base
+            # But preserve child_contents from existing if new doesn't have them
+            if not new_content.child_contents:
+                new_content.child_contents = existing_data.get("child_contents", [])
+            merged_dict = new_content.to_dict()
+
+        elif new_priority < existing_priority:
+            # Existing state has higher priority, keep existing but update certain fields
+            # Update progress_text if new is in_progress and existing is also in_progress
+            if (new_state == SkillExecutionState.IN_PROGRESS.value and
+                existing_state == SkillExecutionState.IN_PROGRESS.value):
+                # Both are in_progress, update with latest progress info
+                merged_dict = dict(existing_entry)
+                merged_data = dict(merged_dict.get("data", {}))
+                merged_data.update({
+                    "progress_text": new_content.progress_text,
+                    "progress_percentage": new_content.progress_percentage,
+                })
+                # Merge child contents using common utility
+                if new_content.child_contents:
+                    # Combine existing children with new children
+                    all_children = []
+                    # Add existing children
+                    for child in existing_data.get("child_contents", []):
+                        all_children.append(child)
+                    # Add new children not already present
+                    existing_ids = {c.get("content_id") for c in all_children if c.get("content_id")}
+                    for child in new_content.child_contents:
+                        child_id = child.get("content_id") if isinstance(child, dict) else None
+                        if child_id:
+                            if child_id not in existing_ids:
+                                all_children.append(child)
+                        else:
+                            # No content_id, just append
+                            all_children.append(child)
+                    merged_data["child_contents"] = all_children
+                merged_dict["data"] = merged_data
+
+            else:
+                # Different states but existing has higher priority - keep existing unchanged
+                merged_dict = existing_entry
+
+        else:
+            # Same priority - use the new content as it's more recent
+            # But preserve and merge child_contents from existing
+            if not new_content.child_contents:
+                new_content.child_contents = existing_data.get("child_contents", [])
+            else:
+                # Merge child contents using common utility
+                all_children = []
+                # Add existing children
+                for child in existing_data.get("child_contents", []):
+                    all_children.append(child)
+                # Add new children not already present
+                existing_ids = {c.get("content_id") for c in all_children if c.get("content_id")}
+                for child in new_content.child_contents:
+                    child_id = child.get("content_id") if isinstance(child, dict) else None
+                    if child_id:
+                        if child_id not in existing_ids:
+                            all_children.append(child)
+                    else:
+                        # No content_id, just append
+                        all_children.append(child)
+                new_content.child_contents = all_children
+            merged_dict = new_content.to_dict()
+
+        return merged_dict
 
     def _handle_tool_event(self, event):
         """Handle tool events - adds them as child contents to active skills.
@@ -1299,14 +1468,17 @@ class QmlAgentChatListWidget(BaseWidget):
             skill_info["child_contents"].append(tool_dict)
 
             # Update the skill to show the new child content
-            self._add_child_to_skill(message_id, tool_dict)
+            # Pass run_id to ensure we only update the matching skill
+            self._add_child_to_skill(message_id, tool_dict, run_id=run_id)
 
-    def _add_child_to_skill(self, message_id: str, child_content: Dict[str, Any]):
+    def _add_child_to_skill(self, message_id: str, child_content: Dict[str, Any], run_id: str = None):
         """Add a child content to the skill's child_contents list.
 
         Args:
             message_id: The message ID containing the skill
             child_content: The child content dictionary to add
+            run_id: Optional run_id to identify which skill to update.
+                    If not provided, adds to all skills (legacy behavior).
         """
         from agent.chat.content import SkillContent
 
@@ -1319,11 +1491,29 @@ class QmlAgentChatListWidget(BaseWidget):
 
         for sc in current_structured:
             if sc.get("content_type") == "skill":
+                sc_data = sc.get("data", {})
+                # If run_id is provided, only update matching skills
+                if run_id is not None:
+                    if sc_data.get("run_id") != run_id:
+                        # Not the target skill, keep as-is
+                        new_structured.append(sc)
+                        continue
+
                 # Add child content to the skill
                 new_sc = dict(sc)
                 sc_data = dict(new_sc.get("data", {}))
                 child_contents = list(sc_data.get("child_contents", []))
-                child_contents.append(child_content)
+
+                # Avoid duplicates by content_id
+                child_id = child_content.get("content_id")
+                if child_id:
+                    existing_ids = {c.get("content_id") for c in child_contents if c.get("content_id")}
+                    if child_id not in existing_ids:
+                        child_contents.append(child_content)
+                else:
+                    # No content_id, just append
+                    child_contents.append(child_content)
+
                 sc_data["child_contents"] = child_contents
                 new_sc["data"] = sc_data
                 new_structured.append(new_sc)
@@ -1429,7 +1619,8 @@ class QmlAgentChatListWidget(BaseWidget):
             skill_info["child_contents"].append(content_dict)
 
             # Update the skill to show the new child content
-            self._add_child_to_skill(message_id, content_dict)
+            # Pass run_id to ensure we only update the matching skill
+            self._add_child_to_skill(message_id, content_dict, run_id=run_id)
             return
 
         # No active skill - handle as standalone content
