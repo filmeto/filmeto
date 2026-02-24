@@ -992,15 +992,38 @@ class QmlAgentChatListWidget(BaseWidget):
         """Handle error events."""
         from agent.chat.content import ErrorContent
 
-        error_content = event.data.get("content", "Unknown error")
+        run_id = getattr(event, "run_id", "")
+
+        # Prepare error content dict
+        # Check if event has content (StructureContent) or use data fallback
+        if hasattr(event, 'content') and event.content:
+            if hasattr(event.content, 'to_dict') and callable(event.content.to_dict):
+                error_dict = event.content.to_dict()
+            else:
+                error_dict = ErrorContent(error_message=str(event.content)).to_dict()
+        else:
+            error_content = event.data.get("content", event.data.get("error", "Unknown error"))
+            error_dict = ErrorContent(error_message=error_content).to_dict()
+
+        # If there's an active skill, add error to its child_contents
+        if run_id and run_id in self._active_skills:
+            skill_info = self._active_skills[run_id]
+            message_id = skill_info["message_id"]
+
+            # Add to child contents
+            skill_info["child_contents"].append(error_dict)
+
+            # Update the skill to show the new child content
+            self._add_child_to_skill(message_id, error_dict)
+            return
+
+        # No active skill - handle as standalone error
         message_id = str(uuid.uuid4())
         self.get_or_create_agent_card(message_id, "System", "System")
-
-        error_structure = ErrorContent(error_message=error_content)
         self.update_agent_card(
             message_id,
-            structured_content=error_structure,
-            error=error_content,
+            structured_content=error_dict,
+            error=event.data.get("content", event.data.get("error", "Unknown error")),
         )
 
     def _handle_agent_response_event(self, event):
@@ -1011,17 +1034,33 @@ class QmlAgentChatListWidget(BaseWidget):
         sender_name = event.data.get("sender_name", "Unknown")
         sender_id = event.data.get("sender_id", sender_name.lower())
         session_id = event.data.get("session_id", "unknown")
+        run_id = getattr(event, "run_id", "")
 
         if sender_id == "user":
             return
 
+        # Prepare text content dict
+        text_dict = TextContent(text=content).to_dict()
+
+        # If there's an active skill, add text to its child_contents
+        if run_id and run_id in self._active_skills:
+            skill_info = self._active_skills[run_id]
+            message_id = skill_info["message_id"]
+
+            # Add to child contents
+            skill_info["child_contents"].append(text_dict)
+
+            # Update the skill to show the new child content
+            self._add_child_to_skill(message_id, text_dict)
+            return
+
+        # No active skill - handle as standalone content
         message_id = event.data.get("message_id")
         if not message_id:
             message_id = f"response_{session_id}_{uuid.uuid4()}"
 
         self.get_or_create_agent_card(message_id, sender_name, sender_name)
-        text_structure = TextContent(text=content)
-        self.update_agent_card(message_id, structured_content=text_structure)
+        self.update_agent_card(message_id, structured_content=text_dict)
 
     def _handle_skill_event(self, event):
         """Handle skill events - tracks skill lifecycle with start/progress/end/error.
@@ -1342,7 +1381,8 @@ class QmlAgentChatListWidget(BaseWidget):
 
     def _handle_content_event(self, event):
         """Handle events with content."""
-        from agent.chat.content import TextContent, ThinkingContent
+        from agent.chat.content import TextContent, ThinkingContent, LlmOutputContent
+        from agent.chat.agent_chat_types import ContentType
 
         sender_id = getattr(event, "sender_id", "")
         if hasattr(event, "agent_name"):
@@ -1351,7 +1391,50 @@ class QmlAgentChatListWidget(BaseWidget):
         if sender_id == "user":
             return
 
-        message_type = getattr(event, "message_type", None)
+        # Check if this content belongs to an active skill
+        run_id = getattr(event, "run_id", "")
+
+        # Prepare content dict - handle all content types generically
+        content_dict = None
+
+        # If event.content is already a StructureContent, use its to_dict()
+        if hasattr(event.content, 'to_dict') and callable(event.content.to_dict):
+            content_dict = event.content.to_dict()
+        else:
+            # For raw content, determine the type and create appropriate StructureContent
+            message_type = getattr(event, "message_type", None)
+            if message_type == ContentType.THINKING:
+                thinking_content = event.content
+                if isinstance(thinking_content, str) and thinking_content.startswith("🤔 Thinking: "):
+                    thinking_content = thinking_content[len("🤔 Thinking: "):]
+                content_dict = ThinkingContent(
+                    thought=thinking_content,
+                    title="Thinking Process",
+                    description="Agent's thought process",
+                ).to_dict()
+            elif message_type == ContentType.LLM_OUTPUT:
+                content_dict = LlmOutputContent(
+                    output=event.content if isinstance(event.content, str) else str(event.content),
+                    title="LLM Output"
+                ).to_dict()
+            else:
+                # Default to TextContent for all other types
+                content_dict = TextContent(text=event.content).to_dict()
+
+        # If there's an active skill, add ALL content to its child_contents
+        # This ensures all content during skill lifecycle is merged into the skill
+        if run_id and run_id in self._active_skills:
+            skill_info = self._active_skills[run_id]
+            message_id = skill_info["message_id"]
+
+            # Add to child contents (regardless of content type)
+            skill_info["child_contents"].append(content_dict)
+
+            # Update the skill to show the new child content
+            self._add_child_to_skill(message_id, content_dict)
+            return
+
+        # No active skill - handle as standalone content
         item = self._model.get_item_by_message_id(event.message_id)
         if not item:
             agent_name = getattr(event, "agent_name", "Unknown")
@@ -1361,22 +1444,7 @@ class QmlAgentChatListWidget(BaseWidget):
                 getattr(event, "title", None),
             )
 
-        if message_type == ContentType.THINKING:
-            if isinstance(event.content, ThinkingContent):
-                thinking_structure = event.content.to_dict()
-            else:
-                thinking_content = event.content
-                if thinking_content.startswith("🤔 Thinking: "):
-                    thinking_content = thinking_content[len("🤔 Thinking: "):]
-                thinking_structure = ThinkingContent(
-                    thought=thinking_content,
-                    title="Thinking Process",
-                    description="Agent's thought process",
-                ).to_dict()
-            self.update_agent_card(event.message_id, structured_content=thinking_structure)
-        else:
-            text_structure = TextContent(text=event.content).to_dict()
-            self.update_agent_card(event.message_id, structured_content=text_structure)
+        self.update_agent_card(event.message_id, structured_content=content_dict)
 
     def _scroll_to_bottom(self, force: bool = False):
         """Scroll the chat list to bottom.
