@@ -56,6 +56,7 @@ class React:
         llm_service: Optional[LlmService] = None,
         max_steps: int = 20,
         checkpoint_interval: int = 1,
+        run_id: Optional[str] = None,
     ):
         self.workspace = workspace
         self.project_name = project_name
@@ -78,6 +79,7 @@ class React:
             workspace_root=self.workspace_root,
         )
 
+        # Priority: external run_id > checkpoint run_id > empty string
         self.run_id: str = ""
         self.step_id: int = 0
         self.status: str = ReactStatus.IDLE
@@ -97,16 +99,21 @@ class React:
         self.todo_state = TodoState()
         self._pending_todo_update = None
 
-        checkpoint = self.storage.load_checkpoint()
-        if checkpoint and checkpoint.status == ReactStatus.RUNNING:
-            self.run_id = checkpoint.run_id
-            self.step_id = checkpoint.step_id
-            self.status = checkpoint.status
-            self.messages = checkpoint.messages
-            self.pending_user_messages = list(checkpoint.pending_user_messages)
-            # Restore TODO state from checkpoint
-            if checkpoint.todo_state:
-                self.todo_state = TodoState.from_dict(checkpoint.todo_state)
+        # Set run_id from external parameter if provided
+        if run_id:
+            self.run_id = run_id
+        else:
+            # Try to restore from checkpoint
+            checkpoint = self.storage.load_checkpoint()
+            if checkpoint and checkpoint.status == ReactStatus.RUNNING:
+                self.run_id = checkpoint.run_id
+                self.step_id = checkpoint.step_id
+                self.status = checkpoint.status
+                self.messages = checkpoint.messages
+                self.pending_user_messages = list(checkpoint.pending_user_messages)
+                # Restore TODO state from checkpoint
+                if checkpoint.todo_state:
+                    self.todo_state = TodoState.from_dict(checkpoint.todo_state)
 
     def _create_event(self, event_type: str, content=None) -> AgentEvent:
         """
@@ -162,8 +169,14 @@ class React:
 
         Args:
             user_questions: List of user questions to build the prompt.
+
+        Note:
+            If run_id was already set externally, it will be preserved.
+            This allows skill_chat to use its own run_id for all events.
         """
-        self.run_id = f"run_{uuid.uuid4().hex[:16]}_{self.project_name}_{self.react_type}"
+        # Only generate new run_id if not already set (e.g., by skill_chat)
+        if not self.run_id:
+            self.run_id = f"run_{uuid.uuid4().hex[:16]}_{self.project_name}_{self.react_type}"
         self.step_id = 0
         self.status = ReactStatus.RUNNING
         self._steps_since_checkpoint = 0

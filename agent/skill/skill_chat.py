@@ -111,7 +111,8 @@ class SkillChat:
                 state=SkillExecutionState.IN_PROGRESS,
                 progress_text="Starting execution...",
                 title=f"Skill: {skill.name}",
-                description=skill.description
+                description=skill.description,
+                run_id=run_id
             )
         )
 
@@ -162,6 +163,7 @@ class SkillChat:
                 available_tool_names=available_tool_names,
                 llm_service=llm_service,
                 max_steps=max_steps,
+                run_id=run_id,
             )
 
             # Track tool events to emit skill progress
@@ -207,7 +209,8 @@ class SkillChat:
                             progress_text=progress_text,
                             progress_percentage=None,
                             title=f"Skill Progress: {skill.name}",
-                            description=description_text
+                            description=description_text,
+                            run_id=run_id
                         )
                     )
 
@@ -237,7 +240,8 @@ class SkillChat:
                     result=result_text,
                     progress_percentage=100,
                     title=f"Skill Completed: {skill.name}",
-                    description=description_text
+                    description=description_text,
+                    run_id=run_id
                 )
             )
 
@@ -259,7 +263,8 @@ class SkillChat:
                     state=SkillExecutionState.ERROR,
                     error_message=str(e),
                     title=f"Skill Error: {skill.name}",
-                    description=f"Error executing skill: {skill.name}"
+                    description=f"Error executing skill: {skill.name}",
+                    run_id=run_id
                 )
             )
 

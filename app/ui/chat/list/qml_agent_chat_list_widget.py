@@ -1129,10 +1129,8 @@ class QmlAgentChatListWidget(BaseWidget):
             )
         else:
             # Use event.content directly (SkillContent from skill_chat.py)
+            # run_id is now always set in skill_chat.py, no need for fallback
             skill_name = skill_content.skill_name
-            # Update run_id in skill_content if not set
-            if not skill_content.run_id:
-                skill_content.run_id = run_id
             sender_name = getattr(event, 'sender_name', 'Unknown')
             sender_id = getattr(event, 'sender_id', sender_name.lower())
             message_id = f"skill_{run_id}_{skill_name}"
