@@ -484,6 +484,7 @@ class SkillService:
         max_steps: int = 10,
         crew_member_name: Optional[str] = None,
         conversation_id: Optional[str] = None,
+        run_id: Optional[str] = None,
     ) -> AsyncGenerator["AgentEvent", None]:
         """通过 React 流式执行 skill
 
@@ -497,6 +498,8 @@ class SkillService:
             max_steps: Maximum number of ReAct steps
             crew_member_name: Name of the crew member calling this skill (for react_type uniqueness)
             conversation_id: Unique conversation/session ID (for react_type uniqueness)
+            run_id: Optional external run_id for event tracking. If provided, it will be used
+                   instead of generating a new one, allowing all events to be linked together.
 
         Yields:
             ReactEvent objects for skill execution progress
@@ -511,6 +514,7 @@ class SkillService:
             max_steps=max_steps,
             crew_member_name=crew_member_name,
             conversation_id=conversation_id,
+            run_id=run_id,
         ):
             yield event
 

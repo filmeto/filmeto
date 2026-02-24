@@ -151,6 +151,7 @@ class ExecuteSkillTool(BaseTool):
                     max_steps=max_steps,
                     crew_member_name=crew_member_name,
                     conversation_id=conversation_id,
+                    run_id=run_id,  # Pass run_id to link all skill events together
             ):
                 # Forward the event directly, preserving original event type and content
                 # The sender_id/sender_name will be added by CrewMember upstream

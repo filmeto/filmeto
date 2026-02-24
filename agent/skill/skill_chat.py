@@ -45,6 +45,7 @@ class SkillChat:
         max_steps: int = 10,
         crew_member_name: Optional[str] = None,
         conversation_id: Optional[str] = None,
+        run_id: Optional[str] = None,
     ) -> AsyncGenerator["AgentEvent", None]:
         """通过 React 流式执行 skill
 
@@ -58,6 +59,8 @@ class SkillChat:
             max_steps: Maximum number of ReAct steps
             crew_member_name: Name of the crew member calling this skill (for react_type uniqueness)
             conversation_id: Unique conversation/session ID (for react_type uniqueness)
+            run_id: Optional external run_id for event tracking. If provided, it will be used
+                   instead of generating a new one, allowing all events to be linked together.
 
         Yields:
             AgentEvent objects for skill execution progress (including SKILL_START, SKILL_PROGRESS, SKILL_END, SKILL_ERROR)
@@ -70,9 +73,10 @@ class SkillChat:
         else:
             project_name = getattr(project, 'project_name', 'default_project') if project else 'default_project'
 
-        # Generate a unique run_id for this skill execution
+        # Use provided run_id or generate a unique one for this skill execution
         import uuid
-        run_id = str(uuid.uuid4())[:8]
+        if not run_id:
+            run_id = str(uuid.uuid4())[:8]
         step_id = 0
 
         # Build unique react_type to prevent checkpoint pollution
