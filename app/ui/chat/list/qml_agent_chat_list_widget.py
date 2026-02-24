@@ -552,42 +552,76 @@ class QmlAgentChatListWidget(BaseWidget):
                 structured_content = []
                 # Track skills by name for merging
                 skills_by_name: Dict[str, List[Dict[str, Any]]] = {}
-                # Track tool_call entries that might belong to skills
+                # Position of first occurrence of each skill in the content stream
+                skill_first_positions: Dict[str, int] = {}
+                # Child content collected via _skill_name metadata marking
+                skill_child_contents: Dict[str, List[Dict[str, Any]]] = {}
+                # Unassociated tool_call entries
                 tool_entries: List[Dict[str, Any]] = []
 
+                position = 0
                 for content_item in content_list:
                     if isinstance(content_item, dict):
                         content_type = content_item.get("content_type")
-                        # Group skill entries by skill_name for merging
+                        item_metadata = content_item.get("metadata")
+                        skill_ref = (item_metadata.get("_skill_name")
+                                     if isinstance(item_metadata, dict) else None)
+
                         if content_type == "skill":
                             skill_name = content_item.get("data", {}).get("skill_name", "")
                             if skill_name:
                                 if skill_name not in skills_by_name:
                                     skills_by_name[skill_name] = []
+                                    skill_first_positions[skill_name] = position
                                 skills_by_name[skill_name].append(content_item)
                             else:
-                                # Skill without name, add directly
                                 try:
                                     sc = StructureContent.from_dict(content_item)
                                     structured_content.append(sc)
+                                    position += 1
                                 except Exception as e:
                                     logger.debug(f"Failed to load structured content: {e}")
+                        elif skill_ref:
+                            # Content belongs to a skill (marked via metadata)
+                            if skill_ref not in skill_child_contents:
+                                skill_child_contents[skill_ref] = []
+                            skill_child_contents[skill_ref].append(content_item)
                         elif content_type == "tool_call":
-                            # Collect tool_call entries for potential skill association
                             tool_entries.append(content_item)
                         else:
-                            # Non-skill, non-tool content, add directly
                             try:
                                 sc = StructureContent.from_dict(content_item)
                                 structured_content.append(sc)
+                                position += 1
                             except Exception as e:
                                 logger.debug(f"Failed to load structured content: {e}")
 
-                # Merge skill entries and add to structured_content
+                # Merge skill entries and insert at the original position
+                skill_inserts: List[tuple] = []
                 for skill_name, skill_entries in skills_by_name.items():
-                    merged_skill = self._merge_skill_entries(skill_name, skill_entries, tool_entries)
+                    extra_children = skill_child_contents.pop(skill_name, [])
+                    merged_skill = self._merge_skill_entries(
+                        skill_name, skill_entries, tool_entries,
+                        extra_child_contents=extra_children,
+                    )
                     if merged_skill:
-                        structured_content.append(merged_skill)
+                        insert_pos = skill_first_positions.get(
+                            skill_name, len(structured_content))
+                        skill_inserts.append((insert_pos, merged_skill))
+
+                skill_inserts.sort(key=lambda x: x[0])
+                for offset, (pos, merged_skill) in enumerate(skill_inserts):
+                    structured_content.insert(pos + offset, merged_skill)
+
+                # Any remaining skill_child_contents without a matching skill
+                # are added as standalone content
+                for orphan_children in skill_child_contents.values():
+                    for child in orphan_children:
+                        try:
+                            sc = StructureContent.from_dict(child)
+                            structured_content.append(sc)
+                        except Exception as e:
+                            logger.debug(f"Failed to load orphan child content: {e}")
 
                 # Add timestamp to metadata for QML
                 if timestamp and "timestamp" not in metadata:
@@ -769,13 +803,17 @@ class QmlAgentChatListWidget(BaseWidget):
         )
 
     def _merge_skill_entries(self, skill_name: str, skill_entries: List[Dict[str, Any]],
-                           tool_entries: List[Dict[str, Any]] = None) -> Optional['StructureContent']:
+                           tool_entries: List[Dict[str, Any]] = None,
+                           extra_child_contents: List[Dict[str, Any]] = None,
+                           ) -> Optional['StructureContent']:
         """Merge multiple skill entries into a single SkillContent.
 
         Args:
             skill_name: The name of the skill
             skill_entries: List of skill content dictionaries
             tool_entries: List of tool_call content dictionaries to associate as children
+            extra_child_contents: Additional child contents (e.g., thinking/llm_output
+                                  marked via _skill_name metadata)
 
         Returns:
             A merged SkillContent or None if merging fails
@@ -784,33 +822,36 @@ class QmlAgentChatListWidget(BaseWidget):
             return None
 
         tool_entries = tool_entries or []
+        extra_child_contents = extra_child_contents or []
 
-        # Use common utilities to determine base entry and merge child contents
         base_entry = self._determine_base_skill_entry(skill_entries)
         child_contents = self._merge_child_contents(skill_entries)
 
+        # Add metadata-marked children (thinking, llm_output, etc.)
+        seen_content_ids = {c.get("content_id") for c in child_contents if c.get("content_id")}
+        for child in extra_child_contents:
+            cid = child.get("content_id")
+            if cid and cid in seen_content_ids:
+                continue
+            child_contents.append(child)
+            if cid:
+                seen_content_ids.add(cid)
+
         # Associate tool_call entries as children based on progress_text mentions
-        # For example, if skill progress_text says "Executing tool [1] - execute_skill_script"
-        # and there's a tool_call with tool_name="execute_skill_script", associate them
         associated_tools = set()
         for skill_entry in skill_entries:
             progress_text = skill_entry.get("data", {}).get("progress_text", "")
             if progress_text:
-                # Extract tool name from progress_text like "Executing tool [1] - execute_skill_script"
                 for tool_entry in tool_entries:
                     tool_name = tool_entry.get("data", {}).get("tool_name", "")
                     if tool_name and tool_name in progress_text and tool_entry.get("content_id") not in associated_tools:
                         child_contents.append(tool_entry)
                         associated_tools.add(tool_entry.get("content_id"))
 
-        # For any remaining tool_entries, add them as children (they're part of the same skill execution context)
         for tool_entry in tool_entries:
             if tool_entry.get("content_id") not in associated_tools:
-                # Only add if it seems related (e.g., skill might have used this tool)
-                # For now, add all tool_calls from the same message as skill children
                 child_contents.append(tool_entry)
 
-        # Use common utility to create final SkillContent
         return self._create_skill_content_from_entry(base_entry, skill_name, child_contents)
 
     # ─── Crew Member Metadata ────────────────────────────────────────────
@@ -1976,85 +2017,166 @@ class QmlAgentChatListWidget(BaseWidget):
     def _merge_content_into_existing_bubble(self, message_id: str, combined_msg: Dict[str, Any]) -> None:
         """Merge new content into an existing message bubble.
 
+        Processes raw content items from the new batch and merges them into
+        the existing model item. Skill content is merged by run_id/skill_name,
+        and content marked with _skill_name metadata is added as children of
+        the matching skill.
+
         Args:
             message_id: The ID of the message to update
             combined_msg: The combined message data with new content
         """
         try:
-            # Build item from the combined message to get structured content
-            item = self._build_item_from_history(combined_msg)
-            if not item:
-                return
-
-            # Convert to QML format to extract structured content
-            qml_item = QmlAgentChatListModel.from_chat_list_item(item)
-            new_structured_content = qml_item.get(QmlAgentChatListModel.STRUCTURED_CONTENT, [])
-
-            if not new_structured_content:
-                return
-
-            # Get current item from model
             existing_row = self._model.get_row_by_message_id(message_id)
             if existing_row is None:
                 return
-
             current_item = self._model.get_item(existing_row)
             if not current_item:
                 return
 
-            # Get existing structured content
             current_structured = current_item.get(QmlAgentChatListModel.STRUCTURED_CONTENT, [])
+            merged_content = [copy.deepcopy(sc) for sc in current_structured]
+            new_content_list = combined_msg.get("content", [])
 
-            # Merge content items - add new items that aren't already present
-            merged_content = list(current_structured)
+            for content_item in new_content_list:
+                if not isinstance(content_item, dict):
+                    continue
 
-            # Track existing content types to avoid duplicates
-            # For streaming text, we want to append; for other types, we might want to replace
-            for new_content in new_structured_content:
-                content_type = new_content.get('content_type', '')
+                content_type = content_item.get('content_type', '')
+                item_metadata = content_item.get('metadata')
+                skill_ref = (item_metadata.get('_skill_name')
+                             if isinstance(item_metadata, dict) else None)
 
-                # Special handling for text content - always append (streaming)
-                if content_type == 'text':
-                    merged_content.append(new_content)
-                # For other content types, check if we should replace or append
+                if content_type == 'skill':
+                    self._merge_or_append_skill(merged_content, content_item)
+                elif skill_ref:
+                    self._add_content_to_skill_child(merged_content, content_item, skill_ref)
+                elif content_type == 'text':
+                    merged_content.append(copy.deepcopy(content_item))
                 elif content_type == 'thinking':
-                    # Replace existing thinking content with new one
                     merged_content = [c for c in merged_content
-                                    if c.get('content_type') != 'thinking']
-                    merged_content.append(new_content)
+                                      if c.get('content_type') != 'thinking']
+                    merged_content.append(copy.deepcopy(content_item))
                 elif content_type == 'typing':
-                    # Remove old typing indicators before adding new one
                     merged_content = [c for c in merged_content
-                                    if c.get('content_type') != 'typing']
-                    merged_content.append(new_content)
+                                      if c.get('content_type') != 'typing']
+                    merged_content.append(copy.deepcopy(content_item))
                 else:
-                    # For other types (progress, tool_call, etc.), append if not duplicate
-                    # Simple check: compare string representation
-                    new_str = str(new_content)
-                    if not any(str(c) == new_str for c in merged_content):
-                        merged_content.append(new_content)
+                    content_id = content_item.get('content_id')
+                    if content_id:
+                        existing_ids = {c.get('content_id') for c in merged_content
+                                        if c.get('content_id')}
+                        if content_id in existing_ids:
+                            continue
+                    merged_content.append(copy.deepcopy(content_item))
 
-            # Update the model with merged content
             self._model.update_item(message_id, {
-                QmlAgentChatListModel.STRUCTURED_CONTENT: merged_content
+                QmlAgentChatListModel.STRUCTURED_CONTENT: merged_content,
             })
-
-            # Also update the plain text content if needed
-            # Extract text from the new content and append
-            new_text = qml_item.get(QmlAgentChatListModel.CONTENT, "")
-            if new_text:
-                current_text = current_item.get(QmlAgentChatListModel.CONTENT, "")
-                # Only append if the new text adds something meaningful
-                if new_text not in current_text:
-                    updated_text = current_text + new_text if current_text else new_text
-                    self._model.update_item(message_id, {
-                        QmlAgentChatListModel.CONTENT: updated_text
-                    })
-
-            logger.debug(f"Merged {len(new_structured_content)} content items into {message_id[:8]}...")
+            logger.debug(f"Merged {len(new_content_list)} content items into {message_id[:8]}...")
 
         except Exception as e:
             logger.error(f"Error merging content for {message_id[:8]}...: {e}", exc_info=True)
+
+    def _merge_or_append_skill(
+        self, merged_content: List[Dict[str, Any]], new_skill: Dict[str, Any]
+    ) -> None:
+        """Merge a skill entry with an existing skill in the list, or append it.
+
+        Finds a matching existing skill by run_id or skill_name and merges
+        state/children. If no match is found, the skill is appended.
+        """
+        new_data = new_skill.get('data', {})
+        new_run_id = new_data.get('run_id', '')
+        new_skill_name = new_data.get('skill_name', '')
+
+        for i, existing in enumerate(merged_content):
+            if existing.get('content_type') != 'skill':
+                continue
+            ed = existing.get('data', {})
+            if ((ed.get('run_id') == new_run_id and new_run_id) or
+                    (ed.get('skill_name') == new_skill_name and new_skill_name)):
+                merged_content[i] = self._merge_skill_dicts(existing, new_skill)
+                return
+
+        merged_content.append(copy.deepcopy(new_skill))
+
+    def _add_content_to_skill_child(
+        self,
+        merged_content: List[Dict[str, Any]],
+        child_item: Dict[str, Any],
+        skill_name: str,
+    ) -> None:
+        """Add a content item as a child of the matching skill in the list.
+
+        If no matching skill is found, the item is appended as standalone content.
+        """
+        for i, existing in enumerate(merged_content):
+            if existing.get('content_type') != 'skill':
+                continue
+            ed = existing.get('data', {})
+            if ed.get('skill_name') != skill_name:
+                continue
+
+            updated = copy.deepcopy(existing)
+            children = updated.setdefault('data', {}).setdefault('child_contents', [])
+            content_id = child_item.get('content_id')
+            if content_id:
+                existing_ids = {c.get('content_id') for c in children if c.get('content_id')}
+                if content_id in existing_ids:
+                    return
+            children.append(copy.deepcopy(child_item))
+            merged_content[i] = updated
+            return
+
+        merged_content.append(copy.deepcopy(child_item))
+
+    def _merge_skill_dicts(
+        self, existing: Dict[str, Any], new: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Merge two skill content dicts, using state priority and combining children.
+
+        Args:
+            existing: The existing skill dict in the model
+            new: The incoming skill dict
+
+        Returns:
+            Merged skill dict (deep-copied)
+        """
+        from agent.chat.content import SkillExecutionState
+
+        existing_data = existing.get('data', {})
+        new_data = new.get('data', {})
+
+        existing_state = existing_data.get('state', SkillExecutionState.PENDING.value)
+        new_state = new_data.get('state', SkillExecutionState.PENDING.value)
+
+        state_priority = self._get_skill_state_priority()
+        existing_prio = state_priority.get(existing_state, 0)
+        new_prio = state_priority.get(new_state, 0)
+
+        existing_children = existing_data.get('child_contents', [])
+        new_children = new_data.get('child_contents', [])
+
+        merged_children = self._merge_child_contents_by_id(
+            existing_children, new_children
+        )
+
+        if new_prio >= existing_prio:
+            result = copy.deepcopy(new)
+            result.setdefault('data', {})['child_contents'] = merged_children
+            # Preserve content_id from existing to keep QML identity stable
+            if existing.get('content_id'):
+                result['content_id'] = existing['content_id']
+        else:
+            result = copy.deepcopy(existing)
+            result.setdefault('data', {})['child_contents'] = merged_children
+            if new_data.get('progress_text'):
+                result['data']['progress_text'] = new_data['progress_text']
+            if new_data.get('progress_percentage') is not None:
+                result['data']['progress_percentage'] = new_data['progress_percentage']
+
+        return result
 
     def clear(self):
         """Clear the chat list."""
