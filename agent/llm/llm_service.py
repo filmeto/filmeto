@@ -10,6 +10,56 @@ import litellm
 from app.data.settings import Settings
 from utils.i18n_utils import translation_manager
 
+# Register custom model prices for models not in LiteLLM's default cost map
+# This prevents DEBUG warnings about unmapped models
+CUSTOM_MODEL_PRICES = {
+    # Qwen3.5 series models (DashScope)
+    "qwen3.5-flash": {
+        "max_tokens": 8192,
+        "input_cost_per_token": 0.0000003,  # $0.3 per 1M tokens
+        "output_cost_per_token": 0.0000006,  # $0.6 per 1M tokens
+        "litellm_provider": "dashscope",
+    },
+    "qwen3.5-plus": {
+        "max_tokens": 8192,
+        "input_cost_per_token": 0.0000008,  # $0.8 per 1M tokens
+        "output_cost_per_token": 0.000002,  # $2 per 1M tokens
+        "litellm_provider": "dashscope",
+    },
+    # Kimi K2 series models (Moonshot)
+    "kimi-k2.5": {
+        "max_tokens": 8192,
+        "input_cost_per_token": 0.000001,  # $1 per 1M tokens
+        "output_cost_per_token": 0.000002,  # $2 per 1M tokens
+        "litellm_provider": "openai",
+    },
+    "kimi-k2-thinking": {
+        "max_tokens": 16384,
+        "input_cost_per_token": 0.000002,  # $2 per 1M tokens
+        "output_cost_per_token": 0.000004,  # $4 per 1M tokens
+        "litellm_provider": "openai",
+    },
+    # GLM series models (Zhipu AI)
+    "glm-5": {
+        "max_tokens": 8192,
+        "input_cost_per_token": 0.000001,  # $1 per 1M tokens
+        "output_cost_per_token": 0.000001,  # $1 per 1M tokens
+        "litellm_provider": "openai",
+    },
+    "glm-4.7": {
+        "max_tokens": 8192,
+        "input_cost_per_token": 0.0000005,  # $0.5 per 1M tokens
+        "output_cost_per_token": 0.0000005,  # $0.5 per 1M tokens
+        "litellm_provider": "openai",
+    },
+}
+
+# Register custom model prices with LiteLLM
+for model_name, model_info in CUSTOM_MODEL_PRICES.items():
+    litellm.model_cost[model_name] = model_info
+    # Also register with dashscope prefix
+    litellm.model_cost[f"dashscope/{model_name}"] = model_info
+
 
 class LlmService:
     """
