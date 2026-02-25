@@ -396,7 +396,11 @@ class FieldWidgetFactory:
         elif field_type == 'select':
             return widget.currentData()
         elif field_type == 'combo':
-            # For editable combo box, return the current text (which may be different from selected item)
+            # For editable combo box, prefer currentData (value) over currentText (label)
+            # If user selected from dropdown, use the value; if typed custom text, use that
+            data = widget.currentData()
+            if data is not None:
+                return data
             return widget.currentText()
         elif field_type == 'color':
             return widget.get_color()
