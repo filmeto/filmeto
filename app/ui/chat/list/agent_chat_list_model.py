@@ -64,6 +64,8 @@ class QmlAgentChatListModel(QAbstractListModel):
     IS_READ = "isRead"
     TIMESTAMP = "timestamp"
     DATE_GROUP = "dateGroup"
+    START_TIME = "startTime"  # Formatted start time (HH:MM)
+    DURATION = "duration"     # Formatted duration (e.g., "2m 30s")
 
     # Signal emitted after a batch of updates is flushed to QML
     batchFlushed = Signal()
@@ -97,6 +99,8 @@ class QmlAgentChatListModel(QAbstractListModel):
             Qt.UserRole + 11: QByteArray(self.IS_READ.encode()),
             Qt.UserRole + 12: QByteArray(self.TIMESTAMP.encode()),
             Qt.UserRole + 13: QByteArray(self.DATE_GROUP.encode()),
+            Qt.UserRole + 14: QByteArray(self.START_TIME.encode()),
+            Qt.UserRole + 15: QByteArray(self.DURATION.encode()),
         }
 
     def rowCount(self, parent: QModelIndex = None) -> int:
@@ -340,6 +344,108 @@ class QmlAgentChatListModel(QAbstractListModel):
             return msg_date.strftime("%B %Y")
 
     @staticmethod
+    def _format_start_time(timestamp) -> str:
+        """Format timestamp as start time with date context.
+
+        Display format depends on how recent the message is:
+        - Today: "HH:MM"
+        - Yesterday: "昨天 HH:MM"
+        - This year: "MM-DD HH:MM"
+        - Older: "YYYY-MM-DD HH:MM"
+
+        Args:
+            timestamp: Unix timestamp (float) or ISO 8601 string
+
+        Returns:
+            Formatted time string
+        """
+        if not timestamp:
+            return ""
+
+        try:
+            if isinstance(timestamp, str):
+                msg_date = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+            elif isinstance(timestamp, (int, float)):
+                msg_date = datetime.fromtimestamp(timestamp)
+            else:
+                return ""
+
+            now = datetime.now()
+            today = now.date()
+            msg_date_only = msg_date.date()
+
+            if msg_date_only == today:
+                # Today: just show time
+                return msg_date.strftime("%H:%M")
+            elif msg_date_only == today - timedelta(days=1):
+                # Yesterday
+                return f"昨天 {msg_date.strftime('%H:%M')}"
+            elif msg_date.year == now.year:
+                # This year: show month-day time
+                return msg_date.strftime("%m-%d %H:%M")
+            else:
+                # Older: show full date
+                return msg_date.strftime("%Y-%m-%d %H:%M")
+        except (ValueError, TypeError):
+            return ""
+
+    @staticmethod
+    def _format_duration(start_timestamp, end_timestamp=None) -> str:
+        """Format duration between start and end timestamps.
+
+        Args:
+            start_timestamp: Start time (Unix timestamp or ISO string)
+            end_timestamp: End time (defaults to now if None)
+
+        Returns:
+            Formatted duration string (e.g., "45s", "2m 30s", "1h 15m")
+        """
+        if not start_timestamp:
+            return ""
+
+        try:
+            if isinstance(start_timestamp, str):
+                start_time = datetime.fromisoformat(start_timestamp.replace('Z', '+00:00'))
+            elif isinstance(start_timestamp, (int, float)):
+                start_time = datetime.fromtimestamp(start_timestamp)
+            else:
+                return ""
+
+            if end_timestamp:
+                if isinstance(end_timestamp, str):
+                    end_time = datetime.fromisoformat(end_timestamp.replace('Z', '+00:00'))
+                elif isinstance(end_timestamp, (int, float)):
+                    end_time = datetime.fromtimestamp(end_timestamp)
+                else:
+                    end_time = datetime.now()
+            else:
+                end_time = datetime.now()
+
+            delta = end_time - start_time
+            total_seconds = int(delta.total_seconds())
+
+            if total_seconds < 0:
+                return ""
+
+            if total_seconds < 60:
+                return f"{total_seconds}s"
+            elif total_seconds < 3600:
+                minutes = total_seconds // 60
+                seconds = total_seconds % 60
+                if seconds > 0:
+                    return f"{minutes}m {seconds}s"
+                return f"{minutes}m"
+            else:
+                hours = total_seconds // 3600
+                minutes = (total_seconds % 3600) // 60
+                if minutes > 0:
+                    return f"{hours}h {minutes}m"
+                return f"{hours}h"
+
+        except (ValueError, TypeError):
+            return ""
+
+    @staticmethod
     def _serialize_structured_content(structured_content: List[StructureContent]) -> List[Dict[str, Any]]:
         """Convert structured content to QML-compatible format."""
         result = []
@@ -504,6 +610,25 @@ class QmlAgentChatListModel(QAbstractListModel):
                 chat_list_item.agent_message.structured_content
             )
 
+        # Format start time and duration
+        start_time = cls._format_start_time(timestamp)
+
+        # Calculate duration - only for completed messages (no typing indicator)
+        duration = ""
+        if chat_list_item.agent_message:
+            has_typing = any(
+                hasattr(sc, 'content_type') and sc.content_type == ContentType.TYPING
+                for sc in chat_list_item.agent_message.structured_content
+            )
+            # Get end timestamp from metadata if available
+            end_timestamp = None
+            if chat_list_item.agent_message.metadata:
+                end_timestamp = chat_list_item.agent_message.metadata.get('end_timestamp')
+
+            # Only show duration if message is complete or has explicit end time
+            if not has_typing or end_timestamp:
+                duration = cls._format_duration(timestamp, end_timestamp)
+
         return {
             cls.MESSAGE_ID: chat_list_item.message_id,
             cls.SENDER_ID: chat_list_item.sender_id,
@@ -518,6 +643,8 @@ class QmlAgentChatListModel(QAbstractListModel):
             cls.IS_READ: True,
             cls.TIMESTAMP: timestamp,
             cls.DATE_GROUP: cls._get_date_group(timestamp),
+            cls.START_TIME: start_time,
+            cls.DURATION: duration,
         }
 
     @classmethod
@@ -554,6 +681,17 @@ class QmlAgentChatListModel(QAbstractListModel):
             agent_message.structured_content
         )
 
+        # Format start time and duration
+        start_time = cls._format_start_time(timestamp)
+        has_typing = any(
+            hasattr(sc, 'content_type') and sc.content_type == ContentType.TYPING
+            for sc in agent_message.structured_content
+        )
+        end_timestamp = None
+        if agent_message.metadata:
+            end_timestamp = agent_message.metadata.get('end_timestamp')
+        duration = cls._format_duration(timestamp, end_timestamp) if (not has_typing or end_timestamp) else ""
+
         return {
             cls.MESSAGE_ID: agent_message.message_id,
             cls.SENDER_ID: agent_message.sender_id,
@@ -568,4 +706,6 @@ class QmlAgentChatListModel(QAbstractListModel):
             cls.IS_READ: True,
             cls.TIMESTAMP: timestamp,
             cls.DATE_GROUP: cls._get_date_group(timestamp),
+            cls.START_TIME: start_time,
+            cls.DURATION: duration,
         }

@@ -14,6 +14,8 @@ Item {
     property string agentIcon: "🤖"
     property var crewMetadata: ({})
     property var structuredContent: []
+    property string startTime: ""     // Formatted start time (HH:MM)
+    property string duration: ""      // Formatted duration (e.g., "2m 30s")
 
     signal referenceClicked(string refType, string refId)
 
@@ -22,6 +24,7 @@ Item {
     readonly property color textColor: "#e0e0e0"
     readonly property color nameColor: agentColor
     readonly property color timestampColor: "#808080"
+    readonly property color timeInfoColor: "#707070"
 
     // Avatar dimensions
     readonly property int avatarSize: 32
@@ -34,17 +37,19 @@ Item {
     // Width is determined by anchors, height is calculated dynamically
     implicitHeight: headerRow.height + contentRect.implicitHeight + 8
 
-    // Header row with avatar and name
+    // Header row with avatar, name (left) and time info (right)
     Row {
         id: headerRow
         anchors {
             left: parent.left
             leftMargin: 12
+            right: parent.right
+            rightMargin: 12
             top: parent.top
             topMargin: 12
         }
         spacing: 8
-        height: Math.max(avatarRect.height, nameColumn.implicitHeight)
+        height: Math.max(avatarRect.height, nameColumn.implicitHeight, timeInfoColumn.implicitHeight)
 
         // Avatar/icon
         Rectangle {
@@ -62,7 +67,7 @@ Item {
             }
         }
 
-        // Agent name and title column
+        // Agent name and title column (left side)
         Column {
             id: nameColumn
             spacing: 4
@@ -92,6 +97,42 @@ Item {
                     font.pixelSize: 9
                     font.weight: Font.Bold
                 }
+            }
+        }
+
+        // Spacer to push time info to the right
+        Item {
+            Layout.fillWidth: true
+            width: 1  // Minimum width
+        }
+
+        // Time info column (right side)
+        Column {
+            id: timeInfoColumn
+            spacing: 2
+            anchors.verticalCenter: parent.verticalCenter
+            visible: root.startTime !== "" || root.duration !== ""
+
+            Text {
+                id: startTimeText
+                text: root.startTime
+                color: timeInfoColor
+                font.pixelSize: 11
+                font.weight: Font.Light
+                horizontalAlignment: Text.AlignRight
+                anchors.right: parent.right
+                visible: root.startTime !== ""
+            }
+
+            Text {
+                id: durationText
+                text: root.duration
+                color: timeInfoColor
+                font.pixelSize: 10
+                font.weight: Font.Light
+                horizontalAlignment: Text.AlignRight
+                anchors.right: parent.right
+                visible: root.duration !== ""
             }
         }
     }

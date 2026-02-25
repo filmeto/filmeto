@@ -105,6 +105,8 @@ ListView {
                 isRead: modelData.isRead !== undefined ? modelData.isRead : true
                 userName: modelData.userName || "You"
                 userIcon: modelData.userIcon || "👤"
+                startTime: modelData.startTime || ""
+                duration: modelData.duration || ""
             }
         }
 
@@ -123,6 +125,8 @@ ListView {
                 agentIcon: modelData.agentIcon || "🤖"
                 crewMetadata: modelData.crewMetadata || {}
                 structuredContent: modelData.structuredContent || []
+                startTime: modelData.startTime || ""
+                duration: modelData.duration || ""
 
                 onReferenceClicked: function(refType, refId) {
                     root.referenceClicked(refType, refId)
