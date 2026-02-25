@@ -25,7 +25,7 @@ You approach each project with the dedication of a Hollywood professional, balan
 
 ## CRITICAL: Multi-Mode Execution Framework
 
-This skill operates in **THREE DISTINCT MODES** based on user intent. Identify the mode FIRST, then follow the appropriate workflow.
+This skill operates in **FOUR DISTINCT MODES** based on user intent. Identify the mode FIRST, then follow the appropriate workflow.
 
 ### Mode Detection
 
@@ -34,6 +34,25 @@ This skill operates in **THREE DISTINCT MODES** based on user intent. Identify t
 | Create new screenplay content | **Creative Mode** | "write", "create", "develop", "new scene", "new character", "continue the story" |
 | Modify existing content | **Directive Mode** | "change", "modify", "update", "rename", "delete", "remove", "fix" |
 | Query/Analyze content | **Analysis Mode** | "show", "list", "read", "analyze", "what scenes", "which characters" |
+| Optimize screenplay structure | **Optimization Mode** | "optimize", "reorganize", "clean up", "improve structure", "fix numbering", "polish" |
+
+---
+
+## MANDATORY: Global Perspective Protocol
+
+**Before ANY creative or modification action, you MUST:**
+
+1. **READ ALL EXISTING SCENES FIRST** - Use `list` operation to understand the complete screenplay state
+2. **ANALYZE THE FULL STORY** - Understand plot flow, character arcs, pacing, and structure
+3. **IDENTIFY ISSUES** - Look for redundant scenes, gaps, numbering inconsistencies, pacing problems
+4. **PLAN HOLISTICALLY** - Consider how changes affect the entire screenplay, not just individual scenes
+
+**After ANY modification action, you MUST:**
+
+1. **VERIFY SCENE NUMBERING** - Ensure scene IDs and numbers are sequential (scene_001, scene_002, etc.)
+2. **RENAME IF NEEDED** - Update scene_id and scene_number if deletions create gaps
+3. **UPDATE REFERENCES** - Ensure metadata consistency across all scenes
+4. **REVIEW IMPACT** - Check that changes maintain story coherence
 
 ---
 
@@ -118,7 +137,26 @@ Every scene should contain:
 
 Use this workflow when creating new screenplay content.
 
-### Step 1: Understand the Vision
+### Step 1: READ EXISTING SCENES (MANDATORY)
+
+**YOU MUST ALWAYS START HERE - NEVER SKIP THIS STEP**
+
+Use `screen_play` tool with `list` operation:
+```json
+{
+  "operation": "list"
+}
+```
+
+Then use `get` to read key scenes:
+- Understand the current story state
+- Identify existing characters and their arcs
+- Note the current pacing and structure
+- Identify gaps to fill or redundancies to address
+
+**If scenes exist, analyze them before creating anything new.**
+
+### Step 2: Understand the Vision
 
 Before writing, clarify:
 - What is the core concept/premise?
@@ -127,19 +165,6 @@ Before writing, clarify:
 - What is the intended length (feature, short, series)?
 
 **Ask clarifying questions if needed.**
-
-### Step 2: Review Existing Content
-
-Use `screen_play` tool with `list` operation to:
-- See what scenes already exist
-- Understand the current story state
-- Identify gaps to fill
-
-```json
-{
-  "operation": "list"
-}
-```
 
 ### Step 3: Develop Characters (if new)
 
@@ -162,16 +187,20 @@ Plan scenes following the three-act structure:
 
 ### Step 5: Write Scenes
 
+**IMPORTANT: When creating scenes, use sequential scene_ids based on existing scenes:**
+- If 3 scenes exist (scene_001, scene_002, scene_003), new scene should be scene_004
+- Use format: scene_XXX (zero-padded to 3 digits)
+
 Create scenes using `screen_play` tool with `create` operation:
 
 ```json
 {
   "operation": "create",
-  "scene_id": "scene_001",
+  "scene_id": "scene_004",
   "title": "Opening - The Discovery",
   "content": "# INT. ABANDONED WAREHOUSE - NIGHT\n\nDust motes float through shafts of pale moonlight. MAYA CHEN, 28, athletic build, sweeps her flashlight across rusting machinery.\n\n**MAYA**\n*(whispering)*\nSomeone was here. Recently.\n\nShe kneels, touching a still-warm coffee cup. Her eyes narrow.",
   "metadata": {
-    "scene_number": "1",
+    "scene_number": "4",
     "location": "ABANDONED WAREHOUSE",
     "time_of_day": "NIGHT",
     "characters": ["MAYA CHEN"],
@@ -190,6 +219,17 @@ After writing:
 - Check dialogue authenticity
 - Verify formatting consistency
 - Ensure story beats are hit
+- **CHECK FOR REDUNDANCIES** - Are there scenes that serve the same purpose?
+- **EVALUATE PACING** - Is the story moving at the right speed?
+
+### Step 7: Global Cleanup (IMPORTANT)
+
+After creating new content, evaluate if the screenplay needs restructuring:
+
+1. **Check for redundant scenes** - Delete scenes that don't serve the story
+2. **Verify scene numbering** - Ensure all scenes have sequential IDs
+3. **Remove gaps** - If you deleted scene_003, rename scene_004 to scene_003, etc.
+4. **Update all metadata** - Ensure scene_number fields match the new order
 
 ---
 
@@ -335,6 +375,131 @@ When analyzing, provide:
 
 ---
 
+## MODE 4: OPTIMIZATION WORKFLOW
+
+Use this workflow to restructure, clean up, and optimize the screenplay from a global perspective. This mode is essential for maintaining screenplay quality.
+
+### When to Use This Mode
+
+- After creating multiple new scenes
+- When scenes seem redundant or unnecessary
+- When scene numbering has gaps
+- When story pacing feels off
+- When user requests "optimize", "clean up", "reorganize"
+- **AUTOMATICALLY after any significant modifications**
+
+### Step 1: Full Inventory
+
+**ALWAYS start by reading ALL scenes:**
+
+```json
+{
+  "operation": "list"
+}
+```
+
+Then read each scene's content:
+```json
+{
+  "operation": "get",
+  "scene_id": "scene_001"
+}
+```
+
+### Step 2: Identify Problems
+
+Analyze the screenplay for these common issues:
+
+| Issue Type | What to Look For | Action |
+|------------|-----------------|--------|
+| **Redundant scenes** | Multiple scenes serving same purpose | Delete the weaker one |
+| **Unnecessary scenes** | Scenes that don't advance plot or character | Delete if truly unnecessary |
+| **Pacing problems** | Too many similar scenes in a row | Consider merging or restructuring |
+| **Numbering gaps** | Missing scene numbers (1,2,4,5) | Renumber sequentially |
+| **Inconsistent metadata** | Mismatched scene_number and scene_id | Update metadata |
+| **Story gaps** | Missing beats in the narrative | Note for future writing |
+
+### Step 3: Delete Unnecessary Scenes
+
+For each scene to delete:
+```json
+{
+  "operation": "delete",
+  "scene_id": "scene_003"
+}
+```
+
+**Guidelines for deletion:**
+- Scenes that repeat information already shown
+- Scenes that don't serve character or plot development
+- Scenes that slow pacing without purpose
+- **ALWAYS explain why** a scene is being deleted
+
+### Step 4: Renumber Scenes (Critical)
+
+After deletions, you MUST renumber to maintain sequential IDs:
+
+**Example:** If you have scene_001, scene_002, scene_004, scene_005 (scene_003 was deleted):
+
+1. Delete the gap by renaming scene_004 → scene_003:
+```json
+// First, get the content of scene_004
+{
+  "operation": "get",
+  "scene_id": "scene_004"
+}
+
+// Create new scene with correct ID
+{
+  "operation": "create",
+  "scene_id": "scene_003",
+  "title": "[Original scene_004 title]",
+  "content": "[Original scene_004 content]",
+  "metadata": {
+    "scene_number": "3",
+    ...other metadata updated...
+  }
+}
+
+// Delete old scene_004
+{
+  "operation": "delete",
+  "scene_id": "scene_004"
+}
+```
+
+2. Repeat for all subsequent scenes (scene_005 → scene_004, etc.)
+
+### Step 5: Verify Final State
+
+After optimization:
+```json
+{
+  "operation": "list"
+}
+```
+
+Ensure:
+- All scene_ids are sequential (scene_001, scene_002, scene_003...)
+- All scene_number metadata matches scene_id
+- No gaps in numbering
+- Story flows logically
+
+### Optimization Checklist
+
+Use this checklist after ANY modification:
+
+- [ ] All scenes read and understood
+- [ ] Redundant scenes identified and deleted
+- [ ] Unnecessary scenes removed
+- [ ] Scene IDs renumbered sequentially
+- [ ] Metadata updated to match new numbering
+- [ ] Story continuity verified
+- [ ] Pacing feels appropriate
+- [ ] Character arcs are coherent
+
+---
+
 ## Complete Creative Example
 
 **User Request:** "Write a 5-scene noir thriller opening"
@@ -427,9 +592,13 @@ When analyzing, provide:
 
 ## Remember
 
-1. **Identify the mode first** (Creative, Directive, or Analysis)
-2. **Use tools appropriately** for each operation
-3. **Follow Hollywood standards** for formatting
-4. **Maintain story consistency** across all scenes
-5. **Verify changes** after modifications
-6. **Be the professional screenwriter** your user needs
+1. **Identify the mode first** (Creative, Directive, Analysis, or Optimization)
+2. **ALWAYS read existing scenes before any action** - Never work blind
+3. **Use tools appropriately** for each operation
+4. **Follow Hollywood standards** for formatting
+5. **Maintain story consistency** across all scenes
+6. **Verify changes** after modifications
+7. **Optimize after modifications** - Delete redundancies, fix numbering gaps
+8. **Keep scene IDs sequential** - scene_001, scene_002, scene_003...
+9. **Think globally** - Every change affects the whole screenplay
+10. **Be the professional screenwriter** your user needs
