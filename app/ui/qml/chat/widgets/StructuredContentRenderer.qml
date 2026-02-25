@@ -5,14 +5,12 @@
 //    link, button, form, file, file_attachment, todo_write
 // 2. Thinking section (bottom, collapsible): all other types
 //
-// The thinking section shows animated bouncing dots while streaming
-// and a static thinking icon when the message is complete.
-//
-// PERFORMANCE NOTE: The Repeaters use count-based models (integer) instead of JS arrays.
-// When the model is a JS array, QML's Repeater destroys ALL delegates and recreates them
-// whenever the array property re-evaluates (which creates a new JS array object).
-// With a count-based model, the Repeater only creates/destroys delegates when the count
-// actually changes.
+// PERFORMANCE OPTIMIZATIONS:
+// 1. QtObject cache store - avoids property binding chain reactions
+// 2. Deep content hash - detects actual content changes
+// 3. Lazy thinking section - only loaded when expanded
+// 4. Count-based Repeater - avoids array recreation overhead
+// 5. Debounced recategorization - batches rapid updates
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
@@ -36,193 +34,226 @@ Item {
 
     implicitHeight: contentColumn.height
 
-    // Content types that display as main content (flat, top section)
-    readonly property var _mainContentTypes: [
-        "text", "code_block", "image", "video", "audio",
-        "link", "button", "form", "file", "file_attachment", "todo_write"
-    ]
-
-    // Helper to check if a type is main content
-    function _isMainContentType(type) {
-        return _mainContentTypes.indexOf(type) >= 0
+    // ─── PERFORMANCE: Cache store in QtObject to avoid binding reactions ─────
+    QtObject {
+        id: _cache
+        property string contentHash: ""
+        property int mainContentCount: 0
+        property int thinkingContentCount: 0
+        property int typingContentCount: 0
+        property var mainItems: []
+        property var thinkingItems: []
+        property bool isStreaming: false
+        property bool initialized: false
     }
 
-    // Effective structured content (fallback to text if no structured content)
-    property var effectiveStructuredContent: {
-        if (root.structuredContent && root.structuredContent.length > 0) {
-            return root.structuredContent
+    // Main content types lookup
+    readonly property var _mainContentTypesLookup: ({
+        "text": true, "code_block": true, "image": true, "video": true, "audio": true,
+        "link": true, "button": true, "form": true, "file": true, "file_attachment": true,
+        "todo_write": true
+    })
+
+    // Deep content hash for change detection
+    function _computeContentHash(items) {
+        if (!items || items.length === 0) return "empty"
+        var hash = items.length.toString()
+        for (var i = 0; i < items.length && i < 5; i++) {
+            var item = items[i]
+            var type = item.content_type || item.type || "x"
+            var title = item.title || item.tool_name || ""
+            hash += "|" + type + ":" + title.substring(0, 20)
         }
-        return [{ content_type: "text", text: root.content || "" }]
+        return hash
     }
 
-    // Main content items (displayed flat in content section)
-    property var mainContentItems: {
-        if (widgetSupport !== "full") {
-            return effectiveStructuredContent
-        }
-        var items = []
-        for (var i = 0; i < effectiveStructuredContent.length; i++) {
-            var type = effectiveStructuredContent[i].content_type || effectiveStructuredContent[i].type || "text"
-            if (type !== "typing" && root._isMainContentType(type)) {
-                items.push(effectiveStructuredContent[i])
-            }
-        }
-        return items
-    }
+    // Single-pass content categorization
+    function _categorizeContent() {
+        var src = root.structuredContent
 
-    // Thinking process items (displayed in collapsible section)
-    property var thinkingItems: {
-        if (widgetSupport !== "full") return []
-        var items = []
-        for (var i = 0; i < effectiveStructuredContent.length; i++) {
-            var type = effectiveStructuredContent[i].content_type || effectiveStructuredContent[i].type || "text"
-            if (type !== "typing" && !root._isMainContentType(type)) {
-                items.push(effectiveStructuredContent[i])
-            }
+        // Empty content fallback
+        if (!src || src.length === 0) {
+            _cache.mainItems = root.content ? [{ content_type: "text", text: root.content }] : []
+            _cache.thinkingItems = []
+            _cache.isStreaming = false
+            _cache.mainContentCount = _cache.mainItems.length
+            _cache.thinkingContentCount = 0
+            _cache.typingContentCount = 0
+            _cache.initialized = true
+            return
         }
-        return items
-    }
 
-    // Typing content (presence indicates streaming state)
-    // Only includes typing with state="start", not state="end"
-    property var typingContent: {
-        if (widgetSupport !== "full") return []
-        var items = []
-        for (var i = 0; i < effectiveStructuredContent.length; i++) {
-            var type = effectiveStructuredContent[i].content_type || effectiveStructuredContent[i].type || "text"
+        // Basic support mode - pass through
+        if (root.widgetSupport !== "full") {
+            _cache.mainItems = src
+            _cache.thinkingItems = []
+            _cache.isStreaming = false
+            _cache.mainContentCount = src.length
+            _cache.thinkingContentCount = 0
+            _cache.typingContentCount = 0
+            _cache.initialized = true
+            return
+        }
+
+        // Single pass categorization
+        var mainItems = []
+        var thinkingItems = []
+        var hasTypingStart = false
+        var mainTypes = root._mainContentTypesLookup
+
+        for (var i = 0; i < src.length; i++) {
+            var item = src[i]
+            var type = item.content_type || item.type || "text"
+
             if (type === "typing") {
-                // Only include typing content with state="start"
-                // state="end" is kept in history but doesn't trigger streaming state
-                var data = effectiveStructuredContent[i].data || {}
-                var state = data.state || "start"
-                if (state === "start") {
-                    items.push(effectiveStructuredContent[i])
+                var data = item.data || {}
+                if ((data.state || "start") === "start") {
+                    hasTypingStart = true
                 }
+            } else if (mainTypes[type] === true) {
+                mainItems.push(item)
+            } else {
+                thinkingItems.push(item)
             }
         }
-        return items
+
+        _cache.mainItems = mainItems
+        _cache.thinkingItems = thinkingItems
+        _cache.isStreaming = hasTypingStart
+        _cache.mainContentCount = mainItems.length
+        _cache.thinkingContentCount = thinkingItems.length
+        _cache.typingContentCount = hasTypingStart ? 1 : 0
+        _cache.initialized = true
     }
 
-    // Whether message is still streaming
-    readonly property bool isStreaming: typingContent.length > 0
+    // Debounced content update timer
+    Timer {
+        id: contentUpdateTimer
+        interval: 32  // ~30fps debounce
+        repeat: false
+        onTriggered: {
+            var newHash = root._computeContentHash(root.structuredContent)
+            if (newHash !== _cache.contentHash) {
+                _cache.contentHash = newHash
+                root._categorizeContent()
+            }
+        }
+    }
 
-    // Whether thinking section should be visible
-    readonly property bool hasThinkingSection: (thinkingItems.length > 0 || isStreaming) && widgetSupport === "full"
+    onStructuredContentChanged: contentUpdateTimer.restart()
+    onContentChanged: contentUpdateTimer.restart()
 
-    // Thinking section expanded/collapsed state
+    // Initial categorization
+    Component.onCompleted: {
+        root._categorizeContent()
+    }
+
+    // Exposed readonly properties
+    readonly property var mainContentItems: _cache.mainItems
+    readonly property var thinkingItems: _cache.thinkingItems
+    readonly property bool isStreaming: _cache.isStreaming
+    readonly property bool hasThinkingSection: (_cache.thinkingContentCount > 0 || _cache.isStreaming) && widgetSupport === "full"
+    readonly property bool isInitialized: _cache.initialized
+
+    // Thinking section state
     property bool thinkingExpanded: false
+    property bool thinkingContentLoaded: false
 
-    // Live summary of the latest thinking item for collapsed-state display
-    readonly property string _latestThinkingSummary: {
-        var items = root.thinkingItems
+    // Lazy thinking summary - only computed when section is visible AND expanded
+    function _getThinkingSummary() {
+        if (!root.hasThinkingSection || !root.thinkingContentLoaded) return ""
+
+        var items = _cache.thinkingItems
         if (items.length > 0) {
             var latest = items[items.length - 1]
-            var type = latest.content_type || latest.type || ""
-            var data = latest.data || {}
-            switch (type) {
-                case "thinking":
-                    var thought = data.thought || latest.thought || ""
-                    return thought ? thought.replace(/\n/g, " ") : ""
-                case "tool_call":
-                    var tn = data.tool_name || latest.tool_name || ""
-                    var st = data.status || latest.status || ""
-                    if (tn) {
-                        if (st === "started" || st === "running")
-                            return "🔧 " + tn + "..."
-                        if (st === "completed" || st === "success")
-                            return "🔧 " + tn + " ✓"
-                        if (st === "error" || st === "failed")
-                            return "🔧 " + tn + " ✗"
-                        return "🔧 " + tn
-                    }
-                    return ""
-                case "tool_response":
-                    return "📋 " + (data.tool_name || latest.tool_name || "Response")
-                case "skill":
-                    return "⚡ " + (data.name || latest.title || "Skill")
-                case "step":
-                    return latest.title || data.title || ""
-                case "plan":
-                    return "📋 " + (latest.title || "Plan")
-                case "progress":
-                    return data.progress || latest.progress || ""
-                case "llm_output":
-                    return "💬 " + (latest.title || data.title || "LLM Output")
-                case "error":
-                    return "❌ " + (data.error || latest.title || "Error")
-                case "metadata":
-                    return latest.title || data.metadata_type || ""
-                default:
-                    return latest.title || latest.description || type
-            }
+            return _computeSummary(latest)
         }
-        if (root.isStreaming) {
-            var mainItems = root.mainContentItems
-            if (mainItems.length > 0) {
-                var latestMain = mainItems[mainItems.length - 1]
-                var mainType = latestMain.content_type || latestMain.type || "text"
-                switch (mainType) {
-                    case "text": return "Generating text..."
-                    case "code_block": return "Generating code..."
-                    case "image": return "Processing image..."
-                    case "video": return "Processing video..."
-                    case "audio": return "Processing audio..."
-                    case "file":
-                    case "file_attachment": return "Processing file..."
-                    case "todo_write": return "Writing tasks..."
-                    default: return ""
-                }
+
+        if (_cache.isStreaming && _cache.mainContentCount > 0) {
+            var latestMain = _cache.mainItems[_cache.mainItems.length - 1]
+            var mainType = latestMain.content_type || latestMain.type || "text"
+            switch (mainType) {
+                case "text": return "Generating text..."
+                case "code_block": return "Generating code..."
+                case "image": return "Processing image..."
+                case "video": return "Processing video..."
+                case "audio": return "Processing audio..."
+                case "file":
+                case "file_attachment": return "Processing file..."
+                case "todo_write": return "Writing tasks..."
+                default: return ""
             }
         }
         return ""
     }
 
-    // Helper: resolve the correct Component for a content type string
+    function _computeSummary(item) {
+        if (!item) return ""
+        var type = item.content_type || item.type || ""
+        var data = item.data || {}
+
+        switch (type) {
+            case "thinking":
+                var thought = data.thought || item.thought || ""
+                return thought ? thought.replace(/\n/g, " ").substring(0, 100) : ""
+            case "tool_call":
+                var tn = data.tool_name || item.tool_name || ""
+                var st = data.status || item.status || ""
+                if (tn) {
+                    if (st === "started" || st === "running") return "🔧 " + tn + "..."
+                    if (st === "completed" || st === "success") return "🔧 " + tn + " ✓"
+                    if (st === "error" || st === "failed") return "🔧 " + tn + " ✗"
+                    return "🔧 " + tn
+                }
+                return ""
+            case "tool_response":
+                return "📋 " + (data.tool_name || item.tool_name || "Response")
+            case "skill":
+                return "⚡ " + (data.name || item.title || "Skill")
+            case "step":
+                return item.title || data.title || ""
+            case "plan":
+                return "📋 " + (item.title || "Plan")
+            case "progress":
+                return (data.progress || item.progress || "").substring(0, 50)
+            case "llm_output":
+                return "💬 " + (item.title || data.title || "LLM Output")
+            case "error":
+                return "❌ " + (data.error || item.title || "Error")
+            case "metadata":
+                return item.title || data.metadata_type || ""
+            default:
+                return item.title || item.description || type
+        }
+    }
+
     function _resolveComponent(type) {
         switch (type) {
-            // Basic content
             case "text": return textWidgetComponent
             case "code_block": return codeBlockComponent
-
-            // Thinking content (full support only)
             case "thinking": return widgetSupport === "full" ? thinkingWidgetComponent : textWidgetComponent
-
-            // Tool content (full support only)
             case "tool_call": return widgetSupport === "full" ? toolCallComponent : textWidgetComponent
             case "tool_response": return widgetSupport === "full" ? toolResponseComponent : textWidgetComponent
-
-            // Media content
             case "image": return imageWidgetComponent
             case "video": return widgetSupport === "full" ? videoWidgetComponent : textWidgetComponent
             case "audio": return widgetSupport === "full" ? audioWidgetComponent : textWidgetComponent
-
-            // Data display (full support only)
             case "table": return widgetSupport === "full" ? tableWidgetComponent : textWidgetComponent
             case "chart": return widgetSupport === "full" ? chartWidgetComponent : textWidgetComponent
-
-            // Interactive elements
             case "link": return linkWidgetComponent
             case "button": return widgetSupport === "full" ? buttonWidgetComponent : textWidgetComponent
             case "form": return widgetSupport === "full" ? formWidgetComponent : textWidgetComponent
-
-            // Files
             case "file_attachment":
             case "file": return fileWidgetComponent
-
-            // Tasks and plans (full support only)
             case "plan": return widgetSupport === "full" ? planWidgetComponent : textWidgetComponent
             case "task_list":
             case "task": return widgetSupport === "full" ? taskWidgetComponent : textWidgetComponent
             case "step": return widgetSupport === "full" ? stepWidgetComponent : textWidgetComponent
             case "skill": return widgetSupport === "full" ? skillWidgetComponent : textWidgetComponent
-
-            // Status and metadata (full support only)
             case "progress": return widgetSupport === "full" ? progressWidgetComponent : textWidgetComponent
             case "todo_write": return widgetSupport === "full" ? todoWriteWidgetComponent : textWidgetComponent
             case "metadata": return widgetSupport === "full" ? metadataWidgetComponent : textWidgetComponent
             case "error": return widgetSupport === "full" ? errorWidgetComponent : textWidgetComponent
             case "llm_output": return widgetSupport === "full" ? llmOutputComponent : textWidgetComponent
-
             default: return textWidgetComponent
         }
     }
@@ -234,13 +265,13 @@ Item {
 
         // ─── Content Section (flat display, always visible) ─────────
         Repeater {
-            model: mainContentItems.length
+            model: _cache.mainContentCount
 
             delegate: Loader {
                 id: mainWidgetLoader
                 width: contentColumn.width
 
-                property var widgetData: root.mainContentItems[index] || ({})
+                property var widgetData: _cache.mainItems[index] || ({})
                 property var loadedItem: null
 
                 sourceComponent: root._resolveComponent(
@@ -259,10 +290,10 @@ Item {
                 }
 
                 function _applyDataToItem() {
-                    if (loadedItem.hasOwnProperty('data')) {
+                    if (loadedItem && loadedItem.hasOwnProperty('data')) {
                         loadedItem.data = widgetData
                     }
-                    if (loadedItem.hasOwnProperty('widgetColor')) {
+                    if (loadedItem && loadedItem.hasOwnProperty('widgetColor')) {
                         loadedItem.widgetColor = root.widgetColor
                     }
                 }
@@ -271,7 +302,7 @@ Item {
             }
         }
 
-        // ─── Thinking Section (collapsible, below content) ──────────
+        // ─── Thinking Section (collapsible, LAZY LOADED) ──────────
         Item {
             id: thinkingSection
             visible: root.hasThinkingSection
@@ -357,11 +388,11 @@ Item {
                         Text {
                             text: {
                                 if (root.isStreaming) {
-                                    return root.thinkingItems.length > 0
-                                        ? "Thinking (" + root.thinkingItems.length + ")"
+                                    return _cache.thinkingContentCount > 0
+                                        ? "Thinking (" + _cache.thinkingContentCount + ")"
                                         : "Thinking..."
                                 }
-                                var count = root.thinkingItems.length
+                                var count = _cache.thinkingContentCount
                                 return count > 0
                                     ? "Thinking Process (" + count + ")"
                                     : "Thinking Process"
@@ -386,7 +417,7 @@ Item {
                             id: thinkingSummaryText
                             Layout.fillWidth: true
                             Layout.alignment: Qt.AlignVCenter
-                            text: root._latestThinkingSummary
+                            text: root._getThinkingSummary()
                             color: Qt.rgba(root.textColor.r, root.textColor.g, root.textColor.b, 0.38)
                             font.pixelSize: 11
                             elide: Text.ElideRight
@@ -395,7 +426,7 @@ Item {
 
                         // Expand/collapse arrow (only when there are items)
                         Text {
-                            visible: root.thinkingItems.length > 0
+                            visible: _cache.thinkingContentCount > 0
                             text: root.thinkingExpanded ? "▲" : "▼"
                             color: Qt.rgba(root.textColor.r, root.textColor.g, root.textColor.b, 0.4)
                             font.pixelSize: 9
@@ -405,75 +436,88 @@ Item {
 
                     MouseArea {
                         anchors.fill: parent
-                        cursorShape: root.thinkingItems.length > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
+                        cursorShape: _cache.thinkingContentCount > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
                         onClicked: {
-                            if (root.thinkingItems.length > 0) {
+                            if (_cache.thinkingContentCount > 0) {
                                 root.thinkingExpanded = !root.thinkingExpanded
                             }
                         }
                     }
                 }
 
-                // Expanded thinking content area
-                Rectangle {
-                    id: thinkingContentArea
-                    visible: root.thinkingExpanded && root.thinkingItems.length > 0
+                // Expanded thinking content area - LAZY LOADED
+                Loader {
+                    id: thinkingContentLoader
+                    visible: root.thinkingExpanded && _cache.thinkingContentCount > 0
                     width: parent.width
-                    height: visible ? thinkingContentCol.height + 16 : 0
-                    color: Qt.rgba(root.widgetColor.r, root.widgetColor.g, root.widgetColor.b, 0.04)
-                    border.color: Qt.rgba(root.widgetColor.r, root.widgetColor.g, root.widgetColor.b, 0.1)
-                    border.width: 1
-                    radius: 8
+                    height: visible ? (item ? item.implicitHeight : 0) : 0
 
-                    Behavior on height {
-                        NumberAnimation { duration: 200; easing.type: Easing.InOutQuad }
+                    // Key optimization: only activate when expanded
+                    active: root.thinkingExpanded && _cache.thinkingContentCount > 0
+
+                    onActiveChanged: {
+                        if (active) {
+                            root.thinkingContentLoaded = true
+                        }
                     }
 
-                    Column {
-                        id: thinkingContentCol
-                        anchors {
-                            left: parent.left
-                            right: parent.right
-                            top: parent.top
-                            margins: 8
+                    sourceComponent: Rectangle {
+                        implicitHeight: thinkingContentCol.height + 16
+                        color: Qt.rgba(root.widgetColor.r, root.widgetColor.g, root.widgetColor.b, 0.04)
+                        border.color: Qt.rgba(root.widgetColor.r, root.widgetColor.g, root.widgetColor.b, 0.1)
+                        border.width: 1
+                        radius: 8
+
+                        Behavior on height {
+                            NumberAnimation { duration: 200; easing.type: Easing.InOutQuad }
                         }
-                        spacing: 8
 
-                        Repeater {
-                            model: root.thinkingItems.length
+                        Column {
+                            id: thinkingContentCol
+                            anchors {
+                                left: parent.left
+                                right: parent.right
+                                top: parent.top
+                                margins: 8
+                            }
+                            spacing: 8
 
-                            delegate: Loader {
-                                id: thinkingWidgetLoader
-                                width: thinkingContentCol.width
+                            Repeater {
+                                model: _cache.thinkingContentCount
 
-                                property var widgetData: root.thinkingItems[index] || ({})
-                                property var loadedItem: null
+                                delegate: Loader {
+                                    id: thinkingWidgetLoader
+                                    width: thinkingContentCol.width
 
-                                sourceComponent: root._resolveComponent(
-                                    widgetData.content_type || widgetData.type || "text"
-                                )
+                                    property var widgetData: _cache.thinkingItems[index] || ({})
+                                    property var loadedItem: null
 
-                                onLoaded: {
-                                    loadedItem = item
-                                    _applyDataToItem()
-                                }
+                                    sourceComponent: root._resolveComponent(
+                                        widgetData.content_type || widgetData.type || "text"
+                                    )
 
-                                onWidgetDataChanged: {
-                                    if (loadedItem) {
+                                    onLoaded: {
+                                        loadedItem = item
                                         _applyDataToItem()
                                     }
-                                }
 
-                                function _applyDataToItem() {
-                                    if (loadedItem.hasOwnProperty('data')) {
-                                        loadedItem.data = widgetData
+                                    onWidgetDataChanged: {
+                                        if (loadedItem) {
+                                            _applyDataToItem()
+                                        }
                                     }
-                                    if (loadedItem.hasOwnProperty('widgetColor')) {
-                                        loadedItem.widgetColor = root.widgetColor
-                                    }
-                                }
 
-                                height: loadedItem ? (loadedItem.implicitHeight || loadedItem.height || 0) : 0
+                                    function _applyDataToItem() {
+                                        if (loadedItem && loadedItem.hasOwnProperty('data')) {
+                                            loadedItem.data = widgetData
+                                        }
+                                        if (loadedItem && loadedItem.hasOwnProperty('widgetColor')) {
+                                            loadedItem.widgetColor = root.widgetColor
+                                        }
+                                    }
+
+                                    height: loadedItem ? (loadedItem.implicitHeight || loadedItem.height || 0) : 0
+                                }
                             }
                         }
                     }
@@ -553,17 +597,6 @@ Item {
             toolName: data.tool_name || data.data?.tool_name || ""
             response: data.response || data.data?.response || ""
             isError: data.is_error || data.data?.is_error || false
-        }
-    }
-
-    // Typing indicator widget (kept for compatibility but no longer rendered separately)
-    Component {
-        id: typingIndicatorComponent
-
-        TypingIndicator {
-            property var widgetColor: root.widgetColor
-            active: true
-            dotColor: widgetColor
         }
     }
 

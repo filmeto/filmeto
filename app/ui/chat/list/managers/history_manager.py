@@ -211,13 +211,15 @@ class HistoryManager:
                         self._load_state.known_message_ids.add(item.message_id)
 
                 self._load_state.unique_message_count = len(items)
-                self._load_state.total_loaded_count = len(items)
+                # Track raw message count for accurate has_more_older detection
+                self._load_state.total_loaded_count = len(raw_messages)
 
-                # Fix has_more_older logic: compare total loaded with total in storage
+                # Fix has_more_older logic: compare raw message count with total in storage
+                # This is more accurate than comparing unique message count
                 total_count = history.get_total_count()
                 self._load_state.has_more_older = self._load_state.total_loaded_count < total_count
 
-                logger.info(f"Loaded {len(items)} unique messages (total: {total_count})")
+                logger.info(f"Loaded {len(items)} unique messages from {len(raw_messages)} raw records (total in storage: {total_count})")
 
                 # Force QML to update model binding
                 if self._refresh_qml_callback:
@@ -295,7 +297,8 @@ class HistoryManager:
                 self._model.prepend_items(qml_items)
 
                 self._load_state.unique_message_count += len(items)
-                self._load_state.total_loaded_count += len(items)
+                # Track raw message count for accurate has_more_older detection
+                self._load_state.total_loaded_count += len(older_messages)
                 # Update GSN cursor only if it actually changed
                 if batch_min_gsn < self._load_state.min_loaded_gsn:
                     self._load_state.min_loaded_gsn = batch_min_gsn
@@ -307,9 +310,9 @@ class HistoryManager:
                     saved_id = first_visible_id
                     QTimer.singleShot(0, lambda: self._restore_scroll_position_callback(saved_id, item_count_before_load))
 
-                logger.debug(f"Prepended {len(items)} older messages, new min_gsn={self._load_state.min_loaded_gsn}")
+                logger.debug(f"Prepended {len(items)} older messages from {len(older_messages)} raw records, new min_gsn={self._load_state.min_loaded_gsn}")
 
-            # Fix has_more_older logic: use total_loaded_count (not affected by prune)
+            # Fix has_more_older logic: use raw message count for accurate detection
             total_count = enhanced_history.get_total_count()
             self._load_state.has_more_older = self._load_state.total_loaded_count < total_count
 
