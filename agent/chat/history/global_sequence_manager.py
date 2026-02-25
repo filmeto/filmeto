@@ -327,45 +327,76 @@ class EnhancedMessageLogHistory:
 
     def get_messages_before_gsn(self, max_gsn: int, count: int = 100) -> List[Dict[str, Any]]:
         """
-        Get messages with GSN less than or equal to max_gsn (older messages).
+        Get messages with GSN less than max_gsn (older messages).
 
         This method is used for loading older messages when scrolling up.
 
+        IMPORTANT: A single message_id can have multiple log entries (e.g., llm_output,
+        tool_call, skill, thinking, etc.), each with its own GSN. We return ALL log entries
+        and let the MessageBuilder handle grouping by message_id.
+
+        Optimized Strategy (single-pass with early termination):
+        1. Traverse data sources from newest to oldest (active log -> recent archives)
+        2. Collect ALL entries for message_ids where ANY entry has GSN < max_gsn
+        3. Stop early once we have enough qualified message_ids
+
         Args:
             max_gsn: The maximum GSN to fetch (exclusive boundary - messages with GSN < max_gsn)
-            count: Maximum number of messages to retrieve
+            count: Maximum number of UNIQUE message_ids to retrieve
 
         Returns:
-            List of message dictionaries in chronological order (oldest first)
+            List of ALL log entry dictionaries for the retrieved message_ids,
+            sorted by GSN (oldest first). May return more entries than 'count'
+            because each message_id can have multiple log entries.
         """
         if max_gsn <= 0:
             # No GSN reference, fall back to latest messages
             return self._history.get_latest_messages(count)
 
-        messages = []
-        seen_gsns = set()
+        # Fetch multiplier: accounts for entries with GSN >= max_gsn being filtered out
+        FETCH_MULTIPLIER = 3
 
-        # Calculate fetch range - we need messages with GSN < max_gsn
-        # Fetch more than needed because we'll filter by GSN
-        fetch_count = count * 3
+        # Data structures for single-pass collection
+        # message_entries: maps message_id -> list of all its entries
+        # qualified_ids: message_ids that have at least one entry with GSN < max_gsn
+        message_entries: Dict[str, List[Dict[str, Any]]] = {}
+        qualified_ids: set[str] = set()
+        seen_gsns: set[int] = set()
 
-        # Get messages from active log
-        active_messages = self._history.get_latest_messages(fetch_count)
-
-        # Filter by GSN (< max_gsn) and track oldest
-        for msg in active_messages:
+        def process_message(msg: Dict[str, Any]) -> None:
+            """Process a single message entry."""
             msg_gsn = msg.get('metadata', {}).get('gsn', 0)
-            if 0 < msg_gsn < max_gsn and msg_gsn not in seen_gsns:
-                messages.append(msg)
-                seen_gsns.add(msg_gsn)
+            msg_id = msg.get('message_id', '')
 
-        # If we need more messages and there are archives, check them
-        if len(messages) < count and self._archives:
-            remaining = count - len(messages)
+            if not msg_id or msg_gsn <= 0:
+                return
 
-            # Check archives (oldest first for older messages)
+            # Skip duplicates
+            if msg_gsn in seen_gsns:
+                return
+            seen_gsns.add(msg_gsn)
+
+            # Collect entry (we need all entries for each message_id)
+            if msg_id not in message_entries:
+                message_entries[msg_id] = []
+            message_entries[msg_id].append(msg)
+
+            # Mark as qualified if GSN < max_gsn
+            if msg_gsn < max_gsn:
+                qualified_ids.add(msg_id)
+
+        # Process active log first (newest messages)
+        active_messages = self._history.get_latest_messages(count * FETCH_MULTIPLIER)
+        for msg in active_messages:
+            process_message(msg)
+
+        # Early termination: check if we have enough qualified IDs from active log
+        if len(qualified_ids) < count and self._archives:
+            # Process archives from newest to oldest (recent archives first)
+            # Note: self._archives is ordered [oldest, ..., newest], so reversed() gives [newest, ..., oldest]
             for archive_dir in reversed(self._archives):
-                if remaining <= 0:
+                if len(qualified_ids) >= count:
+                    # Early termination: we have enough qualified IDs
                     break
 
                 archive = self._history.storage.load_archive(archive_dir)
@@ -376,26 +407,45 @@ class EnhancedMessageLogHistory:
                 if archive_count == 0:
                     continue
 
-                # Fetch messages from archive
-                fetch_from_archive = min(archive_count, remaining * 2)
-                start = max(0, archive_count - fetch_from_archive)
-                archive_messages = archive.get_messages(start, fetch_from_archive)
+                # Fetch in chunks from the END of archive (newest entries first)
+                # This is more efficient because we want messages with GSN close to max_gsn
+                CHUNK_SIZE = 500
+                for end_pos in range(archive_count - 1, -1, -CHUNK_SIZE):
+                    if len(qualified_ids) >= count:
+                        break
 
-                # Filter by GSN
-                for msg in reversed(archive_messages):
-                    msg_gsn = msg.get('metadata', {}).get('gsn', 0)
-                    if 0 < msg_gsn < max_gsn and msg_gsn not in seen_gsns:
-                        messages.append(msg)
-                        seen_gsns.add(msg_gsn)
-                        remaining -= 1
-                        if remaining <= 0:
+                    start_pos = max(0, end_pos - CHUNK_SIZE + 1)
+                    chunk_size = end_pos - start_pos + 1
+                    archive_messages = archive.get_messages(start_pos, chunk_size)
+
+                    # Process in reverse order (newest first within chunk)
+                    for msg in reversed(archive_messages):
+                        process_message(msg)
+                        if len(qualified_ids) >= count:
                             break
 
-        # Sort by GSN to get chronological order
-        messages.sort(key=lambda m: m.get('metadata', {}).get('gsn', 0))
+        # If no qualified messages found, return empty
+        if not qualified_ids:
+            return []
 
-        # Return only the requested count
-        return messages[:count]
+        # Select message_ids to return (limit by count)
+        # Sort qualified_ids by their minimum GSN to get oldest first
+        id_min_gsn = {
+            msg_id: min(e.get('metadata', {}).get('gsn', 0) for e in entries)
+            for msg_id, entries in message_entries.items()
+            if msg_id in qualified_ids
+        }
+        selected_ids = sorted(qualified_ids, key=lambda mid: id_min_gsn.get(mid, 0))[:count]
+
+        # Collect all entries for selected message_ids
+        all_entries = []
+        for msg_id in selected_ids:
+            all_entries.extend(message_entries.get(msg_id, []))
+
+        # Sort by GSN for final chronological order
+        all_entries.sort(key=lambda m: m.get('metadata', {}).get('gsn', 0))
+
+        return all_entries
 
     # Delegate methods to underlying history
     def get_latest_messages(self, count: int = 20) -> list:
