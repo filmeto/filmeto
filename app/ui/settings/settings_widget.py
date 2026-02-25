@@ -324,6 +324,12 @@ class SettingsWidget(BaseWidget):
         if 'dashscope.aliyuncs.com' in api_host:
             # DashScope models
             return [
+                {"value": "qwen3.5-flash", "label": "Qwen3.5 Flash"},
+                {"value": "qwen3.5-plus", "label": "Qwen3.5 Plus"},
+                {"value": "kimi-k2.5", "label": "Kimi K2.5"},
+                {"value": "kimi-k2-thinking", "label": "Kimi K2 Thinking"},
+                {"value": "glm-5", "label": "GLM-5"},
+                {"value": "glm-4.7", "label": "GLM-4.7"},
                 {"value": "qwen-turbo", "label": "Qwen Turbo"},
                 {"value": "qwen-plus", "label": "Qwen Plus"},
                 {"value": "qwen-max", "label": "Qwen Max"},

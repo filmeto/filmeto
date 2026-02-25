@@ -33,7 +33,7 @@ class LlmService:
         self.settings = getattr(workspace, 'settings', None) if workspace else None
         self.api_key = None
         self.api_base = None
-        self.default_model = 'gpt-4o-mini'
+        self.default_model = 'qwen3.5-flash'
         self.temperature = 0.7
         self.language_prompts = {
             'zh_CN': '请使用中文回答。',
@@ -132,7 +132,7 @@ class LlmService:
                            os.getenv('OPENAI_API_KEY') or
                            os.getenv('DASHSCOPE_API_KEY'))
             self.api_base = self.settings.get('ai_services.openai_host', os.getenv('OPENAI_BASE_URL'))
-            self.default_model = self.settings.get('ai_services.default_model', 'gpt-4o-mini')
+            self.default_model = self.settings.get('ai_services.default_model', 'qwen3.5-flash')
 
             # Detect provider from base URL
             self.provider = self._detect_provider_from_base_url(self.api_base)
@@ -156,7 +156,7 @@ class LlmService:
             # Fallback to environment variables if no settings service is provided
             self.api_key = os.getenv('OPENAI_API_KEY') or os.getenv('DASHSCOPE_API_KEY')
             self.api_base = os.getenv('OPENAI_BASE_URL', os.getenv('OPENAI_HOST'))
-            self.default_model = os.getenv('DEFAULT_MODEL', 'gpt-4o-mini')
+            self.default_model = os.getenv('DEFAULT_MODEL', 'qwen3.5-flash')
 
             # Detect provider from base URL
             self.provider = self._detect_provider_from_base_url(self.api_base)
