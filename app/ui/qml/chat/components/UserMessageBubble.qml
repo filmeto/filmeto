@@ -117,12 +117,13 @@ Item {
 
                 onImplicitHeightChanged: {
                     // Trigger bubble width recalculation when content changes
-                    calcWidthTimer.start()
+                    // Use restart() to debounce rapid height changes during content updates
+                    calcWidthTimer.restart()
                 }
 
                 Timer {
                     id: calcWidthTimer
-                    interval: 50
+                    interval: 100  // Increased from 50ms to reduce frequency during rapid updates
                     onTriggered: {
                         if (contentLoader.children && contentLoader.children.length > 0) {
                             var maxW = 80

@@ -86,13 +86,22 @@ class ScrollManager:
         """
         # Get current scroll state from QmlHandler (the source of truth)
         user_at_bottom = False
+        is_scrolling = False
         if self._qml_handler:
             user_at_bottom = self._qml_handler.get_user_at_bottom()
+            # Check if scrolling is in progress to avoid interrupting user
+            is_scrolling = getattr(self._qml_handler, '_is_scrolling', False)
+
+        # Skip if already scrolling to avoid interrupting scroll animation
+        # This prevents the "jumping" effect during user scrolling
+        if is_scrolling and not force:
+            return
 
         if self._qml_root and (force or user_at_bottom):
-            # Flush any pending model updates so QML has the latest content
-            # before we scroll (ensures correct content height for positioning)
-            self._model.flush_updates()
+            # Only flush updates if we're actually going to scroll
+            # This avoids interrupting the batch update mechanism during normal scrolling
+            if force:
+                self._model.flush_updates()
             self._qml_root.scrollToBottom()
 
     def get_first_visible_message_id(self) -> Optional[str]:

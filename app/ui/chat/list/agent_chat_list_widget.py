@@ -298,7 +298,10 @@ class QmlAgentChatListWidget(BaseWidget):
         if updates:
             self._model.update_item(message_id, updates)
 
-        self._scroll_to_bottom(force=True)
+        # Only scroll to bottom when message is complete or when there's significant content update
+        # This avoids excessive scrolling during streaming which causes performance issues
+        if is_complete or error:
+            self._scroll_to_bottom(force=True)
 
     # ─── Public API ───────────────────────────────────────────────────────
 
@@ -330,6 +333,8 @@ class QmlAgentChatListWidget(BaseWidget):
         }
 
         self._model.add_item(item)
+        # Scroll to bottom when adding a new message
+        # Use force=True to ensure the new message is visible
         self._scroll_to_bottom(force=True)
         return message_id
 
@@ -373,6 +378,8 @@ class QmlAgentChatListWidget(BaseWidget):
         }
 
         self._model.add_item(item)
+        # Scroll to bottom when adding a new message
+        # Use force=True to ensure the new message is visible
         self._scroll_to_bottom(force=True)
         return message_id
 
@@ -386,7 +393,9 @@ class QmlAgentChatListWidget(BaseWidget):
         self._model.update_item(message_id, {
             self._model.CONTENT: content,
         })
-        self._scroll_to_bottom(force=True)
+        # Don't force scroll during streaming - let the batch update mechanism handle it
+        # Only scroll if user is already at bottom
+        self._scroll_to_bottom(force=False)
 
     def get_or_create_agent_card(
         self,

@@ -7,6 +7,8 @@ Python and QML layers.
 import logging
 from typing import Optional, TYPE_CHECKING, Callable
 
+from PySide6.QtCore import QTimer
+
 if TYPE_CHECKING:
     from app.ui.chat.list.agent_chat_list_model import QmlAgentChatListModel
 
@@ -27,6 +29,7 @@ class QmlHandler:
         _qml_root: Reference to QML root object
         _user_at_bottom: Whether user is currently at bottom of list
         _load_more_debounce_ms: Debounce delay for load more requests
+        _is_scrolling: Whether scroll animation is currently in progress
     """
 
     # Default debounce delay for load more requests (ms)
@@ -46,6 +49,7 @@ class QmlHandler:
         self._model = model
         self._qml_root: Optional = None
         self._user_at_bottom = True
+        self._is_scrolling = False  # Track if scroll animation is in progress
         self._load_more_debounce_ms = load_more_debounce_ms
 
         # Callbacks (to be set by widget)
@@ -123,13 +127,29 @@ class QmlHandler:
         if self._debounce_timer:
             self._debounce_timer.start(self._load_more_debounce_ms)
 
+    # Maximum duration for _is_scrolling state to prevent permanent lockup
+    SCROLL_STATE_RESET_MS = 300
+
     def _on_qml_scroll_position_changed(self, at_bottom: bool) -> None:
         """Handle scroll position change from QML.
 
         Args:
             at_bottom: Whether user is at bottom of list
         """
+        # Detect if scrolling is in progress by checking if at_bottom state changed
+        was_at_bottom = self._user_at_bottom
         self._user_at_bottom = at_bottom
+
+        # Mark scrolling as in progress if at_bottom state changed
+        # This prevents excessive scroll-to-bottom calls during user scrolling
+        if was_at_bottom != at_bottom:
+            self._is_scrolling = True
+            # Use static QTimer.singleShot to avoid conflict with load-more debounce timer
+            QTimer.singleShot(self.SCROLL_STATE_RESET_MS, self._reset_scrolling_flag)
+    
+    def _reset_scrolling_flag(self) -> None:
+        """Reset the scrolling flag after scroll animation completes."""
+        self._is_scrolling = False
 
     def scroll_to_bottom(self, force: bool = False) -> None:
         """Scroll the chat list to bottom.
@@ -138,10 +158,16 @@ class QmlHandler:
             force: If True, scroll regardless of user position.
                    If False, only scroll if user is already at bottom.
         """
+        # Skip if already scrolling to avoid interrupting scroll animation
+        # This prevents the "jumping" effect during user scrolling
+        if self._is_scrolling and not force:
+            return
+        
         if self._qml_root and (force or self._user_at_bottom):
-            # Flush any pending model updates so QML has the latest content
-            # before we scroll (ensures correct content height for positioning)
-            self._model.flush_updates()
+            # Only flush updates if we're actually going to scroll
+            # This avoids interrupting the batch update mechanism during normal scrolling
+            if force:
+                self._model.flush_updates()
             self._qml_root.scrollToBottom()
 
     def get_first_visible_message_id(self) -> Optional[str]:

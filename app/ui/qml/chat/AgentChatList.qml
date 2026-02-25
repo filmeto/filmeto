@@ -40,15 +40,35 @@ ListView {
     readonly property int bottomThreshold: 50
     readonly property bool isAtBottom: contentHeight - contentY - height < bottomThreshold
 
-    // Notify Python when scroll position changes
+    // Track last atBottom state to avoid sending duplicate signals
+    property bool lastAtBottom: true
+
+    // Debounce timer for scroll position changes to avoid excessive signals during scrolling
+    Timer {
+        id: scrollDebounceTimer
+        interval: 100  // 100ms debounce
+        running: false
+        onTriggered: {
+            // Only send signal if state actually changed
+            if (isAtBottom !== lastAtBottom) {
+                lastAtBottom = isAtBottom
+                scrollPositionChanged(isAtBottom)
+            }
+        }
+    }
+
+    // Notify Python when scroll position changes (debounced to avoid excessive signals during scrolling)
     onContentYChanged: {
-        scrollPositionChanged(isAtBottom)
+        // Restart debounce timer on every scroll event
+        scrollDebounceTimer.restart()
     }
     onHeightChanged: {
-        scrollPositionChanged(isAtBottom)
+        // View height changed - also use debounce to avoid interrupting scroll
+        scrollDebounceTimer.restart()
     }
     onContentHeightChanged: {
-        scrollPositionChanged(isAtBottom)
+        // Content height changed - use debounce to avoid rapid firing during content updates
+        scrollDebounceTimer.restart()
     }
 
     // Background
