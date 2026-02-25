@@ -34,82 +34,68 @@ Item {
     readonly property int availableWidth: Math.max(80, width - totalAvatarWidth)
 
     // Width is determined by anchors, height is calculated dynamically
-    implicitHeight: 12 + headerContainer.height + 12 + bubbleContainer.height + 8
+    implicitHeight: 12 + headerRow.height + 12 + bubbleContainer.height + 8
 
-    // Time info on the left side (anchored independently)
-    Column {
-        id: timeInfoColumn
+    // Header row - right aligned with time info, name, and avatar
+    Row {
+        id: headerRow
         anchors {
-            left: parent.left
-            leftMargin: 12
-            verticalCenter: headerRow.verticalCenter
-        }
-        spacing: 2
-        visible: root.startTime !== "" || root.duration !== ""
-
-        Text {
-            text: root.startTime
-            color: timeInfoColor
-            font.pixelSize: 11
-            font.weight: Font.Light
-            visible: root.startTime !== ""
-        }
-
-        Text {
-            text: root.duration
-            color: timeInfoColor
-            font.pixelSize: 10
-            font.weight: Font.Light
-            visible: root.duration !== ""
-        }
-    }
-
-    // Header container to hold the right-aligned row
-    Item {
-        id: headerContainer
-        anchors {
-            left: parent.left
             right: parent.right
+            rightMargin: 12
             top: parent.top
             topMargin: 12
         }
-        height: headerRow.height
+        spacing: 8
+        height: Math.max(avatarRect.height, nameText.implicitHeight, timeInfoColumn.implicitHeight)
 
-        // Name and avatar row - right aligned (original layout)
-        Row {
-            id: headerRow
-            anchors {
-                right: parent.right
-                rightMargin: 12
-            }
-            spacing: 8
-            height: Math.max(avatarRect.height, nameText.implicitHeight)
+        // Time info column (before name)
+        Column {
+            id: timeInfoColumn
+            spacing: 0
+            anchors.verticalCenter: parent.verticalCenter
+            visible: root.startTime !== "" || root.duration !== ""
 
-            // User name (before avatar)
             Text {
-                id: nameText
-                text: root.userName
-                color: textColor
-                font.pixelSize: 13
-                font.weight: Font.Medium
-                anchors.verticalCenter: parent.verticalCenter
-                opacity: 0.9
+                text: root.startTime
+                color: timeInfoColor
+                font.pixelSize: 11
+                font.weight: Font.Light
+                visible: root.startTime !== ""
             }
 
-            // Avatar/icon
-            Rectangle {
-                id: avatarRect
-                width: avatarSize
-                height: avatarSize
-                radius: width / 2
-                color: avatarColor
-                anchors.verticalCenter: parent.verticalCenter
+            Text {
+                text: root.duration
+                color: timeInfoColor
+                font.pixelSize: 10
+                font.weight: Font.Light
+                visible: root.duration !== ""
+            }
+        }
 
-                Text {
-                    anchors.centerIn: parent
-                    text: root.userIcon
-                    font.pixelSize: 18
-                }
+        // User name
+        Text {
+            id: nameText
+            text: root.userName
+            color: textColor
+            font.pixelSize: 13
+            font.weight: Font.Medium
+            anchors.verticalCenter: parent.verticalCenter
+            opacity: 0.9
+        }
+
+        // Avatar/icon
+        Rectangle {
+            id: avatarRect
+            width: avatarSize
+            height: avatarSize
+            radius: width / 2
+            color: avatarColor
+            anchors.verticalCenter: parent.verticalCenter
+
+            Text {
+                anchors.centerIn: parent
+                text: root.userIcon
+                font.pixelSize: 18
             }
         }
     }
@@ -120,7 +106,7 @@ Item {
         anchors {
             right: parent.right
             rightMargin: avatarSize + avatarSpacing  // avatar space on the right side
-            top: headerContainer.bottom
+            top: headerRow.bottom
             topMargin: 12
         }
         width: bubble.width

@@ -236,6 +236,10 @@ class MessageBuilder:
                             text_content = content_item.get("data", {}).get("text", "")
                             break
 
+                # Add timestamp to metadata for QML
+                if timestamp and "timestamp" not in metadata:
+                    metadata["timestamp"] = timestamp
+
                 logger.debug(f"  User message: {text_content[:50]}...")
                 return ChatListItem(
                     message_id=message_id,
@@ -243,7 +247,7 @@ class MessageBuilder:
                     sender_name=sender_name,
                     is_user=True,
                     user_content=text_content,
-                    metadata=metadata,  # Preserve metadata for GSN sorting
+                    metadata=metadata,  # Preserve metadata for GSN sorting and timestamp
                 )
             else:
                 structured_content = []

@@ -479,9 +479,17 @@ class QmlAgentChatListModel(QAbstractListModel):
             return {}
 
         # Get timestamp from metadata
+        # For user messages: use chat_list_item.metadata
+        # For agent messages: use agent_message.metadata (with fallback to chat_list_item.metadata)
         timestamp = None
-        if chat_list_item.agent_message and chat_list_item.agent_message.metadata:
+        if chat_list_item.is_user:
+            # User message: get timestamp from item metadata
+            timestamp = chat_list_item.metadata.get('timestamp')
+        elif chat_list_item.agent_message and chat_list_item.agent_message.metadata:
+            # Agent message: prefer agent_message metadata
             timestamp = chat_list_item.agent_message.metadata.get('timestamp')
+            if not timestamp:
+                timestamp = chat_list_item.metadata.get('timestamp')
 
         # Extract text content for quick access
         content = ""
@@ -613,9 +621,15 @@ class QmlAgentChatListModel(QAbstractListModel):
         # Format start time and duration
         start_time = cls._format_start_time(timestamp)
 
-        # Calculate duration - only for completed messages (no typing indicator)
+        # Calculate duration
         duration = ""
-        if chat_list_item.agent_message:
+        if chat_list_item.is_user:
+            # User message: get end_timestamp from item metadata
+            end_timestamp = chat_list_item.metadata.get('end_timestamp')
+            if end_timestamp:
+                duration = cls._format_duration(timestamp, end_timestamp)
+        elif chat_list_item.agent_message:
+            # Agent message: check for typing indicator and end timestamp
             has_typing = any(
                 hasattr(sc, 'content_type') and sc.content_type == ContentType.TYPING
                 for sc in chat_list_item.agent_message.structured_content
