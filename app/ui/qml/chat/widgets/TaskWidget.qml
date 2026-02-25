@@ -119,7 +119,6 @@ Rectangle {
                     text: root.taskData.description || ""
                     textColor: descColor
                     fontPixelSize: 12
-                    lineHeight: 1.4
                     wrapMode: true
                     selectionColor: root.widgetColor
                 }

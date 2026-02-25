@@ -495,7 +495,6 @@ Item {
             text: data.text || data.data?.text || ""
             textColor: root.textColor
             fontPixelSize: 14
-            lineHeight: widgetSupport === "full" ? 1.5 : 1.4
             wrapMode: true
             selectionColor: root.widgetColor
             width: parent.width

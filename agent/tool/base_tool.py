@@ -156,6 +156,7 @@ class BaseTool(ABC):
         ok: bool = True,
         result: Any = None,
         tool_call_id: str = "",
+        progress: str = "",  # Added for tool_progress events
     ) -> "AgentEvent":
         """
         Create a ReactEvent for tool execution.
@@ -172,6 +173,7 @@ class BaseTool(ABC):
             ok: Whether operation succeeded (for tool_end events)
             result: Operation result (for tool_end events)
             tool_call_id: Unique identifier for tracking tool lifecycle (optional)
+            progress: Progress message (for tool_progress events, optional)
 
         Returns:
             ReactEvent object
@@ -211,10 +213,10 @@ class BaseTool(ABC):
                 description=f"Error in {self.name}"
             )
         elif event_type == AgentEventType.TOOL_PROGRESS.value:
-            # For progress, result might contain the progress message
-            progress = result if isinstance(result, str) else str(error) if error else "Processing..."
+            # For progress, use progress parameter if provided, otherwise use result
+            progress_text = progress if progress else (result if isinstance(result, str) else str(error) if error else "Processing...")
             content = ProgressContent(
-                progress=progress,
+                progress=progress_text,
                 tool_name=self.name,
                 title="Tool Progress",
                 description=f"{self.name} in progress"

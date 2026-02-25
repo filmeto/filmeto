@@ -126,37 +126,9 @@ Rectangle {
                 text: root.code
                 readOnly: true
                 cursorVisible: false
+                selectByMouse: true
                 selectionColor: root.accentColor
                 selectedTextColor: "#ffffff"
-
-                // Handle text selection
-                MouseArea {
-                    anchors.fill: parent
-                    acceptedButtons: Qt.LeftButton | Qt.RightButton
-                    cursorShape: Qt.IBeamCursor
-                    propagateComposedEvents: true
-
-                    onPressed: function(mouse) {
-                        // Let TextEdit handle the press event
-                        mouse.accepted = false
-                    }
-
-                    onDoubleClicked: function(mouse) {
-                        codeTextEdit.selectAll()
-                    }
-
-                    onRightClicked: function(mouse) {
-                        if (codeTextEdit.selectedText.length > 0) {
-                            codeContextMenu.popup()
-                        }
-                    }
-
-                    onPositionChanged: function(mouse) {
-                        if (mouse.pressed && mouse.button === Qt.LeftButton) {
-                            mouse.accepted = false
-                        }
-                    }
-                }
 
                 // Context menu for code
                 Menu {
@@ -177,12 +149,28 @@ Rectangle {
                     }
                 }
 
+                // Handle right-click for context menu
+                MouseArea {
+                    anchors.fill: parent
+                    acceptedButtons: Qt.RightButton
+                    cursorShape: Qt.IBeamCursor
+                    propagateComposedEvents: false
+
+                    onClicked: function(mouse) {
+                        if (mouse.button === Qt.RightButton) {
+                            if (codeTextEdit.selectedText.length > 0) {
+                                codeContextMenu.popup()
+                            }
+                        }
+                    }
+                }
+
                 // Shortcut for Ctrl+C
-                Shortcut {
-                    sequence: StandardKey.Copy
-                    onActivated: {
+                Keys.onPressed: function(event) {
+                    if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_C) {
                         if (codeTextEdit.selectedText.length > 0) {
                             codeTextEdit.copy()
+                            event.accepted = true
                         }
                     }
                 }

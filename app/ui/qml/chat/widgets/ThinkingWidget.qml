@@ -104,7 +104,6 @@ Rectangle {
                     text: root.thought
                     textColor: root.textColor
                     fontPixelSize: 13
-                    lineHeight: 1.5
                     wrapMode: true
                     selectionColor: root.titleColor
                 }

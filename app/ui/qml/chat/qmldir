@@ -45,3 +45,14 @@ LinkWidget 1.0 widgets/LinkWidget.qml
 FileWidget 1.0 widgets/FileWidget.qml
 PlanWidget 1.0 widgets/PlanWidget.qml
 TaskWidget 1.0 widgets/TaskWidget.qml
+StepWidget 1.0 widgets/StepWidget.qml
+SkillWidget 1.0 widgets/SkillWidget.qml
+LlmOutputWidget 1.0 widgets/LlmOutputWidget.qml
+MetadataWidget 1.0 widgets/MetadataWidget.qml
+ErrorWidget 1.0 widgets/ErrorWidget.qml
+StructuredContentRenderer 1.0 widgets/StructuredContentRenderer.qml
+SelectableText 1.0 widgets/SelectableText.qml
+AudioWidget 1.0 widgets/AudioWidget.qml
+ChartWidget 1.0 widgets/ChartWidget.qml
+VideoWidget 1.0 widgets/VideoWidget.qml
+FormWidget 1.0 widgets/FormWidget.qml

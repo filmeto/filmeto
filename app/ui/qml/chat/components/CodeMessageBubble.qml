@@ -94,7 +94,6 @@ Item {
             color: "#e0e0e0"
             font.pixelSize: 14
             wrapMode: Text.WordWrap
-            lineHeight: 1.5
             Layout.fillWidth: true
         }
     }

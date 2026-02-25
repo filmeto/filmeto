@@ -137,35 +137,9 @@ Rectangle {
                         textFormat: Text.PlainText
                         readOnly: true
                         cursorVisible: false
+                        selectByMouse: true
                         selectionColor: root.widgetColor
                         selectedTextColor: "#ffffff"
-
-                        MouseArea {
-                            anchors.fill: parent
-                            acceptedButtons: Qt.LeftButton | Qt.RightButton
-                            cursorShape: Qt.IBeamCursor
-                            propagateComposedEvents: true
-
-                            onPressed: function(mouse) {
-                                mouse.accepted = false
-                            }
-
-                            onDoubleClicked: function(mouse) {
-                                stackTraceTextEdit.selectAll()
-                            }
-
-                            onRightClicked: function(mouse) {
-                                if (stackTraceTextEdit.selectedText.length > 0) {
-                                    stackTraceContextMenu.popup()
-                                }
-                            }
-
-                            onPositionChanged: function(mouse) {
-                                if (mouse.pressed && mouse.button === Qt.LeftButton) {
-                                    mouse.accepted = false
-                                }
-                            }
-                        }
 
                         Menu {
                             id: stackTraceContextMenu
@@ -179,11 +153,28 @@ Rectangle {
                             }
                         }
 
-                        Shortcut {
-                            sequence: StandardKey.Copy
-                            onActivated: {
+                        // Handle right-click for context menu
+                        MouseArea {
+                            anchors.fill: parent
+                            acceptedButtons: Qt.RightButton
+                            cursorShape: Qt.IBeamCursor
+                            propagateComposedEvents: false
+
+                            onClicked: function(mouse) {
+                                if (mouse.button === Qt.RightButton) {
+                                    if (stackTraceTextEdit.selectedText.length > 0) {
+                                        stackTraceContextMenu.popup()
+                                    }
+                                }
+                            }
+                        }
+
+                        // Shortcut for Ctrl+C
+                        Keys.onPressed: function(event) {
+                            if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_C) {
                                 if (stackTraceTextEdit.selectedText.length > 0) {
                                     stackTraceTextEdit.copy()
+                                    event.accepted = true
                                 }
                             }
                         }
