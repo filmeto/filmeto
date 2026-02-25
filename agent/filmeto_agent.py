@@ -538,6 +538,39 @@ class FilmetoAgent:
             "Respond with your output. If needed, update the plan with plan_update.",
         ])
 
+    def _build_task_intro_text(self, task: PlanTask, plan: Plan) -> str:
+        """
+        Build an introductory text for a task that will be displayed
+        when a crew member starts working on it.
+
+        Args:
+            task: The task to build intro text for
+            plan: The plan containing this task
+
+        Returns:
+            A formatted string describing the task
+        """
+        parts = [
+            f"**Task:** {task.name}",
+            "",
+            f"{task.description}",
+        ]
+
+        # Add dependencies info if any
+        if task.needs:
+            deps_text = ", ".join(task.needs)
+            parts.append("")
+            parts.append(f"**Depends on:** {deps_text}")
+
+        # Add parameters if any
+        if task.parameters:
+            parts.append("")
+            parts.append("**Parameters:**")
+            for key, value in task.parameters.items():
+                parts.append(f"- {key}: {value}")
+
+        return "\n".join(parts)
+
     def _create_plan(self, project_name: str, user_message: str) -> Optional[Plan]:
         if not project_name:
             return None
@@ -1102,6 +1135,22 @@ class FilmetoAgent:
                         task_id=task.id,
                         task_status="running",
                     )
+
+                    # First, emit a text event showing the task content from crew member's perspective
+                    # This helps the crew member communicate what they're about to do
+                    task_intro_text = self._build_task_intro_text(task, plan)
+                    task_intro_msg = AgentMessage(
+                        sender_id=target_agent.config.name,
+                        sender_name=target_agent.config.name.capitalize(),
+                        message_id=task_message_id,
+                        structured_content=[TextContent(
+                            text=task_intro_text,
+                            title=task.name,
+                            description=f"Task from plan: {plan.name}"
+                        )]
+                    )
+                    logger.info(f"📋 Sending task intro: id={task_intro_msg.message_id}, sender='{target_agent.config.name}', task_id={task.id}")
+                    await self.signals.send_agent_message(task_intro_msg)
 
                     task_message = self._build_task_message(task, plan.id)
                     async for event in self._stream_crew_member(
