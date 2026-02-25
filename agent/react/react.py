@@ -290,8 +290,14 @@ class React:
         All events are still yielded for real-time display.
         """
         start_time = time.time()
+        # Get project from workspace if available
+        project = None
+        if hasattr(self, 'workspace') and self.workspace:
+            project = self.workspace.project
+
         tool_context = ToolContext(
             workspace=self.workspace,
+            project=project,  # Pass project for screenplay manager access
             project_name=self.project_name,
             _react_instance=self,  # Pass reference to React instance for TodoWriteTool
         )
