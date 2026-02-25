@@ -175,9 +175,13 @@ class Settings:
                 
                 # Store in schema
                 self.schema[group_name][field_name] = field
-                
-                # Initialize value - use 'value' field if present (user's saved value), otherwise use default
-                saved_value = field_data.get('value', field.default)
+
+                # Initialize value - use 'value' field if present and not None, otherwise use default
+                # Note: dict.get(key, default) only returns default when key doesn't exist,
+                # not when key exists but value is None. We need to handle both cases.
+                saved_value = field_data.get('value')
+                if saved_value is None:
+                    saved_value = field.default
                 self.values[group_name][field_name] = saved_value
                 
                 # Add to group
