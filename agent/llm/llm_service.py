@@ -349,10 +349,14 @@ class LlmService:
         model = self._map_model_for_provider(model, self.provider)
 
         # Call LiteLLM's acompletion normally - it will handle provider-specific logic internally
+        # Explicitly pass base_url to ensure custom endpoints are used correctly
+        # Note: base_url is the standard LiteLLM parameter; api_base is kept for compatibility
         return await litellm.acompletion(
             model=model,
             messages=messages,
             stream=stream,
+            base_url=self.api_base,
+            api_base=self.api_base,
             **kwargs
         )
     
@@ -391,9 +395,13 @@ class LlmService:
         model = self._map_model_for_provider(model, self.provider)
 
         # Call LiteLLM's completion normally - it will handle provider-specific logic internally
+        # Explicitly pass base_url to ensure custom endpoints are used correctly
+        # Note: base_url is the standard LiteLLM parameter; api_base is kept for compatibility
         return litellm.completion(
             model=model,
             messages=messages,
+            base_url=self.api_base,
+            api_base=self.api_base,
             **kwargs
         )
     
@@ -414,9 +422,13 @@ class LlmService:
         model = self._map_model_for_provider(model, self.provider)
 
         # Call LiteLLM's aembedding normally - it will handle provider-specific logic internally
+        # Explicitly pass base_url to ensure custom endpoints are used correctly
+        # Note: base_url is the standard LiteLLM parameter; api_base is kept for compatibility
         return await litellm.aembedding(
             model=model,
-            input=input_text
+            input=input_text,
+            base_url=self.api_base,
+            api_base=self.api_base
         )
 
     def embedding(self,
@@ -436,9 +448,13 @@ class LlmService:
         model = self._map_model_for_provider(model, self.provider)
 
         # Call LiteLLM's embedding normally - it will handle provider-specific logic internally
+        # Explicitly pass base_url to ensure custom endpoints are used correctly
+        # Note: base_url is the standard LiteLLM parameter; api_base is kept for compatibility
         return litellm.embedding(
             model=model,
-            input=input_text
+            input=input_text,
+            base_url=self.api_base,
+            api_base=self.api_base
         )
     
     async def atranscription(self,
@@ -457,9 +473,14 @@ class LlmService:
         # Map the model to provider-specific model if needed
         model = self._map_model_for_provider(model, self.provider)
 
+        # Call LiteLLM's atranscription normally - it will handle provider-specific logic internally
+        # Explicitly pass base_url to ensure custom endpoints are used correctly
+        # Note: base_url is the standard LiteLLM parameter; api_base is kept for compatibility
         return await litellm.atranscription(
             model=model,
-            file=audio_file_path
+            file=audio_file_path,
+            base_url=self.api_base,
+            api_base=self.api_base
         )
 
     def transcription(self,
@@ -478,9 +499,14 @@ class LlmService:
         # Map the model to provider-specific model if needed
         model = self._map_model_for_provider(model, self.provider)
 
+        # Call LiteLLM's transcription normally - it will handle provider-specific logic internally
+        # Explicitly pass base_url to ensure custom endpoints are used correctly
+        # Note: base_url is the standard LiteLLM parameter; api_base is kept for compatibility
         return litellm.transcription(
             model=model,
-            file=audio_file_path
+            file=audio_file_path,
+            base_url=self.api_base,
+            api_base=self.api_base
         )
     
     def list_models(self) -> list:
