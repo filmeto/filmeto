@@ -288,6 +288,8 @@ class React:
         premature termination of the parent tool execution.
 
         All events are still yielded for real-time display.
+        Note: 'execute_skill' is handled separately in chat_stream() via
+        _execute_skill_as_primary_action() to bypass TOOL events.
         """
         start_time = time.time()
         # Get project from workspace if available
@@ -409,6 +411,176 @@ class React:
             logger.error(f"Tool '{tool_name}' failed after {duration_ms:.2f}ms: {exc}", exc_info=True)
             yield {"error": str(exc)}
 
+    async def _execute_skill_as_primary_action(
+        self,
+        tool_args: Dict[str, Any],
+        response_text: str,
+    ) -> AsyncGenerator[AgentEvent, None]:
+        """
+        Execute skill as a primary action, bypassing TOOL events entirely.
+
+        This method treats skill execution as a first-class action, emitting
+        SKILL_START, SKILL_PROGRESS, and SKILL_END events directly without
+        wrapping them in TOOL events. This creates a cleaner execution record
+        where skill calls appear directly rather than as tool invocations.
+
+        Args:
+            tool_args: Tool arguments containing skill_name, prompt/message, max_steps
+            response_text: The raw LLM response text for message history
+
+        Yields:
+            AgentEvent objects (SKILL_* events) and handles observation feedback
+        """
+        from agent.skill.skill_service import SkillService
+        from agent.event.agent_event import AgentEvent, AgentEventType
+        from agent.chat.content import SkillContent, SkillExecutionState
+
+        workspace = self.workspace
+
+        if not workspace:
+            error_msg = "Workspace not available in context"
+            logger.error(error_msg)
+            yield self._create_event(
+                AgentEventType.ERROR,
+                content=ErrorContent(
+                    error_message=error_msg,
+                    error_type="WorkspaceError",
+                    details="Cannot execute skill without workspace",
+                    title="Skill Execution Error",
+                    description="Workspace not available"
+                )
+            )
+            self.messages.append({"role": "assistant", "content": response_text})
+            self.messages.append({"role": "user", "content": f"Error: {error_msg}"})
+            return
+
+        skill_service = SkillService(workspace)
+
+        skill_name = tool_args.get("skill_name")
+        prompt = tool_args.get("prompt") or tool_args.get("message")
+        max_steps = tool_args.get("max_steps", 10)
+
+        if not skill_name:
+            error_msg = "skill_name is required"
+            yield self._create_event(
+                AgentEventType.ERROR,
+                content=ErrorContent(
+                    error_message=error_msg,
+                    error_type="ValidationError",
+                    details="Missing required parameter: skill_name",
+                    title="Skill Execution Error",
+                    description="Skill name not specified"
+                )
+            )
+            self.messages.append({"role": "assistant", "content": response_text})
+            self.messages.append({"role": "user", "content": f"Error: {error_msg}"})
+            return
+
+        if not prompt:
+            error_msg = "prompt is required"
+            yield self._create_event(
+                AgentEventType.ERROR,
+                content=ErrorContent(
+                    error_message=error_msg,
+                    error_type="ValidationError",
+                    details="Missing required parameter: prompt or message",
+                    title="Skill Execution Error",
+                    description="Prompt not specified"
+                )
+            )
+            self.messages.append({"role": "assistant", "content": response_text})
+            self.messages.append({"role": "user", "content": f"Error: {error_msg}"})
+            return
+
+        # Get language from workspace/project if available
+        language = None
+        if self.workspace and hasattr(self.workspace, 'project') and self.workspace.project:
+            if hasattr(self.workspace.project, 'get_language'):
+                language = self.workspace.project.get_language()
+
+        skill = skill_service.get_skill(skill_name, language=language)
+        if not skill:
+            error_msg = f"Skill '{skill_name}' not found"
+            yield self._create_event(
+                AgentEventType.ERROR,
+                content=ErrorContent(
+                    error_message=error_msg,
+                    error_type="SkillNotFoundError",
+                    details=f"Could not find skill: {skill_name}",
+                    title="Skill Execution Error",
+                    description=f"Skill '{skill_name}' not available"
+                )
+            )
+            self.messages.append({"role": "assistant", "content": response_text})
+            self.messages.append({"role": "user", "content": f"Error: {error_msg}"})
+            return
+
+        # Track execution metrics
+        start_time = time.time()
+        final_result = None
+        has_error = False
+
+        try:
+            # Execute skill directly via SkillService
+            # Note: SkillService.chat_stream will emit SKILL_START, SKILL_PROGRESS, SKILL_END
+            async for event in skill_service.chat_stream(
+                skill=skill,
+                user_message=prompt,
+                workspace=workspace,
+                project=self.project_name,
+                llm_service=self.llm_service,
+                max_steps=max_steps,
+                crew_member_name=self.react_type,
+                conversation_id=self.run_id,
+                run_id=self.run_id,
+            ):
+                # Forward all events from skill execution
+                yield event
+
+                # Track final result and errors for observation
+                if event.event_type == AgentEventType.FINAL:
+                    if event.content and hasattr(event.content, 'text'):
+                        final_result = event.content.text
+                    elif event.payload:
+                        final_result = event.payload.get("final_response")
+                elif event.event_type == AgentEventType.ERROR:
+                    has_error = True
+                    if event.content and hasattr(event.content, 'error_message'):
+                        final_result = event.content.error_message
+                    elif event.payload:
+                        final_result = event.payload.get("error", "Unknown error")
+
+            # Track metrics
+            duration_ms = (time.time() - start_time) * 1000
+            self._total_tool_calls += 1  # Count skill execution as a tool call for metrics
+            self._tool_duration_ms += duration_ms
+            logger.debug(f"Skill '{skill_name}' executed in {duration_ms:.2f}ms")
+
+            # Add observation to message history for ReAct loop continuity
+            self.messages.append({"role": "assistant", "content": response_text})
+            if has_error:
+                self.messages.append({"role": "user", "content": f"Error: {final_result}"})
+            else:
+                self.messages.append({"role": "user", "content": f"Observation: {final_result or 'Skill execution completed'}"})
+
+        except Exception as e:
+            duration_ms = (time.time() - start_time) * 1000
+            error_msg = f"Error executing skill '{skill_name}': {str(e)}"
+            logger.error(error_msg, exc_info=True)
+
+            yield self._create_event(
+                AgentEventType.ERROR,
+                content=ErrorContent(
+                    error_message=error_msg,
+                    error_type=type(e).__name__,
+                    details=repr(e),
+                    title="Skill Execution Error",
+                    description=f"Failed to execute skill: {skill_name}"
+                )
+            )
+            self.messages.append({"role": "assistant", "content": response_text})
+            self.messages.append({"role": "user", "content": f"Error: {error_msg}"})
+
     async def chat_stream(self, user_message: Optional[str]) -> AsyncGenerator[AgentEvent, None]:
         """Main ReAct loop with thread safety and iterative pending message processing."""
         async with self._loop_lock:
@@ -488,6 +660,13 @@ class React:
                             self.messages.append({"role": "assistant", "content": response_text})
                             self.messages.append({"role": "user", "content": f"Error: {error_msg}. Please specify a valid tool name."})
                             continue
+
+                        # Special handling for execute_skill: bypass TOOL events and emit SKILL events directly
+                        if action.tool_name == "execute_skill":
+                            async for event in self._execute_skill_as_primary_action(action.tool_args, response_text):
+                                yield event
+                            continue
+
                         yield self._create_event(
                             AgentEventType.TOOL_START,
                             content=ToolCallContent(
