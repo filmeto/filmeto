@@ -17,6 +17,7 @@ from agent.chat.content import (
     TypingContent,
     TypingState,
     StructureContent,
+    PlanContent,
 )
 from agent.chat.agent_chat_types import ContentType
 
@@ -103,6 +104,8 @@ class StreamEventHandler:
             self._skill_manager.handle_tool_event(event)
         elif event.event_type in ["crew_member_typing", "crew_member_typing_end"]:
             self._handle_typing_event(event)
+        elif event.event_type in ["plan_created", "plan_updated"]:
+            self._handle_plan_event(event)
         elif hasattr(event, "content") and event.content:
             self._handle_content_event(event)
 
@@ -237,6 +240,58 @@ class StreamEventHandler:
                 logger.debug(f"Added typing_end indicator for {sender_name} (message_id: {message_id})")
             else:
                 logger.warning(f"[typing_end] Item not found for message_id: {message_id}")
+
+    def _handle_plan_event(self, event) -> None:
+        """Handle plan_created and plan_updated events.
+
+        These events contain PlanContent that should be displayed in the chat list
+        as inline plan widgets, in addition to updating the plan panel widget.
+
+        Args:
+            event: Plan event with PlanContent
+        """
+        sender_id = getattr(event, "sender_id", "")
+        if hasattr(event, "agent_name"):
+            sender_id = getattr(event, "agent_name", "").lower()
+
+        if sender_id == "user":
+            return
+
+        # Prepare plan content dict
+        content_dict = None
+        if hasattr(event.content, 'to_dict') and callable(event.content.to_dict):
+            content_dict = event.content.to_dict()
+        else:
+            logger.warning(f"Plan event has no valid content: {event.event_type}")
+            return
+
+        # Check if this content belongs to an active skill
+        run_id = getattr(event, "run_id", "")
+        if run_id and self._skill_manager._active_skills.get(run_id):
+            skill_info = self._skill_manager._active_skills[run_id]
+            message_id = skill_info["message_id"]
+            skill_info["child_contents"].append(content_dict)
+            self._skill_manager.add_child_to_skill(message_id, content_dict, run_id=run_id)
+            return
+
+        # No active skill - handle as standalone content
+        message_id = getattr(event, "message_id", None)
+        if not message_id:
+            message_id = str(uuid.uuid4())
+
+        item = self._model.get_item_by_message_id(message_id)
+        if not item:
+            agent_name = getattr(event, "agent_name", "System")
+            self._skill_manager.get_or_create_agent_card(
+                message_id,
+                agent_name,
+                getattr(event, "title", None),
+            )
+
+        if self._update_agent_card_callback:
+            self._update_agent_card_callback(message_id, structured_content=content_dict)
+
+        logger.debug(f"Handled plan event: {event.event_type} for message: {message_id[:8]}...")
 
     def _handle_content_event(self, event) -> None:
         """Handle events with content.
