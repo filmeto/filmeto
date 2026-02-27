@@ -7,6 +7,7 @@ from datetime import datetime
 from ...base_tool import BaseTool, ToolMetadata, ToolParameter
 from agent.plan.plan_service import PlanService
 from agent.plan.plan_models import PlanTask
+from agent.event.agent_event import AgentEvent, AgentEventType
 
 # Tool directory for metadata loading
 _tool_dir = Path(__file__).parent
@@ -15,7 +16,6 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ....tool_context import ToolContext
-    from agent.event.agent_event import AgentEvent
 
 
 class PlanTool(BaseTool):
@@ -163,6 +163,43 @@ class PlanTool(BaseTool):
                 error=str(e)
             )
 
+    def _create_plan_event(
+        self,
+        event_type: str,
+        plan: 'Plan',
+        project_name: str,
+        react_type: str,
+        run_id: str,
+        step_id: int,
+        operation: str = "create"
+    ) -> AgentEvent:
+        """Create a plan-related AgentEvent with PlanContent.
+
+        Args:
+            event_type: Type of event (plan_created, plan_updated, etc.)
+            plan: The Plan model object
+            project_name: Project name for event tracking
+            react_type: React type for event tracking
+            run_id: Run ID for event tracking
+            step_id: Step ID for event tracking
+            operation: Operation type (create, update, get, list, delete)
+
+        Returns:
+            AgentEvent with PlanContent
+        """
+        from agent.chat.content import PlanContent
+
+        content = PlanContent.from_plan(plan, operation=operation)
+
+        return AgentEvent.create(
+            event_type=event_type,
+            project_name=project_name,
+            react_type=react_type,
+            run_id=run_id,
+            step_id=step_id,
+            content=content
+        )
+
     def _convert_task_to_dict(self, task: PlanTask) -> Dict[str, Any]:
         """Convert a PlanTask object to a dictionary."""
         return {
@@ -264,6 +301,18 @@ class PlanTool(BaseTool):
                 result=f"Created plan '{title}' with ID {plan.id}"
             )
 
+            # Send PLAN_CREATED event with PlanContent
+            yield self._create_plan_event(
+                event_type=AgentEventType.PLAN_CREATED.value,
+                plan=plan,
+                project_name=project_name,
+                react_type=react_type,
+                run_id=run_id,
+                step_id=step_id,
+                operation="create"
+            )
+
+            # Keep tool_end for backward compatibility
             yield self._create_event(
                 "tool_end",
                 project_name,
@@ -415,6 +464,18 @@ class PlanTool(BaseTool):
                     result=f"Updated plan with ID {plan_id}"
                 )
 
+                # Send PLAN_UPDATED event with PlanContent
+                yield self._create_plan_event(
+                    event_type=AgentEventType.PLAN_UPDATED.value,
+                    plan=plan,
+                    project_name=project_name,
+                    react_type=react_type,
+                    run_id=run_id,
+                    step_id=step_id,
+                    operation="update"
+                )
+
+                # Keep tool_end for backward compatibility
                 yield self._create_event(
                     "tool_end",
                     project_name,
@@ -477,6 +538,17 @@ class PlanTool(BaseTool):
 
             if plan:
                 result = self._convert_plan_to_dict(plan)
+
+                # Send PLAN event with PlanContent for UI rendering
+                yield self._create_plan_event(
+                    event_type=AgentEventType.PLAN_UPDATED.value,
+                    plan=plan,
+                    project_name=project_name,
+                    react_type=react_type,
+                    run_id=run_id,
+                    step_id=step_id,
+                    operation="get"
+                )
 
                 yield self._create_event(
                     "tool_end",
