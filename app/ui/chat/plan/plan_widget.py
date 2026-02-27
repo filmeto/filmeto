@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
-from PySide6.QtCore import QUrl, Slot, Signal, Qt, QPropertyAnimation, QEasingCurve
+from PySide6.QtCore import QUrl, Slot, Signal, Qt
 from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QSizePolicy
 
@@ -106,8 +106,9 @@ class AgentChatPlanWidget(BaseWidget):
         layout.addWidget(self._quick_widget)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
-        # Set fixed height initially
-        self.setFixedHeight(self._collapsed_height)
+        # Set initial height using minimum/maximum to work properly with splitter
+        self.setMinimumHeight(self._collapsed_height)
+        self.setMaximumHeight(self._collapsed_height)
 
         # Initial data load
         self._bridge.refresh_plan()
@@ -127,15 +128,13 @@ class AgentChatPlanWidget(BaseWidget):
         """Update widget height based on expanded state."""
         target_height = self._expanded_height if self._is_expanded else self._collapsed_height
 
-        # Animate height change
-        self._height_animation = QPropertyAnimation(self, b"maximumHeight")
-        self._height_animation.setDuration(200)
-        self._height_animation.setEasingCurve(QEasingCurve.InOutQuad)
-        self._height_animation.setStartValue(self.height())
-        self._height_animation.setEndValue(target_height)
-        self._height_animation.start()
+        # Use minimum and maximum height instead of fixed height
+        # This allows the splitter to properly manage the widget size
+        self.setMinimumHeight(target_height)
+        self.setMaximumHeight(target_height)
 
-        self.setFixedHeight(target_height)
+        # Force immediate resize instead of animation to avoid sync issues
+        self.resize(self.width(), target_height)
 
     @property
     def is_expanded(self) -> bool:

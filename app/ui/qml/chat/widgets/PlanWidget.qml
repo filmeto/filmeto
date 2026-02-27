@@ -54,7 +54,11 @@ Rectangle {
 
     property bool hasPlan: {
         if (mode === "panel") {
-            return planBridge ? planBridge.hasPlan : false
+            // Use explicit boolean conversion to handle undefined
+            if (planBridge && typeof planBridge.hasPlan === 'boolean') {
+                return planBridge.hasPlan
+            }
+            return false
         }
         // Inline mode: check for plan_id or title/steps
         if (!planData || typeof planData !== "object") return false
@@ -126,7 +130,8 @@ Rectangle {
     property int contentPadding: 6
 
     implicitHeight: contentColumn.height + contentPadding * 2
-    color: "transparent"
+    // Background color based on mode: panel mode uses solid background, inline mode is transparent
+    color: mode === "panel" ? "#2b2d30" : "transparent"
     radius: 6
 
     // Helper functions
@@ -287,7 +292,10 @@ Rectangle {
             id: detailsRect
             Layout.fillWidth: true
             Layout.topMargin: 0
-            height: root.isExpanded ? detailsContent.height + 12 : 0
+            // Calculate height but cap it at a maximum for panel mode
+            readonly property int contentHeight: detailsContent.height + 12
+            readonly property int maxDetailsHeight: mode === "panel" ? 200 : 400
+            height: root.isExpanded ? Math.min(contentHeight, maxDetailsHeight) : 0
             visible: root.isExpanded && hasTasks
             clip: true
             color: bgColor
@@ -307,107 +315,116 @@ Rectangle {
                 NumberAnimation { duration: 200; easing.type: Easing.InOutQuad }
             }
 
-            Column {
-                id: detailsContent
-                anchors {
-                    left: parent.left
-                    right: parent.right
-                    top: parent.top
-                    margins: 6
+            // ScrollView for task list when content exceeds available space
+            ScrollView {
+                id: detailsScrollView
+                anchors.fill: parent
+                anchors.margins: 6
+                clip: true
+                ScrollBar.horizontal.policy: ScrollBar.AsNeeded
+                ScrollBar.vertical.policy: ScrollBar.AsNeeded
+
+                background: Rectangle {
+                    color: "transparent"
                 }
-                spacing: 6
 
-                Repeater {
-                    model: tasksModel
+                Column {
+                    id: detailsContent
+                    width: detailsScrollView.width - 12
+                    spacing: 6
 
-                    delegate: Rectangle {
-                        width: detailsContent.width
-                        height: taskRowColumn.height + 12
-                        color: "#2b2d30"
-                        radius: 4
+                    Repeater {
+                        model: tasksModel
 
-                        ColumnLayout {
-                            id: taskRowColumn
-                            anchors {
-                                left: parent.left
-                                right: parent.right
-                                top: parent.top
-                                margins: 6
-                            }
-                            spacing: 4
+                        delegate: Rectangle {
+                            width: detailsContent.width
+                            height: taskRowColumn.height + 12
+                            color: "#2b2d30"
+                            radius: 4
 
-                            // Task row: status + name
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 6
-
-                                // Status icon
-                                Rectangle {
-                                    width: 14
-                                    height: 14
-                                    radius: 7
-                                    color: getStatusColor(modelData.status)
-
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: getStatusIcon(modelData.status)
-                                        color: "white"
-                                        font.pixelSize: 8
-                                        font.bold: true
-                                    }
+                            ColumnLayout {
+                                id: taskRowColumn
+                                anchors {
+                                    left: parent.left
+                                    right: parent.right
+                                    top: parent.top
+                                    margins: 6
                                 }
+                                spacing: 4
 
-                                // Task name
-                                Text {
+                                // Task row: status + name
+                                RowLayout {
                                     Layout.fillWidth: true
-                                    text: modelData.name || "Untitled Task"
-                                    color: textColor
-                                    font.pixelSize: 12
-                                    elide: Text.ElideRight
-                                    maximumLineCount: 1
-                                    wrapMode: Text.NoWrap
-                                }
-                            }
+                                    spacing: 6
 
-                            // Crew member row
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 6
+                                    // Status icon
+                                    Rectangle {
+                                        width: 14
+                                        height: 14
+                                        radius: 7
+                                        color: getStatusColor(modelData.status)
 
-                                // Crew avatar
-                                Rectangle {
-                                    width: 16
-                                    height: 16
-                                    radius: 3
-                                    color: {
-                                        var cm = modelData.crew_member
-                                        return cm ? cm.color : "#5c5f66"
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: getStatusIcon(modelData.status)
+                                            color: "white"
+                                            font.pixelSize: 8
+                                            font.bold: true
+                                        }
                                     }
 
+                                    // Task name
                                     Text {
-                                        anchors.centerIn: parent
+                                        Layout.fillWidth: true
+                                        text: modelData.name || "Untitled Task"
+                                        color: textColor
+                                        font.pixelSize: 12
+                                        elide: Text.ElideRight
+                                        maximumLineCount: 1
+                                        wrapMode: Text.NoWrap
+                                    }
+                                }
+
+                                // Crew member row
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 6
+
+                                    // Crew avatar
+                                    Rectangle {
+                                        width: 16
+                                        height: 16
+                                        radius: 3
+                                        color: {
+                                            var cm = modelData.crew_member
+                                            return cm ? cm.color : "#5c5f66"
+                                        }
+
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: {
+                                                var cm = modelData.crew_member
+                                                return cm ? (cm.icon || "A") : "A"
+                                            }
+                                            color: "white"
+                                            font.pixelSize: 9
+                                            font.bold: true
+                                        }
+                                    }
+
+                                    // Crew name
+                                    Text {
                                         text: {
                                             var cm = modelData.crew_member
-                                            return cm ? (cm.icon || "A") : "A"
+                                            if (cm && cm.name) return cm.name
+                                            return modelData.title || "Unknown"
                                         }
-                                        color: "white"
-                                        font.pixelSize: 9
-                                        font.bold: true
+                                        color: dimTextColor
+                                        font.pixelSize: 11
                                     }
-                                }
 
-                                // Crew name
-                                Text {
-                                    text: {
-                                        var cm = modelData.crew_member
-                                        if (cm && cm.name) return cm.name
-                                        return modelData.title || "Unknown"
-                                    }
-                                    color: dimTextColor
-                                    font.pixelSize: 11
+                                    Item { Layout.fillWidth: true }
                                 }
-
-                                Item { Layout.fillWidth: true }
                             }
                         }
                     }
