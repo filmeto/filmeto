@@ -129,7 +129,18 @@ Rectangle {
     // Padding around the content
     property int contentPadding: 6
 
-    implicitHeight: contentColumn.height + contentPadding * 2
+    // Calculate implicit dimensions based on content
+    // Header is always visible (40px), details only when expanded
+    readonly property int headerImplicitHeight: 40
+    readonly property int detailsImplicitHeight: {
+        if (!root.isExpanded || !hasTasks) return 0
+        // Calculate based on task count, capped at maxDetailsHeight
+        var taskHeight = 50  // Approximate height per task item
+        var calculatedHeight = tasksModel.length * taskHeight + 24
+        return Math.min(calculatedHeight, mode === "panel" ? 200 : 400)
+    }
+    implicitHeight: headerImplicitHeight + detailsImplicitHeight + contentPadding * 2
+    implicitWidth: 200
     // Background color based on mode: panel mode uses solid background, inline mode is transparent
     color: mode === "panel" ? "#2b2d30" : "transparent"
     radius: 6
@@ -176,7 +187,9 @@ Rectangle {
     ColumnLayout {
         id: contentColumn
         anchors {
-            fill: parent
+            left: parent.left
+            right: parent.right
+            top: parent.top
             margins: contentPadding
         }
         spacing: 0
@@ -185,7 +198,7 @@ Rectangle {
         Rectangle {
             id: headerRect
             Layout.fillWidth: true
-            height: 40
+            Layout.preferredHeight: 40
             radius: root.isExpanded ? 6 : 6
             color: headerColor
 
@@ -295,7 +308,7 @@ Rectangle {
             // Calculate height but cap it at a maximum for panel mode
             readonly property int contentHeight: detailsContent.height + 12
             readonly property int maxDetailsHeight: mode === "panel" ? 200 : 400
-            height: root.isExpanded ? Math.min(contentHeight, maxDetailsHeight) : 0
+            Layout.preferredHeight: root.isExpanded ? Math.min(contentHeight, maxDetailsHeight) : 0
             visible: root.isExpanded && hasTasks
             clip: true
             color: bgColor
@@ -311,7 +324,7 @@ Rectangle {
                 color: parent.color
             }
 
-            Behavior on height {
+            Behavior on Layout.preferredHeight {
                 NumberAnimation { duration: 200; easing.type: Easing.InOutQuad }
             }
 
