@@ -86,6 +86,7 @@ class AgentChatWidget(BaseWidget):
         # Connect signals
         self.prompt_input_widget.message_submitted.connect(self._on_message_submitted)
         self.chat_history_widget.reference_clicked.connect(self._on_reference_clicked)
+        self.plan_widget.expandedChanged.connect(self._on_plan_expanded_changed)
 
     def _auto_initialize_agent(self):
         """Auto-initialize agent when workspace has a project."""
@@ -148,6 +149,27 @@ class AgentChatWidget(BaseWidget):
     def _on_reference_clicked(self, ref_type: str, ref_id: str):
         """Handle reference click in chat history."""
         logger.info(f"Reference clicked: {ref_type} / {ref_id}")
+
+    @Slot(bool)
+    def _on_plan_expanded_changed(self, is_expanded: bool):
+        """Handle plan widget expanded state change.
+
+        Args:
+            is_expanded: True if expanded, False if collapsed
+        """
+        # Calculate new sizes for splitter
+        current_sizes = self.splitter.sizes()
+        chat_height = current_sizes[0]
+        prompt_height = current_sizes[2]
+
+        # Adjust plan widget height
+        plan_height = self.plan_widget._expanded_height if is_expanded else self.plan_widget._collapsed_height
+
+        # Redistribute space: chat gets less when plan expands, more when it collapses
+        total_available = chat_height + current_sizes[1] + prompt_height
+        new_chat_height = total_available - plan_height - prompt_height
+
+        self.splitter.setSizes([max(100, new_chat_height), plan_height, prompt_height])
 
     async def _process_message_async(self, message: str):
         """Process message asynchronously, initializing agent if needed."""
