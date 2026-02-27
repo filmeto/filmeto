@@ -1,8 +1,7 @@
 ---
 name: production_plan
-description: 通过分析剧组能力、分解任务和调度剧组人员分配来创建完整的电影制作规划
+description: 通过分析剧组能力、分解任务和调度剧组人员分配来创建完整的电影制作规划。调用此技能时，必须在 prompt 中包含完整的团队成员信息（包括每个成员的姓名、职位、描述和技能），以便直接进行任务分配，避免额外的信息查询。
 tools:
-  - crew_member
   - plan
 ---
 # 电影制作规划创建
@@ -12,8 +11,8 @@ tools:
 此技能需要**按顺序进行多个工具调用**。在提供最终响应之前，您必须完成所有步骤。
 
 **强制执行检查清单** - 在完成所有步骤之前不得结束：
-- [ ] 第一步：收集剧组成员信息（详见下方第一步说明）
-- [ ] 第二步：分析剧组信息和用户需求
+- [ ] 第一步：验证 prompt 中是否包含团队成员信息
+- [ ] 第二步：分析团队信息和用户需求
 - [ ] 第三步：调用 `plan` 工具，使用 `create` 操作存储制作规划
 
 **完成标准**：此任务仅在以下情况才算完成：
@@ -21,58 +20,61 @@ tools:
 - 规划已成功创建（您收到了包含 plan_id 的成功响应）
 - 您已提供所创建规划的摘要
 
-**切勿**在仅调用 `crew_member` 后停止。您必须继续调用 `plan` 工具。
-
 ---
 
-## 第一步：收集剧组成员信息
+## 调用方须知：prompt 参数要求
 
-**重要提示**：在调用 `crew_member` 工具之前，请先检查输入中是否已提供剧组成员信息。
+**重要**：调用此技能时，`prompt` 参数**必须包含**团队成员的完整信息。请在 prompt 中明确列出：
 
-### 选项 A：输入中已提供剧组成员信息
-
-如果输入中已包含剧组成员信息（在 `crew_members` 参数中或提示上下文中），**请勿**调用 `crew_member` 工具，直接使用提供的信息。
-
-查找剧组成员数据的位置：
-- 输入中的 `crew_members` 参数
-- 提示中的"团队上下文"或"团队成员"部分
-
-已提供的剧组成员信息示例：
 ```
-- **Alex Chen** (role: director)
-  - Description: Responsible for creative vision...
-  - Skills: scene_breakdown, shot_planning
-- **Jordan Lee** (role: screenwriter)
-  - Description: Develops screenplay...
-  - Skills: script_writing, character_development
+## 团队成员信息
+- **成员姓名** (role: 职位)
+  - Description: 成员描述
+  - Skills: 技能1, 技能2
+
+例如：
+- **黄小新** (role: screenwriter)
+  - Description: 负责剧本全局规划、故事结构设计、角色塑造和对话创作
+  - Skills: script_writing, character_development, dialogue_writing
+- **李明** (role: director)
+  - Description: 负责创意愿景、演员指导、场景设计
+  - Skills: scene_breakdown, shot_planning, actor_direction
 ```
 
-### 选项 B：输入中未提供剧组成员信息 - 调用 crew_member 工具
-
-如果输入中**未**提供剧组成员信息，请使用 `crew_member` 工具的 `list` 操作来：
-- 获取所有可用的剧组成员
-- 了解每个成员的职位、技能和能力
-- 确定哪个剧组成员最适合每种类型的任务
-
-**工具调用示例：**
+**正确的 execute_skill 调用示例：**
 ```json
 {
-  "type": "tool",
-  "tool_name": "crew_member",
-  "tool_args": {
-    "operation": "list"
-  }
+  "skill_name": "production_plan",
+  "prompt": "用户需求：重写剧本。\n\n## 团队成员信息\n- **黄小新** (role: screenwriter)\n  - Description: 负责剧本全局规划、故事结构设计、角色塑造和对话创作\n  - Skills: script_writing, character_development, dialogue_writing\n- **李明** (role: director)\n  - Description: 负责创意愿景、演员指导、场景设计\n  - Skills: scene_breakdown, shot_planning, actor_direction\n\n请根据以上团队成员创建剧本重写计划。"
 }
 ```
 
 ---
 
+## 第一步：验证团队成员信息
+
+检查 prompt 中是否已包含团队成员信息。
+
+**如果 prompt 中包含团队成员信息**：直接使用这些信息进行任务分配。
+
+**如果 prompt 中缺少团队成员信息**：使用默认的通用职位进行任务分配，包括：
+- `producer` - 制片人
+- `director` - 导演
+- `screenwriter` - 编剧
+- `cinematographer` - 摄影指导
+- `editor` - 剪辑师
+- `sound_designer` - 音效设计师
+- `vfx_supervisor` - 视觉特效总监
+- `storyboard_artist` - 故事板艺术家
+
+---
+
 ## 第二步：分析和分解任务
 
-收集剧组信息后（无论来自输入还是工具调用），分析用户的制作需求：
+分析用户的制作需求：
 - 将整体制作目标分解为具体的、可执行的任务
 - 识别任务依赖关系（哪些任务必须先完成才能开始其他任务）
-- 根据职位和技能将每个任务匹配到最合适的剧组成员
+- 根据职位和技能将每个任务匹配到最合适的团队成员
 
 ---
 
@@ -212,8 +214,8 @@ tools:
 
 ## 请记住
 
-1. **首先检查**输入中是否已提供剧组成员信息
-2. 仅在信息未提供时才调用 `crew_member` 的 `list` 操作
-3. 根据剧组能力分析和规划任务
+1. **验证** prompt 中是否包含团队成员信息
+2. 使用提供的团队成员信息或默认使用通用职位
+3. 根据团队能力分析和规划任务
 4. **必须**以 `plan` 的 `create` 操作结束
 5. 仅在规划成功创建后才提供最终摘要

@@ -1,8 +1,7 @@
 ---
 name: production_plan
-description: Creates a comprehensive film production plan by analyzing crew capabilities, breaking down tasks, and scheduling crew member assignments
+description: Creates a comprehensive film production plan by analyzing crew capabilities, breaking down tasks, and scheduling crew member assignments. When invoking this skill, you MUST include complete team member information (name, role, description, and skills for each member) in the prompt to enable direct task assignment without additional queries.
 tools:
-  - crew_member
   - plan
 ---
 # Film Production Plan Creation
@@ -12,8 +11,8 @@ tools:
 This skill requires **MULTIPLE TOOL CALLS** in sequence. You MUST complete ALL steps before providing a final response.
 
 **MANDATORY EXECUTION CHECKLIST** - Do NOT finish until ALL are complete:
-- [ ] Step 1: Gather crew member information (see Step 1 details below)
-- [ ] Step 2: Analyze the crew information and user requirements
+- [ ] Step 1: Verify team member information in prompt
+- [ ] Step 2: Analyze team information and user requirements
 - [ ] Step 3: Call `plan` tool with `create` operation to store the production plan
 
 **COMPLETION CRITERIA**: This task is ONLY complete when:
@@ -21,58 +20,61 @@ This skill requires **MULTIPLE TOOL CALLS** in sequence. You MUST complete ALL s
 - The plan was created successfully (you received a success response with a plan_id)
 - You have provided a summary of the created plan
 
-**DO NOT** stop after calling only `crew_member`. You MUST continue to call `plan` tool.
-
 ---
 
-## Step 1: Gather Crew Member Information
+## Caller Notice: prompt Parameter Requirements
 
-**IMPORTANT**: Check if crew member information is already provided in the input before calling `crew_member` tool.
+**IMPORTANT**: When invoking this skill, the `prompt` parameter **MUST INCLUDE** complete team member information. Please explicitly list in the prompt:
 
-### Option A: Crew Members Already Provided in Input
-
-If the input already contains crew member information (under `crew_members` parameter or in the prompt context), **DO NOT** call `crew_member` tool. Instead, use the provided information directly.
-
-Look for crew member data in:
-- The `crew_members` parameter in the input
-- A "Team Context" or "Fellow Crew Members" section in the prompt
-
-Example of provided crew member info:
 ```
-- **Alex Chen** (role: director)
-  - Description: Responsible for creative vision...
-  - Skills: scene_breakdown, shot_planning
-- **Jordan Lee** (role: screenwriter)
-  - Description: Develops screenplay...
-  - Skills: script_writing, character_development
+## Team Member Information
+- **Member Name** (role: role_title)
+  - Description: Member description
+  - Skills: skill1, skill2
+
+Example:
+- **Alex Chen** (role: screenwriter)
+  - Description: Responsible for script planning, story structure, character development
+  - Skills: script_writing, character_development, dialogue_writing
+- **Jordan Lee** (role: director)
+  - Description: Responsible for creative vision, actor direction, scene design
+  - Skills: scene_breakdown, shot_planning, actor_direction
 ```
 
-### Option B: Crew Members NOT Provided - Call crew_member Tool
-
-If crew member information is **NOT** provided in the input, use the `crew_member` tool with `list` operation to:
-- Get all available crew members
-- Understand each member's role, skills, and capabilities
-- Identify which crew member is best suited for each type of task
-
-**Example tool call:**
+**Correct execute_skill call example:**
 ```json
 {
-  "type": "tool",
-  "tool_name": "crew_member",
-  "tool_args": {
-    "operation": "list"
-  }
+  "skill_name": "production_plan",
+  "prompt": "User request: Rewrite the screenplay.\n\n## Team Member Information\n- **Alex Chen** (role: screenwriter)\n  - Description: Responsible for script planning, story structure, character development\n  - Skills: script_writing, character_development, dialogue_writing\n- **Jordan Lee** (role: director)\n  - Description: Responsible for creative vision, actor direction, scene design\n  - Skills: scene_breakdown, shot_planning, actor_direction\n\nPlease create a screenplay rewrite plan based on the above team members."
 }
 ```
 
 ---
 
+## Step 1: Verify Team Member Information
+
+Check if the prompt contains team member information.
+
+**If prompt contains team member information**: Use this information directly for task assignment.
+
+**If prompt is missing team member information**: Use default generic roles for task assignment:
+- `producer` - Producer
+- `director` - Director
+- `screenwriter` - Screenwriter
+- `cinematographer` - Cinematographer
+- `editor` - Editor
+- `sound_designer` - Sound Designer
+- `vfx_supervisor` - VFX Supervisor
+- `storyboard_artist` - Storyboard Artist
+
+---
+
 ## Step 2: Analyze and Break Down the Task
 
-After gathering crew information (either from input or from tool call), analyze the user's production requirements:
+Analyze the user's production requirements:
 - Decompose the overall production goal into specific, actionable tasks
 - Identify task dependencies (which tasks must complete before others can start)
-- Match each task to the most appropriate crew member based on their role and skills
+- Match each task to the most appropriate team member based on their role and skills
 
 ---
 
@@ -212,8 +214,8 @@ Here's a complete example of a pre-production plan:
 
 ## Remember
 
-1. **CHECK FIRST** if crew member info is already provided in input
-2. Only call `crew_member` list operation if info is NOT provided
-3. Analyze and plan tasks based on crew capabilities
+1. **VERIFY** that team member info is included in the prompt
+2. Use provided team member info or default to generic roles
+3. Analyze and plan tasks based on team capabilities
 4. **MUST** finish with `plan` create operation
 5. Only provide final summary AFTER the plan is successfully created
