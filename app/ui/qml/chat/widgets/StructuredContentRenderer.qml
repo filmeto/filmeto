@@ -683,7 +683,8 @@ Item {
             property var data: ({})
             width: parent.width
             widgetColor: root.widgetColor
-            planData: data
+            planData: data.data || data
+            mode: "inline"
         }
     }
 
