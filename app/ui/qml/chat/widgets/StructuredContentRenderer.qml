@@ -51,7 +51,7 @@ Item {
     readonly property var _mainContentTypesLookup: ({
         "text": true, "code_block": true, "image": true, "video": true, "audio": true,
         "link": true, "button": true, "form": true, "file": true, "file_attachment": true,
-        "todo_write": true
+        "todo_write": true, "plan": true, "task_list": true, "task": true
     })
 
     // Deep content hash for change detection
