@@ -1,5 +1,4 @@
 import asyncio
-import inspect
 import logging
 import time
 import uuid
@@ -9,14 +8,9 @@ from agent.llm.llm_service import LlmService
 from agent.tool.tool_service import ToolService
 from agent.tool.tool_context import ToolContext
 from agent.chat.content import (
-    StructureContent,
     TextContent,
     ThinkingContent,
     LlmOutputContent,
-    ToolCallContent,
-    ToolResponseContent,
-    ProgressContent,
-    MetadataContent,
     ErrorContent,
     TodoWriteContent,
 )
@@ -278,16 +272,13 @@ class React:
         self,
         tool_name: str,
         tool_args: Dict[str, Any],
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    ) -> AsyncGenerator[AgentEvent, None]:
         """
         Execute tool with timing and metrics tracking.
 
-        Tool completion is determined by the completion of this method call,
-        not by receiving a tool_end event in the stream. This ensures that
-        nested tool calls (e.g., tools called within a skill) don't cause
-        premature termination of the parent tool execution.
+        ToolService is the single source of all tool events (tool_start, tool_progress, tool_end).
+        This method forwards events directly and tracks metrics for top-level tool completion.
 
-        All events are still yielded for real-time display.
         Note: 'execute_skill' is handled separately in chat_stream() via
         _execute_skill_as_primary_action() to bypass TOOL events.
         """
@@ -305,13 +296,10 @@ class React:
         )
 
         try:
-            # Track the final result from this specific tool execution
-            # (not from nested tools within the tool)
-            final_result = None
             has_error = False
 
-            # The async for loop completes when tool.execute() completes
-            # This is the definitive signal that the tool is done
+            # Forward all events directly from ToolService
+            # ToolService is responsible for emitting tool_start, tool_progress, tool_end
             async for event in self.tool_service.execute_tool(
                 tool_name,
                 tool_args,
@@ -321,95 +309,54 @@ class React:
                 run_id=self.run_id,
                 step_id=self.step_id,
             ):
-                # Process different event types from ToolService
-                if event.event_type == "tool_start":
-                    # Only emit progress for the top-level tool being executed
-                    # (identified by matching tool_name)
-                    if (event.content and hasattr(event.content, 'tool_name') and
-                            event.content.tool_name == tool_name):
-                        yield {"progress": f"Starting tool: {tool_name}"}
+                yield event
 
-                elif event.event_type == "tool_progress":
-                    progress = event.payload.get("progress")
-                    if progress:
-                        yield {"progress": progress}
-
-                elif event.event_type == "tool_end":
-                    # Check if this is the top-level tool_end or a nested one
-                    # by comparing the tool_name in the event
-                    is_top_level_end = (
+                # Track metrics when top-level tool ends
+                if event.event_type == AgentEventType.TOOL_END:
+                    is_top_level = (
                         event.content and
                         hasattr(event.content, 'tool_name') and
                         event.content.tool_name == tool_name
                     )
-
-                    if is_top_level_end:
-                        # This is the actual end of the tool we're executing
-                        # Extract result from content or payload (backward compat)
-                        if event.content and hasattr(event.content, 'result'):
-                            final_result = event.content.result
-                        elif event.payload:
-                            final_result = event.payload.get("result")
-                        else:
-                            final_result = None
-
+                    if is_top_level:
                         duration_ms = (time.time() - start_time) * 1000
                         self._total_tool_calls += 1
                         self._tool_duration_ms += duration_ms
                         logger.debug(f"Tool '{tool_name}' completed in {duration_ms:.2f}ms")
-
-                        # Forward the tool_end event and return - this is safe now
-                        # because we've verified it's the top-level tool_end
-                        yield event
                         return
-                    else:
-                        # This is a nested tool_end (e.g., from a tool called within a skill)
-                        # Forward it for display but don't return
-                        yield event
 
-                elif event.event_type == "error":
-                    # Check if this error is for the top-level tool
-                    is_top_level_error = (
+                elif event.event_type == AgentEventType.ERROR:
+                    is_top_level = (
                         event.content and
                         hasattr(event.content, 'tool_name') and
                         event.content.tool_name == tool_name
                     )
-
-                    if is_top_level_error:
-                        # Extract error from content or payload (backward compat)
+                    if is_top_level:
+                        duration_ms = (time.time() - start_time) * 1000
+                        error_msg = "Unknown error"
                         if event.content and hasattr(event.content, 'error_message'):
                             error_msg = event.content.error_message
                         elif event.payload:
                             error_msg = event.payload.get("error", "Unknown error")
-                        else:
-                            error_msg = "Unknown error"
-
-                        duration_ms = (time.time() - start_time) * 1000
                         logger.error(f"Tool '{tool_name}' failed after {duration_ms:.2f}ms: {error_msg}")
-
-                        yield event
                         has_error = True
                         return
-                    else:
-                        # Nested error - forward for display but don't return
-                        yield event
-
-                else:
-                    # Forward all other events directly (e.g., LLM_THINKING, nested TOOL_START/PROGRESS/END from skill_chat)
-                    yield event
-
-            # If we get here without a tool_end event, something went wrong
-            if not has_error:
-                duration_ms = (time.time() - start_time) * 1000
-                self._total_tool_calls += 1
-                self._tool_duration_ms += duration_ms
-                logger.debug(f"Tool '{tool_name}' completed in {duration_ms:.2f}ms (no final event)")
-                yield {"result": final_result}
 
         except Exception as exc:
             duration_ms = (time.time() - start_time) * 1000
+            self._total_tool_calls += 1
+            self._tool_duration_ms += duration_ms
             logger.error(f"Tool '{tool_name}' failed after {duration_ms:.2f}ms: {exc}", exc_info=True)
-            yield {"error": str(exc)}
+            yield self._create_event(
+                AgentEventType.ERROR,
+                content=ErrorContent(
+                    error_message=str(exc),
+                    error_type=type(exc).__name__,
+                    details=repr(exc),
+                    title=f"Tool Error: {tool_name}",
+                    description=f"Tool execution failed: {tool_name}"
+                )
+            )
 
     async def _execute_skill_as_primary_action(
         self,
@@ -667,106 +614,43 @@ class React:
                                 yield event
                             continue
 
-                        yield self._create_event(
-                            AgentEventType.TOOL_START,
-                            content=ToolCallContent(
-                                tool_name=action.tool_name,
-                                tool_input=action.tool_args,
-                                title=f"Tool: {action.tool_name}",
-                                description="Starting tool execution"
-                            )
-                        )
-                        try:
-                            tool_result = None
-                            tool_end_received = False  # Track if we received a tool_end event
-                            async for item in self._execute_tool(action.tool_name, action.tool_args):
-                                # Handle both dict items and AgentEvent objects
-                                if isinstance(item, dict):
-                                    # Legacy dict format
-                                    if "progress" in item:
-                                        yield self._create_event(
-                                            AgentEventType.TOOL_PROGRESS,
-                                            content=ProgressContent(
-                                                progress=item["progress"],
-                                                tool_name=action.tool_name,
-                                                title="Tool Progress",
-                                                description=f"Tool {action.tool_name} in progress"
-                                            )
-                                        )
-                                    if "result" in item:
-                                        tool_result = item["result"]
-                                    if "error" in item:
-                                        tool_result = item["error"]
-                                        break
-                                elif hasattr(item, 'event_type'):
-                                    # AgentEvent object - forward directly
-                                    yield item
-                                    # Extract result from tool_end event for final observation
-                                    if item.event_type == AgentEventType.TOOL_END:
-                                        # Mark that we received a tool_end event
-                                        tool_end_received = True
-                                        # Extract from content or payload (backward compat)
-                                        if item.content and hasattr(item.content, 'result'):
-                                            tool_result = item.content.result
-                                        elif item.payload:
-                                            tool_result = item.payload.get("result")
-                                    elif item.event_type == AgentEventType.ERROR:
-                                        # Mark that we received an error event
-                                        tool_end_received = True
-                                        # Extract from content or payload (backward compat)
-                                        if item.content and hasattr(item.content, 'error_message'):
-                                            tool_result = item.content.error_message
-                                        elif item.payload:
-                                            tool_result = item.payload.get("error", "Unknown error")
-                                        break
+                        # Execute tool and forward all events from ToolService
+                        # ToolService emits: tool_start, tool_progress, tool_end, error
+                        tool_result = None
+                        async for event in self._execute_tool(action.tool_name, action.tool_args):
+                            yield event
+                            # Extract result from tool_end or error event for observation
+                            if event.event_type == AgentEventType.TOOL_END:
+                                if event.content and hasattr(event.content, 'result'):
+                                    tool_result = event.content.result
+                                elif event.payload:
+                                    tool_result = event.payload.get("result")
+                            elif event.event_type == AgentEventType.ERROR:
+                                if event.content and hasattr(event.content, 'error_message'):
+                                    tool_result = event.content.error_message
+                                elif event.payload:
+                                    tool_result = event.payload.get("error", "Unknown error")
 
-                            # Only create a new ToolCallContent if we didn't receive a tool_end event
-                            # (for backward compatibility with tools that don't emit proper events)
-                            if not tool_end_received:
-                                if tool_result is None:
-                                    tool_result = "Tool execution completed"
-                                # Create ToolCallContent with result
-                                tool_response = ToolCallContent(
-                                    tool_name=action.tool_name,
-                                    tool_input=action.tool_args,
-                                    tool_status="completed",
-                                    result=tool_result,
-                                    title=f"Tool Result: {action.tool_name}",
-                                    description="Tool execution completed successfully"
+                        # Fallback if tool_result is None (should not happen with well-behaved tools)
+                        if tool_result is None:
+                            tool_result = "Tool execution completed"
+
+                        # Check for pending TODO update and emit event
+                        if self._pending_todo_update:
+                            from agent.react.todo import TodoState
+                            todo_state = TodoState.from_dict(self._pending_todo_update)
+                            yield self._create_event(
+                                AgentEventType.TODO_WRITE,
+                                content=TodoWriteContent.from_todo_state(
+                                    todo_state,
+                                    title="Task Progress",
+                                    description="Current task status"
                                 )
-                                tool_response.complete()
-                                yield self._create_event(AgentEventType.TOOL_END, content=tool_response)
-
-                            # Check for pending TODO update and emit event
-                            if self._pending_todo_update:
-                                from agent.react.todo import TodoState
-                                todo_state = TodoState.from_dict(self._pending_todo_update)
-                                yield self._create_event(
-                                    AgentEventType.TODO_WRITE,
-                                    content=TodoWriteContent.from_todo_state(
-                                        todo_state,
-                                        title="Task Progress",
-                                        description="Current task status"
-                                    )
-                                )
-                                self._pending_todo_update = None
-
-                            self.messages.append({"role": "assistant", "content": response_text})
-                            self.messages.append({"role": "user", "content": f"Observation: {tool_result}"})
-                        except Exception as exc:
-                            logger.error(f"Tool execution error: {exc}", exc_info=True)
-                            tool_error_response = ToolCallContent(
-                                tool_name=action.tool_name,
-                                tool_input=action.tool_args,
-                                tool_status="failed",
-                                error=str(exc),
-                                title=f"Tool Error: {action.tool_name}",
-                                description="Tool execution failed"
                             )
-                            tool_error_response.fail()
-                            yield self._create_event(AgentEventType.TOOL_END, content=tool_error_response)
-                            self.messages.append({"role": "assistant", "content": response_text})
-                            self.messages.append({"role": "user", "content": f"Error: {str(exc)}"})
+                            self._pending_todo_update = None
+
+                        self.messages.append({"role": "assistant", "content": response_text})
+                        self.messages.append({"role": "user", "content": f"Observation: {tool_result}"})
                         continue
 
                     if action.is_final():
