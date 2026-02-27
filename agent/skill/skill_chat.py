@@ -272,7 +272,7 @@ class SkillChat:
                 )
             )
 
-    def _build_skill_react_prompt(self, skill, user_question, available_tool_names, args, crew_members=None) -> str:
+    def _build_skill_react_prompt(self, skill, user_question, available_tool_names, args) -> str:
         """Build the skill-specific ReAct prompt.
 
         Args:
@@ -280,7 +280,6 @@ class SkillChat:
             user_question: The user's question/task
             available_tool_names: List of available tool names
             args: Arguments for the skill
-            crew_members: Optional formatted string containing crew member information
 
         Returns:
             The rendered prompt string
@@ -316,5 +315,4 @@ class SkillChat:
             },
             user_question=user_question or skill.description,
             args=args or {},
-            crew_members=crew_members,
         )
