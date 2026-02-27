@@ -27,51 +27,6 @@ class ExecuteSkillTool(BaseTool):
         # Set tool directory for metadata loading from tool.md
         self._tool_dir = _tool_dir
 
-    def _get_crew_members_info(self, context: Optional["ToolContext"]) -> Optional[str]:
-        """Get formatted information about all crew members in the project.
-
-        Args:
-            context: ToolContext containing workspace and project info
-
-        Returns:
-            A formatted string containing information about all crew members,
-            or None if no crew members are available.
-        """
-        try:
-            if not context or not context.project:
-                return None
-
-            from agent.crew.crew_service import CrewService
-            from agent.crew.crew_title import sort_crew_members_by_title_importance
-
-            crew_service = CrewService()
-            crew_members_dict = crew_service.get_project_crew_members(context.project)
-
-            if not crew_members_dict:
-                return None
-
-            # Sort crew members by title importance
-            sorted_members = sort_crew_members_by_title_importance(crew_members_dict)
-
-            member_info_list = []
-            for member in sorted_members:
-                # Format each member's information
-                role = member.config.metadata.get('crew_title', member.config.name) if member.config.metadata else member.config.name
-                skills_str = ", ".join(member.config.skills) if member.config.skills else "None"
-                description = member.config.description or "No description available"
-
-                member_info = f"- **{member.config.name}** (role: {role})\n  - Description: {description}\n  - Skills: {skills_str}"
-                member_info_list.append(member_info)
-
-            if not member_info_list:
-                return None
-
-            return "\n\n".join(member_info_list)
-
-        except Exception as e:
-            logger.debug(f"Could not get crew members info: {e}")
-            return None
-
     # metadata() is now handled by BaseTool using tool.md
     # No need to override here
 
@@ -178,9 +133,6 @@ class ExecuteSkillTool(BaseTool):
             crew_member_name = sender_id if sender_id else None
             conversation_id = run_id if run_id else None
 
-            # Get crew members info for team context
-            crew_members_info = self._get_crew_members_info(context)
-
             final_response = None
             has_error = False
             async for event in skill_service.chat_stream(
@@ -193,7 +145,6 @@ class ExecuteSkillTool(BaseTool):
                     crew_member_name=crew_member_name,
                     conversation_id=conversation_id,
                     run_id=run_id,
-                    crew_members=crew_members_info,
             ):
                 if event.event_type == AgentEventType.FINAL:
                     if event.content and hasattr(event.content, 'text'):
