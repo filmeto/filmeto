@@ -188,7 +188,7 @@ class AgentChatPlanWidget(BaseWidget):
         # Check if this message contains plan update information
         if message.metadata:
             event_type = message.metadata.get("event_type", "")
-            if event_type == "plan_update":
+            if event_type in ("plan_created", "plan_updated", "plan_update"):
                 plan_id = message.metadata.get("plan_id")
                 if plan_id:
                     self._bridge.set_preferred_plan(plan_id)
@@ -213,7 +213,7 @@ class AgentChatPlanWidget(BaseWidget):
         """
         if not event:
             return
-        if event.event_type == "plan_update":
+        if event.event_type in ("plan_created", "plan_updated", "plan_update"):
             plan_id = event.data.get("plan_id") if event.data else None
             if plan_id:
                 self._bridge.set_preferred_plan(plan_id)
