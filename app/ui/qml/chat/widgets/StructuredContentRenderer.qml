@@ -579,11 +579,11 @@ Item {
             property var data: ({})
             width: parent.width
             widgetColor: root.widgetColor
-            toolName: data.tool_name || data.data?.tool_name || ""
-            toolArgs: data.tool_args || data.data?.tool_args || data.tool_input || data.data?.tool_input || {}
-            toolStatus: data.status || data.data?.status || "started"
-            result: data.result !== undefined ? data.result : (data.data?.result !== undefined ? data.data.result : null)
-            error: data.error || data.data?.error || ""
+            toolName: data.data?.tool_name || data.tool_name || ""
+            toolArgs: data.data?.tool_input || data.tool_input || data.data?.tool_args || data.tool_args || {}
+            toolStatus: data.data?.status || data.status || "started"
+            result: data.data?.result !== undefined ? data.data.result : (data.result !== undefined ? data.result : null)
+            error: data.data?.error || data.error || ""
         }
     }
 

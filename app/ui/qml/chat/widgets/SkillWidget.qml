@@ -248,7 +248,7 @@ Rectangle {
             width: parent.width
             widgetColor: Qt.rgba(root.widgetColor.r, root.widgetColor.g, root.widgetColor.b, 0.8)
             toolName: itemData.data?.tool_name || itemData.tool_name || ""
-            toolArgs: itemData.data?.tool_args || itemData.tool_args || {}
+            toolArgs: itemData.data?.tool_input || itemData.tool_input || itemData.data?.tool_args || itemData.tool_args || {}
             toolStatus: itemData.data?.status || itemData.status || "started"
             result: itemData.data?.result !== undefined ? itemData.data.result : (itemData.result !== undefined ? itemData.result : null)
             error: itemData.data?.error || itemData.error || ""

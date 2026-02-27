@@ -260,7 +260,7 @@ class ToolService:
         if event_type == "tool_start":
             content = ToolCallContent(
                 tool_name=tool_name,
-                tool_input=kwargs.get("input", {}),
+                tool_input=kwargs.get("parameters", {}),
                 title=f"Tool: {tool_name}",
                 description="Tool execution started"
             )
@@ -274,7 +274,7 @@ class ToolService:
         elif event_type == "tool_end":
             content = ToolCallContent(
                 tool_name=tool_name,
-                tool_input=kwargs.get("input", {}),
+                tool_input=kwargs.get("parameters", {}),
                 result=kwargs.get("result"),
                 error=kwargs.get("error"),
                 tool_status="completed" if not kwargs.get("error") else "failed",
