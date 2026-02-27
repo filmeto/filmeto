@@ -299,6 +299,9 @@ class CrewMember:
         # Prepare skills as structured data for the template
         skills_list = self._get_skills_as_structured_list()
 
+        # Get crew members info for team context
+        crew_members_info = self._get_crew_members_info()
+
         # Build context info
         context_info_parts = []
         if plan_id:
@@ -322,6 +325,7 @@ class CrewMember:
             soul_profile=soul_content,
             skills_list=skills_list,
             context_info=context_info,
+            crew_members_info=crew_members_info,
         )
 
         # If the base prompt template is not available, fall back to the original method
@@ -360,6 +364,9 @@ class CrewMember:
         # Prepare skills as structured data for the template
         skills_list = self._get_skills_as_structured_list()
 
+        # Get crew members info for team context
+        crew_members_info = self._get_crew_members_info()
+
         base_prompt = prompt_service.render_prompt(
             name="crew_member_react",
             title="crew member",
@@ -368,6 +375,7 @@ class CrewMember:
             soul_profile=soul_content,
             skills_list=skills_list,
             context_info=f"Active plan id: {plan_id}." if plan_id else f"Project name: {self.project_name}." if self.project_name else "",
+            crew_members_info=crew_members_info,
         )
 
         # If the base prompt template is not available, fall back to the original method
@@ -530,6 +538,50 @@ class CrewMember:
     def _get_formatted_soul_prompt(self) -> str:
         """Get formatted full knowledge prompt for use in system prompt."""
         return self.get_full_knowledge()
+
+    def _get_crew_members_info(self) -> str:
+        """Get formatted information about all crew members in the project.
+
+        Returns:
+            A formatted string containing information about all crew members,
+            including their names, roles, descriptions, and skills.
+        """
+        from .crew_service import CrewService
+
+        try:
+            crew_service = CrewService()
+            crew_members_dict = crew_service.get_project_crew_members(self.project)
+
+            if not crew_members_dict:
+                return ""
+
+            # Sort crew members by title importance
+            from .crew_title import sort_crew_members_by_title_importance
+            sorted_members = sort_crew_members_by_title_importance(crew_members_dict)
+
+            member_info_list = []
+            for member in sorted_members:
+                # Skip the current member in the list to avoid redundancy
+                if member.config.name == self.config.name:
+                    continue
+
+                # Format each member's information
+                # crew_title is stored in metadata
+                role = member.config.metadata.get('crew_title', member.config.name) if member.config.metadata else member.config.name
+                skills_str = ", ".join(member.config.skills) if member.config.skills else "None"
+                description = member.config.description or "No description available"
+
+                member_info = f"- **{member.config.name}** (role: {role})\n  - Description: {description}\n  - Skills: {skills_str}"
+                member_info_list.append(member_info)
+
+            if not member_info_list:
+                return ""
+
+            return "\n\n".join(member_info_list)
+
+        except Exception as e:
+            logger.debug(f"Could not get crew members info: {e}")
+            return ""
 
     def _format_skills_prompt(self) -> str:
         language = self._get_language()

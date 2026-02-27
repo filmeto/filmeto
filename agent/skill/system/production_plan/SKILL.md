@@ -12,7 +12,7 @@ tools:
 This skill requires **MULTIPLE TOOL CALLS** in sequence. You MUST complete ALL steps before providing a final response.
 
 **MANDATORY EXECUTION CHECKLIST** - Do NOT finish until ALL are complete:
-- [ ] Step 1: Call `crew_member` tool with `list` operation
+- [ ] Step 1: Gather crew member information (see Step 1 details below)
 - [ ] Step 2: Analyze the crew information and user requirements
 - [ ] Step 3: Call `plan` tool with `create` operation to store the production plan
 
@@ -25,9 +25,31 @@ This skill requires **MULTIPLE TOOL CALLS** in sequence. You MUST complete ALL s
 
 ---
 
-## Step 1: Analyze Crew Capabilities
+## Step 1: Gather Crew Member Information
 
-First, use the `crew_member` tool with `list` operation to:
+**IMPORTANT**: Check if crew member information is already provided in the input before calling `crew_member` tool.
+
+### Option A: Crew Members Already Provided in Input
+
+If the input already contains crew member information (under `crew_members` parameter or in the prompt context), **DO NOT** call `crew_member` tool. Instead, use the provided information directly.
+
+Look for crew member data in:
+- The `crew_members` parameter in the input
+- A "Team Context" or "Fellow Crew Members" section in the prompt
+
+Example of provided crew member info:
+```
+- **Alex Chen** (role: director)
+  - Description: Responsible for creative vision...
+  - Skills: scene_breakdown, shot_planning
+- **Jordan Lee** (role: screenwriter)
+  - Description: Develops screenplay...
+  - Skills: script_writing, character_development
+```
+
+### Option B: Crew Members NOT Provided - Call crew_member Tool
+
+If crew member information is **NOT** provided in the input, use the `crew_member` tool with `list` operation to:
 - Get all available crew members
 - Understand each member's role, skills, and capabilities
 - Identify which crew member is best suited for each type of task
@@ -47,7 +69,7 @@ First, use the `crew_member` tool with `list` operation to:
 
 ## Step 2: Analyze and Break Down the Task
 
-After receiving crew information, analyze the user's production requirements:
+After gathering crew information (either from input or from tool call), analyze the user's production requirements:
 - Decompose the overall production goal into specific, actionable tasks
 - Identify task dependencies (which tasks must complete before others can start)
 - Match each task to the most appropriate crew member based on their role and skills
@@ -190,7 +212,8 @@ Here's a complete example of a pre-production plan:
 
 ## Remember
 
-1. Start with `crew_member` list operation
-2. Analyze and plan tasks based on crew capabilities
-3. **MUST** finish with `plan` create operation
-4. Only provide final summary AFTER the plan is successfully created
+1. **CHECK FIRST** if crew member info is already provided in input
+2. Only call `crew_member` list operation if info is NOT provided
+3. Analyze and plan tasks based on crew capabilities
+4. **MUST** finish with `plan` create operation
+5. Only provide final summary AFTER the plan is successfully created
