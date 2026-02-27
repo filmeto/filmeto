@@ -9,6 +9,7 @@ from .plan_status_icon import StatusIconWidget
 from .plan_status_count import StatusCountWidget
 from .plan_task_row import PlanTaskRow
 from .plan_widget import AgentChatPlanWidget
+from .plan_bridge import PlanBridge
 
 __all__ = [
     "ClickableFrame",
@@ -16,4 +17,5 @@ __all__ = [
     "StatusCountWidget",
     "PlanTaskRow",
     "AgentChatPlanWidget",
+    "PlanBridge",
 ]

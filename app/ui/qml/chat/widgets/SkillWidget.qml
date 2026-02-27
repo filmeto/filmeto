@@ -305,6 +305,7 @@ Rectangle {
             width: parent.width
             widgetColor: Qt.rgba(root.widgetColor.r, root.widgetColor.g, root.widgetColor.b, 0.8)
             planData: itemData
+            mode: "inline"
         }
     }
 
