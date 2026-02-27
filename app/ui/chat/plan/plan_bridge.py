@@ -25,16 +25,26 @@ class PlanBridge(QObject):
     This bridge connects to the plan signal manager and exposes
     plan data, task statistics, and crew member info to QML components.
 
+    Features:
+    - Debounced updates to prevent rapid refresh
+    - Incremental task updates for better performance
+    - Project-specific signal filtering
+
     Signals:
         planChanged: Emitted when plan data changes (plan_id, plan_data)
         taskStatsChanged: Emitted when task statistics change
+        taskUpdated: Emitted when a single task is updated (task_id, task_data)
         crewMembersChanged: Emitted when crew member data changes
     """
 
     # Signals for QML
     planChanged = Signal(str, "QVariant")  # plan_id, plan_data
     taskStatsChanged = Signal()
+    taskUpdated = Signal(str, "QVariant")  # task_id, task_data
     crewMembersChanged = Signal()
+
+    # Debounce interval in milliseconds
+    DEBOUNCE_INTERVAL = 50
 
     def __init__(self, workspace, parent=None):
         """Initialize the PlanBridge.
@@ -61,6 +71,14 @@ class PlanBridge(QObject):
         self._waiting_count: int = 0
         self._completed_count: int = 0
         self._failed_count: int = 0
+
+        # Debounce mechanism
+        self._debounce_timer = QTimer(self)
+        self._debounce_timer.setSingleShot(True)
+        self._debounce_timer.setInterval(self.DEBOUNCE_INTERVAL)
+        self._debounce_timer.timeout.connect(self._do_refresh)
+        self._pending_refresh = False
+        self._pending_task_update: Optional[str] = None
 
         # Initialize
         self._initialize()
@@ -143,46 +161,146 @@ class PlanBridge(QObject):
             "title": title
         })
 
-    # === Signal Handlers ===
+    # === Signal Handlers with Early Filtering ===
 
     def _on_plan_created(self, project_name: str, plan_id: str):
         """Handle plan created signal."""
-        if project_name == self._project_name:
-            self._preferred_plan_id = plan_id
-            self.refresh_plan()
+        if project_name != self._project_name:
+            return
+        self._preferred_plan_id = plan_id
+        self._schedule_refresh()
 
     def _on_plan_updated(self, project_name: str, plan_id: str):
         """Handle plan updated signal."""
-        if project_name == self._project_name:
-            self.refresh_plan()
+        if project_name != self._project_name:
+            return
+        # If this is the current plan, do incremental update
+        if plan_id == self._current_plan_id:
+            self._schedule_refresh()
+        elif plan_id == self._preferred_plan_id:
+            self._schedule_refresh()
 
     def _on_plan_deleted(self, project_name: str, plan_id: str):
         """Handle plan deleted signal."""
-        if project_name == self._project_name:
-            if self._preferred_plan_id == plan_id:
-                self._preferred_plan_id = None
-            self.refresh_plan()
+        if project_name != self._project_name:
+            return
+        if self._preferred_plan_id == plan_id:
+            self._preferred_plan_id = None
+        self._schedule_refresh()
 
     def _on_plan_instance_created(self, project_name: str, plan_id: str, instance_id: str):
         """Handle plan instance created signal."""
-        if project_name == self._project_name:
-            self.refresh_plan()
+        if project_name != self._project_name:
+            return
+        self._schedule_refresh()
 
     def _on_plan_instance_status_updated(self, project_name: str, plan_id: str, instance_id: str):
         """Handle plan instance status updated signal."""
-        if project_name == self._project_name:
-            self.refresh_plan()
+        if project_name != self._project_name:
+            return
+        self._schedule_refresh()
 
     def _on_task_status_updated(self, project_name: str, plan_id: str, instance_id: str, task_id: str):
-        """Handle task status updated signal."""
-        if project_name == self._project_name:
-            self.refresh_plan()
+        """Handle task status updated signal with incremental update."""
+        if project_name != self._project_name:
+            return
+
+        # If this is not the current plan, schedule full refresh
+        if plan_id != self._current_plan_id:
+            self._schedule_refresh()
+            return
+
+        # Try incremental update
+        if self._try_incremental_task_update(task_id):
+            return
+
+        # Fall back to full refresh
+        self._schedule_refresh()
+
+    def _try_incremental_task_update(self, task_id: str) -> bool:
+        """Try to update a single task incrementally.
+
+        Returns:
+            True if successful, False if full refresh needed
+        """
+        if not self._plan_service or not self._current_plan_id:
+            return False
+
+        try:
+            # Reload plan to get updated task
+            plan = self._plan_service.load_plan(self._project_name, self._current_plan_id)
+            if not plan:
+                return False
+
+            # Get tasks from instance if available, otherwise from plan
+            instance = self._load_latest_instance(plan.id)
+            tasks = instance.tasks if instance else plan.tasks
+
+            # Find the specific task
+            for task in tasks:
+                if task.id == task_id:
+                    # Update task in cache
+                    task_data = self._convert_task_to_dict(task)
+
+                    # Find and update in list
+                    for i, cached_task in enumerate(self._tasks):
+                        if cached_task["id"] == task_id:
+                            old_status = cached_task.get("status")
+                            new_status = task_data["status"]
+
+                            # Update task data
+                            self._tasks[i] = task_data
+
+                            # Update counts if status changed
+                            if old_status != new_status:
+                                self._adjust_status_count(old_status, -1)
+                                self._adjust_status_count(new_status, 1)
+
+                            # Emit signals
+                            self.taskUpdated.emit(task_id, task_data)
+                            self.taskStatsChanged.emit()
+                            return True
+
+            return False
+
+        except Exception as e:
+            logger.error(f"Error in incremental task update: {e}")
+            return False
+
+    def _adjust_status_count(self, status: str, delta: int):
+        """Adjust status count by delta."""
+        if status == "running":
+            self._running_count = max(0, self._running_count + delta)
+        elif status in ("created", "ready"):
+            self._waiting_count = max(0, self._waiting_count + delta)
+        elif status == "completed":
+            self._completed_count = max(0, self._completed_count + delta)
+        elif status in ("failed", "cancelled"):
+            self._failed_count = max(0, self._failed_count + delta)
+
+    # === Debounced Refresh ===
+
+    def _schedule_refresh(self):
+        """Schedule a debounced refresh."""
+        self._pending_refresh = True
+        self._debounce_timer.start()
+
+    def _do_refresh(self):
+        """Execute the actual refresh after debounce."""
+        if not self._pending_refresh:
+            return
+        self._pending_refresh = False
+        self._refresh_plan_internal()
 
     # === Public Methods ===
 
     @Slot()
     def refresh_plan(self):
-        """Refresh plan data from service."""
+        """Refresh plan data from service (public interface)."""
+        self._schedule_refresh()
+
+    def _refresh_plan_internal(self):
+        """Internal refresh implementation."""
         if not self._project_name or not self._plan_service:
             self._set_no_plan()
             return
@@ -194,7 +312,7 @@ class PlanBridge(QObject):
     def set_preferred_plan(self, plan_id: str):
         """Set the preferred plan ID to display."""
         self._preferred_plan_id = plan_id if plan_id else None
-        self.refresh_plan()
+        self._schedule_refresh()
 
     @Slot()
     def on_project_switched(self):
@@ -203,7 +321,7 @@ class PlanBridge(QObject):
         self._current_plan_id = None
         self._update_project_name()
         self._load_crew_member_metadata()
-        self.refresh_plan()
+        self._schedule_refresh()
 
     # === Plan Resolution ===
 

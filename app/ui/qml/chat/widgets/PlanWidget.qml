@@ -156,20 +156,6 @@ Rectangle {
         }
     }
 
-    // Bridge connections for panel mode
-    Connections {
-        target: mode === "panel" ? planBridge : null
-        enabled: mode === "panel" && planBridge !== null
-
-        function onPlanChanged(planId, planData) {
-            // Plan data updated
-        }
-
-        function onTaskStatsChanged() {
-            // Task stats updated
-        }
-    }
-
     ColumnLayout {
         id: contentColumn
         anchors {
