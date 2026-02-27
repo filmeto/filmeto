@@ -43,6 +43,15 @@ Rectangle {
 
     // State
     property bool isExpanded: false
+
+    // Signal for Python to connect to expanded state changes
+    signal isExpandedChanged()
+
+    // Emit signal when isExpanded changes
+    onIsExpandedChanged: {
+        root.isExpandedChanged()
+    }
+
     property bool hasPlan: {
         if (mode === "panel") {
             return planBridge ? planBridge.hasPlan : false
@@ -113,7 +122,10 @@ Rectangle {
 
     // === Layout ===
 
-    implicitHeight: contentColumn.height + 12
+    // Padding around the content
+    property int contentPadding: 6
+
+    implicitHeight: contentColumn.height + contentPadding * 2
     color: "transparent"
     radius: 6
 
@@ -159,10 +171,8 @@ Rectangle {
     ColumnLayout {
         id: contentColumn
         anchors {
-            left: parent.left
-            right: parent.right
-            top: parent.top
-            margins: 6
+            fill: parent
+            margins: contentPadding
         }
         spacing: 0
 

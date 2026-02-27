@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
-from PySide6.QtCore import QUrl, Slot, Signal
+from PySide6.QtCore import QUrl, Slot, Signal, Qt, QPropertyAnimation, QEasingCurve
 from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QSizePolicy
 
@@ -33,16 +33,19 @@ class AgentChatPlanWidget(BaseWidget):
     - Collapsible header with status counts (Running/Waiting/Success/Failed)
     - Task list with crew member info
     - Hardware-accelerated QML rendering
+    - Transparent background for theme compatibility
 
     Signals:
         planSelected: Emitted when a plan is selected (plan_id)
+        expandedChanged: Emitted when expanded state changes (is_expanded)
     """
 
     planSelected = Signal(str)
+    expandedChanged = Signal(bool)
 
     # Height constants for splitter integration
     header_height = 40
-    _collapsed_height = 40
+    _collapsed_height = 52
     _expanded_height = 260
 
     def __init__(self, workspace: "Workspace", parent=None):
@@ -56,12 +59,19 @@ class AgentChatPlanWidget(BaseWidget):
         if parent:
             self.setParent(parent)
 
+        # Track expanded state
+        self._is_expanded = False
+
         # Create bridge for data binding
         self._bridge = PlanBridge(workspace, self)
 
-        # Create QML widget
+        # Create QML widget with transparent background
         self._quick_widget = QQuickWidget(self)
         self._quick_widget.setResizeMode(QQuickWidget.SizeRootObjectToView)
+
+        # Enable transparent background for dark theme compatibility
+        self._quick_widget.setAttribute(Qt.WA_TranslucentBackground, True)
+        self._quick_widget.setClearColor(Qt.transparent)
 
         # Expose bridge to QML
         self._quick_widget.rootContext().setContextProperty("_planBridge", self._bridge)
@@ -87,14 +97,50 @@ class AgentChatPlanWidget(BaseWidget):
             self._qml_root.setProperty("mode", "panel")
             self._qml_root.setProperty("planBridge", self._bridge)
 
+            # Connect to QML isExpanded changes
+            self._qml_root.isExpandedChanged.connect(self._on_qml_expanded_changed)
+
         # Setup layout
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self._quick_widget)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+        # Set fixed height initially
+        self.setFixedHeight(self._collapsed_height)
 
         # Initial data load
         self._bridge.refresh_plan()
+
+    def _on_qml_expanded_changed(self):
+        """Handle QML isExpanded property change."""
+        if not self._qml_root:
+            return
+
+        new_expanded = self._qml_root.property("isExpanded")
+        if new_expanded != self._is_expanded:
+            self._is_expanded = new_expanded
+            self._update_height()
+            self.expandedChanged.emit(self._is_expanded)
+
+    def _update_height(self):
+        """Update widget height based on expanded state."""
+        target_height = self._expanded_height if self._is_expanded else self._collapsed_height
+
+        # Animate height change
+        self._height_animation = QPropertyAnimation(self, b"maximumHeight")
+        self._height_animation.setDuration(200)
+        self._height_animation.setEasingCurve(QEasingCurve.InOutQuad)
+        self._height_animation.setStartValue(self.height())
+        self._height_animation.setEndValue(target_height)
+        self._height_animation.start()
+
+        self.setFixedHeight(target_height)
+
+    @property
+    def is_expanded(self) -> bool:
+        """Get current expanded state."""
+        return self._is_expanded
 
     def on_project_switched(self, project_name: str):
         """Handle project switch.
