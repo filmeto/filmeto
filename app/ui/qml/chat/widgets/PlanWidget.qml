@@ -44,12 +44,12 @@ Rectangle {
     // State
     property bool isExpanded: false
 
-    // Signal for Python to connect to expanded state changes
-    signal isExpandedChanged()
+    // Custom signal for external listeners (renamed to avoid conflict with auto-generated signal)
+    signal expandedChanged(bool expanded)
 
-    // Emit signal when isExpanded changes
+    // Emit custom signal when isExpanded changes
     onIsExpandedChanged: {
-        root.isExpandedChanged()
+        root.expandedChanged(root.isExpanded)
     }
 
     property bool hasPlan: {
