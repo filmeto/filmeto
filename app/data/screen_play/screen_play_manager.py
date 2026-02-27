@@ -384,3 +384,69 @@ class ScreenPlayManager:
                 matching_scenes.append(scene)
 
         return matching_scenes
+
+    def delete_all_scenes(self) -> Dict[str, Any]:
+        """
+        Delete all screenplay scenes in the project.
+
+        Returns:
+            Dictionary containing:
+            - deleted_count: Number of scenes deleted
+            - deleted_scene_ids: List of deleted scene IDs
+            - failed_scene_ids: List of scene IDs that failed to delete
+        """
+        scenes = self.list_scenes()
+        deleted_scene_ids = []
+        failed_scene_ids = []
+
+        for scene in scenes:
+            scene_id = scene.scene_id
+            if self.delete_scene(scene_id):
+                deleted_scene_ids.append(scene_id)
+            else:
+                failed_scene_ids.append(scene_id)
+
+        return {
+            "deleted_count": len(deleted_scene_ids),
+            "deleted_scene_ids": deleted_scene_ids,
+            "failed_scene_ids": failed_scene_ids,
+            "total_count": len(scenes)
+        }
+
+    def delete_scenes(self, scene_ids: List[str]) -> Dict[str, Any]:
+        """
+        Delete multiple screenplay scenes by their IDs.
+
+        Args:
+            scene_ids: List of scene identifiers to delete
+
+        Returns:
+            Dictionary containing:
+            - deleted_count: Number of scenes deleted
+            - deleted_scene_ids: List of deleted scene IDs
+            - not_found_ids: List of scene IDs that were not found
+            - failed_scene_ids: List of scene IDs that failed to delete
+        """
+        deleted_scene_ids = []
+        not_found_ids = []
+        failed_scene_ids = []
+
+        for scene_id in scene_ids:
+            # Check if scene exists
+            scene = self.get_scene(scene_id)
+            if scene is None:
+                not_found_ids.append(scene_id)
+                continue
+
+            if self.delete_scene(scene_id):
+                deleted_scene_ids.append(scene_id)
+            else:
+                failed_scene_ids.append(scene_id)
+
+        return {
+            "deleted_count": len(deleted_scene_ids),
+            "deleted_scene_ids": deleted_scene_ids,
+            "not_found_ids": not_found_ids,
+            "failed_scene_ids": failed_scene_ids,
+            "requested_count": len(scene_ids)
+        }

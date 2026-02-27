@@ -5,6 +5,7 @@ description: Responsible for global screenplay planning, story structure design,
 soul: amara_okello_soul
 skills:
   - write_screen_play
+  - delete_screen_play
 model: gpt-4o-mini
 temperature: 0.5
 max_steps: 10

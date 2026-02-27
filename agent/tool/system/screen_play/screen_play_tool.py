@@ -26,6 +26,8 @@ class ScreenPlayTool(BaseTool):
     - get: Retrieve a scene by ID
     - update: Update an existing scene
     - delete: Delete a scene by ID
+    - delete_all: Delete all scenes (dangerous operation)
+    - delete_batch: Delete multiple scenes by IDs (dangerous operation)
     - list: List all scenes
     - get_by_title: Find a scene by title
     - get_by_character: Find scenes containing a character
@@ -56,9 +58,11 @@ class ScreenPlayTool(BaseTool):
 
         Args:
             parameters: Dictionary containing:
-                - operation (str): Operation type (create, get, update, delete, list,
-                                   get_by_title, get_by_character, get_by_location)
+                - operation (str): Operation type (create, get, update, delete, delete_all,
+                                   delete_batch, list, get_by_title, get_by_character,
+                                   get_by_location)
                 - scene_id (str): Scene identifier for create, get, update, delete
+                - scene_ids (list): List of scene identifiers for delete_batch
                 - title (str): Scene title for create, update, get_by_title
                 - content (str): Scene content for create, update
                 - metadata (dict): Scene metadata for create, update
@@ -114,6 +118,12 @@ class ScreenPlayTool(BaseTool):
             elif operation == "delete":
                 async for event in self._handle_delete(manager, parameters, project_name, react_type, run_id, step_id):
                     yield event
+            elif operation == "delete_all":
+                async for event in self._handle_delete_all(manager, project_name, react_type, run_id, step_id):
+                    yield event
+            elif operation == "delete_batch":
+                async for event in self._handle_delete_batch(manager, parameters, project_name, react_type, run_id, step_id):
+                    yield event
             elif operation == "list":
                 async for event in self._handle_list(manager, project_name, react_type, run_id, step_id):
                     yield event
@@ -133,7 +143,7 @@ class ScreenPlayTool(BaseTool):
                     react_type,
                     run_id,
                     step_id,
-                    error=f"Unknown operation: {operation}. Valid operations: create, get, update, delete, list, get_by_title, get_by_character, get_by_location"
+                    error=f"Unknown operation: {operation}. Valid operations: create, get, update, delete, delete_all, delete_batch, list, get_by_title, get_by_character, get_by_location"
                 )
 
         except Exception as e:
@@ -704,6 +714,156 @@ class ScreenPlayTool(BaseTool):
             )
         except Exception as e:
             logger.error(f"Error finding scenes by location: {e}", exc_info=True)
+            yield self._create_event(
+                "error",
+                project_name,
+                react_type,
+                run_id,
+                step_id,
+                error=str(e)
+            )
+
+    async def _handle_delete_all(
+        self,
+        manager: 'ScreenPlayManager',
+        project_name: str,
+        react_type: str,
+        run_id: str,
+        step_id: int
+    ) -> AsyncGenerator["AgentEvent", None]:
+        """Handle delete_all operation - delete all screenplay scenes.
+
+        WARNING: This is a destructive operation that permanently deletes all scenes.
+        """
+        try:
+            result = manager.delete_all_scenes()
+            deleted_count = result.get("deleted_count", 0)
+            deleted_scene_ids = result.get("deleted_scene_ids", [])
+            failed_scene_ids = result.get("failed_scene_ids", [])
+
+            if deleted_count > 0:
+                yield self._create_event(
+                    "tool_progress",
+                    project_name,
+                    react_type,
+                    run_id,
+                    step_id,
+                    result=f"Deleted all screenplay scenes: {deleted_count} scenes removed"
+                )
+
+            message = f"Successfully deleted all {deleted_count} screenplay scenes."
+            if failed_scene_ids:
+                message = f"Deleted {deleted_count} scenes. Failed to delete: {', '.join(failed_scene_ids)}"
+            elif deleted_count == 0:
+                message = "No screenplay scenes found. Nothing to delete."
+
+            yield self._create_event(
+                "tool_end",
+                project_name,
+                react_type,
+                run_id,
+                step_id,
+                ok=True,
+                result={
+                    "operation": "delete_all",
+                    "success": True,
+                    "deleted_count": deleted_count,
+                    "deleted_scene_ids": deleted_scene_ids,
+                    "failed_scene_ids": failed_scene_ids,
+                    "message": message
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error deleting all screenplay scenes: {e}", exc_info=True)
+            yield self._create_event(
+                "error",
+                project_name,
+                react_type,
+                run_id,
+                step_id,
+                error=str(e)
+            )
+
+    async def _handle_delete_batch(
+        self,
+        manager: 'ScreenPlayManager',
+        parameters: Dict[str, Any],
+        project_name: str,
+        react_type: str,
+        run_id: str,
+        step_id: int
+    ) -> AsyncGenerator["AgentEvent", None]:
+        """Handle delete_batch operation - delete multiple scenes by IDs.
+
+        WARNING: This is a destructive operation that permanently deletes scenes.
+        """
+        try:
+            scene_ids = parameters.get("scene_ids")
+            if not scene_ids:
+                yield self._create_event(
+                    "error",
+                    project_name,
+                    react_type,
+                    run_id,
+                    step_id,
+                    error="scene_ids parameter is required for delete_batch operation"
+                )
+                return
+
+            if not isinstance(scene_ids, list):
+                yield self._create_event(
+                    "error",
+                    project_name,
+                    react_type,
+                    run_id,
+                    step_id,
+                    error="scene_ids must be a list of scene identifiers"
+                )
+                return
+
+            result = manager.delete_scenes(scene_ids)
+            deleted_count = result.get("deleted_count", 0)
+            deleted_scene_ids = result.get("deleted_scene_ids", [])
+            not_found_ids = result.get("not_found_ids", [])
+            failed_scene_ids = result.get("failed_scene_ids", [])
+
+            if deleted_count > 0:
+                yield self._create_event(
+                    "tool_progress",
+                    project_name,
+                    react_type,
+                    run_id,
+                    step_id,
+                    result=f"Deleted {deleted_count} screenplay scenes"
+                )
+
+            message = f"Successfully deleted {deleted_count} screenplay scenes."
+            if not_found_ids:
+                message += f" Not found: {', '.join(not_found_ids)}."
+            if failed_scene_ids:
+                message += f" Failed: {', '.join(failed_scene_ids)}."
+            if deleted_count == 0:
+                message = "None of the specified scenes were found. Nothing to delete."
+
+            yield self._create_event(
+                "tool_end",
+                project_name,
+                react_type,
+                run_id,
+                step_id,
+                ok=True,
+                result={
+                    "operation": "delete_batch",
+                    "success": True,
+                    "deleted_count": deleted_count,
+                    "deleted_scene_ids": deleted_scene_ids,
+                    "not_found_ids": not_found_ids,
+                    "failed_scene_ids": failed_scene_ids,
+                    "message": message
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error deleting batch screenplay scenes: {e}", exc_info=True)
             yield self._create_event(
                 "error",
                 project_name,
