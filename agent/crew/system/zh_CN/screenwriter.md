@@ -5,6 +5,7 @@ description: 负责剧本全局规划、故事结构设计、角色塑造和对�
 soul: amara_okello_soul
 skills:
   - write_screen_play
+  - delete_screen_play
 model: gpt-4o-mini
 temperature: 0.5
 max_steps: 10
