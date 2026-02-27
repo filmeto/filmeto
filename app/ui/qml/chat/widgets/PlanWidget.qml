@@ -143,7 +143,8 @@ Rectangle {
     implicitWidth: 200
     // Background color based on mode: panel mode uses solid background, inline mode is transparent
     color: mode === "panel" ? "#2b2d30" : "transparent"
-    radius: 6
+    // No rounded corners in panel mode for better integration, rounded in inline mode
+    radius: mode === "panel" ? 0 : 6
 
     // Helper functions
     function countByStatus(status) {
@@ -199,12 +200,13 @@ Rectangle {
             id: headerRect
             Layout.fillWidth: true
             Layout.preferredHeight: 40
-            radius: root.isExpanded ? 6 : 6
+            // No rounded corners in panel mode
+            radius: mode === "panel" ? 0 : 6
             color: headerColor
 
-            // Bottom corners rounded only when collapsed
+            // Bottom corners rounded only when collapsed (only in inline mode)
             Rectangle {
-                visible: root.isExpanded
+                visible: root.isExpanded && mode !== "panel"
                 anchors.bottom: parent.bottom
                 anchors.left: parent.left
                 anchors.right: parent.right
@@ -312,11 +314,12 @@ Rectangle {
             visible: root.isExpanded && hasTasks
             clip: true
             color: bgColor
-            radius: 6
+            // No rounded corners in panel mode
+            radius: mode === "panel" ? 0 : 6
 
-            // Top corners rounded only when expanded
+            // Top corners rounded only when expanded (only in inline mode)
             Rectangle {
-                visible: root.isExpanded
+                visible: root.isExpanded && mode !== "panel"
                 anchors.top: parent.top
                 anchors.left: parent.left
                 anchors.right: parent.right
