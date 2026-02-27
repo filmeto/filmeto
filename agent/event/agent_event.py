@@ -336,7 +336,8 @@ class AgentEvent:
         sender_id: str = "",
         sender_name: str = "",
         content: Optional['StructureContent'] = None,
-        tool_call_id: str = ""
+        tool_call_id: str = "",
+        tool_input: Optional[Dict[str, Any]] = None
     ) -> "AgentEvent":
         """
         Create a tool start event.
@@ -351,6 +352,7 @@ class AgentEvent:
             sender_name: Display name of the event sender
             content: Structured content for the event (optional, will be created if not provided)
             tool_call_id: Unique identifier for tracking tool lifecycle (optional)
+            tool_input: Input parameters for the tool call (optional)
 
         Returns:
             AgentEvent with type TOOL_START
@@ -363,7 +365,7 @@ class AgentEvent:
                 tool_call_id = f"{run_id}_{step_id}_{tool_name}"
             content = ToolCallContent(
                 tool_name=tool_name,
-                tool_input={},
+                tool_input=tool_input or {},
                 tool_call_id=tool_call_id,
                 title=f"Tool: {tool_name}",
                 description="Tool execution started"

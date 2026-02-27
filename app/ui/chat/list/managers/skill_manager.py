@@ -234,9 +234,17 @@ class SkillManager:
         skill_info = self._active_skills[run_id]
         message_id = skill_info["message_id"]
 
+        # Get tool_name from event.content if available, fallback to event attribute or event.data
+        tool_name = "unknown"
+        if hasattr(event, 'content') and event.content and hasattr(event.content, 'tool_name'):
+            tool_name = event.content.tool_name or "unknown"
+        elif hasattr(event, 'tool_name'):
+            tool_name = event.tool_name
+        elif hasattr(event, 'data'):
+            tool_name = event.data.get("tool_name", "unknown")
+
         # Get or generate tool_call_id for tracking
         # Use event.content.tool_call_id if available, otherwise generate from run_id + step_id + tool_name
-        tool_name = getattr(event, 'tool_name', event.data.get("tool_name", "unknown"))
 
         if hasattr(event, 'content') and event.content and hasattr(event.content, 'tool_call_id') and event.content.tool_call_id:
             tool_call_id = event.content.tool_call_id
@@ -247,9 +255,16 @@ class SkillManager:
         # Create tool content from event
         tool_content = None
         if event.event_type == "tool_start":
+            # Get tool_input from event.content if available, fallback to event.data
+            tool_input = {}
+            if hasattr(event, 'content') and event.content and hasattr(event.content, 'tool_input'):
+                tool_input = event.content.tool_input or {}
+            elif hasattr(event, 'data'):
+                tool_input = event.data.get("tool_input", {})
+
             tool_content = ToolCallContent(
                 tool_name=tool_name,
-                tool_input=event.data.get("tool_input", {}),
+                tool_input=tool_input,
                 tool_status="started",
                 tool_call_id=tool_call_id,
             )
@@ -265,15 +280,32 @@ class SkillManager:
             # Progress events update existing tool content
             if tool_call_id in self._active_tools:
                 # Update progress without creating new entry
-                logger.debug(f"Tool progress for {tool_name}: {event.data.get('progress', '')}")
+                progress_msg = ""
+                if hasattr(event, 'content') and event.content and hasattr(event.content, 'progress'):
+                    progress_msg = event.content.progress or ""
+                elif hasattr(event, 'data'):
+                    progress_msg = event.data.get('progress', '')
+                logger.debug(f"Tool progress for {tool_name}: {progress_msg}")
             return  # Don't add progress as separate child content
 
         elif event.event_type == "tool_end":
+            # Get tool_input from event.content if available, fallback to event.data
+            tool_input = {}
+            result = None
+            if hasattr(event, 'content') and event.content:
+                if hasattr(event.content, 'tool_input'):
+                    tool_input = event.content.tool_input or {}
+                if hasattr(event.content, 'result'):
+                    result = event.content.result
+            elif hasattr(event, 'data'):
+                tool_input = event.data.get("tool_input", {})
+                result = event.data.get("result")
+
             tool_content = ToolCallContent(
                 tool_name=tool_name,
-                tool_input=event.data.get("tool_input", {}),
+                tool_input=tool_input,
                 tool_status="completed",
-                result=event.data.get("result"),
+                result=result,
                 tool_call_id=tool_call_id,
             )
             # Update tracking and cleanup
@@ -281,11 +313,23 @@ class SkillManager:
                 self._active_tools[tool_call_id]["status"] = "completed"
 
         elif event.event_type == "tool_error":
+            # Get tool_input and error from event.content if available, fallback to event.data
+            tool_input = {}
+            error_msg = "Tool execution failed"
+            if hasattr(event, 'content') and event.content:
+                if hasattr(event.content, 'tool_input'):
+                    tool_input = event.content.tool_input or {}
+                if hasattr(event.content, 'error'):
+                    error_msg = event.content.error or error_msg
+            elif hasattr(event, 'data'):
+                tool_input = event.data.get("tool_input", {})
+                error_msg = event.data.get("error", error_msg)
+
             tool_content = ToolCallContent(
                 tool_name=tool_name,
-                tool_input=event.data.get("tool_input", {}),
+                tool_input=tool_input,
                 tool_status="failed",
-                error=event.data.get("error", "Tool execution failed"),
+                error=error_msg,
                 tool_call_id=tool_call_id,
             )
             # Update tracking and cleanup

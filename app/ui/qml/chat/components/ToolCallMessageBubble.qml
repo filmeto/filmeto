@@ -92,8 +92,11 @@ Item {
 
         ToolCallWidget {
             widgetColor: root.agentColor
-            toolName: itemData.tool_name || itemData.data?.tool_name || ""
-            toolArgs: itemData.tool_args || itemData.data?.tool_args || {}
+            toolName: itemData.data?.tool_name || itemData.tool_name || ""
+            toolArgs: itemData.data?.tool_input || itemData.tool_input || {}
+            toolStatus: itemData.data?.status || itemData.status || "started"
+            result: itemData.data?.result !== undefined ? itemData.data.result : (itemData.result !== undefined ? itemData.result : null)
+            error: itemData.data?.error || itemData.error || ""
         }
     }
 
