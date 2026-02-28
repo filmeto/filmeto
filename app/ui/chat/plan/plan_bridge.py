@@ -384,12 +384,18 @@ class PlanBridge(QObject):
         # Get tasks from instance or plan
         tasks = instance.tasks if instance else plan.tasks
 
+        # Use instance status if available (for PAUSED/RUNNING state), otherwise plan status
+        effective_status = plan.status
+        if instance:
+            effective_status = instance.status
+
         # Build plan data
         self._current_plan_data = {
             "plan_id": plan.id,
             "plan_name": plan.name or tr("Untitled Plan"),
             "plan_description": plan.description or "",
-            "plan_status": plan.status.value if hasattr(plan.status, 'value') else str(plan.status),
+            "plan_status": effective_status.value if hasattr(effective_status, 'value') else str(effective_status),
+            "instance_id": instance.instance_id if instance else "",
             "created_at": plan.created_at.isoformat() if plan.created_at else "",
         }
 
@@ -543,3 +549,90 @@ class PlanBridge(QObject):
         if len(text) <= limit:
             return text
         return text[:max(0, limit - 3)].rstrip() + "..."
+
+    # === Plan Recovery Properties and Methods ===
+
+    @Property(bool, notify=planChanged)
+    def isPaused(self) -> bool:
+        """Check if current plan is in PAUSED state."""
+        return self._current_plan_data.get("plan_status") == "paused"
+
+    @Property(bool, notify=planChanged)
+    def canResume(self) -> bool:
+        """Check if current plan can be resumed."""
+        if not self._current_plan_data:
+            return False
+        # Can resume if plan is PAUSED and has incomplete tasks
+        if self._current_plan_data.get("plan_status") != "paused":
+            return False
+        # Check if there are tasks that can be executed
+        for task in self._tasks:
+            if task.get("status") in ("created", "ready"):
+                return True
+        return False
+
+    @Property(str, notify=planChanged)
+    def pausedReason(self) -> str:
+        """Get the reason why plan is paused."""
+        if self._current_plan_data.get("plan_status") != "paused":
+            return ""
+        return tr("Plan was interrupted. Click to resume.")
+
+    @Slot()
+    def checkInterruptedPlans(self):
+        """Check for interrupted plans and mark them as paused."""
+        if not self._plan_service or not self._project_name:
+            return
+
+        try:
+            paused_instances = self._plan_service.mark_interrupted_as_paused(self._project_name)
+            if paused_instances:
+                logger.info(f"Marked {len(paused_instances)} interrupted plans as PAUSED")
+                self._schedule_refresh()
+        except Exception as e:
+            logger.error(f"Error checking interrupted plans: {e}")
+
+    @Slot(result=bool)
+    def resumePlan(self) -> bool:
+        """
+        Resume the current paused plan.
+
+        Returns:
+            True if resume was initiated, False otherwise
+        """
+        if not self._plan_service or not self._project_name:
+            return False
+
+        try:
+            resumable = self._plan_service.get_resumable_plan(self._project_name)
+            if not resumable:
+                logger.warning("No resumable plan found")
+                return False
+
+            plan, instance = resumable
+
+            # Resume the plan instance
+            if not self._plan_service.resume_plan_instance(instance):
+                logger.error(f"Failed to resume plan instance {instance.instance_id}")
+                return False
+
+            logger.info(f"Resumed plan {plan.id}, instance {instance.instance_id}")
+            self._preferred_plan_id = plan.id
+            self._schedule_refresh()
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Error resuming plan: {e}")
+            return False
+
+    # Signal for plan resume request (to be handled by FilmetoAgent)
+    resumeRequested = Signal(str)  # plan_id
+
+    @Slot()
+    def requestResume(self):
+        """Request plan resume - emits signal for FilmetoAgent to handle."""
+        if self._current_plan_data:
+            plan_id = self._current_plan_data.get("plan_id")
+            if plan_id:
+                self.resumeRequested.emit(plan_id)

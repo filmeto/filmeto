@@ -149,6 +149,8 @@ class AgentChatPlanWidget(BaseWidget):
             project_name: New project name
         """
         self._bridge.on_project_switched()
+        # Check for interrupted plans and mark them as paused
+        self._bridge.checkInterruptedPlans()
 
     def refresh_plan(self):
         """Refresh plan data from service."""

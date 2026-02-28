@@ -1108,6 +1108,25 @@ class FilmetoAgent:
             # No specific crew member mentioned - use producer if available
             producer_agent = self._get_producer_crew_member()
             if producer_agent:
+                # Check for PAUSED plan that can be resumed
+                # This allows automatic resumption when user sends a message after clicking "Resume"
+                if self.plan_service:
+                    resumable = self.plan_service.get_resumable_plan(project_name)
+                    if resumable:
+                        plan, instance = resumable
+                        logger.info(f"📋 Found resumable plan: {plan.id}, instance: {instance.instance_id}")
+
+                        # Resume the plan execution
+                        async for event in self._execute_plan_tasks(
+                            plan=plan,
+                            session_id=session_id,
+                        ):
+                            try:
+                                yield event
+                            except Exception as e:
+                                logger.error(f"❌ Exception while resuming plan execution", exc_info=True)
+                        return
+
                 # producer_start event removed - no longer needed
                 # await self._emit_system_event(
                 #     "producer_start",

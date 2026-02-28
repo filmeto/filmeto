@@ -127,6 +127,24 @@ Rectangle {
         return planTitle
     }
 
+    // Plan recovery properties
+    readonly property bool isPaused: {
+        if (mode === "panel" && planBridge) return planBridge.isPaused
+        return planData ? (planData.status === "paused" || planData.plan_status === "paused") : false
+    }
+
+    readonly property bool canResume: {
+        if (mode === "panel" && planBridge) return planBridge.canResume
+        // For inline mode, check if paused and has incomplete tasks
+        if (!isPaused) return false
+        return waitingCount > 0
+    }
+
+    readonly property string pausedReason: {
+        if (mode === "panel" && planBridge) return planBridge.pausedReason || ""
+        return isPaused ? qsTr("Plan was interrupted. Click to resume.") : ""
+    }
+
     // === Layout ===
 
     // Padding around the content
@@ -206,7 +224,8 @@ Rectangle {
             Layout.preferredHeight: 40
             // No rounded corners in panel mode
             radius: mode === "panel" ? 0 : 6
-            color: headerColor
+            // Highlight header when paused
+            color: isPaused ? "#3d3520" : headerColor
 
             // Bottom corners rounded only when collapsed (only in inline mode)
             Rectangle {
@@ -224,19 +243,19 @@ Rectangle {
                 anchors.rightMargin: 8
                 spacing: 8
 
-                // Plan icon
+                // Plan icon (changes color when paused)
                 Rectangle {
                     width: 20
                     height: 20
                     radius: 10
-                    color: widgetColor
+                    color: isPaused ? "#f4a942" : widgetColor
 
                     Text {
                         anchors.centerIn: parent
-                        text: "P"
+                        text: isPaused ? "⏸" : "P"
                         color: "white"
-                        font.pixelSize: 10
-                        font.bold: true
+                        font.pixelSize: isPaused ? 10 : 10
+                        font.bold: !isPaused
                     }
                 }
 
@@ -244,11 +263,41 @@ Rectangle {
                 Text {
                     id: summaryTextItem
                     Layout.fillWidth: true
-                    text: summaryText
-                    color: textColor
+                    text: isPaused ? qsTr("Paused: ") + summaryText : summaryText
+                    color: isPaused ? "#f4a942" : textColor
                     font.pixelSize: 13
                     elide: Text.ElideRight
                     maximumLineCount: 1
+                }
+
+                // Resume button (only when paused and can resume)
+                Rectangle {
+                    visible: isPaused && canResume
+                    width: resumeBtnText.width + 16
+                    height: 24
+                    radius: 4
+                    color: resumeBtnMouseArea.containsMouse ? "#4a8f4a" : "#3a7f3a"
+
+                    Text {
+                        id: resumeBtnText
+                        anchors.centerIn: parent
+                        text: qsTr("Resume")
+                        color: "white"
+                        font.pixelSize: 11
+                        font.bold: true
+                    }
+
+                    MouseArea {
+                        id: resumeBtnMouseArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            if (mode === "panel" && planBridge && planBridge.resumePlan) {
+                                planBridge.resumePlan()
+                            }
+                        }
+                    }
                 }
 
                 // Status counts
@@ -284,6 +333,24 @@ Rectangle {
                     label: "F"
                     count: failedCount
                     badgeColor: failedColor
+                }
+
+                // Paused badge
+                Rectangle {
+                    visible: isPaused
+                    width: pausedBadgeText.width + 8
+                    height: 14
+                    radius: 3
+                    color: "#f4a942"
+
+                    Text {
+                        id: pausedBadgeText
+                        anchors.centerIn: parent
+                        text: qsTr("PAUSED")
+                        color: "white"
+                        font.pixelSize: 8
+                        font.bold: true
+                    }
                 }
 
                 // Expand/collapse arrow
