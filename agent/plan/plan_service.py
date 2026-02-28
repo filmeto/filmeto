@@ -866,3 +866,130 @@ class PlanService:
         except Exception as e:
             logger.error(f"Error deleting plan {plan_id}: {e}", exc_info=True)
             return False
+
+    def get_interrupted_instances(self, project_name: str) -> List[PlanInstance]:
+        """
+        Get all interrupted PlanInstances for a project.
+
+        An instance is considered interrupted if:
+        1. Its status is RUNNING (execution was in progress when app closed)
+        2. It has tasks in RUNNING state
+
+        Args:
+            project_name: Name of the project
+
+        Returns:
+            List of interrupted PlanInstances
+        """
+        interrupted = []
+        plans = self.get_all_plans_for_project(project_name)
+
+        for plan in plans:
+            instances = self.get_all_instances_for_plan(project_name, plan.id)
+            for instance in instances:
+                if instance.status == PlanStatus.RUNNING:
+                    # Check if there are RUNNING tasks (indicates interruption)
+                    running_tasks = [t for t in instance.tasks if t.status == TaskStatus.RUNNING]
+                    if running_tasks:
+                        interrupted.append(instance)
+                        logger.info(f"Found interrupted plan instance: {instance.instance_id} with {len(running_tasks)} running tasks")
+
+        return interrupted
+
+    def pause_plan_instance(self, plan_instance: PlanInstance) -> bool:
+        """
+        Pause a PlanInstance execution.
+
+        This resets RUNNING tasks back to READY so they can be re-executed.
+
+        Args:
+            plan_instance: The PlanInstance to pause
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if plan_instance.status != PlanStatus.RUNNING:
+            logger.warning(f"Cannot pause plan instance with status {plan_instance.status}")
+            return False
+
+        # Reset RUNNING tasks to READY
+        for task in plan_instance.tasks:
+            if task.status == TaskStatus.RUNNING:
+                logger.info(f"Resetting task {task.id} from RUNNING to READY")
+                task.status = TaskStatus.READY
+                task.started_at = None
+
+        # Update plan status to PAUSED
+        return self._update_plan_status(plan_instance, PlanStatus.PAUSED)
+
+    def resume_plan_instance(self, plan_instance: PlanInstance) -> bool:
+        """
+        Resume a paused PlanInstance execution.
+
+        Args:
+            plan_instance: The PlanInstance to resume
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if plan_instance.status != PlanStatus.PAUSED:
+            logger.warning(f"Cannot resume plan instance with status {plan_instance.status}")
+            return False
+
+        # Update plan status to RUNNING
+        success = self._update_plan_status(plan_instance, PlanStatus.RUNNING)
+
+        if success:
+            logger.info(f"Resumed plan instance {plan_instance.instance_id}")
+
+        return success
+
+    def mark_interrupted_as_paused(self, project_name: str) -> List[PlanInstance]:
+        """
+        Find all interrupted PlanInstances and mark them as PAUSED.
+
+        This should be called when the application starts to handle
+        plans that were interrupted by app closure.
+
+        Args:
+            project_name: Name of the project
+
+        Returns:
+            List of PlanInstances that were marked as paused
+        """
+        interrupted = self.get_interrupted_instances(project_name)
+        paused = []
+
+        for instance in interrupted:
+            if self.pause_plan_instance(instance):
+                paused.append(instance)
+                logger.info(f"Marked interrupted plan instance {instance.instance_id} as PAUSED")
+
+        return paused
+
+    def get_resumable_plan(self, project_name: str) -> Optional[Tuple[Plan, PlanInstance]]:
+        """
+        Get a plan that can be resumed.
+
+        Returns the most recent PAUSED plan instance with its plan definition.
+
+        Args:
+            project_name: Name of the project
+
+        Returns:
+            Tuple of (Plan, PlanInstance) if found, None otherwise
+        """
+        plans = self.get_all_plans_for_project(project_name)
+
+        # Sort by creation date, most recent first
+        sorted_plans = sorted(plans, key=lambda p: p.created_at, reverse=True)
+
+        for plan in sorted_plans:
+            instances = self.get_all_instances_for_plan(project_name, plan.id)
+
+            # Find PAUSED instances
+            for instance in instances:
+                if instance.status == PlanStatus.PAUSED:
+                    return (plan, instance)
+
+        return None
