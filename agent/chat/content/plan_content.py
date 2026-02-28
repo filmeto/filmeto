@@ -72,7 +72,7 @@ class PlanContent(StructureContent):
         """Convert rich tasks to QML-compatible steps format.
 
         Returns:
-            List of steps in format: [{text: str, status: str}, ...]
+            List of steps in format: [{text: str, status: str, description: str, ...}, ...]
         """
         steps = []
         for task in self.tasks:
@@ -86,10 +86,16 @@ class PlanContent(StructureContent):
             }
 
             # Add optional fields for richer UI
-            if task.get("description"):
-                step["description"] = task.get("description")
             if task.get("id"):
                 step["id"] = task.get("id")
+            if task.get("description"):
+                step["description"] = task.get("description")
+            if task.get("title"):
+                step["title"] = task.get("title")
+            if task.get("needs"):
+                step["needs"] = task.get("needs")
+            if task.get("error_message"):
+                step["error_message"] = task.get("error_message")
 
             steps.append(step)
         return steps
