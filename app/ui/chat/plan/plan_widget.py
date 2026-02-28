@@ -44,9 +44,10 @@ class AgentChatPlanWidget(BaseWidget):
     expandedChanged = Signal(bool)
 
     # Height constants for splitter integration
+    # QML: headerImplicitHeight(40) + maxDetailsHeight(300) + contentPadding*2(12) = 352
     header_height = 40
     _collapsed_height = 52
-    _expanded_height = 260
+    _expanded_height = 352
 
     def __init__(self, workspace: "Workspace", parent=None):
         """Initialize the plan widget.
