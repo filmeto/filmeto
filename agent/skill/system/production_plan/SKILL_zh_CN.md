@@ -2,56 +2,67 @@
 name: production_plan
 description: 通过分析剧组能力、分解任务和调度剧组人员分配来创建完整的电影制作规划。调用此技能时，必须在 prompt 中包含完整的团队成员信息（包括每个成员的姓名、职位、描述和技能），以便直接进行任务分配，避免额外的信息查询。
 tools:
+  - speak_to
   - plan
 ---
 # 电影制作规划创建
 
-## 关键要求：多步骤执行
+## 关键要求：先路由，仅在必要时创建规划
 
-此技能需要**按顺序进行多个工具调用**。在提供最终响应之前，您必须完成所有步骤。
+**重要**：在创建任何规划之前，您必须首先评估任务是否可以由**单个**剧组成员处理。许多任务不需要复杂的规划——它们只需要直接路由。
 
-**强制执行检查清单** - 在完成所有步骤之前不得结束：
-- [ ] 第一步：验证 prompt 中是否包含团队成员信息
-- [ ] 第二步：分析团队信息和用户需求
-- [ ] 第三步：调用 `plan` 工具，使用 `create` 操作存储制作规划
-
-**完成标准**：此任务仅在以下情况才算完成：
-- 您已成功调用 `plan` 工具的 `create` 操作
-- 规划已成功创建（您收到了包含 plan_id 的成功响应）
-- 您已提供所创建规划的摘要
+### 决策流程：
+1. **单个剧组成员能否处理？** → 使用 `speak_to` 工具的 `specify` 模式
+2. **是否需要多个剧组成员协作？** → 使用 `plan` 工具创建规划
 
 ---
 
-## 调用方须知：prompt 参数要求
+## 第零步：关键 - 评估任务复杂度（必须首先执行）
 
-**重要**：调用此技能时，`prompt` 参数**必须包含**团队成员的完整信息。请在 prompt 中明确列出：
+**在任何其他步骤之前**，分析用户的请求：
 
-```
-## 团队成员信息
-- **成员姓名** (role: 职位)
-  - Description: 成员描述
-  - Skills: 技能1, 技能2
+### 单剧组成员任务（使用 `speak_to` → specify 模式）
 
-例如：
-- **黄小新** (role: screenwriter)
-  - Description: 负责剧本全局规划、故事结构设计、角色塑造和对话创作
-  - Skills: script_writing, character_development, dialogue_writing
-- **李明** (role: director)
-  - Description: 负责创意愿景、演员指导、场景设计
-  - Skills: scene_breakdown, shot_planning, actor_direction
-```
+单人可处理的任务示例：
+- "写一段场景描述" → @screenwriter
+- "为第5场戏创建故事板" → @storyboard_artist
+- "设计开场镜头的灯光" → @cinematographer
+- "剪辑这个序列" → @editor
+- "为这个片段添加音效" → @sound_designer
+- "审阅剧本" → @director
+- "创建镜头列表" → @director
+- 任何具有明确单一责任的任务
 
-**正确的 execute_skill 调用示例：**
+**如果任务可以由一个剧组成员处理：**
+
 ```json
 {
-  "skill_name": "production_plan",
-  "prompt": "用户需求：重写剧本。\n\n## 团队成员信息\n- **黄小新** (role: screenwriter)\n  - Description: 负责剧本全局规划、故事结构设计、角色塑造和对话创作\n  - Skills: script_writing, character_development, dialogue_writing\n- **李明** (role: director)\n  - Description: 负责创意愿景、演员指导、场景设计\n  - Skills: scene_breakdown, shot_planning, actor_direction\n\n请根据以上团队成员创建剧本重写计划。"
+  "type": "tool",
+  "tool_name": "speak_to",
+  "tool_args": {
+    "mode": "specify",
+    "target": "screenwriter",
+    "message": "请为开场序列写一段场景描述。"
+  }
 }
 ```
 
+**不要为单人任务创建规划。到此为止并响应。**
+
+### 多剧组成员任务（使用 `plan` 工具）
+
+需要协作的任务示例：
+- "制作一部完整的短片" → 需要编剧 → 导演 → 摄影指导 → 剪辑师
+- "从剧本到最终成片创建完整视频" → 多个阶段
+- "开发和拍摄一支广告" → 需要协调
+- "规划整个前期制作工作流程" → 任务之间存在依赖关系
+- 任何一人的输出是另一人输入的任务
+
+**只有当任务真正需要多个剧组成员协作且存在依赖关系时，才继续执行第一步到第三步。**
+
 ---
 
-## 第一步：验证团队成员信息
+## 第一步：验证团队成员信息（仅适用于多剧组成员任务）
 
 检查 prompt 中是否已包含团队成员信息。
 
@@ -69,7 +80,7 @@ tools:
 
 ---
 
-## 第二步：分析和分解任务
+## 第二步：分析和分解任务（仅适用于多剧组成员任务）
 
 分析用户的制作需求：
 - 将整体制作目标分解为具体的、可执行的任务
@@ -78,7 +89,7 @@ tools:
 
 ---
 
-## 第三步：创建并存储制作规划
+## 第三步：创建并存储制作规划（仅适用于多剧组成员任务）
 
 最后，使用 `plan` 工具的 `create` 操作来存储制作规划：
 - 根据制作目标给规划起一个描述性的标题
@@ -129,84 +140,82 @@ tools:
 
 ---
 
-## 任务依赖关系
-
-使用 `needs` 字段指定依赖关系。例如：
-```json
-{
-  "id": "task_2",
-  "name": "勘景",
-  "title": "director",
-  "needs": ["task_1"]
-}
-```
-这表示 task_2 必须等 task_1 完成后才能开始。
-
----
-
-## 规划命名
-
-选择清晰、描述性的规划标题，例如：
-- "前期制作日程"
-- "主体拍摄计划"
-- "后期制作工作流程"
-- "完整电影制作流程"
-
----
-
 ## 完整示例
 
-以下是完整的前期制作规划示例：
+### 示例一：单剧组成员任务（常见）
+
+**用户请求**："为第5场戏创建故事板"
+
+**分析**：这是一个可以由故事板艺术家独立处理的单一任务。
+
+**操作**：使用 `speak_to` 工具（不要创建规划）
 
 ```json
 {
-  "operation": "create",
-  "title": "前期制作日程",
-  "description": "从剧本开发到拍摄前准备的完整前期制作工作流程",
-  "tasks": [
-    {
-      "id": "task_1",
-      "name": "剧本开发",
-      "description": "开发包含对白和场景描述的完整剧本",
-      "title": "screenwriter",
-      "needs": []
-    },
-    {
-      "id": "task_2",
-      "name": "故事板创作",
-      "description": "根据最终剧本创建视觉故事板",
-      "title": "storyboard_artist",
-      "needs": ["task_1"]
-    },
-    {
-      "id": "task_3",
-      "name": "勘景",
-      "description": "寻找并确定符合场景要求的拍摄地点",
-      "title": "director",
-      "needs": ["task_1"]
-    },
-    {
-      "id": "task_4",
-      "name": "选角",
-      "description": "举行试镜并为所有角色选择演员",
-      "title": "director",
-      "needs": ["task_1"]
-    },
-    {
-      "id": "task_5",
-      "name": "制作预算",
-      "description": "创建涵盖所有制作费用的详细预算",
-      "title": "producer",
-      "needs": ["task_1"]
-    },
-    {
-      "id": "task_6",
-      "name": "拍摄日程",
-      "description": "根据地点和演员可用性创建详细的拍摄日程",
-      "title": "producer",
-      "needs": ["task_2", "task_3", "task_4", "task_5"]
-    }
-  ]
+  "type": "tool",
+  "tool_name": "speak_to",
+  "tool_args": {
+    "mode": "specify",
+    "target": "storyboard_artist",
+    "message": "请根据剧本为第5场戏创建故事板。"
+  }
+}
+```
+
+### 示例二：多剧组成员任务
+
+**用户请求**："从概念到最终成片制作一部完整的短片"
+
+**分析**：这需要多个剧组成员按顺序协作，且存在依赖关系。
+
+**操作**：创建规划
+
+```json
+{
+  "type": "tool",
+  "tool_name": "plan",
+  "tool_args": {
+    "operation": "create",
+    "title": "短片制作流程",
+    "description": "从概念到最终交付的完整工作流程",
+    "tasks": [
+      {
+        "id": "task_1",
+        "name": "剧本开发",
+        "description": "开发包含对白和场景描述的完整剧本",
+        "title": "screenwriter",
+        "needs": []
+      },
+      {
+        "id": "task_2",
+        "name": "故事板创作",
+        "description": "根据最终剧本创建视觉故事板",
+        "title": "storyboard_artist",
+        "needs": ["task_1"]
+      },
+      {
+        "id": "task_3",
+        "name": "镜头规划",
+        "description": "规划摄影镜头和视觉方案",
+        "title": "director",
+        "needs": ["task_2"]
+      },
+      {
+        "id": "task_4",
+        "name": "主体拍摄",
+        "description": "执行计划的镜头",
+        "title": "cinematographer",
+        "needs": ["task_3"]
+      },
+      {
+        "id": "task_5",
+        "name": "后期剪辑",
+        "description": "将素材剪辑成最终成片",
+        "title": "editor",
+        "needs": ["task_4"]
+      }
+    ]
+  }
 }
 ```
 
@@ -214,8 +223,8 @@ tools:
 
 ## 请记住
 
-1. **验证** prompt 中是否包含团队成员信息
-2. 使用提供的团队成员信息或默认使用通用职位
-3. 根据团队能力分析和规划任务
-4. **必须**以 `plan` 的 `create` 操作结束
-5. 仅在规划成功创建后才提供最终摘要
+1. **首先评估** - 单个剧组成员能否处理此任务？
+2. **单一任务？** → 使用 `speak_to` 的 `specify` 模式
+3. **多个任务且有依赖关系？** → 使用 `plan` 工具
+4. 只在真正需要时创建规划
+5. 大多数用户请求可以通过路由到单个剧组成员来处理

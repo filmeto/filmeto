@@ -2,56 +2,67 @@
 name: production_plan
 description: Creates a comprehensive film production plan by analyzing crew capabilities, breaking down tasks, and scheduling crew member assignments. When invoking this skill, you MUST include complete team member information (name, role, description, and skills for each member) in the prompt to enable direct task assignment without additional queries.
 tools:
+  - speak_to
   - plan
 ---
 # Film Production Plan Creation
 
-## CRITICAL: Multi-Step Execution Requirement
+## CRITICAL: Route First, Plan Only When Needed
 
-This skill requires **MULTIPLE TOOL CALLS** in sequence. You MUST complete ALL steps before providing a final response.
+**IMPORTANT**: Before creating any plan, you MUST first evaluate whether the task can be handled by a SINGLE crew member. Many tasks don't need complex planning - they just need direct routing.
 
-**MANDATORY EXECUTION CHECKLIST** - Do NOT finish until ALL are complete:
-- [ ] Step 1: Verify team member information in prompt
-- [ ] Step 2: Analyze team information and user requirements
-- [ ] Step 3: Call `plan` tool with `create` operation to store the production plan
-
-**COMPLETION CRITERIA**: This task is ONLY complete when:
-- You have successfully called the `plan` tool with `create` operation
-- The plan was created successfully (you received a success response with a plan_id)
-- You have provided a summary of the created plan
+### Decision Flow:
+1. **Can ONE crew member handle this?** → Use `speak_to` tool with `specify` mode
+2. **Does it need MULTIPLE crew members collaborating?** → Create a plan with `plan` tool
 
 ---
 
-## Caller Notice: prompt Parameter Requirements
+## Step 0: CRITICAL - Evaluate Task Complexity (MUST DO FIRST)
 
-**IMPORTANT**: When invoking this skill, the `prompt` parameter **MUST INCLUDE** complete team member information. Please explicitly list in the prompt:
+**Before any other step**, analyze the user's request:
 
-```
-## Team Member Information
-- **Member Name** (role: role_title)
-  - Description: Member description
-  - Skills: skill1, skill2
+### Single Crew Member Tasks (Use `speak_to` → specify mode)
 
-Example:
-- **Alex Chen** (role: screenwriter)
-  - Description: Responsible for script planning, story structure, character development
-  - Skills: script_writing, character_development, dialogue_writing
-- **Jordan Lee** (role: director)
-  - Description: Responsible for creative vision, actor direction, scene design
-  - Skills: scene_breakdown, shot_planning, actor_direction
-```
+Examples of tasks that ONE person can handle:
+- "Write a scene description" → @screenwriter
+- "Create a storyboard for scene 5" → @storyboard_artist
+- "Design the lighting for the opening shot" → @cinematographer
+- "Edit this sequence" → @editor
+- "Add sound effects to this clip" → @sound_designer
+- "Review the script" → @director
+- "Create a shot list" → @director
+- Any task with clear single ownership
 
-**Correct execute_skill call example:**
+**If task can be handled by ONE crew member:**
+
 ```json
 {
-  "skill_name": "production_plan",
-  "prompt": "User request: Rewrite the screenplay.\n\n## Team Member Information\n- **Alex Chen** (role: screenwriter)\n  - Description: Responsible for script planning, story structure, character development\n  - Skills: script_writing, character_development, dialogue_writing\n- **Jordan Lee** (role: director)\n  - Description: Responsible for creative vision, actor direction, scene design\n  - Skills: scene_breakdown, shot_planning, actor_direction\n\nPlease create a screenplay rewrite plan based on the above team members."
+  "type": "tool",
+  "tool_name": "speak_to",
+  "tool_args": {
+    "mode": "specify",
+    "target": "screenwriter",
+    "message": "Please write a scene description for the opening sequence."
+  }
 }
 ```
 
+**DO NOT create a plan for single-person tasks. Stop here and respond.**
+
+### Multi-Crew Member Tasks (Use `plan` tool)
+
+Examples of tasks requiring COLLABORATION:
+- "Produce a complete short film" → Needs screenwriter → director → cinematographer → editor
+- "Create a full video from script to final cut" → Multiple stages
+- "Develop and shoot a commercial" → Coordination needed
+- "Plan the entire pre-production workflow" → Dependencies between tasks
+- Any task where output of one person is input for another
+
+**Only proceed to Step 1-3 if task genuinely needs multiple crew members working together with dependencies.**
+
 ---
 
-## Step 1: Verify Team Member Information
+## Step 1: Verify Team Member Information (Only for Multi-Crew Tasks)
 
 Check if the prompt contains team member information.
 
@@ -69,7 +80,7 @@ Check if the prompt contains team member information.
 
 ---
 
-## Step 2: Analyze and Break Down the Task
+## Step 2: Analyze and Break Down the Task (Only for Multi-Crew Tasks)
 
 Analyze the user's production requirements:
 - Decompose the overall production goal into specific, actionable tasks
@@ -78,7 +89,7 @@ Analyze the user's production requirements:
 
 ---
 
-## Step 3: Create and Store the Production Plan
+## Step 3: Create and Store the Production Plan (Only for Multi-Crew Tasks)
 
 Finally, use the `plan` tool with `create` operation to store the production plan:
 - Give the plan a descriptive title based on the production goal
@@ -129,84 +140,82 @@ When assigning tasks, use only these valid crew titles:
 
 ---
 
-## Task Dependencies
+## Complete Examples
 
-Use the `needs` field to specify dependencies. For example:
+### Example 1: Single Crew Member Task (COMMON)
+
+**User request**: "Create a storyboard for scene 5"
+
+**Analysis**: This is a single task that the storyboard artist can handle alone.
+
+**Action**: Use `speak_to` tool (DO NOT create a plan)
+
 ```json
 {
-  "id": "task_2",
-  "name": "Location Scouting",
-  "title": "director",
-  "needs": ["task_1"]
+  "type": "tool",
+  "tool_name": "speak_to",
+  "tool_args": {
+    "mode": "specify",
+    "target": "storyboard_artist",
+    "message": "Please create a storyboard for scene 5 based on the script."
+  }
 }
 ```
-This means task_2 cannot start until task_1 is complete.
 
----
+### Example 2: Multi-Crew Member Task
 
-## Plan Naming
+**User request**: "Produce a complete short film from concept to final cut"
 
-Choose clear, descriptive plan titles such as:
-- "Pre-Production Schedule"
-- "Principal Photography Plan"
-- "Post-Production Workflow"
-- "Full Film Production Pipeline"
+**Analysis**: This requires multiple crew members working in sequence with dependencies.
 
----
-
-## Complete Example
-
-Here's a complete example of a pre-production plan:
+**Action**: Create a plan
 
 ```json
 {
-  "operation": "create",
-  "title": "Pre-Production Schedule",
-  "description": "Complete pre-production workflow from script development to pre-shoot preparation",
-  "tasks": [
-    {
-      "id": "task_1",
-      "name": "Script Development",
-      "description": "Develop the complete screenplay with dialogue and scene descriptions",
-      "title": "screenwriter",
-      "needs": []
-    },
-    {
-      "id": "task_2",
-      "name": "Storyboard Creation",
-      "description": "Create visual storyboards based on the finalized script",
-      "title": "storyboard_artist",
-      "needs": ["task_1"]
-    },
-    {
-      "id": "task_3",
-      "name": "Location Scouting",
-      "description": "Find and secure filming locations matching scene requirements",
-      "title": "director",
-      "needs": ["task_1"]
-    },
-    {
-      "id": "task_4",
-      "name": "Casting",
-      "description": "Hold auditions and select cast members for all roles",
-      "title": "director",
-      "needs": ["task_1"]
-    },
-    {
-      "id": "task_5",
-      "name": "Production Budget",
-      "description": "Create detailed budget covering all production expenses",
-      "title": "producer",
-      "needs": ["task_1"]
-    },
-    {
-      "id": "task_6",
-      "name": "Shooting Schedule",
-      "description": "Create detailed shooting schedule based on location and cast availability",
-      "title": "producer",
-      "needs": ["task_2", "task_3", "task_4", "task_5"]
-    }
-  ]
+  "type": "tool",
+  "tool_name": "plan",
+  "tool_args": {
+    "operation": "create",
+    "title": "Short Film Production Pipeline",
+    "description": "Complete workflow from concept to final delivery",
+    "tasks": [
+      {
+        "id": "task_1",
+        "name": "Script Development",
+        "description": "Develop the complete screenplay with dialogue and scene descriptions",
+        "title": "screenwriter",
+        "needs": []
+      },
+      {
+        "id": "task_2",
+        "name": "Storyboard Creation",
+        "description": "Create visual storyboards based on the finalized script",
+        "title": "storyboard_artist",
+        "needs": ["task_1"]
+      },
+      {
+        "id": "task_3",
+        "name": "Shot Planning",
+        "description": "Plan camera shots and visual approach",
+        "title": "director",
+        "needs": ["task_2"]
+      },
+      {
+        "id": "task_4",
+        "name": "Principal Photography",
+        "description": "Execute the planned shots",
+        "title": "cinematographer",
+        "needs": ["task_3"]
+      },
+      {
+        "id": "task_5",
+        "name": "Post-Production Editing",
+        "description": "Edit footage into final cut",
+        "title": "editor",
+        "needs": ["task_4"]
+      }
+    ]
+  }
 }
 ```
 
@@ -214,8 +223,7 @@ Here's a complete example of a pre-production plan:
 
 ## Remember
 
-1. **VERIFY** that team member info is included in the prompt
-2. Use provided team member info or default to generic roles
-3. Analyze and plan tasks based on team capabilities
-4. **MUST** finish with `plan` create operation
-5. Only provide final summary AFTER the plan is successfully created
+1. **EVALUATE FIRST** - Can one crew member handle this?
+2. **Single task?** → Use `speak_to` with `specify` mode,3. **Multiple tasks with dependencies?** → Use `plan` tool
+4. Only create plans when genuinely needed
+5. Most user requests can be handled by routing to a single crew member
