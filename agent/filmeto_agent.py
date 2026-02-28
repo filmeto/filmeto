@@ -11,7 +11,7 @@ from agent.chat.agent_chat_message import AgentMessage
 from agent.chat.content import (
     StructureContent, TextContent, ThinkingContent, ToolCallContent,
     ToolResponseContent, ProgressContent, MetadataContent, ErrorContent,
-    LlmOutputContent, TodoWriteContent, create_content
+    LlmOutputContent, TodoWriteContent, PlanContent, create_content
 )
 from agent.chat.agent_chat_types import ContentType
 from agent.chat.agent_chat_signals import AgentChatSignals
@@ -507,6 +507,47 @@ class FilmetoAgent:
                 content_id=metadata_content_id,  # Use deterministic content_id
             )],
         )
+        await self.signals.send_agent_message(msg)
+
+    async def _emit_plan_update(
+        self,
+        plan: Plan,
+        session_id: str,
+        sender_id: str,
+        sender_name: str,
+        message_id: str,
+        operation: str = "update",
+    ) -> None:
+        """Emit a plan update event with PlanContent.
+
+        This method creates and sends a proper PlanContent message instead of
+        using MetadataContent, ensuring the plan is rendered correctly in the UI.
+
+        Args:
+            plan: The Plan model object
+            session_id: Session identifier
+            sender_id: ID of the sender
+            sender_name: Display name of the sender
+            message_id: Message ID for deduplication
+            operation: Operation type (create, update)
+        """
+        # Create PlanContent from the Plan model
+        plan_content = PlanContent.from_plan(plan, operation=operation)
+
+        meta = {
+            "event_type": "plan_update",
+            "session_id": session_id,
+            "plan_id": plan.id,
+        }
+
+        msg = AgentMessage(
+            sender_id=sender_id,
+            sender_name=sender_name,
+            metadata=meta,
+            message_id=message_id,
+            structured_content=[plan_content],
+        )
+        logger.info(f"📋 Sending plan update: id={plan.id}, message_id={message_id[:8]}..., operation={operation}")
         await self.signals.send_agent_message(msg)
 
     def _build_producer_message(self, user_message: str, plan_id: str, retry: bool = False) -> str:
@@ -1060,13 +1101,13 @@ class FilmetoAgent:
                     active_plan_id = latest_plan.id
 
                     # Emit plan_update with producer as sender, using same message_id
-                    await self._emit_system_event(
-                        "plan_update",
-                        session_id,
+                    await self._emit_plan_update(
+                        plan=latest_plan,
+                        session_id=session_id,
                         sender_id=producer_agent.config.name,
                         sender_name=producer_agent.config.name,
                         message_id=producer_message_id,
-                        plan_id=latest_plan.id,
+                        operation="create",
                     )
 
                     # Check if the plan has tasks to execute
@@ -1124,17 +1165,17 @@ class FilmetoAgent:
                     # Generate message_id for this task's crew member messages
                     task_message_id = str(uuid.uuid4())
 
-                    # Emit plan_update with the crew member as sender, using same message_id
-                    await self._emit_system_event(
-                        "plan_update",
-                        session_id,
-                        sender_id=target_agent.config.name,
-                        sender_name=target_agent.config.name,
-                        message_id=task_message_id,
-                        plan_id=plan.id,
-                        task_id=task.id,
-                        task_status="running",
-                    )
+                    # Reload plan to get current state and emit plan_update with PlanContent
+                    current_plan = self.plan_service.load_plan(plan.project_name, plan.id)
+                    if current_plan:
+                        await self._emit_plan_update(
+                            plan=current_plan,
+                            session_id=session_id,
+                            sender_id=target_agent.config.name,
+                            sender_name=target_agent.config.name,
+                            message_id=task_message_id,
+                            operation="update",
+                        )
 
                     # First, emit a text event showing the task content from crew member's perspective
                     # This helps the crew member communicate what they're about to do
@@ -1167,16 +1208,18 @@ class FilmetoAgent:
                             logger.error(f"❌ Exception in _execute_plan_tasks while yielding task event", exc_info=True)
 
                     self.plan_service.mark_task_completed(plan_instance, task.id)
-                    await self._emit_system_event(
-                        "plan_update",
-                        session_id,
-                        sender_id=target_agent.config.name,
-                        sender_name=target_agent.config.name,
-                        message_id=task_message_id,
-                        plan_id=plan.id,
-                        task_id=task.id,
-                        task_status="completed",
-                    )
+
+                    # Reload plan to get updated state and emit plan_update with PlanContent
+                    updated_plan_for_msg = self.plan_service.load_plan(plan.project_name, plan.id)
+                    if updated_plan_for_msg:
+                        await self._emit_plan_update(
+                            plan=updated_plan_for_msg,
+                            session_id=session_id,
+                            sender_id=target_agent.config.name,
+                            sender_name=target_agent.config.name,
+                            message_id=task_message_id,
+                            operation="update",
+                        )
 
                 updated_plan = self.plan_service.load_plan(plan.project_name, plan.id)
                 if updated_plan:
