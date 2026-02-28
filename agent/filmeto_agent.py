@@ -850,6 +850,53 @@ class FilmetoAgent:
                                 description="Task list has been updated"
                             )
 
+                elif event.event_type == AgentEventType.CREW_MEMBER_MESSAGE:
+                    # Handle crew member message (public/specify mode)
+                    # This event will be sent to history AND processed for routing
+                    content = event.content
+
+                elif event.event_type == AgentEventType.CREW_MEMBER_PRIVATE_MESSAGE:
+                    # Handle crew member private message
+                    # Send directly to target WITHOUT recording to history
+                    content = event.content
+
+                    # For private messages, skip history recording and send directly
+                    content_metadata = content.metadata if content and hasattr(content, 'metadata') else {}
+                    message_text = content_metadata.get("message", "")
+                    target = content_metadata.get("target", "")
+                    original_sender_id = event.sender_id
+
+                    if message_text and target:
+                        target_member = self._crew_member_lookup.get(target.lower())
+                        if target_member and target_member.config.name.lower() != original_sender_id.lower():
+                            logger.info(f"🔒 Sending private message from {original_sender_id} to {target}")
+                            cm_session_id = str(uuid.uuid4())
+                            # Send directly to target crew member, bypassing history
+                            async for _ in self._stream_crew_member(
+                                target_member,
+                                message_text,
+                                plan_id=None,
+                                session_id=cm_session_id,
+                            ):
+                                pass
+
+                    # Skip the rest of the processing for private messages
+                    # Yield the event for upstream and continue to next event
+                    try:
+                        yield AgentEvent.create(
+                            event_type=event.event_type,
+                            project_name=event.project_name,
+                            react_type=event.react_type,
+                            run_id=event.run_id,
+                            step_id=event.step_id,
+                            sender_id=event.sender_id,
+                            sender_name=event.sender_name,
+                            content=content,
+                        )
+                    except Exception as e:
+                        logger.error(f"❌ Exception in _stream_crew_member while yielding private message event", exc_info=True)
+                    continue
+
             # Mark non-skill content with skill context if inside a skill execution.
             # This metadata is used during history loading to associate content
             # (thinking, llm_output, tool_call, etc.) as children of the enclosing skill.
@@ -880,6 +927,7 @@ class FilmetoAgent:
             )
 
             # Convert event to message and send via AgentChatSignals
+            # This records the message to history
             agent_message = self._convert_event_to_message(
                 enhanced_event,
                 sender_id=crew_member.config.name,
@@ -899,6 +947,55 @@ class FilmetoAgent:
                     f"content_id={enhanced_event.content.content_id if enhanced_event.content else 'N/A'}"
                 )
                 await self.signals.send_agent_message(agent_message)
+
+            # Handle crew member messages that need further processing (public/specify only)
+            if event.event_type == AgentEventType.CREW_MEMBER_MESSAGE:
+                # Process public/specify messages through agent routing logic
+                # Read metadata from content
+                content_metadata = content.metadata if content and hasattr(content, 'metadata') else {}
+                message_text = content_metadata.get("message", "")
+                mode = content_metadata.get("mode", "public")
+                original_sender_id = event.sender_id
+
+                if message_text:
+                    # Create a session ID for this crew member message processing
+                    cm_session_id = str(uuid.uuid4())
+
+                    # Determine routing based on mode
+                    if mode == "specify":
+                        # For specify mode, route to the mentioned crew member
+                        target = content_metadata.get("target", "")
+                        if target:
+                            target_member = self._crew_member_lookup.get(target.lower())
+                            if target_member and target_member.config.name.lower() != original_sender_id.lower():
+                                # Don't let producer handle their own messages
+                                if not (original_sender_id.lower() == _PRODUCER_NAME and
+                                        target_member.config.name.lower() == _PRODUCER_NAME):
+                                    logger.info(f"🔄 Routing specify message from {original_sender_id} to {target}")
+                                    async for _ in self._stream_crew_member(
+                                        target_member,
+                                        message_text,
+                                        plan_id=None,
+                                        session_id=cm_session_id,
+                                    ):
+                                        pass
+                    else:
+                        # For public mode, route through producer flow (but producer shouldn't handle own messages)
+                        producer_agent = self._get_producer_crew_member()
+                        if producer_agent and producer_agent.config.name.lower() != original_sender_id.lower():
+                            logger.info(f"🔄 Routing public message from {original_sender_id} through producer")
+                            from agent.chat.agent_chat_message import AgentMessage
+                            cm_message = AgentMessage(
+                                sender_id=original_sender_id,
+                                sender_name=original_sender_id.capitalize(),
+                                structured_content=[TextContent(text=message_text)]
+                            )
+                            async for _ in self._handle_producer_flow(
+                                initial_prompt=cm_message,
+                                producer_agent=producer_agent,
+                                session_id=cm_session_id,
+                            ):
+                                pass
 
             # Yield the event for upstream
             try:
