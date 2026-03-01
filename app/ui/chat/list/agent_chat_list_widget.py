@@ -465,11 +465,16 @@ class QmlAgentChatListWidget(BaseWidget):
         Args:
             project_name: The new project name
         """
+        # Guard check - components may not be initialized if QML failed to load
+        if not hasattr(self, '_metadata_resolver') or self._metadata_resolver is None:
+            return
         self._metadata_resolver.load_crew_member_metadata()
         self._history_manager.on_project_switched()
 
     def refresh_crew_member_metadata(self) -> None:
         """Reload crew member metadata."""
+        if not hasattr(self, '_metadata_resolver') or self._metadata_resolver is None:
+            return
         self._metadata_resolver.load_crew_member_metadata()
 
     def sync_from_session(self, session) -> None:

@@ -240,6 +240,117 @@ class PlanContent(StructureContent):
 
 
 @dataclass
+class PlanUpdateContent(StructureContent):
+    """Plan update content for single task status changes.
+
+    This is a lightweight content type that only shows the updated task status,
+    not the entire plan. Used for plan_updated events to show incremental changes.
+    """
+    content_type: ContentType = ContentType.PLAN_UPDATE
+
+    # Plan reference
+    plan_id: str = ""
+
+    # Updated task info (single task)
+    task_id: str = ""
+    task_name: str = ""
+    task_status: str = "waiting"  # waiting, running, completed, failed, cancelled
+
+    # Crew member info for the task
+    crew_member: Optional[Dict[str, Any]] = None
+
+    # Previous status (for showing transition)
+    previous_status: Optional[str] = None
+
+    # Error message if failed
+    error_message: Optional[str] = None
+
+    def _get_data(self) -> Dict[str, Any]:
+        """Get data dict for QML rendering."""
+        data = {
+            "plan_id": self.plan_id,
+            "task_id": self.task_id,
+            "task_name": self.task_name,
+            "task_status": self.task_status,
+        }
+
+        if self.crew_member:
+            data["crew_member"] = self.crew_member
+
+        if self.previous_status:
+            data["previous_status"] = self.previous_status
+
+        if self.error_message:
+            data["error_message"] = self.error_message
+
+        return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'PlanUpdateContent':
+        """Create a PlanUpdateContent from a dictionary."""
+        data_dict = data.get("data", {})
+        return cls(
+            content_type=ContentType(data["content_type"]),
+            title=data.get("title"),
+            description=data.get("description"),
+            metadata=data.get("metadata"),
+            content_id=data.get("content_id"),
+            status=ContentStatus(data.get("status", "creating")),
+            parent_id=data.get("parent_id"),
+            plan_id=data_dict.get("plan_id", ""),
+            task_id=data_dict.get("task_id", ""),
+            task_name=data_dict.get("task_name", ""),
+            task_status=data_dict.get("task_status", "waiting"),
+            crew_member=data_dict.get("crew_member"),
+            previous_status=data_dict.get("previous_status"),
+            error_message=data_dict.get("error_message"),
+        )
+
+    @classmethod
+    def from_task(
+        cls,
+        task: 'PlanTask',
+        plan_id: str,
+        previous_status: Optional[str] = None,
+        **kwargs
+    ) -> 'PlanUpdateContent':
+        """Create a PlanUpdateContent from a PlanTask.
+
+        Args:
+            task: The PlanTask object that was updated
+            plan_id: The ID of the plan this task belongs to
+            previous_status: The previous status of the task (optional)
+            **kwargs: Additional arguments
+
+        Returns:
+            PlanUpdateContent instance with task update data
+        """
+        # Map task status to QML-compatible status
+        task_status = task.status.value if hasattr(task.status, 'value') else str(task.status)
+        qml_status = _TASK_STATUS_MAP.get(task_status, task_status)
+
+        # Build crew member info if available
+        crew_member = None
+        if hasattr(task, 'crew_member') and task.crew_member:
+            crew_member = {
+                "name": task.crew_member.config.name if hasattr(task.crew_member, 'config') else str(task.crew_member),
+                "icon": task.crew_member.config.icon if hasattr(task.crew_member, 'config') and hasattr(task.crew_member.config, 'icon') else "A",
+                "color": task.crew_member.config.color if hasattr(task.crew_member, 'config') and hasattr(task.crew_member.config, 'color') else "#5c5f66",
+            }
+
+        return cls(
+            plan_id=plan_id,
+            task_id=task.id,
+            task_name=task.name,
+            task_status=qml_status,
+            crew_member=crew_member,
+            previous_status=previous_status,
+            error_message=task.error_message,
+            **kwargs
+        )
+
+
+@dataclass
 class StepContent(StructureContent):
     """Step content within a plan."""
     content_type: ContentType = ContentType.STEP

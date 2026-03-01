@@ -244,11 +244,11 @@ class StreamEventHandler:
     def _handle_plan_event(self, event) -> None:
         """Handle plan_created and plan_updated events.
 
-        These events contain PlanContent that should be displayed in the chat list
-        as inline plan widgets, in addition to updating the plan panel widget.
+        For plan_created: Display full PlanContent with all tasks
+        For plan_updated: Display PlanUpdateContent with single task status change
 
         Args:
-            event: Plan event with PlanContent
+            event: Plan event with PlanContent or PlanUpdateContent
         """
         sender_id = getattr(event, "sender_id", "")
         if hasattr(event, "agent_name"):
@@ -257,13 +257,17 @@ class StreamEventHandler:
         if sender_id == "user":
             return
 
-        # Prepare plan content dict
+        # Prepare content dict
         content_dict = None
         if hasattr(event.content, 'to_dict') and callable(event.content.to_dict):
             content_dict = event.content.to_dict()
         else:
             logger.warning(f"Plan event has no valid content: {event.event_type}")
             return
+
+        # For plan_updated events, ensure content_type is plan_update
+        if event.event_type == "plan_updated":
+            content_dict["content_type"] = "plan_update"
 
         # Check if this content belongs to an active skill
         run_id = getattr(event, "run_id", "")

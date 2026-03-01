@@ -245,6 +245,7 @@ Item {
             case "file_attachment":
             case "file": return fileWidgetComponent
             case "plan": return widgetSupport === "full" ? planWidgetComponent : textWidgetComponent
+            case "plan_update": return widgetSupport === "full" ? planUpdateWidgetComponent : textWidgetComponent
             case "task_list":
             case "task": return widgetSupport === "full" ? taskWidgetComponent : textWidgetComponent
             case "step": return widgetSupport === "full" ? stepWidgetComponent : textWidgetComponent
@@ -685,6 +686,18 @@ Item {
             widgetColor: root.widgetColor
             planData: data.data || data
             mode: "inline"
+        }
+    }
+
+    // Plan update widget (single task status update)
+    Component {
+        id: planUpdateWidgetComponent
+
+        PlanUpdateWidget {
+            property var data: ({})
+            width: parent.width
+            widgetColor: root.widgetColor
+            updateData: data.data || data
         }
     }
 
