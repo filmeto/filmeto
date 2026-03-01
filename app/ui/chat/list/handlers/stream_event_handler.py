@@ -104,7 +104,7 @@ class StreamEventHandler:
             self._skill_manager.handle_tool_event(event)
         elif event.event_type in ["crew_member_typing", "crew_member_typing_end"]:
             self._handle_typing_event(event)
-        elif event.event_type in ["plan_created", "plan_updated"]:
+        elif event.event_type in ["plan_created", "plan_updated", "task_status_updated"]:
             self._handle_plan_event(event)
         elif hasattr(event, "content") and event.content:
             self._handle_content_event(event)
@@ -242,14 +242,16 @@ class StreamEventHandler:
                 logger.warning(f"[typing_end] Item not found for message_id: {message_id}")
 
     def _handle_plan_event(self, event) -> None:
-        """Handle plan_created and plan_updated events.
+        """Handle plan_created, plan_updated, and task_status_updated events.
 
-        For plan_created: Display full PlanContent with all tasks
-        For plan_updated: Display PlanUpdateContent with single task status change
+        For plan_created/plan_updated with PlanContent: Display full PlanWidget
+        For task_status_updated with PlanUpdateContent: Display lightweight PlanUpdateWidget
 
         Args:
             event: Plan event with PlanContent or PlanUpdateContent
         """
+        from agent.chat.content import PlanUpdateContent
+
         sender_id = getattr(event, "sender_id", "")
         if hasattr(event, "agent_name"):
             sender_id = getattr(event, "agent_name", "").lower()
@@ -265,9 +267,17 @@ class StreamEventHandler:
             logger.warning(f"Plan event has no valid content: {event.event_type}")
             return
 
-        # For plan_updated events, ensure content_type is plan_update
-        if event.event_type == "plan_updated":
+        # Check if the content is PlanUpdateContent (single task update)
+        # PlanUpdateContent should be rendered with PlanUpdateWidget
+        # PlanContent should be rendered with PlanWidget
+        if isinstance(event.content, PlanUpdateContent):
+            # Content is already PlanUpdateContent, use as-is
+            pass
+        elif event.event_type == "task_status_updated":
+            # Event type indicates task status update, ensure content_type is plan_update
             content_dict["content_type"] = "plan_update"
+        # For plan_created/plan_updated with PlanContent, keep content_type as "plan"
+        # This will render the full PlanWidget
 
         # Check if this content belongs to an active skill
         run_id = getattr(event, "run_id", "")
