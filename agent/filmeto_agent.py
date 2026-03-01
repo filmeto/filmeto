@@ -1111,20 +1111,18 @@ class FilmetoAgent:
                 # Check for PAUSED plan that can be resumed
                 # This allows automatic resumption when user sends a message after clicking "Resume"
                 if self.plan_service:
-                    resumable = self.plan_service.get_resumable_plan(project_name)
+                    project_name = self._resolve_project_name()
+                    resumable = self.plan_service.get_resumable_plan(project_name) if project_name else None
                     if resumable:
                         plan, instance = resumable
                         logger.info(f"📋 Found resumable plan: {plan.id}, instance: {instance.instance_id}")
 
                         # Resume the plan execution
-                        async for event in self._execute_plan_tasks(
+                        async for _ in self._execute_plan_tasks(
                             plan=plan,
                             session_id=session_id,
                         ):
-                            try:
-                                yield event
-                            except Exception as e:
-                                logger.error(f"❌ Exception while resuming plan execution", exc_info=True)
+                            pass
                         return
 
                 # producer_start event removed - no longer needed
