@@ -18,7 +18,6 @@ class AgentEventType(str, Enum):
     LLM_OUTPUT = "llm_output"           # LLM原始输出
 
     # === Crew成员相关 ===
-    CREW_MEMBER_START = "crew_member_start"       # Crew成员开始处理任务
     CREW_MEMBER_TYPING = "crew_member_typing"     # Crew成员正在输入（反馈给用户）
     CREW_MEMBER_TYPING_END = "crew_member_typing_end"  # Crew成员输入结束
     CREW_MEMBER_MESSAGE = "crew_member_message"   # Crew成员发送消息(public/specify模式)
@@ -76,11 +75,8 @@ class AgentEventType(str, Enum):
     def is_crew_member_event(cls, event_type: str) -> bool:
         """Check if event type is crew member-related."""
         return event_type in {
-            cls.CREW_MEMBER_START.value,
             cls.CREW_MEMBER_TYPING.value,
             cls.CREW_MEMBER_TYPING_END.value,
-            cls.CREW_MEMBER_THINKING.value,
-            cls.CREW_MEMBER_END.value,
             cls.CREW_MEMBER_MESSAGE.value,
             cls.CREW_MEMBER_PRIVATE_MESSAGE.value
         }
