@@ -43,9 +43,6 @@ class AgentEventType(str, Enum):
     PLAN_TASK_UPDATED = "plan_task_updated"  # PlanTask状态更新
 
     # === 状态相关 ===
-    STEP_START = "step_start"           # 当前步骤开始
-    STEP_END = "step_end"               # 当前步骤结束
-    STATUS_CHANGE = "status_change"     # 状态变更
     TODO_WRITE = "todo_write"           # TODO写入/更新
 
     # === 终止相关 ===
