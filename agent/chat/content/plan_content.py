@@ -255,9 +255,13 @@ class PlanTaskContent(StructureContent):
     task_id: str = ""
     task_name: str = ""
     task_status: str = "waiting"  # waiting, running, completed, failed, cancelled
+    description: Optional[str] = None  # Task description
 
     # Crew member info for the task
     crew_member: Optional[Dict[str, Any]] = None
+
+    # Task dependencies
+    needs: Optional[List[str]] = None
 
     # Previous status (for showing transition)
     previous_status: Optional[str] = None
@@ -274,8 +278,14 @@ class PlanTaskContent(StructureContent):
             "task_status": self.task_status,
         }
 
+        if self.description:
+            data["description"] = self.description
+
         if self.crew_member:
             data["crew_member"] = self.crew_member
+
+        if self.needs:
+            data["needs"] = self.needs
 
         if self.previous_status:
             data["previous_status"] = self.previous_status
@@ -292,7 +302,7 @@ class PlanTaskContent(StructureContent):
         return cls(
             content_type=ContentType(data["content_type"]),
             title=data.get("title"),
-            description=data.get("description"),
+            description=data_dict.get("description") or data.get("description"),
             metadata=data.get("metadata"),
             content_id=data.get("content_id"),
             status=ContentStatus(data.get("status", "creating")),
@@ -302,6 +312,7 @@ class PlanTaskContent(StructureContent):
             task_name=data_dict.get("task_name", ""),
             task_status=data_dict.get("task_status", "waiting"),
             crew_member=data_dict.get("crew_member"),
+            needs=data_dict.get("needs"),
             previous_status=data_dict.get("previous_status"),
             error_message=data_dict.get("error_message"),
         )
@@ -343,7 +354,9 @@ class PlanTaskContent(StructureContent):
             task_id=task.id,
             task_name=task.name,
             task_status=qml_status,
+            description=task.description,
             crew_member=crew_member,
+            needs=task.needs,
             previous_status=previous_status,
             error_message=task.error_message,
             **kwargs
