@@ -1136,14 +1136,6 @@ class FilmetoAgent:
             target_crew_member = mentioned_crew_member or mentioned_agent_by_title
 
             if target_crew_member and target_crew_member.config.name.lower() != _PRODUCER_NAME:
-                await self._emit_system_event(
-                    "crew_member_start",
-                    session_id,
-                    sender_id=target_crew_member.config.name,
-                    sender_name=target_crew_member.config.name,
-                    crew_member_name=target_crew_member.config.name,
-                    message=message,
-                )
                 async for _ in self._stream_crew_member(
                     target_crew_member,
                     message,
