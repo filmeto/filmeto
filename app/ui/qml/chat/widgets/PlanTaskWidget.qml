@@ -1,7 +1,7 @@
 // PlanTaskWidget.qml - Lightweight widget for PlanTask status updates
 //
-// This widget displays a single task status change,
-// without showing the entire plan structure.
+// This widget displays a single task status change using TaskItemDelegate.
+// It is shown in the Thinking section for plan task updates.
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
@@ -16,7 +16,7 @@ Rectangle {
     property color widgetColor: "#4a90e2"
     property color textColor: "#e1e1e1"
     property color dimTextColor: "#9a9a9a"
-    readonly property color bgColor: "#2a2a2a"
+    readonly property color bgColor: "#252525"
     readonly property color borderColor: Qt.rgba(widgetColor.r, widgetColor.g, widgetColor.b, 0.3)
 
     color: bgColor
@@ -24,8 +24,8 @@ Rectangle {
     border.color: borderColor
     border.width: 1
 
-    implicitWidth: parent ? parent.width : 0
-    implicitHeight: contentColumn.implicitHeight + 16
+    implicitWidth: parent ? parent.width : 200
+    implicitHeight: taskDelegate.height + 16
     Layout.fillWidth: true
 
     // Status colors
@@ -34,131 +34,47 @@ Rectangle {
     property color completedColor: "#2ecc71"
     property color failedColor: "#e74c3c"
 
-    // Helper functions
-    function getStatusColor(status) {
-        switch (status) {
-            case "running": return runningColor
-            case "completed": return completedColor
-            case "failed":
-            case "cancelled": return failedColor
-            default: return waitingColor
-        }
-    }
+    // Previous and current status
+    readonly property string previousStatus: updateData.previous_status || ""
+    readonly property string currentStatus: updateData.task_status || "waiting"
 
-    function getStatusIcon(status) {
-        switch (status) {
-            case "running": return "R"
-            case "completed": return "S"
-            case "failed":
-            case "cancelled": return "F"
-            default: return "W"
-        }
-    }
+    // Build task data for TaskItemDelegate
+    readonly property var taskData: ({
+        id: updateData.task_id || "",
+        name: updateData.task_name || qsTr("Task Updated"),
+        status: currentStatus,
+        description: updateData.description || "",
+        title: updateData.crew_member ? updateData.crew_member.name : "",
+        crew_member: updateData.crew_member || null,
+        needs: updateData.needs || [],
+        error_message: updateData.error_message || ""
+    })
 
-    function getStatusEmoji(status) {
-        switch (status) {
-            case "running": return "⏳"
-            case "completed": return "✅"
-            case "failed":
-            case "cancelled": return "❌"
-            default: return "⏸️"
-        }
-    }
-
-    ColumnLayout {
-        id: contentColumn
+    // Task Item Delegate - shows start/end status and description
+    TaskItemDelegate {
+        id: taskDelegate
         anchors {
-            fill: parent
+            left: parent.left
+            right: parent.right
+            top: parent.top
             margins: 8
         }
-        spacing: 8
 
-        // Task status row
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 8
+        taskData: root.taskData
+        widgetColor: root.widgetColor
+        bgColor: "#2b2d30"
+        textColor: root.textColor
+        dimTextColor: root.dimTextColor
+        runningColor: root.runningColor
+        waitingColor: root.waitingColor
+        completedColor: root.completedColor
+        failedColor: root.failedColor
 
-            // Status icon
-            Rectangle {
-                width: 20
-                height: 20
-                radius: 10
-                color: getStatusColor(updateData.task_status)
+        // Show status transition (start -> end)
+        showStatusTransition: true
+        previousStatus: root.previousStatus
 
-                Text {
-                    anchors.centerIn: parent
-                    text: getStatusIcon(updateData.task_status)
-                    color: "white"
-                    font.pixelSize: 10
-                    font.bold: true
-                }
-            }
-
-            // Task info
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 4
-
-                // Task name
-                Text {
-                    id: taskNameText
-                    Layout.fillWidth: true
-                    text: updateData.task_name || "Task Updated"
-                    color: textColor
-                    font.pixelSize: 13
-                    elide: Text.ElideRight
-                    maximumLineCount: 1
-                    wrapMode: Text.NoWrap
-                }
-
-                // Status transition
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 4
-
-                    Text {
-                        id: statusText
-                        text: {
-                            var prev = updateData.previous_status
-                            var curr = updateData.task_status
-                            if (prev && prev !== curr) {
-                                return prev + " → " + curr
-                            } else {
-                                return curr || "unknown"
-                            }
-                        }
-                        color: dimTextColor
-                        font.pixelSize: 11
-                    }
-
-                    // Crew member (if available)
-                    RowLayout {
-                        visible: updateData.crew_member !== undefined && updateData.crew_member !== null
-                        spacing: 4
-
-                        Rectangle {
-                            width: 16
-                            height: 16
-                            radius: 3
-                            color: (updateData.crew_member && updateData.crew_member.color) || "#5c5f66"
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: (updateData.crew_member && updateData.crew_member.icon) || "A"
-                                color: "white"
-                                font.pixelSize: 9
-                                font.bold: true
-                            }
-                        }
-
-                        Text {
-                            text: (updateData.crew_member && updateData.crew_member.name) || "Unknown"
-                            color: dimTextColor
-                            font.pixelSize: 11
-                        }
-                    }
-                }
-            }
-        }
+        // Hide crew member info in PlanTaskWidget
+        showCrewMember: false
     }
 }

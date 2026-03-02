@@ -423,200 +423,29 @@ Rectangle {
                     Repeater {
                         model: tasksModel
 
-                        delegate: Rectangle {
+                        delegate: TaskItemDelegate {
                             id: taskDelegate
                             width: detailsContent.width
-                            height: taskContentColumn.height + 16
-                            color: "#2b2d30"
-                            radius: 4
-
-                            // Task content column
-                            Column {
-                                id: taskContentColumn
-                                anchors {
-                                    left: parent.left
-                                    right: parent.right
-                                    top: parent.top
-                                    margins: 8
-                                }
-                                spacing: 6
-
-                                // Row 1: Status + Task name
-                                RowLayout {
-                                    width: parent.width
-                                    spacing: 6
-
-                                    // Status icon
-                                    Rectangle {
-                                        width: 16
-                                        height: 16
-                                        radius: 8
-                                        color: getStatusColor(modelData.status)
-
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: getStatusIcon(modelData.status)
-                                            color: "white"
-                                            font.pixelSize: 9
-                                            font.bold: true
-                                        }
-                                    }
-
-                                    // Task name
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: modelData.name || "Untitled Task"
-                                        color: textColor
-                                        font.pixelSize: 13
-                                        font.bold: true
-                                        elide: Text.ElideRight
-                                        maximumLineCount: 1
-                                        wrapMode: Text.NoWrap
-                                    }
-
-                                    // Task ID badge
-                                    Rectangle {
-                                        visible: modelData.id && modelData.id.length > 0
-                                        width: taskIdText.width + 8
-                                        height: 16
-                                        radius: 3
-                                        color: "#3a3a3a"
-
-                                        Text {
-                                            id: taskIdText
-                                            anchors.centerIn: parent
-                                            text: modelData.id || ""
-                                            color: dimTextColor
-                                            font.pixelSize: 9
-                                            font.family: "monospace"
-                                        }
-                                    }
-                                }
-
-                                // Row 2: Task description (if available)
-                                Text {
-                                    visible: modelData.description && modelData.description.length > 0
-                                    width: parent.width
-                                    text: modelData.description || ""
-                                    color: dimTextColor
-                                    font.pixelSize: 11
-                                    wrapMode: Text.WordWrap
-                                    maximumLineCount: 2
-                                    elide: Text.ElideRight
-                                    leftPadding: 22
-                                }
-
-                                // Row 3: Crew member + Dependencies
-                                RowLayout {
-                                    width: parent.width
-                                    spacing: 6
-
-                                    // Crew avatar + name
-                                    Row {
-                                        spacing: 4
-
-                                        Rectangle {
-                                            width: 18
-                                            height: 18
-                                            radius: 4
-                                            color: {
-                                                var cm = modelData.crew_member
-                                                return cm ? cm.color : "#5c5f66"
-                                            }
-
-                                            Text {
-                                                anchors.centerIn: parent
-                                                text: {
-                                                    var cm = modelData.crew_member
-                                                    return cm ? (cm.icon || "A") : "A"
-                                                }
-                                                color: "white"
-                                                font.pixelSize: 10
-                                                font.bold: true
-                                            }
-                                        }
-
-                                        Text {
-                                            text: {
-                                                var cm = modelData.crew_member
-                                                if (cm && cm.name) return cm.name
-                                                return modelData.title || "Unknown"
-                                            }
-                                            color: dimTextColor
-                                            font.pixelSize: 11
-                                            anchors.verticalCenter: parent.verticalCenter
-                                        }
-                                    }
-
-                                    // Separator
-                                    Rectangle {
-                                        visible: modelData.needs && modelData.needs.length > 0
-                                        width: 1
-                                        height: 14
-                                        color: "#4a4a4a"
-                                    }
-
-                                    // Dependencies
-                                    Row {
-                                        visible: modelData.needs && modelData.needs.length > 0
-                                        spacing: 4
-
-                                        Text {
-                                            text: qsTr("Depends on:")
-                                            color: "#777"
-                                            font.pixelSize: 10
-                                            anchors.verticalCenter: parent.verticalCenter
-                                        }
-
-                                        Repeater {
-                                            model: modelData.needs || []
-
-                                            Rectangle {
-                                                width: depText.width + 6
-                                                height: 14
-                                                radius: 2
-                                                color: "#3a3a3a"
-
-                                                Text {
-                                                    id: depText
-                                                    anchors.centerIn: parent
-                                                    text: modelData
-                                                    color: "#aaa"
-                                                    font.pixelSize: 9
-                                                    font.family: "monospace"
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    Item { Layout.fillWidth: true }
-                                }
-
-                                // Row 4: Error message (if task failed)
-                                Rectangle {
-                                    visible: modelData.status === "failed" && modelData.error_message && modelData.error_message.length > 0
-                                    width: parent.width
-                                    height: errorText.height + 8
-                                    radius: 3
-                                    color: "#4a2020"
-
-                                    Text {
-                                        id: errorText
-                                        anchors {
-                                            left: parent.left
-                                            right: parent.right
-                                            top: parent.top
-                                            margins: 4
-                                        }
-                                        text: qsTr("Error:") + " " + (modelData.error_message || qsTr("Unknown error"))
-                                        color: "#ff6b6b"
-                                        font.pixelSize: 10
-                                        wrapMode: Text.WordWrap
-                                        maximumLineCount: 2
-                                        elide: Text.ElideRight
-                                    }
-                                }
-                            }
+                            taskData: ({
+                                id: modelData.id || "",
+                                name: modelData.name || modelData.text || qsTr("Untitled Task"),
+                                status: modelData.status || "waiting",
+                                description: modelData.description || "",
+                                title: modelData.title || "",
+                                crew_member: modelData.crew_member || null,
+                                needs: modelData.needs || [],
+                                error_message: modelData.error_message || ""
+                            })
+                            widgetColor: root.widgetColor
+                            bgColor: "#2b2d30"
+                            textColor: root.textColor
+                            dimTextColor: root.dimTextColor
+                            runningColor: root.runningColor
+                            waitingColor: root.waitingColor
+                            completedColor: root.completedColor
+                            failedColor: root.failedColor
+                            // PlanWidget only shows terminal status (no transition)
+                            showStatusTransition: false
                         }
                     }
                 }
