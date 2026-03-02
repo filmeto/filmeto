@@ -200,7 +200,7 @@ class PlanTool(BaseTool):
             content=content
         )
 
-    def _create_task_status_event(
+    def _create_plan_task_event(
         self,
         event_type: str,
         plan_id: str,
@@ -212,10 +212,10 @@ class PlanTool(BaseTool):
         run_id: str,
         step_id: int
     ) -> AgentEvent:
-        """Create a task status update AgentEvent with PlanUpdateContent.
+        """Create a PlanTask status update AgentEvent with PlanUpdateContent.
 
         Args:
-            event_type: Type of event (task_status_updated)
+            event_type: Type of event (plan_task_updated)
             plan_id: The plan ID
             task: The PlanTask object that was updated
             previous_status: The previous status of the task
@@ -588,17 +588,8 @@ class PlanTool(BaseTool):
             if plan:
                 result = self._convert_plan_to_dict(plan)
 
-                # Send PLAN event with PlanContent for UI rendering
-                yield self._create_plan_event(
-                    event_type=AgentEventType.PLAN_UPDATED.value,
-                    plan=plan,
-                    project_name=project_name,
-                    react_type=react_type,
-                    run_id=run_id,
-                    step_id=step_id,
-                    operation="get"
-                )
-
+                # get operation does not emit PLAN_UPDATED event
+                # Only return the result via tool_end
                 yield self._create_event(
                     "tool_end",
                     project_name,

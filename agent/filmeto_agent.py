@@ -11,7 +11,7 @@ from agent.chat.agent_chat_message import AgentMessage
 from agent.chat.content import (
     StructureContent, TextContent, ThinkingContent, ToolCallContent,
     ToolResponseContent, ProgressContent, MetadataContent, ErrorContent,
-    LlmOutputContent, TodoWriteContent, PlanContent, create_content
+    LlmOutputContent, TodoWriteContent, PlanContent, PlanUpdateContent, create_content
 )
 from agent.chat.agent_chat_types import ContentType
 from agent.chat.agent_chat_signals import AgentChatSignals
@@ -548,6 +548,54 @@ class FilmetoAgent:
             structured_content=[plan_content],
         )
         logger.info(f"📋 Sending plan update: id={plan.id}, message_id={message_id[:8]}..., operation={operation}")
+        await self.signals.send_agent_message(msg)
+
+    async def _emit_plan_task_update(
+        self,
+        task: PlanTask,
+        plan_id: str,
+        session_id: str,
+        sender_id: str,
+        sender_name: str,
+        message_id: str,
+        previous_status: Optional[str] = None,
+    ) -> None:
+        """Emit a plan task update event with PlanUpdateContent.
+
+        This sends a lightweight update for a single task status change,
+        as opposed to _emit_plan_update which sends the full plan.
+
+        Args:
+            task: The PlanTask object that was updated
+            plan_id: The ID of the plan this task belongs to
+            session_id: Session identifier
+            sender_id: ID of the sender
+            sender_name: Display name of the sender
+            message_id: Message ID for deduplication
+            previous_status: The previous status of the task (optional)
+        """
+        # Create PlanUpdateContent from the task
+        plan_update_content = PlanUpdateContent.from_task(
+            task=task,
+            plan_id=plan_id,
+            previous_status=previous_status
+        )
+
+        meta = {
+            "event_type": "plan_task_updated",
+            "session_id": session_id,
+            "plan_id": plan_id,
+            "task_id": task.id,
+        }
+
+        msg = AgentMessage(
+            sender_id=sender_id,
+            sender_name=sender_name,
+            metadata=meta,
+            message_id=message_id,
+            structured_content=[plan_update_content],
+        )
+        logger.info(f"📋 Sending plan task update: plan_id={plan_id}, task_id={task.id}, status={task.status.value}")
         await self.signals.send_agent_message(msg)
 
     def _build_producer_message(self, user_message: str, plan_id: str, retry: bool = False) -> str:
