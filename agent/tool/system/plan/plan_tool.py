@@ -200,55 +200,6 @@ class PlanTool(BaseTool):
             content=content
         )
 
-    def _create_plan_task_event(
-        self,
-        event_type: str,
-        plan_id: str,
-        task: 'PlanTask',
-        previous_status: Optional[str],
-        crew_member: Optional[Dict[str, Any]],
-        project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
-    ) -> AgentEvent:
-        """Create a PlanTask status update AgentEvent with PlanUpdateContent.
-
-        Args:
-            event_type: Type of event (plan_task_updated)
-            plan_id: The plan ID
-            task: The PlanTask object that was updated
-            previous_status: The previous status of the task
-            crew_member: Crew member info dict with name, icon, color
-            project_name: Project name for event tracking
-            react_type: React type for event tracking
-            run_id: Run ID for event tracking
-            step_id: Step ID for event tracking
-
-        Returns:
-            AgentEvent with PlanUpdateContent
-        """
-        from agent.chat.content import PlanUpdateContent
-
-        content = PlanUpdateContent.from_task(
-            task=task,
-            plan_id=plan_id,
-            previous_status=previous_status
-        )
-
-        # Override crew_member if provided
-        if crew_member:
-            content.crew_member = crew_member
-
-        return AgentEvent.create(
-            event_type=event_type,
-            project_name=project_name,
-            react_type=react_type,
-            run_id=run_id,
-            step_id=step_id,
-            content=content
-        )
-
     def _convert_task_to_dict(self, task: PlanTask) -> Dict[str, Any]:
         """Convert a PlanTask object to a dictionary."""
         return {

@@ -240,13 +240,13 @@ class PlanContent(StructureContent):
 
 
 @dataclass
-class PlanUpdateContent(StructureContent):
-    """Plan update content for single task status changes.
+class PlanTaskContent(StructureContent):
+    """PlanTask content for single task status changes.
 
     This is a lightweight content type that only shows the updated task status,
-    not the entire plan. Used for plan_updated events to show incremental changes.
+    not the entire plan. Used for plan_task_updated events.
     """
-    content_type: ContentType = ContentType.PLAN_UPDATE
+    content_type: ContentType = ContentType.PLAN_TASK
 
     # Plan reference
     plan_id: str = ""
@@ -286,8 +286,8 @@ class PlanUpdateContent(StructureContent):
         return data
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'PlanUpdateContent':
-        """Create a PlanUpdateContent from a dictionary."""
+    def from_dict(cls, data: Dict[str, Any]) -> 'PlanTaskContent':
+        """Create a PlanTaskContent from a dictionary."""
         data_dict = data.get("data", {})
         return cls(
             content_type=ContentType(data["content_type"]),
@@ -313,8 +313,8 @@ class PlanUpdateContent(StructureContent):
         plan_id: str,
         previous_status: Optional[str] = None,
         **kwargs
-    ) -> 'PlanUpdateContent':
-        """Create a PlanUpdateContent from a PlanTask.
+    ) -> 'PlanTaskContent':
+        """Create a PlanTaskContent from a PlanTask.
 
         Args:
             task: The PlanTask object that was updated
@@ -323,7 +323,7 @@ class PlanUpdateContent(StructureContent):
             **kwargs: Additional arguments
 
         Returns:
-            PlanUpdateContent instance with task update data
+            PlanTaskContent instance with task update data
         """
         # Map task status to QML-compatible status
         task_status = task.status.value if hasattr(task.status, 'value') else str(task.status)
