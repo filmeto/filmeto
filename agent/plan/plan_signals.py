@@ -26,8 +26,8 @@ class PlanSignalManager(QObject):
     # Signal emitted when a plan instance status is updated
     plan_instance_status_updated = Signal(str, str, str)  # project_name, plan_id, instance_id
     
-    # Signal emitted when a task status is updated
-    task_status_updated = Signal(str, str, str, str)  # project_name, plan_id, instance_id, task_id
+    # Signal emitted when a PlanTask status is updated
+    plan_task_updated = Signal(str, str, str, str)  # project_name, plan_id, instance_id, task_id
     
     # Singleton instance
     _instance = None

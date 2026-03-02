@@ -40,10 +40,7 @@ class AgentEventType(str, Enum):
     # === 计划相关 ===
     PLAN_CREATED = "plan_created"       # 计划创建完成
     PLAN_UPDATED = "plan_updated"       # 计划更新
-    PLAN_STEP_START = "plan_step_start" # 计划步骤开始
-    PLAN_STEP_END = "plan_step_end"     # 计划步骤完成
-    PLAN_STEP_FAILED = "plan_step_failed" # 计划步骤失败
-    TASK_STATUS_UPDATED = "task_status_updated"  # 单个任务状态更新
+    PLAN_TASK_UPDATED = "plan_task_updated"  # PlanTask状态更新
 
     # === 状态相关 ===
     STEP_START = "step_start"           # 当前步骤开始
@@ -100,10 +97,7 @@ class AgentEventType(str, Enum):
         return event_type in {
             cls.PLAN_CREATED.value,
             cls.PLAN_UPDATED.value,
-            cls.PLAN_STEP_START.value,
-            cls.PLAN_STEP_END.value,
-            cls.PLAN_STEP_FAILED.value,
-            cls.TASK_STATUS_UPDATED.value
+            cls.PLAN_TASK_UPDATED.value
         }
 
     @classmethod

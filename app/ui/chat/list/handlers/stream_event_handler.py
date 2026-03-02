@@ -104,7 +104,7 @@ class StreamEventHandler:
             self._skill_manager.handle_tool_event(event)
         elif event.event_type in ["crew_member_typing", "crew_member_typing_end"]:
             self._handle_typing_event(event)
-        elif event.event_type in ["plan_created", "plan_updated", "task_status_updated"]:
+        elif event.event_type in ["plan_created", "plan_updated", "plan_task_updated"]:
             self._handle_plan_event(event)
         elif hasattr(event, "content") and event.content:
             self._handle_content_event(event)
@@ -242,10 +242,10 @@ class StreamEventHandler:
                 logger.warning(f"[typing_end] Item not found for message_id: {message_id}")
 
     def _handle_plan_event(self, event) -> None:
-        """Handle plan_created, plan_updated, and task_status_updated events.
+        """Handle plan_created, plan_updated, and plan_task_updated events.
 
         For plan_created/plan_updated with PlanContent: Display full PlanWidget
-        For task_status_updated with PlanUpdateContent: Display lightweight PlanUpdateWidget
+        For plan_task_updated with PlanUpdateContent: Display lightweight PlanUpdateWidget
 
         Args:
             event: Plan event with PlanContent or PlanUpdateContent
@@ -273,8 +273,8 @@ class StreamEventHandler:
         if isinstance(event.content, PlanUpdateContent):
             # Content is already PlanUpdateContent, use as-is
             pass
-        elif event.event_type == "task_status_updated":
-            # Event type indicates task status update, ensure content_type is plan_update
+        elif event.event_type == "plan_task_updated":
+            # Event type indicates PlanTask status update, ensure content_type is plan_update
             content_dict["content_type"] = "plan_update"
         # For plan_created/plan_updated with PlanContent, keep content_type as "plan"
         # This will render the full PlanWidget

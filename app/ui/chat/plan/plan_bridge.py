@@ -96,7 +96,7 @@ class PlanBridge(QObject):
         plan_signal_manager.plan_deleted.connect(self._on_plan_deleted)
         plan_signal_manager.plan_instance_created.connect(self._on_plan_instance_created)
         plan_signal_manager.plan_instance_status_updated.connect(self._on_plan_instance_status_updated)
-        plan_signal_manager.task_status_updated.connect(self._on_task_status_updated)
+        plan_signal_manager.plan_task_updated.connect(self._on_plan_task_updated)
 
     def _update_project_name(self):
         """Update the current project name from workspace."""
@@ -200,8 +200,8 @@ class PlanBridge(QObject):
             return
         self._schedule_refresh()
 
-    def _on_task_status_updated(self, project_name: str, plan_id: str, instance_id: str, task_id: str):
-        """Handle task status updated signal with incremental update."""
+    def _on_plan_task_updated(self, project_name: str, plan_id: str, instance_id: str, task_id: str):
+        """Handle PlanTask status updated signal with incremental update."""
         if project_name != self._project_name:
             return
 

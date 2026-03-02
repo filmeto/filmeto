@@ -210,8 +210,8 @@ class PlanService:
         # Save the updated instance
         self._save_plan_instance(plan_instance)
 
-        # Emit signal for task status update
-        plan_signal_manager.task_status_updated.emit(
+        # Emit signal for PlanTask status update
+        plan_signal_manager.plan_task_updated.emit(
             plan_instance.project_name,
             plan_instance.plan_id,
             plan_instance.instance_id,
