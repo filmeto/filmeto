@@ -11,7 +11,7 @@ from agent.chat.agent_chat_message import AgentMessage
 from agent.chat.content import (
     StructureContent, TextContent, ThinkingContent, ToolCallContent,
     ToolResponseContent, ProgressContent, MetadataContent, ErrorContent,
-    LlmOutputContent, TodoWriteContent, PlanContent, PlanUpdateContent, create_content
+    LlmOutputContent, TodoWriteContent, PlanContent, PlanTaskContent, create_content
 )
 from agent.chat.agent_chat_types import ContentType
 from agent.chat.agent_chat_signals import AgentChatSignals
@@ -535,7 +535,7 @@ class FilmetoAgent:
         plan_content = PlanContent.from_plan(plan, operation=operation)
 
         meta = {
-            "event_type": "plan_update",
+            "event_type": "plan_updated",
             "session_id": session_id,
             "plan_id": plan.id,
         }
@@ -560,7 +560,7 @@ class FilmetoAgent:
         message_id: str,
         previous_status: Optional[str] = None,
     ) -> None:
-        """Emit a plan task update event with PlanUpdateContent.
+        """Emit a plan task update event with PlanTaskContent.
 
         This sends a lightweight update for a single task status change,
         as opposed to _emit_plan_update which sends the full plan.
@@ -574,8 +574,8 @@ class FilmetoAgent:
             message_id: Message ID for deduplication
             previous_status: The previous status of the task (optional)
         """
-        # Create PlanUpdateContent from the task
-        plan_update_content = PlanUpdateContent.from_task(
+        # Create PlanTaskContent from the task
+        plan_task_content = PlanTaskContent.from_task(
             task=task,
             plan_id=plan_id,
             previous_status=previous_status
@@ -593,7 +593,7 @@ class FilmetoAgent:
             sender_name=sender_name,
             metadata=meta,
             message_id=message_id,
-            structured_content=[plan_update_content],
+            structured_content=[plan_task_content],
         )
         logger.info(f"📋 Sending plan task update: plan_id={plan_id}, task_id={task.id}, status={task.status.value}")
         await self.signals.send_agent_message(msg)
@@ -1309,11 +1309,30 @@ class FilmetoAgent:
                     break
 
                 for task in ready_tasks:
+                    previous_status = task.status.value
                     self.plan_service.mark_task_running(plan_instance, task.id)
+
+                    # Get updated task from plan_instance after status change
+                    updated_task = next((t for t in plan_instance.tasks if t.id == task.id), None)
+
                     target_agent = self._crew_member_lookup.get(task.title.lower())
                     if not target_agent:
                         error_message = f"Crew member '{task.title}' not found for task {task.id}."
                         self.plan_service.mark_task_failed(plan_instance, task.id, error_message)
+
+                        # Get updated task after failure and emit PLAN_TASK_UPDATED
+                        failed_task = next((t for t in plan_instance.tasks if t.id == task.id), None)
+                        if failed_task:
+                            await self._emit_plan_task_update(
+                                task=failed_task,
+                                plan_id=plan.id,
+                                session_id=session_id,
+                                sender_id="system",
+                                sender_name="System",
+                                message_id=str(uuid.uuid4()),
+                                previous_status=previous_status,
+                            )
+
                         async for event in self._stream_error_message(
                             error_message,
                             session_id,
@@ -1327,16 +1346,16 @@ class FilmetoAgent:
                     # Generate message_id for this task's crew member messages
                     task_message_id = str(uuid.uuid4())
 
-                    # Reload plan to get current state and emit plan_update with PlanContent
-                    current_plan = self.plan_service.load_plan(plan.project_name, plan.id)
-                    if current_plan:
-                        await self._emit_plan_update(
-                            plan=current_plan,
+                    # Emit PLAN_TASK_UPDATED for task running status
+                    if updated_task:
+                        await self._emit_plan_task_update(
+                            task=updated_task,
+                            plan_id=plan.id,
                             session_id=session_id,
                             sender_id=target_agent.config.name,
                             sender_name=target_agent.config.name,
                             message_id=task_message_id,
-                            operation="update",
+                            previous_status=previous_status,
                         )
 
                     # First, emit a text event showing the task content from crew member's perspective
@@ -1369,18 +1388,20 @@ class FilmetoAgent:
                         except Exception as e:
                             logger.error(f"❌ Exception in _execute_plan_tasks while yielding task event", exc_info=True)
 
+                    previous_status = updated_task.status.value if updated_task else TaskStatus.RUNNING.value
                     self.plan_service.mark_task_completed(plan_instance, task.id)
 
-                    # Reload plan to get updated state and emit plan_update with PlanContent
-                    updated_plan_for_msg = self.plan_service.load_plan(plan.project_name, plan.id)
-                    if updated_plan_for_msg:
-                        await self._emit_plan_update(
-                            plan=updated_plan_for_msg,
+                    # Get updated task after completion and emit PLAN_TASK_UPDATED
+                    completed_task = next((t for t in plan_instance.tasks if t.id == task.id), None)
+                    if completed_task:
+                        await self._emit_plan_task_update(
+                            task=completed_task,
+                            plan_id=plan.id,
                             session_id=session_id,
                             sender_id=target_agent.config.name,
                             sender_name=target_agent.config.name,
                             message_id=task_message_id,
-                            operation="update",
+                            previous_status=previous_status,
                         )
 
                 updated_plan = self.plan_service.load_plan(plan.project_name, plan.id)

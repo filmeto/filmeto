@@ -1,4 +1,4 @@
-// PlanUpdateWidget.qml - Lightweight widget for single task status updates
+// PlanTaskWidget.qml - Lightweight widget for PlanTask status updates
 //
 // This widget displays a single task status change,
 // without showing the entire plan structure.

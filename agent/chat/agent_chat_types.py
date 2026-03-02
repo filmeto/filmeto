@@ -36,7 +36,7 @@ class ContentType(Enum):
 
     # === 任务和计划 ===
     PLAN = "plan"
-    PLAN_UPDATE = "plan_update"  # 单个任务状态更新
+    PLAN_TASK = "plan_task"  # PlanTask状态更新
     STEP = "step"
     TASK_LIST = "task_list"
     SKILL = "skill"
