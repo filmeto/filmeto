@@ -16,12 +16,17 @@ Rectangle {
     property color widgetColor: "#4a90e2"
     property color textColor: "#e1e1e1"
     property color dimTextColor: "#9a9a9a"
-    property color bgColor: "#252525"
-    property color borderColor: "#3a3a3a"
+    readonly property color bgColor: "#2a2a2a"
+    readonly property color borderColor: Qt.rgba(widgetColor.r, widgetColor.g, widgetColor.b, 0.3)
 
-    implicitHeight: contentColumn.height + 12
-    color: "transparent"
-    radius: 6
+    color: bgColor
+    radius: 8
+    border.color: borderColor
+    border.width: 1
+
+    implicitWidth: parent ? parent.width : 0
+    implicitHeight: contentColumn.implicitHeight + 16
+    Layout.fillWidth: true
 
     // Status colors
     property color runningColor: "#f4c542"
@@ -62,7 +67,10 @@ Rectangle {
 
     ColumnLayout {
         id: contentColumn
-        anchors.fill: parent
+        anchors {
+            fill: parent
+            margins: 8
+        }
         spacing: 8
 
         // Task status row
@@ -87,14 +95,14 @@ Rectangle {
             }
 
             // Task info
-            Column {
+            ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 4
 
                 // Task name
                 Text {
                     id: taskNameText
-                    width: parent.width
+                    Layout.fillWidth: true
                     text: updateData.task_name || "Task Updated"
                     color: textColor
                     font.pixelSize: 13
@@ -104,7 +112,8 @@ Rectangle {
                 }
 
                 // Status transition
-                Row {
+                RowLayout {
+                    Layout.fillWidth: true
                     spacing: 4
 
                     Text {
@@ -123,7 +132,7 @@ Rectangle {
                     }
 
                     // Crew member (if available)
-                    Row {
+                    RowLayout {
                         visible: updateData.crew_member !== undefined && updateData.crew_member !== null
                         spacing: 4
 

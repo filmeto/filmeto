@@ -48,10 +48,10 @@ Item {
     }
 
     // Main content types lookup
+    // Note: plan_task and todo_write are shown in Thinking section (collapsible)
     readonly property var _mainContentTypesLookup: ({
         "text": true, "code_block": true, "image": true, "video": true, "audio": true,
-        "link": true, "button": true, "form": true, "file": true, "file_attachment": true,
-        "todo_write": true
+        "link": true, "button": true, "form": true, "file": true, "file_attachment": true
     })
 
     // Deep content hash for change detection
