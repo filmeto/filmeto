@@ -77,6 +77,13 @@ class AgentChatHistoryListener:
             message: The AgentMessage to save
         """
         try:
+            # Skip messages marked with _no_agent_history flag
+            # These are crew member internal responses that should not be saved to agent history
+            # (they are saved to their own crew member history instead)
+            if message.metadata and message.metadata.get("_no_agent_history"):
+                logger.debug(f"Skipping message {message.message_id} - marked as no agent history")
+                return
+
             # Skip system messages if needed (now identified by ContentType.METADATA)
             # Check first content item's type
             if (message.structured_content and
