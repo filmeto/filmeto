@@ -2,6 +2,7 @@
 Main agent module for Filmeto application.
 Implements the FilmetoAgent class with streaming capabilities.
 """
+import asyncio
 import json
 import logging
 import re
@@ -22,6 +23,7 @@ from agent.plan.plan_service import PlanService
 from agent.crew.crew_member import CrewMember
 from agent.crew.crew_title import sort_crew_members_by_title_importance
 from agent.crew.crew_service import CrewService
+from agent.router.message_router_service import MessageRouterService, RoutingDecision
 from utils.path_utils import get_workspace_path
 
 if TYPE_CHECKING:
@@ -92,6 +94,7 @@ class FilmetoAgent:
         self.signals = AgentChatSignals()
         self._history_listener = None
         self._init_history_listener()
+        self._message_router = MessageRouterService(llm_service=self.llm_service, workspace=workspace)
 
         # Initialize the agent
         self._init_agent()
@@ -749,6 +752,7 @@ class FilmetoAgent:
         session_id: str,
         metadata: Optional[Dict[str, Any]] = None,
         message_id: Optional[str] = None,
+        record_to_agent_history: bool = True,
     ) -> AsyncGenerator["AgentEvent", None]:
         from agent.react import AgentEvent, AgentEventType
 
@@ -989,12 +993,25 @@ class FilmetoAgent:
                 if agent_message.structured_content:
                     content_type_value = agent_message.structured_content[0].content_type.value
 
-                logger.info(
-                    f"📤 Sending message: type={content_type_value}, "
-                    f"id={agent_message.message_id}, sender='{agent_message.sender_id}', "
-                    f"content_id={enhanced_event.content.content_id if enhanced_event.content else 'N/A'}"
-                )
-                await self.signals.send_agent_message(agent_message)
+                # Only send to history if record_to_agent_history is True
+                # Crew member internal responses (record_to_agent_history=False) are not saved to agent history
+                # They are saved to their own crew member history instead
+                if record_to_agent_history:
+                    logger.info(
+                        f"📤 Sending message: type={content_type_value}, "
+                        f"id={agent_message.message_id}, sender='{agent_message.sender_id}', "
+                        f"content_id={enhanced_event.content.content_id if enhanced_event.content else 'N/A'}"
+                    )
+                    await self.signals.send_agent_message(agent_message)
+                else:
+                    logger.debug(
+                        f"📤 Sending message (no history): type={content_type_value}, "
+                        f"id={agent_message.message_id}, sender='{agent_message.sender_id}'"
+                    )
+                    # Still send to UI but mark as no-history
+                    agent_message.metadata = agent_message.metadata or {}
+                    agent_message.metadata["_no_agent_history"] = True
+                    await self.signals.send_agent_message(agent_message)
 
             # Handle crew member messages that need further processing (public/specify only)
             if event.event_type == AgentEventType.CREW_MEMBER_MESSAGE:
@@ -1025,25 +1042,17 @@ class FilmetoAgent:
                                         message_text,
                                         plan_id=None,
                                         session_id=cm_session_id,
+                                        record_to_agent_history=False,  # Don't record internal routing to agent history
                                     ):
                                         pass
                     else:
-                        # For public mode, route through producer flow (but producer shouldn't handle own messages)
-                        producer_agent = self._get_producer_crew_member()
-                        if producer_agent and producer_agent.config.name.lower() != original_sender_id.lower():
-                            logger.info(f"🔄 Routing public message from {original_sender_id} through producer")
-                            from agent.chat.agent_chat_message import AgentMessage
-                            cm_message = AgentMessage(
-                                sender_id=original_sender_id,
-                                sender_name=original_sender_id.capitalize(),
-                                structured_content=[TextContent(text=message_text)]
-                            )
-                            async for _ in self._handle_producer_flow(
-                                initial_prompt=cm_message,
-                                producer_agent=producer_agent,
-                                session_id=cm_session_id,
-                            ):
-                                pass
+                        # For public mode, use LLM routing for intelligent multi-member routing
+                        await self._route_message_with_llm(
+                            message=message_text,
+                            sender_id=original_sender_id,
+                            sender_name=original_sender_id.capitalize(),
+                            session_id=cm_session_id,
+                        )
 
             # Yield the event for upstream
             try:
@@ -1145,44 +1154,14 @@ class FilmetoAgent:
                     pass
                 return
 
-            # No specific crew member mentioned - use producer if available
-            producer_agent = self._get_producer_crew_member()
-            if producer_agent:
-                # Always let producer respond first, even when there's a PAUSED plan.
-                # Producer will decide whether to update the plan or continue execution.
-                async for _ in self._handle_producer_flow(
-                    initial_prompt=initial_prompt,
-                    producer_agent=producer_agent,
-                    session_id=session_id,
-                ):
-                    pass
-                return
-
-            # No producer and no specific agent mentioned - select a responding agent
-            responding_agent = await self._select_responding_agent(initial_prompt)
-            if responding_agent:
-                await self._emit_system_event(
-                    "responding_agent_start",
-                    session_id,
-                    sender_id=responding_agent.config.name,
-                    sender_name=responding_agent.config.name,
-                    crew_member_name=responding_agent.config.name,
-                    message=_extract_text_content(initial_prompt),
-                )
-                async for _ in self._stream_crew_member(
-                    responding_agent,
-                    _extract_text_content(initial_prompt),
-                    plan_id=initial_prompt.metadata.get("plan_id") if initial_prompt.metadata else None,
-                    session_id=session_id,
-                    metadata=initial_prompt.metadata
-                ):
-                    pass
-            else:
-                async for _ in self._stream_error_message(
-                    "No suitable agent found to handle this request.",
-                    session_id,
-                ):
-                    pass
+            # No specific crew member mentioned - use LLM routing for intelligent multi-member routing
+            async for _ in self._route_message_with_llm(
+                message=message,
+                sender_id="user",
+                sender_name="User",
+                session_id=session_id,
+            ):
+                pass
         except Exception as e:
             logger.error(f"❌ Exception in chat()", exc_info=True)
             async for _ in self._stream_error_message(
@@ -1190,6 +1169,129 @@ class FilmetoAgent:
                 str(uuid.uuid4()),
             ):
                 pass
+
+    async def _route_message_with_llm(
+        self,
+        message: str,
+        sender_id: str,
+        sender_name: str,
+        session_id: str,
+    ) -> None:
+        """
+        Route a message to appropriate crew members using LLM-based intelligent routing.
+
+        This method:
+        1. Gets conversation history for context
+        2. Calls MessageRouterService for routing decision
+        3. Dispatches messages to routed crew members in parallel
+        4. Each crew member's response is NOT recorded to agent history (only to their own history)
+
+        Args:
+            message: The message to route
+            sender_id: ID of the message sender
+            sender_name: Display name of the sender
+            session_id: Session ID for this conversation
+        """
+        if not self.crew_members:
+            logger.warning("No crew members loaded for routing")
+            # Fallback: try producer
+            producer_agent = self._get_producer_crew_member()
+            if producer_agent:
+                async for _ in self._stream_crew_member(
+                    producer_agent,
+                    message,
+                    plan_id=None,
+                    session_id=session_id,
+                    record_to_agent_history=True,
+                ):
+                    pass
+            return
+
+        try:
+            # Build conversation history for context
+            history = []
+            for msg in self.conversation_history[-20:]:  # Last 20 messages
+                text = _extract_text_content(msg)
+                if text:
+                    history.append({
+                        "role": "user" if msg.sender_id == "user" else "assistant",
+                        "sender_id": msg.sender_id,
+                        "sender_name": msg.sender_name,
+                        "content": text,
+                    })
+
+            # Get routing decision from LLM
+            logger.info(f"🔍 Routing message from {sender_id}: {message[:100]}...")
+            decision = await self._message_router.route_message(
+                message=message,
+                sender_id=sender_id,
+                sender_name=sender_name,
+                crew_members=self.crew_members,
+                conversation_history=history,
+                max_history=20,
+            )
+
+            if not decision.routed_members:
+                logger.info(f"📭 No members routed for message")
+                # Fallback: try producer
+                producer_agent = self._get_producer_crew_member()
+                if producer_agent and producer_agent.config.name.lower() != sender_id.lower():
+                    async for _ in self._stream_crew_member(
+                        producer_agent,
+                        message,
+                        plan_id=None,
+                        session_id=session_id,
+                        record_to_agent_history=True,
+                    ):
+                        pass
+                return
+
+            logger.info(f"📍 Routed to: {decision.routed_members}, reasoning: {decision.reasoning}")
+
+            # Dispatch to routed members in parallel
+            # Each member's response goes to their own history, not agent history
+            async def dispatch_to_member(member_name: str, customized_message: str):
+                member = self.crew_members.get(member_name)
+                if not member:
+                    logger.warning(f"Crew member {member_name} not found")
+                    return
+
+                # Use customized message if available, otherwise original
+                msg_to_send = customized_message or message
+
+                # Stream to crew member without recording to agent history
+                # The crew member will save to its own history
+                async for _ in self._stream_crew_member(
+                    member,
+                    msg_to_send,
+                    plan_id=None,
+                    session_id=session_id,
+                    record_to_agent_history=False,  # Don't record internal routing to agent history
+                ):
+                    pass
+
+            # Run all dispatches in parallel
+            tasks = []
+            for member_name in decision.routed_members:
+                customized_msg = decision.member_messages.get(member_name, message)
+                tasks.append(dispatch_to_member(member_name, customized_msg))
+
+            if tasks:
+                await asyncio.gather(*tasks)
+
+        except Exception as e:
+            logger.error(f"❌ Error in LLM routing: {e}", exc_info=True)
+            # Fallback: try producer
+            producer_agent = self._get_producer_crew_member()
+            if producer_agent and producer_agent.config.name.lower() != sender_id.lower():
+                async for _ in self._stream_crew_member(
+                    producer_agent,
+                    message,
+                    plan_id=None,
+                    session_id=session_id,
+                    record_to_agent_history=True,
+                ):
+                    pass
 
     async def _handle_producer_flow(
         self,
