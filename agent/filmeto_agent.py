@@ -1142,6 +1142,27 @@ class FilmetoAgent:
             f"content_length={len(combined_text)}"
         )
 
+        # Create AgentMessage for the crew member's main content
+        # This ensures the message is recorded in FilmetoAgent's conversation history
+        crew_member_message = AgentMessage(
+            sender_id=sender_id,
+            sender_name=sender_name,
+            message_id=message_id,
+            structured_content=main_content,
+        )
+        crew_member_message.metadata["session_id"] = session_id
+
+        # Record to FilmetoAgent's conversation history before routing
+        # This ensures all crew member messages appear in the conversation record
+        self.conversation_history.append(crew_member_message)
+        logger.info(
+            f"📥 Recorded crew member message to history: id={message_id}, "
+            f"sender='{sender_id}', content_preview='{combined_text[:50]}{'...' if len(combined_text) > 50 else ''}'"
+        )
+
+        # Send the message via signals for UI display
+        await self.signals.send_agent_message(crew_member_message)
+
         # Use LLM routing to determine which crew members should receive this message
         await self._route_message_with_llm(
             message=combined_text,
