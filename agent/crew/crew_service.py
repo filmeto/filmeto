@@ -160,6 +160,7 @@ class CrewService:
     def read_project_crew_members(self, project: Any) -> Dict[str, CrewMember]:
         """
         Read crew members from a project's crew_members directory.
+        Each crew member is stored in its own subdirectory.
 
         Args:
             project: The project to read crew members from
@@ -178,21 +179,26 @@ class CrewService:
         workspace = getattr(project, "workspace", None)
         members: Dict[str, CrewMember] = {}
 
-        # Load from directory
+        # Load from subdirectories - each crew member has its own folder
         if crew_members_dir.exists():
-            for config_path in crew_members_dir.glob("*.md"):
-                agent = CrewMember(
-                    config_path=str(config_path),
-                    workspace=workspace,
-                    project=project,
-                )
-                members[agent.config.name] = agent
+            for member_dir in crew_members_dir.iterdir():
+                if member_dir.is_dir():
+                    # Look for .md file inside the subdirectory
+                    for config_path in member_dir.glob("*.md"):
+                        agent = CrewMember(
+                            config_path=str(config_path),
+                            workspace=workspace,
+                            project=project,
+                        )
+                        members[agent.config.name] = agent
+                        break  # Only take the first .md file in each directory
 
         return members
 
     def write_project_crew_member(self, project: Any, crew_member_data: dict) -> str:
         """
         Write a crew member to a project's crew_members directory.
+        Each crew member is stored in its own subdirectory.
 
         Args:
             project: The project to write the crew member to
@@ -207,11 +213,14 @@ class CrewService:
 
         from utils.md_with_meta_utils import write_md_with_meta
         crew_members_dir = Path(project_path) / "agent" / "crew_members"
-        crew_members_dir.mkdir(parents=True, exist_ok=True)
 
         # Extract crew member name and other data
         name = crew_member_data.get('name', '')
         crew_title = crew_member_data.get('crew_title', name.lower().replace(' ', '_'))
+
+        # Create a subdirectory for this crew member
+        member_dir = crew_members_dir / crew_title
+        member_dir.mkdir(parents=True, exist_ok=True)
 
         # Create metadata for the crew member
         metadata = {
@@ -227,9 +236,9 @@ class CrewService:
             'icon': crew_member_data.get('icon', '🤖')
         }
 
-        # Generate the filename based on the crew member name
+        # Generate the filename inside the subdirectory
         filename = f"{crew_title}.md"
-        target_file = crew_members_dir / filename
+        target_file = member_dir / filename
 
         # Write the content to the target file using the utility function
         write_md_with_meta(target_file, metadata, crew_member_data.get('prompt', ''))
@@ -239,6 +248,7 @@ class CrewService:
     def update_project_crew_member(self, project: Any, crew_member_name: str, crew_member_data: dict) -> bool:
         """
         Update an existing project crew member with new data.
+        Each crew member is stored in its own subdirectory.
 
         Args:
             project: The project containing the crew member to update
@@ -255,19 +265,29 @@ class CrewService:
         from utils.md_with_meta_utils import update_md_with_meta
         crew_members_dir = Path(project_path) / "agent" / "crew_members"
 
-        # Find the crew member file by name
-        crew_member_file = None
-        for file_path in crew_members_dir.glob("*.md"):
-            if file_path.stem == crew_member_name or file_path.stem == crew_member_data.get('crew_title', crew_member_name):
-                crew_member_file = file_path
-                break
-
-        if not crew_member_file:
-            return False
-
         # Extract crew member name and other data
         name = crew_member_data.get('name', crew_member_name)
         crew_title = crew_member_data.get('crew_title', name.lower().replace(' ', '_'))
+
+        # Find the crew member file in subdirectory
+        crew_member_file = None
+        member_dir = crew_members_dir / crew_member_name
+        if member_dir.is_dir():
+            # Look for .md file in the subdirectory
+            for file_path in member_dir.glob("*.md"):
+                crew_member_file = file_path
+                break
+
+        # Also check by crew_title if not found
+        if not crew_member_file:
+            member_dir = crew_members_dir / crew_title
+            if member_dir.is_dir():
+                for file_path in member_dir.glob("*.md"):
+                    crew_member_file = file_path
+                    break
+
+        if not crew_member_file:
+            return False
 
         # Create metadata for the crew member
         metadata = {
@@ -289,6 +309,7 @@ class CrewService:
     def delete_project_crew_member(self, project: Any, crew_member_name: str) -> bool:
         """
         Delete an existing project crew member.
+        Each crew member is stored in its own subdirectory.
 
         Args:
             project: The project containing the crew member to delete
@@ -303,19 +324,14 @@ class CrewService:
 
         crew_members_dir = Path(project_path) / "agent" / "crew_members"
 
-        # Find the crew member file by name
-        crew_member_file = None
-        for file_path in crew_members_dir.glob("*.md"):
-            if file_path.stem == crew_member_name:
-                crew_member_file = file_path
-                break
-
-        if not crew_member_file:
+        # Find the crew member directory by name
+        member_dir = crew_members_dir / crew_member_name
+        if not member_dir.is_dir():
             return False
 
-        # Remove the file
+        # Remove the entire directory and its contents
         try:
-            crew_member_file.unlink()
+            shutil.rmtree(member_dir)
             return True
         except OSError:
             return False
