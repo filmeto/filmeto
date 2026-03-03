@@ -1282,13 +1282,12 @@ class FilmetoAgent:
                 return
 
             # No specific crew member mentioned - use LLM routing for intelligent multi-member routing
-            async for _ in self._route_message_with_llm(
+            await self._route_message_with_llm(
                 message=message,
                 sender_id=sender_id,
                 sender_name=sender_name,
                 session_id=session_id,
-            ):
-                pass
+            )
         except Exception as e:
             logger.error(f"❌ Exception in chat()", exc_info=True)
             async for _ in self._stream_error_message(
