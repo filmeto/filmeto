@@ -27,8 +27,8 @@ class SpeakToTool(BaseTool):
     - specify: Send message with @mention, visible to all, typically handled by mentioned member
     - private: Send message directly to a specific crew member, not recorded in history
 
-    The tool integrates with FilmetoAgent's message processing to enable
-    crew members to communicate with each other through the agent's routing logic.
+    For public and specify modes, the tool directly calls FilmetoAgent.chat() to ensure
+    proper history recording and message routing.
     """
 
     def __init__(self):
@@ -149,6 +149,16 @@ class SpeakToTool(BaseTool):
                 error=str(e)
             )
 
+    def _get_filmeto_agent(self, context: Optional["ToolContext"]):
+        """Get FilmetoAgent instance from context."""
+        if context and hasattr(context, 'workspace') and hasattr(context, 'project_name'):
+            from agent.filmeto_agent import FilmetoAgent
+            return FilmetoAgent.get_instance(
+                workspace=context.workspace,
+                project_name=context.project_name,
+            )
+        return None
+
     async def _handle_public(
         self,
         message: str,
@@ -161,10 +171,10 @@ class SpeakToTool(BaseTool):
         step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """
-        Handle public mode: send message to FilmetoAgent, visible to all.
+        Handle public mode: send message directly to FilmetoAgent.chat().
 
-        The message will be recorded in history and processed by FilmetoAgent's
-        message routing logic (producer flow or direct crew member handling).
+        The message will be recorded in agent history and processed by
+        FilmetoAgent's LLM routing logic for intelligent multi-member routing.
         """
         # Emit progress event
         yield self._create_event(
@@ -178,35 +188,20 @@ class SpeakToTool(BaseTool):
             progress=f"Sending public message from {sender_name}"
         )
 
-        # Create the message that will be processed by FilmetoAgent
-        # The message includes metadata to indicate it's from a crew member
         message_id = str(uuid.uuid4())
 
-        # Create event with special type that FilmetoAgent will handle
-        text_content = TextContent(
-            text=message,
-            title=f"Message from {sender_name}",
-            description="Public message from crew member"
-        )
-        # Store routing metadata in content
-        text_content.metadata = {
-            "mode": "public",
-            "message": message,
-            "message_id": message_id,
-            "record_to_history": True,
-            "process_through_agent": True,
-        }
-
-        yield AgentEvent.create(
-            event_type="crew_member_message",
-            project_name=project_name,
-            react_type=react_type,
-            run_id=run_id,
-            step_id=step_id,
-            sender_id=sender_id,
-            sender_name=sender_name,
-            content=text_content
-        )
+        # Get FilmetoAgent and call chat() directly
+        agent = self._get_filmeto_agent(context)
+        if agent:
+            logger.info(f"📤 speak_to (public): {sender_name} -> FilmetoAgent, message_id={message_id[:8]}...")
+            # Call chat() with crew member as sender
+            await agent.chat(
+                message=message,
+                sender_id=sender_id,
+                sender_name=sender_name,
+            )
+        else:
+            logger.warning(f"Could not get FilmetoAgent instance for speak_to public mode")
 
         # Emit tool end event
         yield self._create_event(
@@ -239,7 +234,7 @@ class SpeakToTool(BaseTool):
         step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """
-        Handle specify mode: send message with @mention, visible to all.
+        Handle specify mode: send message with @mention directly to FilmetoAgent.chat().
 
         The message will start with @target and be processed by FilmetoAgent's
         routing logic, typically routed to the mentioned crew member.
@@ -260,32 +255,18 @@ class SpeakToTool(BaseTool):
         formatted_message = f"@{target} {message}"
         message_id = str(uuid.uuid4())
 
-        # Create event with special type that FilmetoAgent will handle
-        text_content = TextContent(
-            text=formatted_message,
-            title=f"Message from {sender_name} to @{target}",
-            description="Specified message from crew member"
-        )
-        # Store routing metadata in content
-        text_content.metadata = {
-            "mode": "specify",
-            "message": formatted_message,
-            "target": target,
-            "message_id": message_id,
-            "record_to_history": True,
-            "process_through_agent": True,
-        }
-
-        yield AgentEvent.create(
-            event_type="crew_member_message",
-            project_name=project_name,
-            react_type=react_type,
-            run_id=run_id,
-            step_id=step_id,
-            sender_id=sender_id,
-            sender_name=sender_name,
-            content=text_content
-        )
+        # Get FilmetoAgent and call chat() directly
+        agent = self._get_filmeto_agent(context)
+        if agent:
+            logger.info(f"📤 speak_to (specify): {sender_name} -> @{target}, message_id={message_id[:8]}...")
+            # Call chat() with crew member as sender and @mention in message
+            await agent.chat(
+                message=formatted_message,
+                sender_id=sender_id,
+                sender_name=sender_name,
+            )
+        else:
+            logger.warning(f"Could not get FilmetoAgent instance for speak_to specify mode")
 
         # Emit tool end event
         yield self._create_event(
@@ -319,11 +300,10 @@ class SpeakToTool(BaseTool):
         step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """
-        Handle private mode: send message directly to target, not recorded in history.
+        Handle private mode: send message directly to target via event.
 
-        The message will be sent directly to the target crew member without
-        going through FilmetoAgent's routing logic and without being recorded
-        in the conversation history.
+        Private messages are NOT recorded in agent history and are sent
+        directly to the target crew member.
         """
         # Emit progress event
         yield self._create_event(
