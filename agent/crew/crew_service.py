@@ -53,7 +53,7 @@ class CrewService:
         if not project_path:
             return []
 
-        crew_members_dir = Path(project_path) / "agent" / "crew_members"
+        crew_members_dir = Path(project_path) / "agent" / "crews"
         crew_members_dir.mkdir(parents=True, exist_ok=True)
 
         # Get all available souls
@@ -159,7 +159,7 @@ class CrewService:
 
     def read_project_crew_members(self, project: Any) -> Dict[str, CrewMember]:
         """
-        Read crew members from a project's crew_members directory.
+        Read crew members from a project's crews directory.
         Each crew member is stored in its own subdirectory.
 
         Args:
@@ -172,7 +172,7 @@ class CrewService:
         if not project_path:
             return {}
 
-        crew_members_dir = Path(project_path) / "agent" / "crew_members"
+        crew_members_dir = Path(project_path) / "agent" / "crews"
         if not crew_members_dir.exists():
             return {}
 
@@ -197,7 +197,7 @@ class CrewService:
 
     def write_project_crew_member(self, project: Any, crew_member_data: dict) -> str:
         """
-        Write a crew member to a project's crew_members directory.
+        Write a crew member to a project's crews directory.
         Each crew member is stored in its own subdirectory.
 
         Args:
@@ -212,7 +212,7 @@ class CrewService:
             return ""
 
         from utils.md_with_meta_utils import write_md_with_meta
-        crew_members_dir = Path(project_path) / "agent" / "crew_members"
+        crew_members_dir = Path(project_path) / "agent" / "crews"
 
         # Extract crew member name and other data
         name = crew_member_data.get('name', '')
@@ -263,7 +263,7 @@ class CrewService:
             return False
 
         from utils.md_with_meta_utils import update_md_with_meta
-        crew_members_dir = Path(project_path) / "agent" / "crew_members"
+        crew_members_dir = Path(project_path) / "agent" / "crews"
 
         # Extract crew member name and other data
         name = crew_member_data.get('name', crew_member_name)
@@ -322,7 +322,7 @@ class CrewService:
         if not project_path:
             return False
 
-        crew_members_dir = Path(project_path) / "agent" / "crew_members"
+        crew_members_dir = Path(project_path) / "agent" / "crews"
 
         # Find the crew member directory by name
         member_dir = crew_members_dir / crew_member_name
