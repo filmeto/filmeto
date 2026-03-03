@@ -1,6 +1,8 @@
 import logging
 import os
+import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional, TYPE_CHECKING
 
@@ -14,6 +16,7 @@ from agent.plan.plan_service import PlanService
 from agent.skill.skill_service import SkillService, Skill
 from agent.soul import soul_service as soul_service_instance, SoulService
 from agent.prompt.prompt_service import prompt_service
+from agent.crew.crew_member_history_service import crew_member_history_service
 
 if TYPE_CHECKING:
     from agent.event.agent_event import AgentEvent
@@ -88,6 +91,8 @@ class CrewMember:
         self.workspace = workspace
         self.project = project
         self.project_name = _resolve_project_name(project) or getattr(project, 'project_name', 'default_project')
+        # Get crew_title from metadata or derive from name
+        self.crew_title = self.config.metadata.get('crew_title', self.config.name.lower().replace(' ', '_'))
         self.llm_service = llm_service or LlmService(workspace)
         self.skill_service = skill_service or SkillService(workspace)
         # Get PlanService instance for this workspace/project combination
@@ -207,6 +212,9 @@ class CrewMember:
                 if final_response:
                     self.conversation_history.append({"role": "user", "content": message})
                     self.conversation_history.append({"role": "assistant", "content": final_response})
+                    # Save to history storage
+                    self._save_message_to_history("user", message, run_id)
+                    self._save_message_to_history("assistant", final_response, run_id)
                 # Yield final response first
                 yield enhanced_event
                 # Emit typing_end event after final response to mark completion
@@ -235,6 +243,9 @@ class CrewMember:
                     error_message = "Unknown error occurred"
                 self.conversation_history.append({"role": "user", "content": message})
                 self.conversation_history.append({"role": "assistant", "content": error_message})
+                # Save to history storage
+                self._save_message_to_history("user", message, run_id)
+                self._save_message_to_history("assistant", error_message, run_id, is_error=True)
                 # Yield error event first
                 yield enhanced_event
                 # Emit typing_end event after error to mark completion
@@ -261,9 +272,13 @@ class CrewMember:
             return
 
         if final_response is None:
+            error_msg = "Reached max steps without a final response."
+            # Save to history storage
+            self._save_message_to_history("user", message, run_id)
+            self._save_message_to_history("assistant", error_msg, run_id, is_error=True)
             # Yield error event first
             yield AgentEvent.error(
-                error_message="Reached max steps without a final response.",
+                error_message=error_msg,
                 project_name=self.project_name,
                 react_type=self.config.name,
                 run_id=run_id,
@@ -286,6 +301,169 @@ class CrewMember:
                 )
             )
             return
+
+    def _save_message_to_history(self, role: str, content: str, run_id: str, is_error: bool = False):
+        """
+        Save a message to the crew member's history storage.
+
+        Args:
+            role: Message role ("user" or "assistant")
+            content: Message content
+            run_id: Run ID for this conversation session
+            is_error: Whether this is an error message
+        """
+        if not self.workspace or not self.project_name:
+            return
+
+        try:
+            workspace_path = str(self.workspace) if hasattr(self.workspace, '__str__') else self.workspace.root_path if hasattr(self.workspace, 'root_path') else str(self.workspace)
+
+            message_dict = {
+                "message_id": str(uuid.uuid4()),
+                "run_id": run_id,
+                "role": role,
+                "sender_id": self.config.name if role == "assistant" else "user",
+                "sender_name": self.config.name if role == "assistant" else "User",
+                "content": content,
+                "timestamp": datetime.now().isoformat(),
+                "crew_title": self.crew_title,
+                "is_error": is_error,
+            }
+
+            crew_member_history_service.add_message(
+                workspace_path=workspace_path,
+                project_name=self.project_name,
+                crew_title=self.crew_title,
+                message=message_dict
+            )
+        except Exception as e:
+            logger.error(f"Error saving message to history: {e}")
+
+    def get_history_latest(self, count: int = 20) -> List[Dict[str, Any]]:
+        """
+        Get the latest N messages from this crew member's history.
+
+        Args:
+            count: Number of messages to retrieve
+
+        Returns:
+            List of message dictionaries, most recent first
+        """
+        if not self.workspace or not self.project_name:
+            return []
+
+        try:
+            workspace_path = str(self.workspace) if hasattr(self.workspace, '__str__') else self.workspace.root_path if hasattr(self.workspace, 'root_path') else str(self.workspace)
+
+            return crew_member_history_service.get_latest_messages(
+                workspace_path=workspace_path,
+                project_name=self.project_name,
+                crew_title=self.crew_title,
+                count=count
+            )
+        except Exception as e:
+            logger.error(f"Error getting latest history: {e}")
+            return []
+
+    def get_history_after(self, line_offset: int, count: int = 20) -> List[Dict[str, Any]]:
+        """
+        Get messages after a given line offset.
+
+        Args:
+            line_offset: Line offset in active log
+            count: Number of messages to retrieve
+
+        Returns:
+            List of message dictionaries in chronological order
+        """
+        if not self.workspace or not self.project_name:
+            return []
+
+        try:
+            workspace_path = str(self.workspace) if hasattr(self.workspace, '__str__') else self.workspace.root_path if hasattr(self.workspace, 'root_path') else str(self.workspace)
+
+            return crew_member_history_service.get_messages_after(
+                workspace_path=workspace_path,
+                project_name=self.project_name,
+                crew_title=self.crew_title,
+                line_offset=line_offset,
+                count=count
+            )
+        except Exception as e:
+            logger.error(f"Error getting history after offset: {e}")
+            return []
+
+    def get_history_before(self, line_offset: int, count: int = 20) -> List[Dict[str, Any]]:
+        """
+        Get messages before a given line offset.
+
+        Args:
+            line_offset: Starting line offset (exclusive)
+            count: Number of messages to retrieve
+
+        Returns:
+            List of message dictionaries in chronological order
+        """
+        if not self.workspace or not self.project_name:
+            return []
+
+        try:
+            workspace_path = str(self.workspace) if hasattr(self.workspace, '__str__') else self.workspace.root_path if hasattr(self.workspace, 'root_path') else str(self.workspace)
+
+            return crew_member_history_service.get_messages_before(
+                workspace_path=workspace_path,
+                project_name=self.project_name,
+                crew_title=self.crew_title,
+                line_offset=line_offset,
+                count=count
+            )
+        except Exception as e:
+            logger.error(f"Error getting history before offset: {e}")
+            return []
+
+    def get_history_count(self) -> int:
+        """
+        Get total message count for this crew member's history.
+
+        Returns:
+            Total number of messages
+        """
+        if not self.workspace or not self.project_name:
+            return 0
+
+        try:
+            workspace_path = str(self.workspace) if hasattr(self.workspace, '__str__') else self.workspace.root_path if hasattr(self.workspace, 'root_path') else str(self.workspace)
+
+            return crew_member_history_service.get_total_count(
+                workspace_path=workspace_path,
+                project_name=self.project_name,
+                crew_title=self.crew_title
+            )
+        except Exception as e:
+            logger.error(f"Error getting history count: {e}")
+            return 0
+
+    def clear_history(self) -> bool:
+        """
+        Clear all history for this crew member.
+
+        Returns:
+            True if successful
+        """
+        if not self.workspace or not self.project_name:
+            return False
+
+        try:
+            workspace_path = str(self.workspace) if hasattr(self.workspace, '__str__') else self.workspace.root_path if hasattr(self.workspace, 'root_path') else str(self.workspace)
+
+            return crew_member_history_service.clear_history(
+                workspace_path=workspace_path,
+                project_name=self.project_name,
+                crew_title=self.crew_title
+            )
+        except Exception as e:
+            logger.error(f"Error clearing history: {e}")
+            return False
 
     def _build_user_prompt(self, user_question: str, plan_id: Optional[str] = None) -> str:
         """Build a user prompt that embeds the user's question into the react_base template.
