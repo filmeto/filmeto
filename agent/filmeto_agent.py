@@ -1672,13 +1672,7 @@ class FilmetoAgent:
 
         for agent in self.members.values():
             try:
-                # Extract text content from message structured_content
-                message_text = ""
-                if message.structured_content:
-                    for sc in message.structured_content:
-                        if sc.content_type.value == "text" and isinstance(sc.data, str):
-                            message_text = sc.data
-                            break
+                message_text = _extract_text_content(message)
 
                 # Iterate over ReactEvent from crew_member.chat_stream
                 async for event in agent.chat_stream(message_text, plan_id=None):
