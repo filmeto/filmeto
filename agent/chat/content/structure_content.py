@@ -63,3 +63,20 @@ class StructureContent:
         self.status = ContentStatus.FAILED
         if error:
             self.metadata["error"] = error
+
+    def get_display_category(self):
+        """
+        Get the display category for this content.
+
+        Returns:
+            DisplayCategory: The display category from the content type
+        """
+        return self.content_type.get_display_category()
+
+    def is_main_content(self) -> bool:
+        """Check if this content should be displayed in the main section."""
+        return self.content_type.is_main_content()
+
+    def is_auxiliary_content(self) -> bool:
+        """Check if this content should be displayed in the thinking section."""
+        return self.content_type.is_auxiliary_content()

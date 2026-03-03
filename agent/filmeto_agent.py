@@ -753,7 +753,22 @@ class FilmetoAgent:
         metadata: Optional[Dict[str, Any]] = None,
         message_id: Optional[str] = None,
         record_to_agent_history: bool = True,
+        send_main_content_to_agent: bool = False,
     ) -> AsyncGenerator["AgentEvent", None]:
+        """
+        Stream responses from a crew member.
+
+        Args:
+            crew_member: The crew member to stream from
+            message: The message to send
+            plan_id: Optional plan ID for context
+            session_id: Session ID for this conversation
+            metadata: Optional metadata to attach to events
+            message_id: Optional message ID (generated if not provided)
+            record_to_agent_history: Whether to record to agent history (default True)
+            send_main_content_to_agent: Whether to send collected main content to FilmetoAgent
+                                        when message ends (default False)
+        """
         from agent.react import AgentEvent, AgentEventType
 
         # Set the current message ID on the crew member for content tracking
@@ -770,6 +785,10 @@ class FilmetoAgent:
         # so that history loading can associate them as skill children.
         _active_skill_name: Optional[str] = None
         _active_skill_run_id: Optional[str] = None
+
+        # Track main content for sending to FilmetoAgent when message ends
+        # Main content includes: text, code_block, image, video, audio, link, button, form, file_attachment
+        _collected_main_content: List[StructureContent] = []
 
         async for event in crew_member.chat_stream(message, plan_id=plan_id):
             # Add metadata to the event payload (kept for backward compatibility during transition)
@@ -966,6 +985,11 @@ class FilmetoAgent:
                     if _active_skill_run_id:
                         content.metadata['_skill_run_id'] = _active_skill_run_id
 
+            # Collect main content for sending to FilmetoAgent when message ends
+            # Main content is content that should be displayed in the main section (not thinking section)
+            if content and send_main_content_to_agent and content.is_main_content():
+                _collected_main_content.append(content)
+
             # Create enhanced event with content
             enhanced_event = AgentEvent.create(
                 event_type=event.event_type,
@@ -1061,6 +1085,71 @@ class FilmetoAgent:
                 logger.error(f"❌ Exception in _stream_crew_member while yielding event", exc_info=True)
                 # Continue processing despite the yield error
 
+        # After streaming ends, send collected main content to FilmetoAgent if requested
+        # This allows crew member responses to be broadcast to the agent for group chat
+        if send_main_content_to_agent and _collected_main_content:
+            await self._send_crew_member_main_content_to_agent(
+                crew_member=crew_member,
+                main_content=_collected_main_content,
+                message_id=message_id,
+                session_id=session_id,
+            )
+
+    async def _send_crew_member_main_content_to_agent(
+        self,
+        crew_member: CrewMember,
+        main_content: List[StructureContent],
+        message_id: str,
+        session_id: str,
+    ) -> None:
+        """
+        Send crew member's main content to FilmetoAgent for group chat routing.
+
+        This method is called when a crew member finishes responding and has
+        collected main content (text, code_block, etc.) that should be visible
+        in the group chat. The content is sent to FilmetoAgent which will
+        route it to appropriate crew members.
+
+        Args:
+            crew_member: The crew member that generated the content
+            main_content: List of main content items to send
+            message_id: The message ID for this conversation
+            session_id: Session ID for this conversation
+        """
+        from agent.chat.content import TextContent
+
+        # Extract text from main content items
+        text_parts = []
+        for content in main_content:
+            if isinstance(content, TextContent) and content.text:
+                text_parts.append(content.text)
+            elif hasattr(content, 'text') and content.text:
+                text_parts.append(content.text)
+
+        if not text_parts:
+            return
+
+        # Combine all text parts
+        combined_text = "\n\n".join(text_parts)
+
+        # Create a crew member message event for routing
+        sender_id = crew_member.config.name
+        sender_name = crew_member.config.name.capitalize()
+
+        logger.info(
+            f"📤 Sending crew member main content to agent: "
+            f"sender={sender_id}, message_id={message_id[:8]}..., "
+            f"content_length={len(combined_text)}"
+        )
+
+        # Use LLM routing to determine which crew members should receive this message
+        await self._route_message_with_llm(
+            message=combined_text,
+            sender_id=sender_id,
+            sender_name=sender_name,
+            session_id=session_id,
+        )
+
     async def _stream_error_message(
         self,
         message: str,
@@ -1088,7 +1177,13 @@ class FilmetoAgent:
             sender_name="System",
         )
 
-    async def chat(self, message: str) -> None:
+    async def chat(
+        self,
+        message: str,
+        sender_id: str = "user",
+        sender_name: str = "User",
+        session_id: Optional[str] = None,
+    ) -> None:
         """
         Send a message to the agents and receive responses via signals.
 
@@ -1097,6 +1192,9 @@ class FilmetoAgent:
 
         Args:
             message: The message to process
+            sender_id: ID of the sender (default: "user")
+            sender_name: Display name of the sender (default: "User")
+            session_id: Optional session ID (generated if not provided)
         """
         try:
             # Ensure project is loaded if not provided but workspace exists
@@ -1116,20 +1214,28 @@ class FilmetoAgent:
                         first_project_name = next(iter(project_list))
                         self.project = project_list[first_project_name]
 
+            # Determine if sender is user or crew member
+            is_user = sender_id.lower() == "user"
+
             # Create an AgentMessage from the string
             from agent.chat.content import TextContent
             initial_prompt = AgentMessage(
-                sender_id="user",
-                sender_name="User",
+                sender_id=sender_id,
+                sender_name=sender_name,
                 structured_content=[TextContent(text=message)]
             )
-            logger.info(f"📥 Created initial prompt message: id={initial_prompt.message_id}, sender='user', content_preview='{message[:50]}{'...' if len(message) > 50 else ''}'")
 
-            # Create a unique session ID for this conversation
-            session_id = str(uuid.uuid4())
+            # Create or use provided session ID
+            if session_id is None:
+                session_id = str(uuid.uuid4())
 
-            # Add the initial prompt to history
+            # Record to history based on sender type:
+            # - User messages: always record to agent history
+            # - Crew member messages (from speak_to): record to agent history for group chat visibility
             self.conversation_history.append(initial_prompt)
+
+            sender_type = "user" if is_user else "crew_member"
+            logger.info(f"📥 Chat message: id={initial_prompt.message_id}, sender='{sender_id}' ({sender_type}), content_preview='{message[:50]}{'...' if len(message) > 50 else ''}'")
 
             initial_prompt.metadata["session_id"] = session_id
             await self.signals.send_agent_message(initial_prompt)
@@ -1157,8 +1263,8 @@ class FilmetoAgent:
             # No specific crew member mentioned - use LLM routing for intelligent multi-member routing
             async for _ in self._route_message_with_llm(
                 message=message,
-                sender_id="user",
-                sender_name="User",
+                sender_id=sender_id,
+                sender_name=sender_name,
                 session_id=session_id,
             ):
                 pass
@@ -1250,6 +1356,7 @@ class FilmetoAgent:
 
             # Dispatch to routed members in parallel
             # Each member's response goes to their own history, not agent history
+            # But their main content is sent back to agent for group chat routing
             async def dispatch_to_member(member_name: str, customized_message: str):
                 member = self.crew_members.get(member_name)
                 if not member:
@@ -1261,12 +1368,14 @@ class FilmetoAgent:
 
                 # Stream to crew member without recording to agent history
                 # The crew member will save to its own history
+                # Enable send_main_content_to_agent for group chat participation
                 async for _ in self._stream_crew_member(
                     member,
                     msg_to_send,
                     plan_id=None,
                     session_id=session_id,
                     record_to_agent_history=False,  # Don't record internal routing to agent history
+                    send_main_content_to_agent=True,  # Send main content back for group chat
                 ):
                     pass
 
