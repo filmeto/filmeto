@@ -316,7 +316,7 @@ class CrewMember:
             return
 
         try:
-            workspace_path = str(self.workspace) if hasattr(self.workspace, '__str__') else self.workspace.root_path if hasattr(self.workspace, 'root_path') else str(self.workspace)
+            workspace_path = _get_workspace_path(self.workspace)
 
             message_dict = {
                 "message_id": str(uuid.uuid4()),
@@ -353,7 +353,7 @@ class CrewMember:
             return []
 
         try:
-            workspace_path = str(self.workspace) if hasattr(self.workspace, '__str__') else self.workspace.root_path if hasattr(self.workspace, 'root_path') else str(self.workspace)
+            workspace_path = _get_workspace_path(self.workspace)
 
             return crew_member_history_service.get_latest_messages(
                 workspace_path=workspace_path,
@@ -380,7 +380,7 @@ class CrewMember:
             return []
 
         try:
-            workspace_path = str(self.workspace) if hasattr(self.workspace, '__str__') else self.workspace.root_path if hasattr(self.workspace, 'root_path') else str(self.workspace)
+            workspace_path = _get_workspace_path(self.workspace)
 
             return crew_member_history_service.get_messages_after(
                 workspace_path=workspace_path,
@@ -408,7 +408,7 @@ class CrewMember:
             return []
 
         try:
-            workspace_path = str(self.workspace) if hasattr(self.workspace, '__str__') else self.workspace.root_path if hasattr(self.workspace, 'root_path') else str(self.workspace)
+            workspace_path = _get_workspace_path(self.workspace)
 
             return crew_member_history_service.get_messages_before(
                 workspace_path=workspace_path,
@@ -432,7 +432,7 @@ class CrewMember:
             return 0
 
         try:
-            workspace_path = str(self.workspace) if hasattr(self.workspace, '__str__') else self.workspace.root_path if hasattr(self.workspace, 'root_path') else str(self.workspace)
+            workspace_path = _get_workspace_path(self.workspace)
 
             return crew_member_history_service.get_total_count(
                 workspace_path=workspace_path,
@@ -454,7 +454,7 @@ class CrewMember:
             return False
 
         try:
-            workspace_path = str(self.workspace) if hasattr(self.workspace, '__str__') else self.workspace.root_path if hasattr(self.workspace, 'root_path') else str(self.workspace)
+            workspace_path = _get_workspace_path(self.workspace)
 
             return crew_member_history_service.clear_history(
                 workspace_path=workspace_path,
@@ -888,3 +888,17 @@ def _resolve_project_name(project: Optional[Any]) -> Optional[str]:
     if isinstance(project, str):
         return project
     return None
+
+
+def _get_workspace_path(workspace: Any) -> str:
+    """Extract workspace path from workspace object."""
+    if workspace is None:
+        return "none"
+    if hasattr(workspace, 'workspace_path'):
+        return workspace.workspace_path
+    if hasattr(workspace, 'path'):
+        return str(workspace.path)
+    if hasattr(workspace, 'root_path'):
+        return workspace.root_path
+    # Fallback: return string representation (should not normally happen)
+    return str(workspace)
