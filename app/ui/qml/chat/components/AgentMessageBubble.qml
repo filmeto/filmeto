@@ -16,6 +16,7 @@ Item {
     property var structuredContent: []
     property string startTime: ""     // Formatted start time (HH:MM)
     property string duration: ""      // Formatted duration (e.g., "2m 30s")
+    property var crewReadBy: []       // List of {id, name, icon, color} for read-by crew members
 
     signal referenceClicked(string refType, string refId)
 
@@ -33,6 +34,9 @@ Item {
 
     // Available width for content (minus avatar space on both sides)
     readonly property int availableWidth: parent.width - totalAvatarWidth
+
+    // Check if crew read-by info is available
+    readonly property bool hasCrewReadBy: Array.isArray(crewReadBy) && crewReadBy.length > 0
 
     // Width is determined by anchors, height is calculated dynamically
     implicitHeight: headerRow.height + contentRect.implicitHeight + 8
@@ -147,7 +151,7 @@ Item {
             topMargin: 12
         }
         width: availableWidth
-        implicitHeight: contentRenderer.implicitHeight + 24
+        implicitHeight: contentRenderer.implicitHeight + 24 + (root.hasCrewReadBy ? readByRow.height + 6 : 0)
         color: backgroundColor
         radius: 6
 
@@ -167,6 +171,75 @@ Item {
             widgetSupport: "full"
             onReferenceClicked: function(refType, refId) {
                 root.referenceClicked(refType, refId)
+            }
+        }
+
+        // Read-by crew members row (bottom-right of bubble)
+        Row {
+            id: readByRow
+            anchors {
+                right: parent.right
+                bottom: parent.bottom
+                rightMargin: 12
+                bottomMargin: 6
+            }
+            spacing: 4
+            visible: root.hasCrewReadBy
+            height: visible ? 22 : 0
+
+            Text {
+                id: readByLabel
+                text: "read:"
+                color: root.textColor
+                font.pixelSize: 10
+                font.weight: Font.Light
+                opacity: 0.7
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Row {
+                id: avatarRow
+                spacing: -4
+                anchors.verticalCenter: parent.verticalCenter
+
+                Repeater {
+                    model: root.crewReadBy
+
+                    Rectangle {
+                        width: 20
+                        height: 20
+                        radius: 10
+                        color: (modelData && modelData.color) ? modelData.color : "#5a6a7a"
+                        border.width: 1.5
+                        border.color: contentRect.color
+                        z: model.index
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: (modelData && modelData.icon) ? modelData.icon : ""
+                            font.pixelSize: 11
+                        }
+                    }
+                }
+            }
+
+            MouseArea {
+                id: readByMouseArea
+                anchors.fill: parent
+                hoverEnabled: true
+            }
+
+            ToolTip.visible: readByMouseArea.containsMouse && root.hasCrewReadBy
+            ToolTip.delay: 400
+            ToolTip.timeout: 3000
+            ToolTip.text: {
+                if (!Array.isArray(root.crewReadBy) || root.crewReadBy.length === 0) return ""
+                var names = []
+                for (var i = 0; i < root.crewReadBy.length; i++) {
+                    var m = root.crewReadBy[i]
+                    if (m && m.name) names.push(m.name)
+                }
+                return names.join(", ")
             }
         }
     }

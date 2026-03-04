@@ -1028,7 +1028,10 @@ class FilmetoAgent:
                         f"content_id={enhanced_event.content.content_id if enhanced_event.content else 'N/A'}"
                     )
                     await self.signals.send_agent_message(agent_message)
-                else:
+                elif not send_main_content_to_agent:
+                    # Only send to UI if not collecting main content for group chat
+                    # When send_main_content_to_agent=True, _send_crew_member_main_content_to_agent
+                    # will send only the main content (not thinking) to UI
                     logger.debug(
                         f"📤 Sending message (no history): type={content_type_value}, "
                         f"id={agent_message.message_id}, sender='{agent_message.sender_id}'"
@@ -1165,11 +1168,13 @@ class FilmetoAgent:
         await self.signals.send_agent_message(crew_member_message)
 
         # Use LLM routing to determine which crew members should receive this message
+        # Pass message_id so crew_member_read event can be emitted for this agent message
         await self._route_message_with_llm(
             message=combined_text,
             sender_id=sender_id,
             sender_name=sender_name,
             session_id=session_id,
+            user_message_id=message_id,  # Pass message_id for crew_member_read event
         )
 
     async def _stream_error_message(
