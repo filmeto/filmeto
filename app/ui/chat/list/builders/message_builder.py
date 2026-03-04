@@ -132,11 +132,11 @@ class MessageBuilder:
                 }
             else:
                 group = message_groups[message_id]
-                # Prefer user message as base so the bubble shows as user message with read indicator
-                # (crew_member_read is stored with same message_id but sender=system; history returns newest first)
-                current_base_sender = (group["base"].get("sender_id") or "").lower()
-                new_sender = (msg_data.get("sender_id") or "").lower()
-                if new_sender == "user" and current_base_sender != "user":
+                # Prefer message with text content as base (not crew_member_read only)
+                # crew_member_read may have same sender_id as user message
+                current_base_type = (group["base"].get("message_type") or "")
+                new_type = (msg_data.get("message_type") or "")
+                if new_type == "text" and current_base_type != "text":
                     group["base"] = msg_data
                 # Update max GSN
                 if msg_gsn > group["max_gsn"]:
