@@ -710,7 +710,7 @@ class QmlAgentChatListModel(QAbstractListModel):
             end_timestamp = agent_message.metadata.get('end_timestamp')
         duration = cls._format_duration(timestamp, end_timestamp) if (not has_typing or end_timestamp) else ""
 
-        return {
+        result = {
             cls.MESSAGE_ID: agent_message.message_id,
             cls.SENDER_ID: agent_message.sender_id,
             cls.SENDER_NAME: agent_message.sender_name,
@@ -727,3 +727,5 @@ class QmlAgentChatListModel(QAbstractListModel):
             cls.START_TIME: start_time,
             cls.DURATION: duration,
         }
+        result[cls.CREW_READ_BY] = []
+        return result
