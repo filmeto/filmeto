@@ -36,6 +36,21 @@ Item {
 
     // Width is determined by anchors, height is calculated dynamically
     readonly property bool hasCrewReadBy: Array.isArray(crewReadBy) && crewReadBy.length > 0
+
+    // Cache readBy height to avoid repeated property access
+    readonly property int readByHeight: hasCrewReadBy ? 22 : 0
+
+    // Pre-compute tooltip text to avoid JS in binding
+    readonly property string readByTooltip: {
+        if (!hasCrewReadBy) return ""
+        var names = []
+        for (var i = 0; i < crewReadBy.length; i++) {
+            var m = crewReadBy[i]
+            if (m && m.name) names.push(m.name)
+        }
+        return names.join(", ")
+    }
+
     implicitHeight: 12 + headerRow.height + 12 + bubbleContainer.height + (hasCrewReadBy ? 4 : 0) + 8
 
     // Header row - right aligned with time info, name, and avatar
@@ -122,7 +137,7 @@ Item {
             property real calculatedContentWidth: 150
 
             width: Math.min(Math.max(80, calculatedContentWidth + bubblePadding * 2), availableWidth)
-            height: contentLoader.implicitHeight + bubblePadding * 2 + (root.hasCrewReadBy ? readByRow.height + 6 : 0)
+            height: contentLoader.implicitHeight + bubblePadding * 2 + (root.hasCrewReadBy ? root.readByHeight + 6 : 0)
 
             color: bubbleColor
             radius: 9
@@ -191,7 +206,7 @@ Item {
                 }
                 spacing: 4
                 visible: root.hasCrewReadBy
-                height: visible ? 22 : 0
+                height: root.readByHeight
 
                 Text {
                     id: readByLabel
@@ -238,15 +253,7 @@ Item {
                 ToolTip.visible: readByMouseArea.containsMouse && root.hasCrewReadBy
                 ToolTip.delay: 400
                 ToolTip.timeout: 3000
-                ToolTip.text: {
-                    if (!Array.isArray(root.crewReadBy) || root.crewReadBy.length === 0) return ""
-                    var names = []
-                    for (var i = 0; i < root.crewReadBy.length; i++) {
-                        var m = root.crewReadBy[i]
-                        if (m && m.name) names.push(m.name)
-                    }
-                    return names.join(", ")
-                }
+                ToolTip.text: root.readByTooltip
             }
         }
     }

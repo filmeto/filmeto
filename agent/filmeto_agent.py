@@ -1399,8 +1399,8 @@ class FilmetoAgent:
                 if crew_read_list:
                     read_content = CrewMemberReadContent(crew_members=crew_read_list)
                     read_msg = AgentMessage(
-                        sender_id="system",
-                        sender_name="System",
+                        sender_id=sender_id,
+                        sender_name=sender_name,
                         message_id=user_message_id,
                         metadata={"session_id": session_id, "event_type": "crew_member_read"},
                         structured_content=[read_content],

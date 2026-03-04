@@ -38,6 +38,20 @@ Item {
     // Check if crew read-by info is available
     readonly property bool hasCrewReadBy: Array.isArray(crewReadBy) && crewReadBy.length > 0
 
+    // Cache readBy height to avoid repeated property access
+    readonly property int readByHeight: hasCrewReadBy ? 22 : 0
+
+    // Pre-compute tooltip text to avoid JS in binding
+    readonly property string readByTooltip: {
+        if (!hasCrewReadBy) return ""
+        var names = []
+        for (var i = 0; i < crewReadBy.length; i++) {
+            var m = crewReadBy[i]
+            if (m && m.name) names.push(m.name)
+        }
+        return names.join(", ")
+    }
+
     // Width is determined by anchors, height is calculated dynamically
     implicitHeight: headerRow.height + contentRect.implicitHeight + 8
 
@@ -151,7 +165,7 @@ Item {
             topMargin: 12
         }
         width: availableWidth
-        implicitHeight: contentRenderer.implicitHeight + 24 + (root.hasCrewReadBy ? readByRow.height + 6 : 0)
+        implicitHeight: contentRenderer.implicitHeight + 24 + (root.hasCrewReadBy ? root.readByHeight + 6 : 0)
         color: backgroundColor
         radius: 6
 
@@ -185,7 +199,7 @@ Item {
             }
             spacing: 4
             visible: root.hasCrewReadBy
-            height: visible ? 22 : 0
+            height: root.readByHeight
 
             Text {
                 id: readByLabel
@@ -232,15 +246,7 @@ Item {
             ToolTip.visible: readByMouseArea.containsMouse && root.hasCrewReadBy
             ToolTip.delay: 400
             ToolTip.timeout: 3000
-            ToolTip.text: {
-                if (!Array.isArray(root.crewReadBy) || root.crewReadBy.length === 0) return ""
-                var names = []
-                for (var i = 0; i < root.crewReadBy.length; i++) {
-                    var m = root.crewReadBy[i]
-                    if (m && m.name) names.push(m.name)
-                }
-                return names.join(", ")
-            }
+            ToolTip.text: root.readByTooltip
         }
     }
 }
