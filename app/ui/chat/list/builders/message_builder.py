@@ -55,6 +55,43 @@ class MessageBuilder:
         self._metadata_resolver = metadata_resolver
         self._model = model
 
+    def _resolve_crew_read_by(
+        self, raw_crew_members: Optional[List[Dict[str, Any]]]
+    ) -> List[Dict[str, Any]]:
+        """Enrich crew_read_by list with icon/color from metadata for display.
+
+        History may store minimal entries (e.g. name only). Ensure each entry
+        has id, name, icon, color for QML bubble display.
+        """
+        if not raw_crew_members:
+            return []
+        if not self._metadata_resolver._crew_member_metadata:
+            self._metadata_resolver.load_crew_member_metadata()
+        result = []
+        for m in raw_crew_members:
+            if not isinstance(m, dict):
+                continue
+            name = m.get("name") or m.get("id") or ""
+            if not name:
+                continue
+            key = name.lower()
+            crew = self._metadata_resolver._crew_member_metadata.get(key)
+            if crew:
+                result.append({
+                    "id": crew.config.name.lower(),
+                    "name": crew.config.name,
+                    "icon": getattr(crew.config, "icon", "🤖"),
+                    "color": getattr(crew.config, "color", "#4a90e2"),
+                })
+            else:
+                result.append({
+                    "id": key,
+                    "name": name,
+                    "icon": m.get("icon", "🤖"),
+                    "color": m.get("color", "#4a90e2"),
+                })
+        return result
+
     def build_items_from_raw_messages(
         self, raw_messages: List[Dict[str, Any]]
     ) -> List[ChatListItem]:
@@ -94,9 +131,16 @@ class MessageBuilder:
                     "max_gsn": msg_gsn
                 }
             else:
+                group = message_groups[message_id]
+                # Prefer user message as base so the bubble shows as user message with read indicator
+                # (crew_member_read is stored with same message_id but sender=system; history returns newest first)
+                current_base_sender = (group["base"].get("sender_id") or "").lower()
+                new_sender = (msg_data.get("sender_id") or "").lower()
+                if new_sender == "user" and current_base_sender != "user":
+                    group["base"] = msg_data
                 # Update max GSN
-                if msg_gsn > message_groups[message_id]["max_gsn"]:
-                    message_groups[message_id]["max_gsn"] = msg_gsn
+                if msg_gsn > group["max_gsn"]:
+                    group["max_gsn"] = msg_gsn
 
             # Track content_id -> GSN mapping
             content_list = msg_data.get("content", [])
@@ -236,7 +280,8 @@ class MessageBuilder:
                         if content_item.get("content_type") == "text":
                             text_content = content_item.get("data", {}).get("text", "")
                         elif content_item.get("content_type") == "crew_member_read":
-                            crew_read_by = content_item.get("data", {}).get("crew_members", [])
+                            raw = content_item.get("data", {}).get("crew_members", [])
+                            crew_read_by = self._resolve_crew_read_by(raw)
 
                 # Add timestamp to metadata for QML
                 if timestamp and "timestamp" not in metadata:
@@ -281,7 +326,8 @@ class MessageBuilder:
                             continue  # Don't process now, handle after the loop
                         # Extract crew_member_read for bottom-right display, not as content
                         elif content_type == "crew_member_read":
-                            crew_read_by = content_item.get("data", {}).get("crew_members", [])
+                            raw = content_item.get("data", {}).get("crew_members", [])
+                            crew_read_by = self._resolve_crew_read_by(raw)
                             continue  # Don't add to structured_content
                         elif content_type == "skill":
                             skill_name = content_item.get("data", {}).get("skill_name", "")
@@ -435,7 +481,8 @@ class MessageBuilder:
                     merged_content.append(copy.deepcopy(content_item))
                 elif content_type == 'crew_member_read':
                     # Extract crew_member_read for bottom-right display, not as content
-                    crew_read_by_merged = content_item.get("data", {}).get("crew_members", [])
+                    raw = content_item.get("data", {}).get("crew_members", [])
+                    crew_read_by_merged = self._resolve_crew_read_by(raw)
                 else:
                     content_id = content_item.get('content_id')
                     if content_id:
