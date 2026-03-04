@@ -6,7 +6,7 @@ This module contains the data structures used by the agent chat list components:
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, Any, Optional, TYPE_CHECKING
+from typing import Dict, Any, List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from agent import AgentMessage
@@ -26,6 +26,7 @@ class ChatListItem:
         agent_color: Display color for the agent
         agent_icon: Display icon for the agent
         crew_member_metadata: Additional metadata about the crew member
+        crew_read_by: List of crew members who read this message (from message router)
         metadata: Additional metadata (including GSN for sorting)
     """
     message_id: str
@@ -37,6 +38,7 @@ class ChatListItem:
     agent_color: str = "#4a90e2"
     agent_icon: str = "🤖"
     crew_member_metadata: Dict[str, Any] = field(default_factory=dict)
+    crew_read_by: Optional[List[Dict[str, Any]]] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 

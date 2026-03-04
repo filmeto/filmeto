@@ -328,6 +328,7 @@ class QmlAgentChatListWidget(BaseWidget):
             self._model.STRUCTURED_CONTENT: [],
             self._model.CONTENT_TYPE: "text",
             self._model.IS_READ: True,
+            self._model.CREW_READ_BY: [],
             self._model.TIMESTAMP: None,
             self._model.DATE_GROUP: "",
         }

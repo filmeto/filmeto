@@ -24,6 +24,7 @@ from .form_content import FormContent
 from .skill_content import SkillContent, SkillExecutionState
 from .plan_content import PlanContent, PlanTaskContent, StepContent, TaskListContent
 from .typing_content import TypingContent, TypingState
+from .crew_member_read_content import CrewMemberReadContent
 from .llm_output_content import LlmOutputContent
 from .todo_write_content import TodoWriteContent
 
@@ -53,6 +54,7 @@ _CONTENT_CLASS_MAP: Dict[ContentType, type] = {
     ContentType.STEP: StepContent,
     ContentType.TASK_LIST: TaskListContent,
     ContentType.TYPING: TypingContent,
+    ContentType.CREW_MEMBER_READ: CrewMemberReadContent,
     ContentType.LLM_OUTPUT: LlmOutputContent,
     ContentType.TODO_WRITE: TodoWriteContent,
 }
@@ -86,6 +88,7 @@ __all__ = [
     'TaskListContent',
     'TypingContent',
     'TypingState',
+    'CrewMemberReadContent',
     'LlmOutputContent',
     'TodoWriteContent',
     'create_content',

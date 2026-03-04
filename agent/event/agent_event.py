@@ -22,6 +22,7 @@ class AgentEventType(str, Enum):
     CREW_MEMBER_TYPING_END = "crew_member_typing_end"  # Crew成员输入结束
     CREW_MEMBER_MESSAGE = "crew_member_message"   # Crew成员发送消息(public/specify模式)
     CREW_MEMBER_PRIVATE_MESSAGE = "crew_member_private_message"  # Crew成员发送私有消息(private模式)
+    CREW_MEMBER_READ = "crew_member_read"         # Message router: which crew members have read the message
 
     # === Skill相关 ===
     SKILL_START = "skill_start"         # Skill开始执行
@@ -78,7 +79,8 @@ class AgentEventType(str, Enum):
             cls.CREW_MEMBER_TYPING.value,
             cls.CREW_MEMBER_TYPING_END.value,
             cls.CREW_MEMBER_MESSAGE.value,
-            cls.CREW_MEMBER_PRIVATE_MESSAGE.value
+            cls.CREW_MEMBER_PRIVATE_MESSAGE.value,
+            cls.CREW_MEMBER_READ.value,
         }
 
     @classmethod
