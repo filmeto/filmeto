@@ -84,12 +84,9 @@ class AgentChatHistoryListener:
                 logger.debug(f"Skipping message {message.message_id} - marked as no agent history")
                 return
 
-            # Skip crew_member_read messages - they should be merged into the original message
-            # in the UI, not saved as standalone messages to history
-            if (message.structured_content and
-                message.structured_content[0].content_type == ContentType.CREW_MEMBER_READ):
-                logger.debug(f"Skipping crew_member_read message {message.message_id} - will be merged in UI")
-                return
+            # crew_member_read messages are stored with the same message_id as the original user message.
+            # They will be merged during history loading by message_builder's grouping logic.
+            # This allows the read indicator to persist across sessions.
 
             # Skip system messages if needed (now identified by ContentType.METADATA)
             # Check first content item's type
