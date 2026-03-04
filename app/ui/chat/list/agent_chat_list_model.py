@@ -66,6 +66,7 @@ class QmlAgentChatListModel(QAbstractListModel):
     DATE_GROUP = "dateGroup"
     START_TIME = "startTime"  # Formatted start time (HH:MM)
     DURATION = "duration"     # Formatted duration (e.g., "2m 30s")
+    CREW_READ_BY = "crewReadBy"  # List of crew members who read this message (router)
 
     # Signal emitted after a batch of updates is flushed to QML
     batchFlushed = Signal()
@@ -101,6 +102,7 @@ class QmlAgentChatListModel(QAbstractListModel):
             Qt.UserRole + 13: QByteArray(self.DATE_GROUP.encode()),
             Qt.UserRole + 14: QByteArray(self.START_TIME.encode()),
             Qt.UserRole + 15: QByteArray(self.DURATION.encode()),
+            Qt.UserRole + 16: QByteArray(self.CREW_READ_BY.encode()),
         }
 
     def rowCount(self, parent: QModelIndex = None) -> int:
@@ -643,7 +645,7 @@ class QmlAgentChatListModel(QAbstractListModel):
             if not has_typing or end_timestamp:
                 duration = cls._format_duration(timestamp, end_timestamp)
 
-        return {
+        result = {
             cls.MESSAGE_ID: chat_list_item.message_id,
             cls.SENDER_ID: chat_list_item.sender_id,
             cls.SENDER_NAME: chat_list_item.sender_name,
@@ -660,6 +662,8 @@ class QmlAgentChatListModel(QAbstractListModel):
             cls.START_TIME: start_time,
             cls.DURATION: duration,
         }
+        result[cls.CREW_READ_BY] = getattr(chat_list_item, "crew_read_by", None) or []
+        return result
 
     @classmethod
     def from_agent_message(

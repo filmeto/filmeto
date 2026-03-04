@@ -12,7 +12,8 @@ from agent.chat.agent_chat_message import AgentMessage
 from agent.chat.content import (
     StructureContent, TextContent, ThinkingContent, ToolCallContent,
     ToolResponseContent, ProgressContent, MetadataContent, ErrorContent,
-    LlmOutputContent, TodoWriteContent, PlanContent, PlanTaskContent, create_content
+    LlmOutputContent, TodoWriteContent, PlanContent, PlanTaskContent,
+    CrewMemberReadContent, create_content
 )
 from agent.chat.agent_chat_types import ContentType
 from agent.chat.agent_chat_signals import AgentChatSignals
@@ -1287,6 +1288,7 @@ class FilmetoAgent:
                 sender_id=sender_id,
                 sender_name=sender_name,
                 session_id=session_id,
+                user_message_id=initial_prompt.message_id,
             )
         except Exception as e:
             logger.error(f"❌ Exception in chat()", exc_info=True)
@@ -1302,6 +1304,7 @@ class FilmetoAgent:
         sender_id: str,
         sender_name: str,
         session_id: str,
+        user_message_id: Optional[str] = None,
     ) -> None:
         """
         Route a message to appropriate crew members using LLM-based intelligent routing.
@@ -1309,14 +1312,16 @@ class FilmetoAgent:
         This method:
         1. Gets conversation history for context
         2. Calls MessageRouterService for routing decision
-        3. Dispatches messages to routed crew members in parallel
-        4. Each crew member's response is NOT recorded to agent history (only to their own history)
+        3. Emits CREW_MEMBER_READ so the UI can show which crew members are handling the message
+        4. Dispatches messages to routed crew members in parallel
+        5. Each crew member's response is NOT recorded to agent history (only to their own history)
 
         Args:
             message: The message to route
             sender_id: ID of the message sender
             sender_name: Display name of the sender
             session_id: Session ID for this conversation
+            user_message_id: Message ID of the user message (for read indicator)
         """
         if not self.crew_members:
             logger.warning("No crew members loaded for routing")
@@ -1373,6 +1378,29 @@ class FilmetoAgent:
                 return
 
             logger.info(f"📍 Routed to: {decision.routed_members}, reasoning: {decision.reasoning}")
+
+            # Emit crew_member_read so the UI can show read indicators on the user message bubble
+            if user_message_id and decision.routed_members:
+                crew_read_list = []
+                for name in decision.routed_members:
+                    member = self.crew_members.get(name)
+                    if member:
+                        crew_read_list.append({
+                            "id": member.config.name.lower(),
+                            "name": member.config.name,
+                            "icon": getattr(member.config, "icon", "🤖"),
+                            "color": getattr(member.config, "color", "#4a90e2"),
+                        })
+                if crew_read_list:
+                    read_content = CrewMemberReadContent(crew_members=crew_read_list)
+                    read_msg = AgentMessage(
+                        sender_id="system",
+                        sender_name="System",
+                        message_id=user_message_id,
+                        metadata={"session_id": session_id, "event_type": "crew_member_read"},
+                        structured_content=[read_content],
+                    )
+                    await self.signals.send_agent_message(read_msg)
 
             # Dispatch to routed members in parallel
             # Each member's response goes to their own history, not agent history

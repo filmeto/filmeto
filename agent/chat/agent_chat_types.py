@@ -56,6 +56,7 @@ class ContentType(Enum):
     # === 状态和元数据 ===
     PROGRESS = "progress"
     TYPING = "typing"
+    CREW_MEMBER_READ = "crew_member_read"  # Message read by crew members (router)
     METADATA = "metadata"
     ERROR = "error"
     LLM_OUTPUT = "llm_output"
