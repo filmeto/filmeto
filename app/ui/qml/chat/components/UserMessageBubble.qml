@@ -15,6 +15,7 @@ Item {
     property var structuredContent: []
     property string startTime: ""     // Formatted start time
     property string duration: ""      // Formatted duration (e.g., "2m 30s")
+    property var crewReadBy: []       // List of crew members who read this message
 
     signal referenceClicked(string refType, string refId)
 
@@ -33,7 +34,7 @@ Item {
     // Available width for bubble (total width minus avatar space on both sides)
     readonly property int availableWidth: Math.max(80, width - totalAvatarWidth)
 
-    implicitHeight: 12 + headerRow.height + 12 + bubbleContainer.height + 8
+    implicitHeight: 12 + headerRow.height + 12 + bubbleContainer.height + 8 + (crewReadByRow.visible ? crewReadByRow.height + 4 : 0)
 
     // Header row - right aligned with time info, name, and avatar
     Row {
@@ -176,6 +177,49 @@ Item {
                     }
                 }
             }
+        }
+    }
+
+    // Crew read-by indicator (shows which crew members have read this message)
+    Row {
+        id: crewReadByRow
+        anchors {
+            right: parent.right
+            rightMargin: avatarSize + avatarSpacing
+            top: bubbleContainer.bottom
+            topMargin: 4
+        }
+        spacing: 4
+        visible: root.crewReadBy && root.crewReadBy.length > 0
+
+        Repeater {
+            model: root.crewReadBy || []
+
+            Rectangle {
+                width: 20
+                height: 20
+                radius: width / 2
+                color: modelData.color || "#4a90e2"
+
+                Text {
+                    anchors.centerIn: parent
+                    text: modelData.icon || "🤖"
+                    font.pixelSize: 10
+                }
+
+                ToolTip {
+                    text: modelData.name || ""
+                    visible: hovered
+                }
+            }
+        }
+
+        Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: (root.crewReadBy || []).length + " 人已读"
+            color: timeInfoColor
+            font.pixelSize: 10
+            visible: (root.crewReadBy || []).length > 0
         }
     }
 }

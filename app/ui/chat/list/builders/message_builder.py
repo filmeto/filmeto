@@ -156,6 +156,8 @@ class MessageBuilder:
         # Build items from grouped messages with deduplication
         items = []
         for message_id, group_data in message_groups.items():
+            logger.debug(f"Building item for message_id: {message_id[:8]}, content_items count: {len(group_data['content_items'])}")
+
             # Apply smart deduplication
             deduplicated_content = self._deduplicate_content_items(
                 group_data["content_items"],
@@ -165,6 +167,8 @@ class MessageBuilder:
             # Create combined message
             combined_msg = dict(group_data["base"])
             combined_msg["content"] = deduplicated_content
+
+            logger.debug(f"  Combined content count: {len(deduplicated_content)}, types: {[c.get('content_type') for c in deduplicated_content if isinstance(c, dict)]}")
 
             # Build item from combined message
             item = self.build_item_from_history(combined_msg)
@@ -274,16 +278,24 @@ class MessageBuilder:
 
             if is_user:
                 text_content = ""
+                crew_read_by = []
                 for content_item in content_list:
                     if isinstance(content_item, dict):
-                        if content_item.get("content_type") == "text":
+                        content_type = content_item.get("content_type")
+                        if content_type == "text":
                             text_content = content_item.get("data", {}).get("text", "")
+                        elif content_type == "crew_member_read":
+                            # Extract crew_member_read for crew_read_by display
+                            raw_crew_members = content_item.get("data", {}).get("crew_members", [])
+                            logger.debug(f"  Found crew_member_read: {raw_crew_members}")
+                            crew_read_by = self._resolve_crew_read_by(raw_crew_members)
+                            logger.debug(f"  Resolved crew_read_by: {crew_read_by}")
 
                 # Add timestamp to metadata for QML
                 if timestamp and "timestamp" not in metadata:
                     metadata["timestamp"] = timestamp
 
-                logger.debug(f"  User message: {text_content[:50]}...")
+                logger.debug(f"  User message: {text_content[:50]}..., crew_read_by count: {len(crew_read_by)}")
                 return ChatListItem(
                     message_id=message_id,
                     sender_id=sender_id,
@@ -291,6 +303,7 @@ class MessageBuilder:
                     is_user=True,
                     user_content=text_content,
                     metadata=metadata,  # Preserve metadata for GSN sorting and timestamp
+                    crew_read_by=crew_read_by,
                 )
             else:
                 structured_content = []

@@ -107,6 +107,7 @@ ListView {
                 userIcon: modelData.userIcon || "👤"
                 startTime: modelData.startTime || ""
                 duration: modelData.duration || ""
+                crewReadBy: modelData.crewReadBy || []
             }
         }
 
