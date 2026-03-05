@@ -12,7 +12,6 @@ from typing import Optional
 from agent.chat.history.agent_chat_history_service import FastMessageHistoryService
 from agent.chat.agent_chat_signals import AgentChatSignals
 from agent.chat.agent_chat_message import AgentMessage
-from agent.chat.agent_chat_types import ContentType
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +76,7 @@ class AgentChatHistoryListener:
             message: The AgentMessage to save
         """
         try:
-            # Skip messages marked with _no_agent_history flag
+            # Skip messages marked with _no_agenthistory flag
             # These are crew member internal responses that should not be saved to agent history
             # (they are saved to their own crew member history instead)
             if message.metadata and message.metadata.get("_no_agent_history"):
@@ -87,13 +86,7 @@ class AgentChatHistoryListener:
             # crew_member_read messages are stored with the same message_id as the original user message.
             # They will be merged during history loading by message_builder's grouping logic.
             # This allows the read indicator to persist across sessions.
-
-            # Skip system messages if needed (now identified by ContentType.METADATA)
-            # Check first content item's type
-            if (message.structured_content and
-                message.structured_content[0].content_type == ContentType.METADATA):
-                # Optional: Filter out certain system messages
-                pass
+            # All content types should be saved to history for consistent replay.
 
             # Save message to history using FastMessageHistoryService
             success = FastMessageHistoryService.add_message(

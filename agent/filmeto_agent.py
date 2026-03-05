@@ -1382,7 +1382,7 @@ class FilmetoAgent:
                         pass
                 return
 
-            logger.info(f"📍 Routed to: {decision.routed_members}, reasoning: {decision.reasoning}")
+            logger.info(f"📍 Routed to: {decision.routed_members}")
 
             # Emit crew_member_read so the UI can show read indicators on the user message bubble
             if user_message_id and decision.routed_members:
@@ -1393,7 +1393,7 @@ class FilmetoAgent:
                         crew_read_list.append({
                             "id": member.config.name.lower(),
                             "name": member.config.name,
-                            "icon": getattr(member.config, "icon", "🤖"),
+                            "icon": getattr(member.config, "icon", ""),
                             "color": getattr(member.config, "color", "#4a90e2"),
                         })
                 if crew_read_list:
@@ -1405,6 +1405,10 @@ class FilmetoAgent:
                         metadata={"session_id": session_id, "event_type": "crew_member_read"},
                         structured_content=[read_content],
                     )
+                    # Record to conversation history so read indicators persist across reloads
+                    # The message will also be saved to history storage by AgentChatHistoryListener
+                    self.conversation_history.append(read_msg)
+                    logger.debug(f"📖 Recorded crew_member_read to history: {len(crew_read_list)} members")
                     await self.signals.send_agent_message(read_msg)
 
             # Dispatch to routed members in parallel
