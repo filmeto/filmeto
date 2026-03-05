@@ -27,11 +27,9 @@ class RoutingDecision:
     Attributes:
         routed_members: List of crew member names that should respond
         member_messages: Dict mapping crew member name to customized message
-        reasoning: Explanation of the routing decision
     """
     routed_members: List[str] = field(default_factory=list)
     member_messages: Dict[str, str] = field(default_factory=dict)
-    reasoning: Optional[str] = None
 
 
 class MessageRouterService:
@@ -81,7 +79,6 @@ class MessageRouterService:
             return RoutingDecision(
                 routed_members=[],
                 member_messages={},
-                reasoning="No crew members available"
             )
 
         # Validate LLM service
@@ -113,7 +110,7 @@ class MessageRouterService:
 
             # Parse the routing decision
             decision = self._parse_routing_response(content, crew_members, sender_id)
-            logger.info(f"LLM routing decision: {decision.routed_members}, reasoning: {decision.reasoning}")
+            logger.info(f"LLM routing decision: {decision.routed_members}")
             return decision
 
         except Exception as e:
@@ -229,20 +226,14 @@ class MessageRouterService:
 4. Don't route to the sender
 5. If no specific member is needed, route to "producer" if available
 
-## Response Format
-Respond with a JSON object:
-```json
-{{
-  "reasoning": "Explain why you selected these members",
-  "routed_members": ["member_name_1", "member_name_2"],
-  "member_messages": {{
-    "member_name_1": "Customized message for this member...",
-    "member_name_2": "Customized message for this member..."
-  }}
-}}
-```
+Respond ONLY with JSONL format (one JSON object per line, no markdown code blocks):
+{"crew_member": "member_name", "message": "customized message for this member"}
 
-Respond ONLY with the JSON object, no other text."""
+Example for routing to two members:
+{"crew_member": "translator", "message": "Please translate this..."}
+{"crew_member": "editor", "message": "Please edit this..."}
+
+Respond ONLY with the JSONL lines, no other text."""
 
     def _parse_routing_response(
         self,
@@ -252,55 +243,68 @@ Respond ONLY with the JSON object, no other text."""
     ) -> RoutingDecision:
         """
         Parse the LLM response into a RoutingDecision.
+        Expects JSONL format with each line containing:
+        {"crew_member": "name", "message": "customized message"}
 
         Args:
-            content: Raw LLM response content
+            content: Raw LLM response content (JSONL lines)
             crew_members: Available crew members for validation
             sender_id: ID of the sender (to exclude from routing)
 
         Returns:
             Parsed RoutingDecision
         """
+        valid_members = []
+        valid_messages = {}
+
         try:
-            # Extract JSON from response (handle markdown code blocks)
-            json_str = self._extract_json(content)
-            if not json_str:
-                logger.warning(f"Could not extract JSON from response: {content[:200]}")
-                return RoutingDecision(
-                    routed_members=[],
-                    member_messages={},
-                    reasoning="Failed to parse LLM response"
-                )
+            # Try JSONL format first - each line is a JSON object
+            lines = [line.strip() for line in content.strip().split('\n') if line.strip()]
 
-            data = json.loads(json_str)
+            # Check if it's JSONL format (multiple lines) or single JSON object
+            if len(lines) > 1:
+                # JSONL format
+                for line in lines:
+                    data = json.loads(line)
+                    member_name = data.get("crew_member")
+                    message = data.get("message", "")
 
-            reasoning = data.get("reasoning", "")
-            routed_members = data.get("routed_members", [])
-            member_messages = data.get("member_messages", {})
+                    if not member_name:
+                        continue
 
-            # Validate routed members exist and are not the sender
-            valid_members = []
-            valid_messages = {}
+                    actual_name = self._find_member_name(member_name, crew_members)
+                    if actual_name and actual_name.lower() != sender_id.lower():
+                        valid_members.append(actual_name)
+                        if message:
+                            valid_messages[actual_name] = message
+            else:
+                # Single JSON object - try new format first, then legacy format
+                data = json.loads(lines[0]) if lines else {}
 
-            for member_name in routed_members:
-                # Case-insensitive member lookup
-                actual_name = None
-                for name in crew_members:
-                    if name.lower() == member_name.lower():
-                        actual_name = name
-                        break
+                # Try new JSONL format (single item)
+                if "crew_member" in data:
+                    member_name = data.get("crew_member")
+                    message = data.get("message", "")
 
-                if actual_name and actual_name.lower() != sender_id.lower():
-                    valid_members.append(actual_name)
-                    # Get customized message or use original
-                    customized_msg = member_messages.get(member_name, member_messages.get(actual_name))
-                    if customized_msg:
-                        valid_messages[actual_name] = customized_msg
+                    actual_name = self._find_member_name(member_name, crew_members)
+                    if actual_name and actual_name.lower() != sender_id.lower():
+                        valid_members.append(actual_name)
+                        if message:
+                            valid_messages[actual_name] = message
+                # Legacy JSON format
+                elif "routed_members" in data:
+                    member_messages = data.get("member_messages", {})
+                    for member_name in data.get("routed_members", []):
+                        actual_name = self._find_member_name(member_name, crew_members)
+                        if actual_name and actual_name.lower() != sender_id.lower():
+                            valid_members.append(actual_name)
+                            customized_msg = member_messages.get(member_name, member_messages.get(actual_name))
+                            if customized_msg:
+                                valid_messages[actual_name] = customized_msg
 
             return RoutingDecision(
                 routed_members=valid_members,
                 member_messages=valid_messages,
-                reasoning=reasoning
             )
 
         except json.JSONDecodeError as e:
@@ -308,46 +312,28 @@ Respond ONLY with the JSON object, no other text."""
             return RoutingDecision(
                 routed_members=[],
                 member_messages={},
-                reasoning=f"JSON parse error: {str(e)}"
             )
         except Exception as e:
             logger.error(f"Error parsing routing response: {e}", exc_info=True)
             return RoutingDecision(
                 routed_members=[],
                 member_messages={},
-                reasoning=f"Parse error: {str(e)}"
             )
 
-    def _extract_json(self, content: str) -> Optional[str]:
+    def _find_member_name(self, member_name: str, crew_members: Dict[str, "CrewMember"]) -> Optional[str]:
         """
-        Extract JSON from content that may contain markdown code blocks.
+        Find the actual member name using case-insensitive comparison.
 
         Args:
-            content: Raw content possibly containing JSON
+            member_name: The member name to look up
+            crew_members: Available crew members dict
 
         Returns:
-            Extracted JSON string or None
+            The actual member name or None if not found
         """
-        content = content.strip()
-
-        # Try to extract from markdown code block
-        if "```json" in content:
-            start = content.find("```json") + 7
-            end = content.find("```", start)
-            if end > start:
-                return content[start:end].strip()
-        elif "```" in content:
-            start = content.find("```") + 3
-            end = content.find("```", start)
-            if end > start:
-                return content[start:end].strip()
-
-        # Try to find JSON object directly
-        start = content.find("{")
-        end = content.rfind("}")
-        if start != -1 and end > start:
-            return content[start:end+1]
-
+        for name in crew_members:
+            if name.lower() == member_name.lower():
+                return name
         return None
 
     def _fallback_routing(
@@ -380,7 +366,6 @@ Respond ONLY with the JSON object, no other text."""
             return RoutingDecision(
                 routed_members=[producer_name],
                 member_messages={producer_name: message},
-                reasoning="Fallback: routed to producer"
             )
 
         # Find first available member that's not the sender
@@ -389,13 +374,11 @@ Respond ONLY with the JSON object, no other text."""
                 return RoutingDecision(
                     routed_members=[name],
                     member_messages={name: message},
-                    reasoning=f"Fallback: routed to first available member ({name})"
                 )
 
         return RoutingDecision(
             routed_members=[],
             member_messages={},
-            reasoning="No available members for routing"
         )
 
 

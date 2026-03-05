@@ -38,22 +38,17 @@ When creating `member_messages`:
 
 ## Response Format
 
-Respond with ONLY a JSON object in this exact format:
-```json
-{
-  "reasoning": "Brief explanation of why you selected these members and how the message relates to their expertise",
-  "routed_members": ["member_name_1", "member_name_2"],
-  "member_messages": {
-    "member_name_1": "Contextualized message for member 1...",
-    "member_name_2": "Contextualized message for member 2..."
-  }
-}
-```
+Respond with ONLY JSONL format (one JSON object per line). Each line must contain:
+{"crew_member": "member_name", "message": "customized message"}
+
+Example output for routing to two members:
+{"crew_member": "translator", "message": "Please translate the following..."}
+{"crew_member": "editor", "message": "Please review and edit this content..."}
 
 ## Important Notes
 
 - Use exact member names from the "Available Crew Members" list
-- If only one member should respond, still use the array format with one element
-- If no member should respond (rare), use empty arrays
-- The `member_messages` should contain helpful context but not repeat unnecessary information
-- Respond ONLY with the JSON object, no additional text or explanation outside the JSON
+- Each crew member gets one JSON line
+- If no member should respond (rare), output nothing (empty response)
+- The `message` should contain helpful context adapted for that member's role
+- Respond ONLY with JSONL lines, no markdown code blocks, no additional text
