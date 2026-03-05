@@ -483,6 +483,14 @@ class MessageBuilder:
                     merged_content = [c for c in merged_content
                                       if c.get('content_type') != 'typing']
                     merged_content.append(copy.deepcopy(content_item))
+                elif content_type == 'crew_member_read':
+                    # Extract crew_member_read and update crew_read_by field
+                    raw_crew_members = content_item.get("data", {}).get("crew_members", [])
+                    crew_read_by = self._resolve_crew_read_by(raw_crew_members)
+                    if crew_read_by:
+                        # Update the crew_read_by field in the existing item
+                        self._model.update_item(message_id, {self._model.CREW_READ_BY: crew_read_by})
+                        logger.debug(f"Updated crew_read_by for {message_id[:8]}...: {len(crew_read_by)} members")
                 else:
                     content_id = content_item.get('content_id')
                     if content_id:
