@@ -274,14 +274,10 @@ class MessageBuilder:
 
             if is_user:
                 text_content = ""
-                crew_read_by = None
                 for content_item in content_list:
                     if isinstance(content_item, dict):
                         if content_item.get("content_type") == "text":
                             text_content = content_item.get("data", {}).get("text", "")
-                        elif content_item.get("content_type") == "crew_member_read":
-                            raw = content_item.get("data", {}).get("crew_members", [])
-                            crew_read_by = self._resolve_crew_read_by(raw)
 
                 # Add timestamp to metadata for QML
                 if timestamp and "timestamp" not in metadata:
@@ -294,7 +290,6 @@ class MessageBuilder:
                     sender_name=sender_name,
                     is_user=True,
                     user_content=text_content,
-                    crew_read_by=crew_read_by,
                     metadata=metadata,  # Preserve metadata for GSN sorting and timestamp
                 )
             else:
@@ -309,8 +304,6 @@ class MessageBuilder:
                 tool_entries: List[Dict[str, Any]] = []
                 # Track typing content - only keep the last one (should be END state)
                 last_typing_content: Optional[Dict[str, Any]] = None
-                # Track crew member read content for bottom-right display
-                crew_read_by: Optional[List[Dict[str, Any]]] = None
 
                 position = 0
                 for content_item in content_list:
@@ -324,11 +317,6 @@ class MessageBuilder:
                         if content_type == "typing":
                             last_typing_content = content_item
                             continue  # Don't process now, handle after the loop
-                        # Extract crew_member_read for bottom-right display, not as content
-                        elif content_type == "crew_member_read":
-                            raw = content_item.get("data", {}).get("crew_members", [])
-                            crew_read_by = self._resolve_crew_read_by(raw)
-                            continue  # Don't add to structured_content
                         elif content_type == "skill":
                             skill_name = content_item.get("data", {}).get("skill_name", "")
                             if skill_name:
@@ -420,7 +408,6 @@ class MessageBuilder:
                     agent_color=agent_color,
                     agent_icon=agent_icon,
                     crew_member_metadata=crew_member_data,
-                    crew_read_by=crew_read_by,
                 )
 
         except Exception as e:
@@ -448,13 +435,8 @@ class MessageBuilder:
                 return
 
             current_structured = current_item.get(self._model.STRUCTURED_CONTENT, [])
-            # Filter out any crew_member_read from existing content (should not be in structured_content)
-            merged_content = [
-                copy.deepcopy(sc) for sc in current_structured
-                if sc.get('content_type') != 'crew_member_read'
-            ]
+            merged_content = copy.deepcopy(current_structured)
             new_content_list = combined_msg.get("content", [])
-            crew_read_by_merged = current_item.get(self._model.CREW_READ_BY)
 
             for content_item in new_content_list:
                 if not isinstance(content_item, dict):
@@ -479,10 +461,6 @@ class MessageBuilder:
                     merged_content = [c for c in merged_content
                                       if c.get('content_type') != 'typing']
                     merged_content.append(copy.deepcopy(content_item))
-                elif content_type == 'crew_member_read':
-                    # Extract crew_member_read for bottom-right display, not as content
-                    raw = content_item.get("data", {}).get("crew_members", [])
-                    crew_read_by_merged = self._resolve_crew_read_by(raw)
                 else:
                     content_id = content_item.get('content_id')
                     if content_id:
@@ -493,8 +471,6 @@ class MessageBuilder:
                     merged_content.append(copy.deepcopy(content_item))
 
             updates = {self._model.STRUCTURED_CONTENT: merged_content}
-            if crew_read_by_merged is not None:
-                updates[self._model.CREW_READ_BY] = crew_read_by_merged
             self._model.update_item(message_id, updates)
             logger.debug(f"Merged {len(new_content_list)} content items into {message_id[:8]}...")
 

@@ -51,7 +51,8 @@ Item {
     // Note: plan_task and todo_write are shown in Thinking section (collapsible)
     readonly property var _mainContentTypesLookup: ({
         "text": true, "code_block": true, "image": true, "video": true, "audio": true,
-        "link": true, "button": true, "form": true, "file": true, "file_attachment": true
+        "link": true, "button": true, "form": true, "file": true, "file_attachment": true,
+        "crew_member_read": true
     })
 
     // Deep content hash for change detection
@@ -255,6 +256,7 @@ Item {
             case "metadata": return widgetSupport === "full" ? metadataWidgetComponent : textWidgetComponent
             case "error": return widgetSupport === "full" ? errorWidgetComponent : textWidgetComponent
             case "llm_output": return widgetSupport === "full" ? llmOutputComponent : textWidgetComponent
+            case "crew_member_read": return widgetSupport === "full" ? crewMemberReadComponent : textWidgetComponent
             default: return textWidgetComponent
         }
     }
@@ -848,6 +850,17 @@ Item {
             widgetColor: root.widgetColor
             output: data.output || data.data?.output || ""
             title: data.title || data.data?.title || "LLM Output"
+        }
+    }
+
+    // CrewMemberRead widget
+    Component {
+        id: crewMemberReadComponent
+
+        CrewMemberReadWidget {
+            property var data: ({})
+            width: parent.width
+            widgetColor: root.widgetColor
         }
     }
 }
