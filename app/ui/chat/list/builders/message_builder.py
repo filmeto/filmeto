@@ -317,6 +317,14 @@ class MessageBuilder:
                 tool_entries: List[Dict[str, Any]] = []
                 # Track typing content - only keep the last one (should be END state)
                 last_typing_content: Optional[Dict[str, Any]] = None
+                # Extract crew_member_read for crew_read_by display
+                crew_read_by = []
+                for content_item in content_list:
+                    if isinstance(content_item, dict) and content_item.get("content_type") == "crew_member_read":
+                        raw_crew_members = content_item.get("data", {}).get("crew_members", [])
+                        logger.debug(f"  Found crew_member_read for agent: {raw_crew_members}")
+                        crew_read_by = self._resolve_crew_read_by(raw_crew_members)
+                        break
 
                 position = 0
                 for content_item in content_list:
@@ -411,7 +419,7 @@ class MessageBuilder:
                     sender_name, metadata
                 )
 
-                logger.debug(f"  Agent message with {len(structured_content)} content items")
+                logger.debug(f"  Agent message with {len(structured_content)} content items, crew_read_by: {len(crew_read_by)}")
                 return ChatListItem(
                     message_id=message_id,
                     sender_id=sender_id,
@@ -421,6 +429,7 @@ class MessageBuilder:
                     agent_color=agent_color,
                     agent_icon=agent_icon,
                     crew_member_metadata=crew_member_data,
+                    crew_read_by=crew_read_by,
                 )
 
         except Exception as e:

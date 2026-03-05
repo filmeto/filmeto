@@ -16,6 +16,7 @@ Item {
     property var structuredContent: []
     property string startTime: ""     // Formatted start time (HH:MM)
     property string duration: ""      // Formatted duration (e.g., "2m 30s")
+    property var crewReadBy: []       // List of crew members who read this message
 
     signal referenceClicked(string refType, string refId)
 
@@ -35,7 +36,7 @@ Item {
     readonly property int availableWidth: parent.width - totalAvatarWidth
 
     // Width is determined by anchors, height is calculated dynamically
-    implicitHeight: headerRow.height + contentRect.implicitHeight + 8
+    implicitHeight: headerRow.height + contentRect.implicitHeight + 8 + (crewReadByRow.visible ? crewReadByRow.height + 4 : 0)
 
     // Header row with avatar, name (left) and time info (right)
     Row {
@@ -168,6 +169,49 @@ Item {
             onReferenceClicked: function(refType, refId) {
                 root.referenceClicked(refType, refId)
             }
+        }
+    }
+
+    // Crew read-by indicator (shows which crew members have read this message)
+    Row {
+        id: crewReadByRow
+        anchors {
+            left: parent.left
+            leftMargin: 40
+            top: contentRect.bottom
+            topMargin: 4
+        }
+        spacing: 4
+        visible: root.crewReadBy && root.crewReadBy.length > 0
+
+        Repeater {
+            model: root.crewReadBy || []
+
+            Rectangle {
+                width: 20
+                height: 20
+                radius: width / 2
+                color: modelData.color || "#4a90e2"
+
+                Text {
+                    anchors.centerIn: parent
+                    text: modelData.icon || "🤖"
+                    font.pixelSize: 10
+                }
+
+                ToolTip {
+                    text: modelData.name || ""
+                    visible: hovered
+                }
+            }
+        }
+
+        Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: (root.crewReadBy || []).length + " 人已读"
+            color: timestampColor
+            font.pixelSize: 10
+            visible: (root.crewReadBy || []).length > 0
         }
     }
 }
