@@ -1,31 +1,49 @@
 """
 Main agent module for Filmeto application.
 Implements the FilmetoAgent class with streaming capabilities.
+
+This module now serves as the main interface, with core functionality
+delegated to modules in the agent.core package.
 """
 import asyncio
-import json
 import logging
-import re
 import uuid
 from typing import AsyncIterator, AsyncGenerator, Callable, Dict, List, Optional, Any, TYPE_CHECKING
+
 from agent.chat.agent_chat_message import AgentMessage
 from agent.chat.content import (
-    StructureContent, TextContent, ThinkingContent, ToolCallContent,
-    ToolResponseContent, ProgressContent, MetadataContent, ErrorContent,
-    LlmOutputContent, TodoWriteContent, PlanContent, PlanTaskContent,
-    CrewMemberReadContent, create_content
+    StructureContent, TextContent, MetadataContent, ErrorContent,
+    CrewMemberReadContent
 )
 from agent.chat.agent_chat_types import ContentType
 from agent.chat.agent_chat_signals import AgentChatSignals
 from agent.chat.history.agent_chat_history_listener import AgentChatHistoryListener
 from agent.llm.llm_service import LlmService
-from agent.plan.plan_models import Plan, PlanInstance, PlanTask, TaskStatus
 from agent.plan.plan_service import PlanService
 from agent.crew.crew_member import CrewMember
-from agent.crew.crew_title import sort_crew_members_by_title_importance
 from agent.crew.crew_service import CrewService
-from agent.router.message_router_service import MessageRouterService, RoutingDecision
+from agent.router.message_router_service import MessageRouterService
 from utils.path_utils import get_workspace_path
+
+# Import from core package
+from agent.core import (
+    # Instance management
+    FilmetoInstanceManager,
+    # Utilities
+    extract_text_content,
+    truncate_text,
+    get_workspace_path_safe,
+    get_project_from_workspace,
+    resolve_project_name,
+    # Constants
+    PRODUCER_NAME,
+    DEFAULT_MODEL,
+    DEFAULT_TEMPERATURE,
+    DEFAULT_STREAMING,
+)
+from agent.core.filmeto_crew import FilmetoCrewManager
+from agent.core.filmeto_routing import FilmetoRoutingManager
+from agent.core.filmeto_plan import FilmetoPlanManager
 
 if TYPE_CHECKING:
     from agent.event.agent_event import AgentEvent
@@ -34,44 +52,71 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# Pattern for @mentions supporting multiple languages including Chinese, Japanese, Korean, etc.
-# Matches: letters, numbers, underscores, hyphens, and CJK characters (Chinese, Japanese, Korean)
-# Examples: @director, @导演, @ cinematographer, @分镜师
-_MENTION_PATTERN = re.compile(r"@([\w\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af_-]+)")
-_PRODUCER_NAME = "producer"
-
-
-def _extract_text_content(message: AgentMessage) -> str:
-    """Extract text content from a message's structured_content."""
-    if not message.structured_content:
-        return ""
-    for sc in message.structured_content:
-        if sc.content_type == ContentType.TEXT and isinstance(sc, TextContent):
-            return sc.text
-    return ""
-
-
-
-
 class FilmetoAgent:
     """
     Class for managing agent capabilities in Filmeto.
     Provides streaming conversation interface and manages multiple agents.
 
-    Instances are managed statically and can be retrieved using get_instance().
+    This is the main interface class. Core functionality is delegated to:
+    - FilmetoInstanceManager: Singleton instance management (class-level)
+    - FilmetoCrewManager: Crew member management
+    - FilmetoRoutingManager: Message routing and streaming
+    - FilmetoPlanManager: Plan operations and task execution
     """
 
-    # Class-level instance storage: dict[(workspace_path, project_name)] -> FilmetoAgent
-    _instances: Dict[str, 'FilmetoAgent'] = {}
-    _lock = False  # Simple lock for thread safety (can be replaced with threading.Lock if needed)
+    # ========================================================================
+    # Class-level instance management (delegated to FilmetoInstanceManager)
+    # ========================================================================
+
+    @classmethod
+    def get_instance(
+        cls,
+        workspace: Any,
+        project_name: str,
+        model: str = DEFAULT_MODEL,
+        temperature: float = DEFAULT_TEMPERATURE,
+        streaming: bool = DEFAULT_STREAMING,
+    ) -> "FilmetoAgent":
+        """Get or create a FilmetoAgent instance for the given workspace and project."""
+        return FilmetoInstanceManager.get_instance(
+            workspace=workspace,
+            project_name=project_name,
+            model=model,
+            temperature=temperature,
+            streaming=streaming,
+        )
+
+    @classmethod
+    def remove_instance(cls, workspace: Any, project_name: str) -> bool:
+        """Remove a FilmetoAgent instance from the cache."""
+        return FilmetoInstanceManager.remove_instance(workspace, project_name)
+
+    @classmethod
+    def clear_all_instances(cls):
+        """Clear all cached FilmetoAgent instances."""
+        FilmetoInstanceManager.clear_all_instances()
+
+    @classmethod
+    def list_instances(cls) -> List[str]:
+        """List all cached instance keys."""
+        return FilmetoInstanceManager.list_instances()
+
+    @classmethod
+    def has_instance(cls, workspace: Any, project_name: str) -> bool:
+        """Check if an instance exists for the given workspace and project."""
+        return FilmetoInstanceManager.has_instance(workspace, project_name)
+
+    # ========================================================================
+    # Initialization
+    # ========================================================================
 
     def __init__(
         self,
         workspace: Any = None,
         project: Any = None,
-        model='gpt-4o-mini',
-        temperature=0.7,
-        streaming=True,
+        model: str = DEFAULT_MODEL,
+        temperature: float = DEFAULT_TEMPERATURE,
+        streaming: bool = DEFAULT_STREAMING,
         llm_service: Optional[LlmService] = None,
         crew_member_service: Optional[CrewService] = None,
         plan_service: Optional[PlanService] = None,
@@ -82,204 +127,58 @@ class FilmetoAgent:
         self.model = model
         self.temperature = temperature
         self.streaming = streaming
-        self.members: Dict[str, CrewMember] = {}
-        self.conversation_history: List[AgentMessage] = []
+
+        # Core services
         self.llm_service = llm_service or LlmService(workspace)
         self.crew_member_service = crew_member_service or CrewService()
 
         # Get project name for PlanService instance management
-        project_name = self._resolve_project_name() or "default"
+        project_name = resolve_project_name(self.project) or "default"
         self.plan_service = plan_service or PlanService.get_instance(workspace, project_name)
-        self.crew_members: Dict[str, CrewMember] = {}
-        self._crew_member_lookup: Dict[str, CrewMember] = {}
+
+        # State
+        self.conversation_history: List[AgentMessage] = []
         self.signals = AgentChatSignals()
         self._history_listener = None
+
+        # Core managers (initialized after self is ready)
+        self._crew_manager = FilmetoCrewManager(self.crew_member_service)
+        self._message_router = MessageRouterService(
+            llm_service=self.llm_service,
+            workspace=workspace
+        )
+        self._routing_manager = None  # Will be initialized after _crew_manager is ready
+        self._plan_manager = None  # Will be initialized after _routing_manager is ready
+
+        # Initialize
         self._init_history_listener()
-        self._message_router = MessageRouterService(llm_service=self.llm_service, workspace=workspace)
+        self._init_managers()
 
-        # Initialize the agent
-        self._init_agent()
-        # Note: _ensure_crew_members_loaded will be called in the chat method when needed
-
-    @classmethod
-    def get_instance(
-        cls,
-        workspace: Any,
-        project_name: str,
-        model: str = 'gpt-4o-mini',
-        temperature: float = 0.7,
-        streaming: bool = True,
-    ) -> 'FilmetoAgent':
-        """
-        Get or create a FilmetoAgent instance for the given workspace and project.
-
-        Each unique (workspace_path, project_name) combination gets its own instance
-        that will be reused across multiple calls.
-
-        Args:
-            workspace: The workspace object
-            project_name: The name of the project
-            model: The LLM model to use (only used when creating new instance)
-            temperature: The temperature setting (only used when creating new instance)
-            streaming: Whether to use streaming (only used when creating new instance)
-
-        Returns:
-            FilmetoAgent: The agent instance for this workspace/project combination
-        """
-        # Extract workspace path for key generation
-        workspace_path = cls._get_workspace_path(workspace)
-
-        # Create instance key
-        instance_key = f"{workspace_path}:{project_name}"
-
-        # Check if instance already exists
-        if instance_key in cls._instances:
-            logger.debug(f"Reusing existing FilmetoAgent instance for {instance_key}")
-            return cls._instances[instance_key]
-
-        # Create new instance
-        logger.info(f"Creating new FilmetoAgent instance for {instance_key}")
-
-        # Get project object from workspace
-        project = cls._get_project_from_workspace(workspace, project_name)
-
-        agent = cls(
-            workspace=workspace,
-            project=project,
-            model=model,
-            temperature=temperature,
-            streaming=streaming,
+    def _init_managers(self) -> None:
+        """Initialize core managers that depend on each other."""
+        # Routing manager depends on crew_manager
+        self._routing_manager = FilmetoRoutingManager(
+            crew_manager=self._crew_manager,
+            message_router=self._message_router,
+            signals=self.signals,
+            conversation_history=self.conversation_history,
         )
 
-        # Store instance
-        cls._instances[instance_key] = agent
-        return agent
-
-    @classmethod
-    def remove_instance(cls, workspace: Any, project_name: str) -> bool:
-        """
-        Remove a FilmetoAgent instance from the cache.
-
-        Args:
-            workspace: The workspace object
-            project_name: The name of the project
-
-        Returns:
-            bool: True if instance was removed, False if it didn't exist
-        """
-        workspace_path = cls._get_workspace_path(workspace)
-        instance_key = f"{workspace_path}:{project_name}"
-
-        if instance_key in cls._instances:
-            del cls._instances[instance_key]
-            logger.info(f"Removed FilmetoAgent instance for {instance_key}")
-            return True
-        return False
-
-    @classmethod
-    def clear_all_instances(cls):
-        """Clear all cached FilmetoAgent instances."""
-        count = len(cls._instances)
-        cls._instances.clear()
-        logger.info(f"Cleared {count} FilmetoAgent instance(s)")
-
-    @classmethod
-    def list_instances(cls) -> List[str]:
-        """
-        List all cached instance keys.
-
-        Returns:
-            List of instance keys in format "workspace_path:project_name"
-        """
-        return list(cls._instances.keys())
-
-    @classmethod
-    def has_instance(cls, workspace: Any, project_name: str) -> bool:
-        """
-        Check if an instance exists for the given workspace and project.
-
-        Args:
-            workspace: The workspace object
-            project_name: The name of the project
-
-        Returns:
-            bool: True if instance exists, False otherwise
-        """
-        workspace_path = cls._get_workspace_path(workspace)
-        instance_key = f"{workspace_path}:{project_name}"
-        return instance_key in cls._instances
-
-    @staticmethod
-    def _get_workspace_path(workspace: Any) -> str:
-        """Extract workspace path from workspace object."""
-        if workspace is None:
-            return "none"
-        if hasattr(workspace, 'workspace_path'):
-            return workspace.workspace_path
-        if hasattr(workspace, 'path'):
-            return str(workspace.path)
-        return str(id(workspace))
-
-    @staticmethod
-    def _get_project_from_workspace(workspace: Any, project_name: str) -> Any:
-        """Get project object from workspace by name."""
-        if workspace is None:
-            return None
-
-        # Try to get project by name
-        if hasattr(workspace, 'get_project'):
-            # First try to get current project
-            project = workspace.get_project()
-            if project:
-                # Check if it matches the requested name
-                proj_name = None
-                if hasattr(project, 'project_name'):
-                    proj_name = project.project_name
-                elif hasattr(project, 'name'):
-                    proj_name = project.name
-                elif isinstance(project, str):
-                    proj_name = project
-
-                if proj_name == project_name:
-                    return project
-
-        # Try to get from project manager
-        if hasattr(workspace, 'project_manager') and workspace.project_manager:
-            if hasattr(workspace.project_manager, 'ensure_projects_loaded'):
-                workspace.project_manager.ensure_projects_loaded()
-
-            if hasattr(workspace, 'get_projects'):
-                projects = workspace.get_projects()
-                if projects and project_name in projects:
-                    return projects[project_name]
-
-        # Fallback: return None and let agent handle it
-        return None
-    
-    def _init_agent(self):
-        """Initialize the agent using LlmService."""
-        # Check if the LLM service is properly configured
-        if self.llm_service and self.llm_service.validate_config():
-            # Agent is properly configured
-            pass
-        else:
-            # Agent not configured due to missing API key or base URL
-            pass
+        # Plan manager depends on routing_manager
+        self._plan_manager = FilmetoPlanManager(
+            plan_service=self.plan_service,
+            signals=self.signals,
+            routing_manager=self._routing_manager,
+            resolve_project_name=lambda: resolve_project_name(self.project),
+        )
 
     def _init_history_listener(self) -> None:
-        workspace_path = None
-        if self.workspace is not None:
-            if hasattr(self.workspace, "workspace_path"):
-                workspace_path = self.workspace.workspace_path
-            elif hasattr(self.workspace, "path"):
-                workspace_path = str(self.workspace.path)
-            elif isinstance(self.workspace, str):
-                workspace_path = self.workspace
-
-        if not workspace_path:
+        """Initialize the history listener for persisting messages."""
+        workspace_path = get_workspace_path_safe(self.workspace)
+        if not workspace_path or workspace_path == "none":
             workspace_path = str(get_workspace_path())
 
-        project_name = self._resolve_project_name() or "default"
+        project_name = resolve_project_name(self.project) or "default"
 
         try:
             self._history_listener = AgentChatHistoryListener(
@@ -292,917 +191,9 @@ class FilmetoAgent:
             logger.warning("Failed to initialize AgentChatHistoryListener: %s", e)
             self._history_listener = None
 
-    def _convert_event_to_message(
-        self,
-        event: 'AgentEvent',
-        sender_id: str,
-        sender_name: str,
-        message_id: str
-    ) -> Optional[AgentMessage]:
-        """
-        Convert an AgentEvent to an AgentMessage for UI display.
-        This is the central conversion point for all event types.
-
-        Args:
-            event: The AgentEvent to convert (must have content field populated)
-            sender_id: ID of the message sender
-            sender_name: Display name of the sender
-            message_id: Message ID to use
-
-        Returns:
-            AgentMessage if conversion successful, None otherwise
-
-        Raises:
-            ValueError: If event.content is None
-        """
-        from agent.react import AgentEventType
-
-        # All events must have content now
-        if not event.content:
-            raise ValueError(
-                f"Event {event.event_type} must have content. "
-                f"Event content cannot be None."
-            )
-
-        return AgentMessage(
-            sender_id=sender_id,
-            sender_name=sender_name,
-            message_id=message_id,
-            structured_content=[event.content]
-        )
-    
-    def register_agent(self, agent_id: str, name: str, role_description: str, handler_func: Callable):
-        """
-        Register a new agent with a specific role.
-        This method is deprecated since we're moving to direct CrewMember usage.
-        Use _register_crew_member instead which directly adds CrewMembers to members dict.
-
-        Args:
-            agent_id: Unique identifier for the agent
-            name: Display name for the agent
-            role_description: Description of the agent's role
-            handler_func: Async function that handles messages and yields responses
-        """
-        # Create a minimal CrewMember-like object for backward compatibility
-        from unittest.mock import Mock
-        mock_config = Mock()
-        mock_config.name = name
-        mock_config.description = role_description
-
-        mock_agent = Mock()
-        mock_agent.config = mock_config
-        mock_agent.chat_stream = handler_func
-
-        self.members[agent_id] = mock_agent
-
-    def get_member(self, member_id: str) -> Optional[CrewMember]:
-        """Get a member by ID."""
-        return self.members.get(member_id)
-
-    def list_members(self) -> List[CrewMember]:
-        """List all registered members, sorted by crew title importance."""
-        return sort_crew_members_by_title_importance(list(self.members.values()))
-
-    def _ensure_crew_members_loaded(self, refresh: bool = False) -> Dict[str, CrewMember]:
-        if not self.project:
-            self.crew_members = {}
-            self._crew_member_lookup = {}
-            return {}
-
-        crew_members = self.crew_member_service.load_project_crew_members(self.project, refresh=refresh)
-        self.crew_members = crew_members
-        # Create lookup with name, crew_title, and display_names as keys
-        self._crew_member_lookup = {}
-        for name, agent in crew_members.items():
-            # Add the agent by its name (current behavior)
-            self._crew_member_lookup[name.lower()] = agent
-
-            # Add the agent by its crew title (if available in metadata)
-            crew_title = agent.config.metadata.get('crew_title')
-            if crew_title:
-                self._crew_member_lookup[crew_title.lower()] = agent
-
-                # Also add display names (localized titles) for mention matching
-                # This allows mentioning by localized title like @导演, @分镜师, etc.
-                from agent.crew.crew_title import CrewTitle
-                title_instance = CrewTitle.create_from_title(crew_title)
-                if title_instance:
-                    # Get display name in current language
-                    display_name = title_instance.get_title_display()
-                    if display_name and display_name != title_instance.title:
-                        self._crew_member_lookup[display_name] = agent
-
-                    # Also add all available display names for cross-language mentions
-                    if title_instance.display_names:
-                        for lang, lang_display_name in title_instance.display_names.items():
-                            if lang_display_name and lang_display_name not in self._crew_member_lookup:
-                                self._crew_member_lookup[lang_display_name] = agent
-
-        for crew_member in crew_members.values():
-            self._register_crew_member(crew_member)
-
-        return crew_members
-
-    def _register_crew_member(self, crew_member: CrewMember) -> None:
-        # Directly add the CrewMember to the members dictionary
-        self.members[crew_member.config.name] = crew_member
-
-    def _extract_mentions(self, content: str) -> List[str]:
-        if not content:
-            return []
-        return [match.group(1) for match in _MENTION_PATTERN.finditer(content)]
-
-    def _resolve_mentioned_crew_member(self, content: str) -> Optional[CrewMember]:
-        for mention in self._extract_mentions(content):
-            candidate = mention.lower()
-            crew_member = self._crew_member_lookup.get(candidate)
-            if crew_member:
-                return crew_member
-        return None
-
-    def _resolve_mentioned_title(self, content: str) -> Optional[CrewMember]:
-        """Resolve a crew member by @mention (supports multilingual titles)."""
-        for mention in self._extract_mentions(content):
-            # Direct lookup in _crew_member_lookup which now contains:
-            # - agent name
-            # - crew_title (e.g., "director")
-            # - display_name in current language (e.g., "导演")
-            # - all display_names from metadata
-            crew_member = self._crew_member_lookup.get(mention)
-            if crew_member:
-                return crew_member
-
-            # Fallback: try case-insensitive match for display names
-            mention_lower = mention.lower()
-            for key, agent in self._crew_member_lookup.items():
-                if key.lower() == mention_lower:
-                    return agent
-
-        return None
-
-    def _get_producer_crew_member(self) -> Optional[CrewMember]:
-        return self._crew_member_lookup.get(_PRODUCER_NAME)
-
-    def _resolve_project_name(self) -> Optional[str]:
-        project = self.project
-        if project is None:
-            return None
-        if hasattr(project, "project_name"):
-            return project.project_name
-        if hasattr(project, "name"):
-            return project.name
-        if isinstance(project, str):
-            return project
-        return None
-
-    def _truncate_text(self, text: str, limit: int = 160) -> str:
-        if text is None:
-            return ""
-        text = text.strip()
-        if len(text) <= limit:
-            return text
-        return text[: limit - 3].rstrip() + "..."
-
-    async def _emit_system_event(
-        self,
-        event_type: str,
-        session_id: str,
-        sender_id: Optional[str] = None,
-        sender_name: Optional[str] = None,
-        message_id: Optional[str] = None,
-        **kwargs: Any
-    ) -> None:
-        """Emit a system event via AgentChatSignals for UI feedback.
-
-        For metadata content, uses deterministic content_id based on (message_id, event_type)
-        to prevent duplicate metadata entries for the same event type in a conversation.
-
-        Args:
-            event_type: Type of the event
-            session_id: Session identifier
-            sender_id: Optional sender ID (defaults to "system")
-            sender_name: Optional sender name (defaults to "System")
-            message_id: Optional message ID to reuse (for crew member message chaining)
-            **kwargs: Additional event metadata
-        """
-        # Default to system if no sender provided
-        if sender_id is None:
-            sender_id = "system"
-        if sender_name is None:
-            sender_name = "System"
-
-        # Use deterministic content_id for metadata to prevent duplicates
-        # This ensures that multiple updates to the same (message_id, event_type)
-        # will have the same content_id, allowing standard deduplication to work
-        effective_message_id = message_id if message_id else str(uuid.uuid4())
-        metadata_content_id = f"meta:{effective_message_id}:{event_type}"
-
-        meta = {"event_type": event_type, "session_id": session_id, **kwargs}
-        msg = AgentMessage(
-            sender_id=sender_id,
-            sender_name=sender_name,
-            metadata=meta,
-            message_id=effective_message_id,
-            structured_content=[MetadataContent(
-                metadata_type=event_type,
-                metadata_data={"event_type": event_type, **kwargs},
-                title=event_type,
-                description="",
-                content_id=metadata_content_id,  # Use deterministic content_id
-            )],
-        )
-        await self.signals.send_agent_message(msg)
-
-    async def _emit_plan_update(
-        self,
-        plan: Plan,
-        session_id: str,
-        sender_id: str,
-        sender_name: str,
-        message_id: str,
-        operation: str = "update",
-    ) -> None:
-        """Emit a plan update event with PlanContent.
-
-        This method creates and sends a proper PlanContent message instead of
-        using MetadataContent, ensuring the plan is rendered correctly in the UI.
-
-        Args:
-            plan: The Plan model object
-            session_id: Session identifier
-            sender_id: ID of the sender
-            sender_name: Display name of the sender
-            message_id: Message ID for deduplication
-            operation: Operation type (create, update)
-        """
-        # Create PlanContent from the Plan model
-        plan_content = PlanContent.from_plan(plan, operation=operation)
-
-        meta = {
-            "event_type": "plan_updated",
-            "session_id": session_id,
-            "plan_id": plan.id,
-        }
-
-        msg = AgentMessage(
-            sender_id=sender_id,
-            sender_name=sender_name,
-            metadata=meta,
-            message_id=message_id,
-            structured_content=[plan_content],
-        )
-        logger.info(f"📋 Sending plan update: id={plan.id}, message_id={message_id[:8]}..., operation={operation}")
-        await self.signals.send_agent_message(msg)
-
-    async def _emit_plan_task_update(
-        self,
-        task: PlanTask,
-        plan_id: str,
-        session_id: str,
-        sender_id: str,
-        sender_name: str,
-        message_id: str,
-        previous_status: Optional[str] = None,
-    ) -> None:
-        """Emit a plan task update event with PlanTaskContent.
-
-        This sends a lightweight update for a single task status change,
-        as opposed to _emit_plan_update which sends the full plan.
-
-        Args:
-            task: The PlanTask object that was updated
-            plan_id: The ID of the plan this task belongs to
-            session_id: Session identifier
-            sender_id: ID of the sender
-            sender_name: Display name of the sender
-            message_id: Message ID for deduplication
-            previous_status: The previous status of the task (optional)
-        """
-        # Create PlanTaskContent from the task
-        plan_task_content = PlanTaskContent.from_task(
-            task=task,
-            plan_id=plan_id,
-            previous_status=previous_status
-        )
-
-        meta = {
-            "event_type": "plan_task_updated",
-            "session_id": session_id,
-            "plan_id": plan_id,
-            "task_id": task.id,
-        }
-
-        msg = AgentMessage(
-            sender_id=sender_id,
-            sender_name=sender_name,
-            metadata=meta,
-            message_id=message_id,
-            structured_content=[plan_task_content],
-        )
-        logger.info(f"📋 Sending plan task update: plan_id={plan_id}, task_id={task.id}, status={task.status.value}")
-        await self.signals.send_agent_message(msg)
-
-    def _build_producer_message(self, user_message: str, plan_id: str, retry: bool = False) -> str:
-        """
-        Build a message for the producer agent.
-        The producer will use its ReAct loop to determine how to respond to the user message,
-        including whether to create a plan, delegate to other crew members, or provide a direct response.
-        """
-        return "\n".join([
-            f"User message: {user_message}",
-            f"Current plan id: {plan_id}",
-            "Please process this message appropriately using your skills and judgment.",
-            "If a plan needs to be created or updated, use the appropriate planning skills.",
-            "If other crew members should handle this, delegate appropriately.",
-            "Provide a helpful response to the user."
-        ])
-
-    def _build_task_message(self, task: PlanTask, plan_id: str) -> str:
-        parameters = json.dumps(task.parameters or {}, ensure_ascii=True)
-        needs = ", ".join(task.needs) if task.needs else "none"
-        return "\n".join([
-            f"@{task.title}",
-            f"Plan id: {plan_id}",
-            f"Task id: {task.id}",
-            f"Task name: {task.name}",
-            f"Task description: {task.description}",
-            f"Dependencies: {needs}",
-            f"Parameters: {parameters}",
-            "Respond with your output. If needed, update the plan with plan_update.",
-        ])
-
-    def _build_task_intro_text(self, task: PlanTask, plan: Plan) -> str:
-        """
-        Build an introductory text for a task that will be displayed
-        when a crew member starts working on it.
-
-        Args:
-            task: The task to build intro text for
-            plan: The plan containing this task
-
-        Returns:
-            A formatted string describing the task
-        """
-        parts = [
-            f"**Task:** {task.name}",
-            "",
-            f"{task.description}",
-        ]
-
-        # Add dependencies info if any
-        if task.needs:
-            deps_text = ", ".join(task.needs)
-            parts.append("")
-            parts.append(f"**Depends on:** {deps_text}")
-
-        # Add parameters if any
-        if task.parameters:
-            parts.append("")
-            parts.append("**Parameters:**")
-            for key, value in task.parameters.items():
-                parts.append(f"- {key}: {value}")
-
-        return "\n".join(parts)
-
-    def _create_plan(self, project_name: str, user_message: str) -> Optional[Plan]:
-        if not project_name:
-            return None
-        name = "Producer Plan"
-        description = self._truncate_text(user_message)
-        metadata = {"source": _PRODUCER_NAME, "request": user_message}
-        return self.plan_service.create_plan(
-            project_name=project_name,
-            name=name,
-            description=description,
-            tasks=[],
-            metadata=metadata,
-        )
-
-    def _producer_response_has_error(self, response: Optional[str]) -> bool:
-        if not response:
-            return False
-        lowered = response.lower()
-        return "llm service is not configured" in lowered or "error calling llm" in lowered
-
-    def _dependencies_satisfied(self, plan_instance: PlanInstance, task: PlanTask) -> bool:
-        if not task.needs:
-            return True
-        for dependency_id in task.needs:
-            dependency = next((t for t in plan_instance.tasks if t.id == dependency_id), None)
-            if not dependency or dependency.status != TaskStatus.COMPLETED:
-                return False
-        return True
-
-    def _get_ready_tasks(self, plan_instance: PlanInstance) -> List[PlanTask]:
-        ready = []
-        for task in plan_instance.tasks:
-            if task.status not in {TaskStatus.CREATED, TaskStatus.READY}:
-                continue
-            if self._dependencies_satisfied(plan_instance, task):
-                ready.append(task)
-        return ready
-
-    def _has_incomplete_tasks(self, plan_instance: PlanInstance) -> bool:
-        for task in plan_instance.tasks:
-            if task.status not in {TaskStatus.COMPLETED, TaskStatus.CANCELLED, TaskStatus.FAILED}:
-                return True
-        return False
-
-    async def _stream_agent_messages(
-        self,
-        responses: AsyncIterator[AgentMessage],
-        session_id: str,
-    ) -> AsyncGenerator["AgentEvent", None]:
-        from agent.react import AgentEvent, AgentEventType
-
-        async for response in responses:
-            self.conversation_history.append(response)
-            response.metadata["session_id"] = session_id
-            await self.signals.send_agent_message(response)
-
-            # Convert AgentMessage to ReactEvent for upstream consumption
-            # Check content type from structured_content
-            response_content_type = ContentType.TEXT  # Default
-            if response.structured_content:
-                response_content_type = response.structured_content[0].content_type
-
-            if response_content_type == ContentType.TEXT:
-                yield AgentEvent.final(
-                    final_response=_extract_text_content(response),
-                    project_name=self._resolve_project_name() or "default",
-                    react_type=response.sender_id,
-                    run_id=getattr(self, "_run_id", ""),
-                    sender_id=response.sender_id,
-                    sender_name=response.sender_name,
-                )
-            elif response_content_type == ContentType.ERROR:
-                yield AgentEvent.error(
-                    error_message=_extract_text_content(response),
-                    project_name=self._resolve_project_name() or "default",
-                    react_type=response.sender_id,
-                    run_id=getattr(self, "_run_id", ""),
-                    sender_id=response.sender_id,
-                    sender_name=response.sender_name,
-                )
-
-    async def _stream_crew_member(
-        self,
-        crew_member: CrewMember,
-        message: str,
-        plan_id: Optional[str],
-        session_id: str,
-        metadata: Optional[Dict[str, Any]] = None,
-        message_id: Optional[str] = None,
-        record_to_agent_history: bool = True,
-        send_main_content_to_agent: bool = False,
-    ) -> AsyncGenerator["AgentEvent", None]:
-        """
-        Stream responses from a crew member.
-
-        Args:
-            crew_member: The crew member to stream from
-            message: The message to send
-            plan_id: Optional plan ID for context
-            session_id: Session ID for this conversation
-            metadata: Optional metadata to attach to events
-            message_id: Optional message ID (generated if not provided)
-            record_to_agent_history: Whether to record to agent history (default True)
-            send_main_content_to_agent: Whether to send collected main content to FilmetoAgent
-                                        when message ends (default False)
-        """
-        from agent.react import AgentEvent, AgentEventType
-
-        # Set the current message ID on the crew member for content tracking
-        # Use provided message_id or generate a new one
-        if message_id is None:
-            message_id = str(uuid.uuid4())
-        crew_member._current_message_id = message_id
-
-        # Track content IDs for hierarchical relationships (e.g., tool → progress updates)
-        content_tracking: Dict[str, str] = {}  # tool_name → content_id mapping
-
-        # Track active skill execution for marking child content with skill context.
-        # Events between SKILL_START and SKILL_END/SKILL_ERROR get metadata marking
-        # so that history loading can associate them as skill children.
-        _active_skill_name: Optional[str] = None
-        _active_skill_run_id: Optional[str] = None
-
-        # Track main content for sending to FilmetoAgent when message ends
-        # Main content includes: text, code_block, image, video, audio, link, button, form, file_attachment
-        _collected_main_content: List[StructureContent] = []
-
-        async for event in crew_member.chat_stream(message, plan_id=plan_id):
-            # Add metadata to the event payload (kept for backward compatibility during transition)
-            event_payload = dict(event.payload)
-            if metadata:
-                event_payload.update(metadata)
-            if plan_id:
-                event_payload["plan_id"] = plan_id
-
-            # Track skill execution boundaries
-            if event.event_type in (AgentEventType.SKILL_START.value, AgentEventType.SKILL_START):
-                if event.content and hasattr(event.content, 'skill_name'):
-                    _active_skill_name = event.content.skill_name
-                    _active_skill_run_id = getattr(event.content, 'run_id', '') or event.run_id
-            elif event.event_type in (
-                AgentEventType.SKILL_END.value, AgentEventType.SKILL_END,
-                AgentEventType.SKILL_ERROR.value, AgentEventType.SKILL_ERROR,
-            ):
-                _active_skill_name = None
-                _active_skill_run_id = None
-
-            # Create appropriate content based on event type
-            # First, check if event already has content (from react.py)
-            content = event.content
-
-            # If no content, create from payload for backward compatibility
-            if content is None:
-                if event.event_type == AgentEventType.LLM_THINKING:
-                    # Create ThinkingContent
-                    content = ThinkingContent(
-                        thought=event.payload.get("message", ""),
-                        step=event.payload.get("step"),
-                        total_steps=event.payload.get("total_steps"),
-                        title="Thinking Process",
-                        description="Agent's thought process"
-                    )
-
-                elif event.event_type == AgentEventType.LLM_OUTPUT:
-                    # Create LlmOutputContent for LLM output
-                    content = LlmOutputContent(
-                        output=event.payload.get("content", ""),
-                        title="LLM Output",
-                        description="Raw LLM output"
-                    )
-
-                elif event.event_type == AgentEventType.TOOL_START:
-                    # Create ToolCallContent and track it
-                    tool_name = event.payload.get("tool_name", "unknown")
-                    content = ToolCallContent(
-                        tool_name=tool_name,
-                        tool_input=event.payload.get("input", {}),
-                        title=f"Tool: {tool_name}",
-                        description="Tool execution started"
-                    )
-                    content_tracking[tool_name] = content.content_id
-
-                elif event.event_type == AgentEventType.TOOL_PROGRESS:
-                    # Create ProgressContent with parent reference
-                    tool_name = event.payload.get("tool_name", "")
-                    parent_id = content_tracking.get(tool_name)
-                    content = ProgressContent(
-                        progress=event.payload.get("progress", ""),
-                        tool_name=tool_name,
-                        title="Tool Execution",
-                        description="Tool execution in progress",
-                        parent_id=parent_id
-                    )
-
-                elif event.event_type == AgentEventType.TOOL_END:
-                    # Create ToolResponseContent and mark as completed
-                    tool_name = event.payload.get("tool_name", "")
-                    result = event.payload.get("result")
-                    error = event.payload.get("error")
-
-                    content = ToolResponseContent(
-                        tool_name=tool_name,
-                        result=result if not error else None,
-                        error=error,
-                        tool_status="completed" if not error else "failed",
-                        title=f"Tool Result: {tool_name}",
-                        description=f"Tool execution {'completed' if not error else 'failed'}",
-                        parent_id=content_tracking.get(tool_name)
-                    )
-                    content.complete()
-
-                    # Clean up tracking
-                    if tool_name in content_tracking:
-                        del content_tracking[tool_name]
-
-                elif event.event_type == AgentEventType.FINAL:
-                    # Create TextContent for final response
-                    final_text = event.payload.get("final_response", "")
-                    content = TextContent(
-                        text=final_text,
-                        title="Response",
-                        description="Final response from agent"
-                    )
-
-                elif event.event_type == AgentEventType.ERROR:
-                    # Create ErrorContent
-                    content = ErrorContent(
-                        error_message=event.payload.get("error", "Unknown error"),
-                        error_type=event.payload.get("error_type"),
-                        details=event.payload.get("details"),
-                        title="Error",
-                        description="An error occurred"
-                    )
-
-                elif event.event_type == AgentEventType.TODO_WRITE:
-                    # Create TodoWriteContent from event content or payload
-                    if event.content and isinstance(event.content, TodoWriteContent):
-                        content = event.content
-                    else:
-                        # Fallback: create from payload (backward compatibility)
-                        from agent.react.todo import TodoState
-                        todo_dict = event.payload.get("todo", {})
-                        if isinstance(todo_dict, dict):
-                            todo_state = TodoState.from_dict(todo_dict)
-                            content = TodoWriteContent.from_todo_state(
-                                todo_state,
-                                title="Task Progress",
-                                description="Current task status"
-                            )
-                        else:
-                            # Fallback to MetadataContent for compatibility
-                            content = MetadataContent(
-                                metadata_type="todo_write",
-                                metadata_data=event.payload.get("todo", {}),
-                                title="Task Update",
-                                description="Task list has been updated"
-                            )
-
-                elif event.event_type == AgentEventType.CREW_MEMBER_MESSAGE:
-                    # Handle crew member message (public/specify mode)
-                    # This event will be sent to history AND processed for routing
-                    content = event.content
-
-                elif event.event_type == AgentEventType.CREW_MEMBER_PRIVATE_MESSAGE:
-                    # Handle crew member private message
-                    # Send directly to target WITHOUT recording to history
-                    content = event.content
-
-                    # For private messages, skip history recording and send directly
-                    content_metadata = content.metadata if content and hasattr(content, 'metadata') else {}
-                    message_text = content_metadata.get("message", "")
-                    target = content_metadata.get("target", "")
-                    original_sender_id = event.sender_id
-
-                    if message_text and target:
-                        target_member = self._crew_member_lookup.get(target.lower())
-                        if target_member and target_member.config.name.lower() != original_sender_id.lower():
-                            logger.info(f"🔒 Sending private message from {original_sender_id} to {target}")
-                            cm_session_id = str(uuid.uuid4())
-                            # Send directly to target crew member, bypassing history
-                            async for _ in self._stream_crew_member(
-                                target_member,
-                                message_text,
-                                plan_id=None,
-                                session_id=cm_session_id,
-                            ):
-                                pass
-
-                    # Skip the rest of the processing for private messages
-                    # Yield the event for upstream and continue to next event
-                    try:
-                        yield AgentEvent.create(
-                            event_type=event.event_type,
-                            project_name=event.project_name,
-                            react_type=event.react_type,
-                            run_id=event.run_id,
-                            step_id=event.step_id,
-                            sender_id=event.sender_id,
-                            sender_name=event.sender_name,
-                            content=content,
-                        )
-                    except Exception as e:
-                        logger.error(f"❌ Exception in _stream_crew_member while yielding private message event", exc_info=True)
-                    continue
-
-            # Mark non-skill content with skill context if inside a skill execution.
-            # This metadata is used during history loading to associate content
-            # (thinking, llm_output, tool_call, etc.) as children of the enclosing skill.
-            if _active_skill_name and content:
-                is_skill_event = event.event_type in (
-                    AgentEventType.SKILL_START.value, AgentEventType.SKILL_START,
-                    AgentEventType.SKILL_PROGRESS.value, AgentEventType.SKILL_PROGRESS,
-                    AgentEventType.SKILL_END.value, AgentEventType.SKILL_END,
-                    AgentEventType.SKILL_ERROR.value, AgentEventType.SKILL_ERROR,
-                )
-                if not is_skill_event:
-                    if content.metadata is None:
-                        content.metadata = {}
-                    content.metadata['_skill_name'] = _active_skill_name
-                    if _active_skill_run_id:
-                        content.metadata['_skill_run_id'] = _active_skill_run_id
-
-            # Collect main content for sending to FilmetoAgent when message ends
-            # Main content is content that should be displayed in the main section (not thinking section)
-            if content and send_main_content_to_agent and content.is_main_content():
-                _collected_main_content.append(content)
-
-            # Create enhanced event with content
-            enhanced_event = AgentEvent.create(
-                event_type=event.event_type,
-                project_name=event.project_name,
-                react_type=event.react_type,
-                run_id=event.run_id,
-                step_id=event.step_id,
-                sender_id=event.sender_id,
-                sender_name=event.sender_name,
-                content=content,
-            )
-
-            # Convert event to message and send via AgentChatSignals
-            # This records the message to history
-            agent_message = self._convert_event_to_message(
-                enhanced_event,
-                sender_id=crew_member.config.name,
-                sender_name=crew_member.config.name.capitalize(),
-                message_id=message_id
-            )
-
-            if agent_message:
-                # Derive content type for logging
-                content_type_value = "text"
-                if agent_message.structured_content:
-                    content_type_value = agent_message.structured_content[0].content_type.value
-
-                # Only send to history if record_to_agent_history is True
-                # Crew member internal responses (record_to_agent_history=False) are not saved to agent history
-                # They are saved to their own crew member history instead
-                if record_to_agent_history:
-                    logger.info(
-                        f"📤 Sending message: type={content_type_value}, "
-                        f"id={agent_message.message_id}, sender='{agent_message.sender_id}', "
-                        f"content_id={enhanced_event.content.content_id if enhanced_event.content else 'N/A'}"
-                    )
-                    await self.signals.send_agent_message(agent_message)
-                elif not send_main_content_to_agent:
-                    # Only send to UI if not collecting main content for group chat
-                    # When send_main_content_to_agent=True, _send_crew_member_main_content_to_agent
-                    # will send only the main content (not thinking) to UI
-                    logger.debug(
-                        f"📤 Sending message (no history): type={content_type_value}, "
-                        f"id={agent_message.message_id}, sender='{agent_message.sender_id}'"
-                    )
-                    # Still send to UI but mark as no-history
-                    agent_message.metadata = agent_message.metadata or {}
-                    agent_message.metadata["_no_agent_history"] = True
-                    await self.signals.send_agent_message(agent_message)
-
-            # Handle crew member messages that need further processing (public/specify only)
-            if event.event_type == AgentEventType.CREW_MEMBER_MESSAGE:
-                # Process public/specify messages through agent routing logic
-                # Read metadata from content
-                content_metadata = content.metadata if content and hasattr(content, 'metadata') else {}
-                message_text = content_metadata.get("message", "")
-                mode = content_metadata.get("mode", "public")
-                original_sender_id = event.sender_id
-
-                if message_text:
-                    # Create a session ID for this crew member message processing
-                    cm_session_id = str(uuid.uuid4())
-
-                    # Determine routing based on mode
-                    if mode == "specify":
-                        # For specify mode, route to the mentioned crew member
-                        target = content_metadata.get("target", "")
-                        if target:
-                            target_member = self._crew_member_lookup.get(target.lower())
-                            if target_member and target_member.config.name.lower() != original_sender_id.lower():
-                                # Don't let producer handle their own messages
-                                if not (original_sender_id.lower() == _PRODUCER_NAME and
-                                        target_member.config.name.lower() == _PRODUCER_NAME):
-                                    logger.info(f"🔄 Routing specify message from {original_sender_id} to {target}")
-                                    async for _ in self._stream_crew_member(
-                                        target_member,
-                                        message_text,
-                                        plan_id=None,
-                                        session_id=cm_session_id,
-                                        record_to_agent_history=False,  # Don't record internal routing to agent history
-                                    ):
-                                        pass
-                    else:
-                        # For public mode, use LLM routing for intelligent multi-member routing
-                        await self._route_message_with_llm(
-                            message=message_text,
-                            sender_id=original_sender_id,
-                            sender_name=original_sender_id.capitalize(),
-                            session_id=cm_session_id,
-                        )
-
-            # Yield the event for upstream
-            try:
-                yield enhanced_event
-            except Exception as e:
-                logger.error(f"❌ Exception in _stream_crew_member while yielding event", exc_info=True)
-                # Continue processing despite the yield error
-
-        # After streaming ends, send collected main content to FilmetoAgent if requested
-        # This allows crew member responses to be broadcast to the agent for group chat
-        if send_main_content_to_agent and _collected_main_content:
-            await self._send_crew_member_main_content_to_agent(
-                crew_member=crew_member,
-                main_content=_collected_main_content,
-                message_id=message_id,
-                session_id=session_id,
-            )
-
-    async def _send_crew_member_main_content_to_agent(
-        self,
-        crew_member: CrewMember,
-        main_content: List[StructureContent],
-        message_id: str,
-        session_id: str,
-    ) -> None:
-        """
-        Send crew member's main content to FilmetoAgent for group chat routing.
-
-        This method is called when a crew member finishes responding and has
-        collected main content (text, code_block, etc.) that should be visible
-        in the group chat. The content is sent to FilmetoAgent which will
-        route it to appropriate crew members.
-
-        Args:
-            crew_member: The crew member that generated the content
-            main_content: List of main content items to send
-            message_id: The message ID for this conversation
-            session_id: Session ID for this conversation
-        """
-        from agent.chat.content import TextContent
-
-        # Extract text from main content items
-        text_parts = []
-        for content in main_content:
-            if isinstance(content, TextContent) and content.text:
-                text_parts.append(content.text)
-            elif hasattr(content, 'text') and content.text:
-                text_parts.append(content.text)
-
-        if not text_parts:
-            return
-
-        # Combine all text parts
-        combined_text = "\n\n".join(text_parts)
-
-        # Create a crew member message event for routing
-        sender_id = crew_member.config.name
-        sender_name = crew_member.config.name.capitalize()
-
-        logger.info(
-            f"📤 Sending crew member main content to agent: "
-            f"sender={sender_id}, message_id={message_id[:8]}..., "
-            f"content_length={len(combined_text)}"
-        )
-
-        # Create AgentMessage for the crew member's main content
-        # This ensures the message is recorded in FilmetoAgent's conversation history
-        crew_member_message = AgentMessage(
-            sender_id=sender_id,
-            sender_name=sender_name,
-            message_id=message_id,
-            structured_content=main_content,
-        )
-        crew_member_message.metadata["session_id"] = session_id
-
-        # Record to FilmetoAgent's conversation history before routing
-        # This ensures all crew member messages appear in the conversation record
-        self.conversation_history.append(crew_member_message)
-        logger.info(
-            f"📥 Recorded crew member message to history: id={message_id}, "
-            f"sender='{sender_id}', content_preview='{combined_text[:50]}{'...' if len(combined_text) > 50 else ''}'"
-        )
-
-        # Send the message via signals for UI display
-        await self.signals.send_agent_message(crew_member_message)
-
-        # Use LLM routing to determine which crew members should receive this message
-        # Pass message_id so crew_member_read event can be emitted for this agent message
-        await self._route_message_with_llm(
-            message=combined_text,
-            sender_id=sender_id,
-            sender_name=sender_name,
-            session_id=session_id,
-            user_message_id=message_id,  # Pass message_id for crew_member_read event
-        )
-
-    async def _stream_error_message(
-        self,
-        message: str,
-        session_id: str,
-    ) -> AsyncGenerator["AgentEvent", None]:
-        from agent.react import AgentEvent, AgentEventType
-
-        error_msg = AgentMessage(
-            sender_id="system",
-            sender_name="System",
-            structured_content=[TextContent(text=message)]
-        )
-        logger.info(f"❌ Sending error message: id={error_msg.message_id}, sender='system', content_preview='{message[:50]}{'...' if len(message) > 50 else ''}'")
-        self.conversation_history.append(error_msg)
-        error_msg.metadata["session_id"] = session_id
-        await self.signals.send_agent_message(error_msg)
-
-        # Also yield as ReactEvent
-        yield AgentEvent.error(
-            error_message=message,
-            project_name=self._resolve_project_name() or "default",
-            react_type="system",
-            run_id=getattr(self, "_run_id", ""),
-            sender_id="system",
-            sender_name="System",
-        )
+    # ========================================================================
+    # Public API
+    # ========================================================================
 
     async def chat(
         self,
@@ -1216,36 +207,15 @@ class FilmetoAgent:
 
         This method does not return any value. Results are delivered through
         the AgentChatSignals system (send_agent_message signal).
-
-        Args:
-            message: The message to process
-            sender_id: ID of the sender (default: "user")
-            sender_name: Display name of the sender (default: "User")
-            session_id: Optional session ID (generated if not provided)
         """
         try:
-            # Ensure project is loaded if not provided but workspace exists
-            if not self.project and self.workspace:
-                # Ensure projects are loaded in the workspace
-                if hasattr(self.workspace, 'project_manager') and self.workspace.project_manager:
-                    self.workspace.project_manager.ensure_projects_loaded()
+            # Ensure project is loaded
+            await self._ensure_project_loaded()
 
-                # Try to get the current project from workspace
-                self.project = self.workspace.get_project()
+            # Load crew members
+            self._ensure_crew_members_loaded()
 
-                # If still no project, try to get the first available project
-                if not self.project:
-                    project_list = self.workspace.get_projects()
-                    if project_list:
-                        # Use the first project in the list as default
-                        first_project_name = next(iter(project_list))
-                        self.project = project_list[first_project_name]
-
-            # Determine if sender is user or crew member
-            is_user = sender_id.lower() == "user"
-
-            # Create an AgentMessage from the string
-            from agent.chat.content import TextContent
+            # Create message
             initial_prompt = AgentMessage(
                 sender_id=sender_id,
                 sender_name=sender_name,
@@ -1256,30 +226,21 @@ class FilmetoAgent:
             if session_id is None:
                 session_id = str(uuid.uuid4())
 
-            # Record to history based on sender type:
-            # - User messages: always record to agent history
-            # - Crew member messages (from speak_to): record to agent history for group chat visibility
+            # Record to history
             self.conversation_history.append(initial_prompt)
 
-            sender_type = "user" if is_user else "crew_member"
-            logger.info(f"📥 Chat message: id={initial_prompt.message_id}, sender='{sender_id}' ({sender_type}), content_preview='{message[:50]}{'...' if len(message) > 50 else ''}'")
+            sender_type = "user" if sender_id.lower() == "user" else "crew_member"
+            logger.info(f"Chat message: id={initial_prompt.message_id}, sender='{sender_id}' ({sender_type})")
 
             initial_prompt.metadata["session_id"] = session_id
             await self.signals.send_agent_message(initial_prompt)
 
-            self._ensure_crew_members_loaded()
+            # Check for @mentions
+            mentioned_member = self._crew_manager.resolve_mentioned_crew_member(message)
 
-            # Check for @mentions by name or title - if found, route directly to that crew member
-            # This prevents producer from intervening when a specific crew member is mentioned
-            mentioned_crew_member = self._resolve_mentioned_crew_member(message)
-            mentioned_agent_by_title = self._resolve_mentioned_title(message)
-
-            # Use the found crew member (by name takes priority over title)
-            target_crew_member = mentioned_crew_member or mentioned_agent_by_title
-
-            if target_crew_member and target_crew_member.config.name.lower() != _PRODUCER_NAME:
-                async for _ in self._stream_crew_member(
-                    target_crew_member,
+            if mentioned_member and mentioned_member.config.name.lower() != PRODUCER_NAME:
+                async for _ in self._routing_manager.stream_crew_member(
+                    mentioned_member,
                     message,
                     plan_id=None,
                     session_id=session_id,
@@ -1287,451 +248,33 @@ class FilmetoAgent:
                     pass
                 return
 
-            # No specific crew member mentioned - use LLM routing for intelligent multi-member routing
-            await self._route_message_with_llm(
+            # No specific crew member mentioned - use LLM routing
+            await self._routing_manager.route_message_with_llm(
                 message=message,
                 sender_id=sender_id,
                 sender_name=sender_name,
                 session_id=session_id,
                 user_message_id=initial_prompt.message_id,
             )
+
         except Exception as e:
-            logger.error(f"❌ Exception in chat()", exc_info=True)
+            logger.error("Exception in chat()", exc_info=True)
             async for _ in self._stream_error_message(
                 f"An error occurred while processing your message: {str(e)}",
                 str(uuid.uuid4()),
             ):
                 pass
 
-    async def _route_message_with_llm(
-        self,
-        message: str,
-        sender_id: str,
-        sender_name: str,
-        session_id: str,
-        user_message_id: Optional[str] = None,
-    ) -> None:
-        """
-        Route a message to appropriate crew members using LLM-based intelligent routing.
-
-        This method:
-        1. Gets conversation history for context
-        2. Calls MessageRouterService for routing decision
-        3. Emits CREW_MEMBER_READ so the UI can show which crew members are handling the message
-        4. Dispatches messages to routed crew members in parallel
-        5. Each crew member's response is NOT recorded to agent history (only to their own history)
-
-        Args:
-            message: The message to route
-            sender_id: ID of the message sender
-            sender_name: Display name of the sender
-            session_id: Session ID for this conversation
-            user_message_id: Message ID of the user message (for read indicator)
-        """
-        if not self.crew_members:
-            logger.warning("No crew members loaded for routing")
-            # Fallback: try producer
-            producer_agent = self._get_producer_crew_member()
-            if producer_agent:
-                async for _ in self._stream_crew_member(
-                    producer_agent,
-                    message,
-                    plan_id=None,
-                    session_id=session_id,
-                    record_to_agent_history=True,
-                ):
-                    pass
-            return
-
-        try:
-            # Build conversation history for context
-            history = []
-            for msg in self.conversation_history[-20:]:  # Last 20 messages
-                text = _extract_text_content(msg)
-                if text:
-                    history.append({
-                        "role": "user" if msg.sender_id == "user" else "assistant",
-                        "sender_id": msg.sender_id,
-                        "sender_name": msg.sender_name,
-                        "content": text,
-                    })
-
-            # Get routing decision from LLM
-            logger.info(f"🔍 Routing message from {sender_id}: {message[:100]}...")
-            decision = await self._message_router.route_message(
-                message=message,
-                sender_id=sender_id,
-                sender_name=sender_name,
-                crew_members=self.crew_members,
-                conversation_history=history,
-                max_history=20,
-            )
-
-            if not decision.routed_members:
-                logger.info(f"📭 No members routed for message")
-                # Fallback: try producer
-                producer_agent = self._get_producer_crew_member()
-                if producer_agent and producer_agent.config.name.lower() != sender_id.lower():
-                    async for _ in self._stream_crew_member(
-                        producer_agent,
-                        message,
-                        plan_id=None,
-                        session_id=session_id,
-                        record_to_agent_history=True,
-                    ):
-                        pass
-                return
-
-            logger.info(f"📍 Routed to: {decision.routed_members}")
-
-            # Emit crew_member_read so the UI can show read indicators on the user message bubble
-            if user_message_id and decision.routed_members:
-                crew_read_list = []
-                for name in decision.routed_members:
-                    member = self.crew_members.get(name)
-                    if member:
-                        crew_read_list.append({
-                            "id": member.config.name.lower(),
-                            "name": member.config.name,
-                            "icon": getattr(member.config, "icon", ""),
-                            "color": getattr(member.config, "color", "#4a90e2"),
-                        })
-                if crew_read_list:
-                    read_content = CrewMemberReadContent(crew_members=crew_read_list)
-                    read_msg = AgentMessage(
-                        sender_id=sender_id,
-                        sender_name=sender_name,
-                        message_id=user_message_id,
-                        metadata={"session_id": session_id, "event_type": "crew_member_read"},
-                        structured_content=[read_content],
-                    )
-                    # Record to conversation history so read indicators persist across reloads
-                    # The message will also be saved to history storage by AgentChatHistoryListener
-                    self.conversation_history.append(read_msg)
-                    logger.debug(f"📖 Recorded crew_member_read to history: {len(crew_read_list)} members")
-                    await self.signals.send_agent_message(read_msg)
-
-            # Dispatch to routed members in parallel
-            # Each member's response goes to their own history, not agent history
-            # But their main content is sent back to agent for group chat routing
-            async def dispatch_to_member(member_name: str, customized_message: str):
-                member = self.crew_members.get(member_name)
-                if not member:
-                    logger.warning(f"Crew member {member_name} not found")
-                    return
-
-                # Use customized message if available, otherwise original
-                msg_to_send = customized_message or message
-
-                # Stream to crew member without recording to agent history
-                # The crew member will save to its own history
-                # Enable send_main_content_to_agent for group chat participation
-                async for _ in self._stream_crew_member(
-                    member,
-                    msg_to_send,
-                    plan_id=None,
-                    session_id=session_id,
-                    record_to_agent_history=False,  # Don't record internal routing to agent history
-                    send_main_content_to_agent=True,  # Send main content back for group chat
-                ):
-                    pass
-
-            # Run all dispatches in parallel
-            tasks = []
-            for member_name in decision.routed_members:
-                customized_msg = decision.member_messages.get(member_name, message)
-                tasks.append(dispatch_to_member(member_name, customized_msg))
-
-            if tasks:
-                await asyncio.gather(*tasks)
-
-        except Exception as e:
-            logger.error(f"❌ Error in LLM routing: {e}", exc_info=True)
-            # Fallback: try producer
-            producer_agent = self._get_producer_crew_member()
-            if producer_agent and producer_agent.config.name.lower() != sender_id.lower():
-                async for _ in self._stream_crew_member(
-                    producer_agent,
-                    message,
-                    plan_id=None,
-                    session_id=session_id,
-                    record_to_agent_history=True,
-                ):
-                    pass
-
-    async def _handle_producer_flow(
-        self,
-        initial_prompt: AgentMessage,
-        producer_agent: CrewMember,
-        session_id: str,
-    ) -> AsyncGenerator["AgentEvent", None]:
-        try:
-            project_name = self._resolve_project_name()
-
-            # Determine the active plan ID - get the last active plan for the project
-            active_plan = self.plan_service.get_last_active_plan_for_project(project_name) if project_name else None
-            active_plan_id = active_plan.id if active_plan else None
-
-            # Generate message_id for producer's messages
-            producer_message_id = str(uuid.uuid4())
-
-            # Stream directly to the producer agent without creating a plan automatically
-            # The producer will decide whether to create a plan using the production_plan skill
-            async for event in self._stream_crew_member(
-                producer_agent,
-                _extract_text_content(initial_prompt),
-                plan_id=active_plan_id,
-                session_id=session_id,
-                message_id=producer_message_id,
-            ):
-                try:
-                    yield event
-                except Exception as e:
-                    logger.error(f"❌ Exception in _handle_producer_flow while yielding event", exc_info=True)
-
-            # After the producer responds, check if a plan was created during the interaction
-            # If a plan was created, execute the plan tasks
-            if project_name:
-                # Check if any plan was created during the producer's response
-                # This would happen if the producer used the production_plan skill
-                # Get the most recently created active plan for this project
-                latest_plan = self.plan_service.get_last_active_plan_for_project(project_name)
-                if latest_plan and latest_plan.id != active_plan_id:  # Only execute if a new plan was created
-                    # Update the active plan ID to the newly created plan
-                    active_plan_id = latest_plan.id
-
-                    # Emit plan_update with producer as sender, using same message_id
-                    await self._emit_plan_update(
-                        plan=latest_plan,
-                        session_id=session_id,
-                        sender_id=producer_agent.config.name,
-                        sender_name=producer_agent.config.name,
-                        message_id=producer_message_id,
-                        operation="create",
-                    )
-
-                    # Check if the plan has tasks to execute
-                    if latest_plan and latest_plan.tasks:
-                        async for event in self._execute_plan_tasks(
-                            plan=latest_plan,
-                            session_id=session_id,
-                        ):
-                            try:
-                                yield event
-                            except Exception as e:
-                                logger.error(f"❌ Exception in _handle_producer_flow while yielding plan task event", exc_info=True)
-        except Exception as e:
-            logger.error(f"❌ Exception in _handle_producer_flow", exc_info=True)
-
-    async def _execute_plan_tasks(
-        self,
-        plan: Plan,
-        session_id: str,
-    ) -> AsyncGenerator["AgentEvent", None]:
-        try:
-            plan_instance = self.plan_service.create_plan_instance(plan)
-            self.plan_service.start_plan_execution(plan_instance)
-
-            while True:
-                ready_tasks = self._get_ready_tasks(plan_instance)
-                if not ready_tasks:
-                    if self._has_incomplete_tasks(plan_instance):
-                        async for event in self._stream_error_message(
-                            "Plan execution blocked by unmet dependencies or missing agents.",
-                            session_id,
-                        ):
-                            try:
-                                yield event
-                            except Exception as e:
-                                logger.error(f"❌ Exception in _execute_plan_tasks while yielding blocked event", exc_info=True)
-                    break
-
-                for task in ready_tasks:
-                    previous_status = task.status.value
-                    self.plan_service.mark_task_running(plan_instance, task.id)
-
-                    # Get updated task from plan_instance after status change
-                    updated_task = next((t for t in plan_instance.tasks if t.id == task.id), None)
-
-                    target_agent = self._crew_member_lookup.get(task.title.lower())
-                    if not target_agent:
-                        error_message = f"Crew member '{task.title}' not found for task {task.id}."
-                        self.plan_service.mark_task_failed(plan_instance, task.id, error_message)
-
-                        # Get updated task after failure and emit PLAN_TASK_UPDATED
-                        failed_task = next((t for t in plan_instance.tasks if t.id == task.id), None)
-                        if failed_task:
-                            await self._emit_plan_task_update(
-                                task=failed_task,
-                                plan_id=plan.id,
-                                session_id=session_id,
-                                sender_id="system",
-                                sender_name="System",
-                                message_id=str(uuid.uuid4()),
-                                previous_status=previous_status,
-                            )
-
-                        async for event in self._stream_error_message(
-                            error_message,
-                            session_id,
-                        ):
-                            try:
-                                yield event
-                            except Exception as e:
-                                logger.error(f"❌ Exception in _execute_plan_tasks while yielding error event", exc_info=True)
-                        continue
-
-                    # Generate message_id for this task's crew member messages
-                    task_message_id = str(uuid.uuid4())
-
-                    # Emit PLAN_TASK_UPDATED for task running status
-                    if updated_task:
-                        await self._emit_plan_task_update(
-                            task=updated_task,
-                            plan_id=plan.id,
-                            session_id=session_id,
-                            sender_id=target_agent.config.name,
-                            sender_name=target_agent.config.name,
-                            message_id=task_message_id,
-                            previous_status=previous_status,
-                        )
-
-                    # First, emit a text event showing the task content from crew member's perspective
-                    # This helps the crew member communicate what they're about to do
-                    task_intro_text = self._build_task_intro_text(task, plan)
-                    task_intro_msg = AgentMessage(
-                        sender_id=target_agent.config.name,
-                        sender_name=target_agent.config.name.capitalize(),
-                        message_id=task_message_id,
-                        structured_content=[TextContent(
-                            text=task_intro_text,
-                            title=task.name,
-                            description=f"Task from plan: {plan.name}"
-                        )]
-                    )
-                    logger.info(f"📋 Sending task intro: id={task_intro_msg.message_id}, sender='{target_agent.config.name}', task_id={task.id}")
-                    await self.signals.send_agent_message(task_intro_msg)
-
-                    task_message = self._build_task_message(task, plan.id)
-                    async for event in self._stream_crew_member(
-                        target_agent,
-                        task_message,
-                        plan_id=plan.id,
-                        session_id=session_id,
-                        metadata={"plan_id": plan.id, "task_id": task.id},
-                        message_id=task_message_id,
-                    ):
-                        try:
-                            yield event
-                        except Exception as e:
-                            logger.error(f"❌ Exception in _execute_plan_tasks while yielding task event", exc_info=True)
-
-                    previous_status = updated_task.status.value if updated_task else TaskStatus.RUNNING.value
-                    self.plan_service.mark_task_completed(plan_instance, task.id)
-
-                    # Get updated task after completion and emit PLAN_TASK_UPDATED
-                    completed_task = next((t for t in plan_instance.tasks if t.id == task.id), None)
-                    if completed_task:
-                        await self._emit_plan_task_update(
-                            task=completed_task,
-                            plan_id=plan.id,
-                            session_id=session_id,
-                            sender_id=target_agent.config.name,
-                            sender_name=target_agent.config.name,
-                            message_id=task_message_id,
-                            previous_status=previous_status,
-                        )
-
-                updated_plan = self.plan_service.load_plan(plan.project_name, plan.id)
-                if updated_plan:
-                    plan_instance = self.plan_service.sync_plan_instance(plan_instance, updated_plan)
-        except Exception as e:
-            logger.error(f"❌ Exception in _execute_plan_tasks", exc_info=True)
-
-    async def _select_responding_agent(self, message: AgentMessage) -> Optional[CrewMember]:
-        """
-        Select which agent should respond to a message based on content or routing rules.
-
-        Args:
-            message: The message to route
-
-        Returns:
-            CrewMember: The selected agent or None if no agent should respond
-        """
-        mentioned_agent = self._resolve_mentioned_title(_extract_text_content(message))
-        if mentioned_agent:
-            return mentioned_agent
-
-        producer_agent = self.get_member(_PRODUCER_NAME)
-        if producer_agent:
-            return producer_agent
-
-        content_lower = _extract_text_content(message).lower()
-        for agent in self.members.values():
-            if (hasattr(agent, 'config') and
-                (agent.config.name.lower() in content_lower or
-                 agent.config.name.lower().capitalize() in content_lower)):
-                return agent
-
-        if self.members:
-            return next(iter(self.members.values()))
-
-        return None
-
-    def get_conversation_history(self) -> List[AgentMessage]:
-        """Get the entire conversation history."""
-        return self.conversation_history.copy()
-
-    def clear_conversation_history(self):
-        """Clear the conversation history."""
-        self.conversation_history.clear()
-
-    def connect_message_handler(self, receiver, weak: bool = True):
-        """
-        Connect a message handler to receive agent messages.
-
-        This is a wrapper method for AgentChatSignals.connect().
-
-        Args:
-            receiver: A callable that will receive messages with signature (sender, **kwargs)
-            weak: Whether to use a weak reference (default True)
-        """
-        self.signals.connect(receiver, weak=weak)
-
-    def disconnect_message_handler(self, receiver):
-        """
-        Disconnect a message handler from receiving agent messages.
-
-        This is a wrapper method for AgentChatSignals.disconnect().
-
-        Args:
-            receiver: The callable to disconnect
-        """
-        self.signals.disconnect(receiver)
-
-    def update_context(self, project=None):
-        """Update the agent context with new project information."""
-        if project:
-            self.project = project
-            self._ensure_crew_members_loaded(refresh=True)
-
     async def broadcast_message(self, message: AgentMessage) -> AsyncIterator[AgentMessage]:
         """
         Broadcast a message to all agents and collect their responses.
-
-        Args:
-            message: The message to broadcast
-
-        Yields:
-            AgentMessage: Responses from all agents
         """
         from agent.react import AgentEventType
 
-        for agent in self.members.values():
+        for agent in self._crew_manager.crew_members.values():
             try:
-                message_text = _extract_text_content(message)
+                message_text = extract_text_content(message)
 
-                # Iterate over ReactEvent from crew_member.chat_stream
                 async for event in agent.chat_stream(message_text, plan_id=None):
                     if event.event_type == AgentEventType.FINAL:
                         final_text = event.payload.get("final_response", "")
@@ -1754,14 +297,146 @@ class FilmetoAgent:
                         )
                         self.conversation_history.append(error_msg)
                         yield error_msg
+
             except Exception as e:
-                error_text = f"Error in agent {agent.config.name if hasattr(agent, 'config') else 'Unknown'}: {str(e)}"
-                logger.error(f"❌ Exception in broadcast_to_all_agents", exc_info=True)
+                error_text = f"Error in agent {agent.config.name}: {str(e)}"
+                logger.error("Exception in broadcast_to_all_agents", exc_info=True)
                 error_msg = AgentMessage(
                     sender_id="system",
                     sender_name="System",
                     structured_content=[TextContent(text=error_text)]
                 )
-                logger.info(f"❌ Broadcasting error message: id={error_msg.message_id}, sender='system', content_preview='{error_text[:50]}{'...' if len(error_text) > 50 else ''}'")
                 self.conversation_history.append(error_msg)
                 yield error_msg
+
+    # ========================================================================
+    # Properties (delegated to managers)
+    # ========================================================================
+
+    @property
+    def crew_members(self) -> Dict[str, CrewMember]:
+        """Get crew members (delegated to crew manager)."""
+        return self._crew_manager.crew_members
+
+    def get_member(self, member_id: str) -> Optional[CrewMember]:
+        """Get a member by ID (delegated to crew manager)."""
+        return self._crew_manager.get_member(member_id)
+
+    def list_members(self) -> List[CrewMember]:
+        """List all registered members (delegated to crew manager)."""
+        return self._crew_manager.list_members()
+
+    def get_conversation_history(self) -> List[AgentMessage]:
+        """Get the entire conversation history."""
+        return self.conversation_history.copy()
+
+    def clear_conversation_history(self):
+        """Clear the conversation history."""
+        self.conversation_history.clear()
+
+    # ========================================================================
+    # Event handling
+    # ========================================================================
+
+    async def _stream_error_message(
+        self,
+        message: str,
+        session_id: str,
+    ) -> AsyncGenerator["AgentEvent", None]:
+        """Stream an error message."""
+        from agent.react import AgentEvent, AgentEventType
+
+        error_msg = AgentMessage(
+            sender_id="system",
+            sender_name="System",
+            structured_content=[TextContent(text=message)]
+        )
+        logger.info(f"Sending error message: id={error_msg.message_id}, sender='system'")
+        self.conversation_history.append(error_msg)
+        error_msg.metadata["session_id"] = session_id
+        await self.signals.send_agent_message(error_msg)
+
+        yield AgentEvent.error(
+            error_message=message,
+            project_name=resolve_project_name(self.project) or "default",
+            react_type="system",
+            run_id="",
+            sender_id="system",
+            sender_name="System",
+        )
+
+    # ========================================================================
+    # Helper methods
+    # ========================================================================
+
+    async def _ensure_project_loaded(self) -> None:
+        """Ensure project is loaded from workspace if not already set."""
+        if not self.project and self.workspace:
+            # Ensure projects are loaded in the workspace
+            if hasattr(self.workspace, "project_manager") and self.workspace.project_manager:
+                self.workspace.project_manager.ensure_projects_loaded()
+
+            # Try to get the current project from workspace
+            self.project = self.workspace.get_project()
+
+            # If still no project, try to get the first available project
+            if not self.project:
+                project_list = self.workspace.get_projects()
+                if project_list:
+                    first_project_name = next(iter(project_list))
+                    self.project = project_list[first_project_name]
+
+    def _ensure_crew_members_loaded(self, refresh: bool = False) -> Dict[str, CrewMember]:
+        """Ensure crew members are loaded (delegated to crew manager)."""
+        return self._crew_manager.load_crew_members(self.project, refresh=refresh)
+
+    # ========================================================================
+    # Utility methods (kept as static methods for external use)
+    # ========================================================================
+
+    @staticmethod
+    def convert_event_to_message(
+        event: "AgentEvent",
+        sender_id: str,
+        sender_name: str,
+        message_id: str
+    ) -> Optional[AgentMessage]:
+        """
+        Convert an AgentEvent to an AgentMessage for UI display.
+        This is the central conversion point for all event types.
+        """
+        # All events must have content
+        if not event.content:
+            raise ValueError(
+                f"Event {event.event_type} must have content. "
+                f"Event content cannot be None."
+            )
+
+        return AgentMessage(
+            sender_id=sender_id,
+            sender_name=sender_name,
+            message_id=message_id,
+            structured_content=[event.content]
+        )
+
+    # ========================================================================
+    # Signal connections
+    # ========================================================================
+
+    def connect_message_handler(self, receiver, weak: bool = True):
+        """Connect a message handler to receive agent messages."""
+        self.signals.connect(receiver, weak=weak)
+
+    def disconnect_message_handler(self, receiver):
+        """Disconnect a message handler from receiving agent messages."""
+        self.signals.disconnect(receiver)
+
+    # ========================================================================
+    # Context management
+    # ========================================================================
+
+    def update_context(self, project=None):
+        """Update the agent context with new project information."""
+        if project:
+            self.project = project
+            self._crew_manager.load_crew_members(project, refresh=True)
