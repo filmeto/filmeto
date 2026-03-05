@@ -107,7 +107,6 @@ ListView {
                 userIcon: modelData.userIcon || "👤"
                 startTime: modelData.startTime || ""
                 duration: modelData.duration || ""
-                crewReadBy: modelData.crewReadBy || []
             }
         }
 
@@ -128,7 +127,6 @@ ListView {
                 structuredContent: modelData.structuredContent || []
                 startTime: modelData.startTime || ""
                 duration: modelData.duration || ""
-                crewReadBy: modelData.crewReadBy || []
 
                 onReferenceClicked: function(refType, refId) {
                     root.referenceClicked(refType, refId)

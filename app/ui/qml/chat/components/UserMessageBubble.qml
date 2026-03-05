@@ -15,7 +15,6 @@ Item {
     property var structuredContent: []
     property string startTime: ""     // Formatted start time
     property string duration: ""      // Formatted duration (e.g., "2m 30s")
-    property var crewReadBy: []       // List of {id, name, icon, color} for read-by crew members
 
     signal referenceClicked(string refType, string refId)
 
@@ -34,24 +33,7 @@ Item {
     // Available width for bubble (total width minus avatar space on both sides)
     readonly property int availableWidth: Math.max(80, width - totalAvatarWidth)
 
-    // Width is determined by anchors, height is calculated dynamically
-    readonly property bool hasCrewReadBy: Array.isArray(crewReadBy) && crewReadBy.length > 0
-
-    // Cache readBy height to avoid repeated property access
-    readonly property int readByHeight: hasCrewReadBy ? 22 : 0
-
-    // Pre-compute tooltip text to avoid JS in binding
-    readonly property string readByTooltip: {
-        if (!hasCrewReadBy) return ""
-        var names = []
-        for (var i = 0; i < crewReadBy.length; i++) {
-            var m = crewReadBy[i]
-            if (m && m.name) names.push(m.name)
-        }
-        return names.join(", ")
-    }
-
-    implicitHeight: 12 + headerRow.height + 12 + bubbleContainer.height + (hasCrewReadBy ? 4 : 0) + 8
+    implicitHeight: 12 + headerRow.height + 12 + bubbleContainer.height + 8
 
     // Header row - right aligned with time info, name, and avatar
     Row {
@@ -137,7 +119,7 @@ Item {
             property real calculatedContentWidth: 150
 
             width: Math.min(Math.max(80, calculatedContentWidth + bubblePadding * 2), availableWidth)
-            height: contentLoader.implicitHeight + bubblePadding * 2 + (root.hasCrewReadBy ? root.readByHeight + 6 : 0)
+            height: contentLoader.implicitHeight + bubblePadding * 2
 
             color: bubbleColor
             radius: 9
@@ -193,67 +175,6 @@ Item {
                         }
                     }
                 }
-            }
-
-            // Read-by crew members row (bottom-right of bubble)
-            Row {
-                id: readByRow
-                anchors {
-                    right: parent.right
-                    bottom: parent.bottom
-                    rightMargin: bubblePadding
-                    bottomMargin: 6
-                }
-                spacing: 4
-                visible: root.hasCrewReadBy
-                height: root.readByHeight
-
-                Text {
-                    id: readByLabel
-                    text: "read:"
-                    color: root.textColor
-                    font.pixelSize: 10
-                    font.weight: Font.Light
-                    opacity: 0.85
-                    anchors.verticalCenter: parent.verticalCenter
-                }
-
-                Row {
-                    id: avatarRow
-                    spacing: -4
-                    anchors.verticalCenter: parent.verticalCenter
-
-                    Repeater {
-                        model: root.crewReadBy
-
-                        Rectangle {
-                            width: 20
-                            height: 20
-                            radius: 10
-                            color: (modelData && modelData.color) ? modelData.color : "#5a6a7a"
-                            border.width: 1.5
-                            border.color: bubble.color
-                            z: model.index
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: (modelData && modelData.icon) ? modelData.icon : ""
-                                font.pixelSize: 11
-                            }
-                        }
-                    }
-                }
-
-                MouseArea {
-                    id: readByMouseArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                }
-
-                ToolTip.visible: readByMouseArea.containsMouse && root.hasCrewReadBy
-                ToolTip.delay: 400
-                ToolTip.timeout: 3000
-                ToolTip.text: root.readByTooltip
             }
         }
     }
