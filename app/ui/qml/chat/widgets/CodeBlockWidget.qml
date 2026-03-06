@@ -104,19 +104,22 @@ Rectangle {
         }
 
         // Code content with monospace font and selection support
-        ScrollView {
-            id: codeScrollView
+        Flickable {
+            id: codeFlickable
             Layout.fillWidth: true
             Layout.preferredHeight: Math.min(codeTextEdit.implicitHeight + 16, 400)
 
-            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-
+            contentWidth: codeTextEdit.implicitWidth
+            contentHeight: codeTextEdit.implicitHeight
             clip: true
+
+            boundsBehavior: Flickable.StopAtBounds
+            flickableDirection: Flickable.VerticalFlick
 
             // TextEdit for selectable code
             TextEdit {
                 id: codeTextEdit
-                width: Math.max(codeScrollView.width - 16, codeTextEdit.implicitWidth)
+                width: Math.max(codeFlickable.width, codeTextEdit.implicitWidth)
                 padding: 8
                 color: textColor
                 font.pixelSize: 13
@@ -172,6 +175,35 @@ Rectangle {
                             codeTextEdit.copy()
                             event.accepted = true
                         }
+                    }
+                }
+            }
+
+            // Scroll event forwarding - pass wheel events to parent when at bounds
+            MouseArea {
+                anchors.fill: parent
+                acceptedButtons: Qt.NoButton
+                propagateComposedEvents: true
+                hoverEnabled: true
+
+                onWheel: function(wheel) {
+                    var atTop = codeFlickable.contentY <= 0
+                    var atBottom = codeFlickable.contentY >= codeFlickable.contentHeight - codeFlickable.height
+
+                    // Scroll direction: positive = down, negative = up
+                    var scrollingDown = wheel.angleDelta.y < 0
+                    var scrollingUp = wheel.angleDelta.y > 0
+
+                    // Forward to parent when at boundary in scroll direction
+                    if ((scrollingDown && atBottom) || (scrollingUp && atTop)) {
+                        wheel.accepted = false  // Let event propagate to parent
+                    } else {
+                        // Manual scroll for smoother experience
+                        var delta = -wheel.angleDelta.y / 2
+                        var newY = Math.max(0, Math.min(codeFlickable.contentHeight - codeFlickable.height,
+                                                         codeFlickable.contentY + delta))
+                        codeFlickable.contentY = newY
+                        wheel.accepted = true
                     }
                 }
             }
