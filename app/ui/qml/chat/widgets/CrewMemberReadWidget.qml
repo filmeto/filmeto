@@ -9,12 +9,15 @@ Item {
     property var data: ({})  // {content_type, data: {crew_members: [{id, name, icon, color}, ...]}}
     property color widgetColor: "#4a90e2"
 
-    // Computed property for crew members list
-    readonly property var crewMembers: {
-        if (data && data.data && data.data.crew_members) {
-            return data.data.crew_members
+    // Crew members list, updated when data changes
+    property var crewMembers: []
+
+    onDataChanged: {
+        if (data && data.data && Array.isArray(data.data.crew_members)) {
+            crewMembers = data.data.crew_members
+        } else {
+            crewMembers = []
         }
-        return []
     }
 
     implicitWidth: row.implicitWidth
