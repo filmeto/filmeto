@@ -52,6 +52,7 @@ MetadataWidget 1.0 widgets/MetadataWidget.qml
 ErrorWidget 1.0 widgets/ErrorWidget.qml
 StructuredContentRenderer 1.0 widgets/StructuredContentRenderer.qml
 SelectableText 1.0 widgets/SelectableText.qml
+MarkdownText 1.0 widgets/MarkdownText.qml
 AudioWidget 1.0 widgets/AudioWidget.qml
 ChartWidget 1.0 widgets/ChartWidget.qml
 VideoWidget 1.0 widgets/VideoWidget.qml

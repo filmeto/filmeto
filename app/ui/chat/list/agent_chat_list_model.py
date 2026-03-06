@@ -449,17 +449,50 @@ class QmlAgentChatListModel(QAbstractListModel):
 
     @staticmethod
     def _serialize_structured_content(structured_content: List[StructureContent]) -> List[Dict[str, Any]]:
-        """Convert structured content to QML-compatible format."""
+        """Convert structured content to QML-compatible format.
+
+        Text content containing fenced code blocks is split into alternating
+        text and code_block items so code blocks render via CodeBlockWidget
+        while surrounding text renders via MarkdownText.
+        """
+        from utils.markdown_parser import parse_markdown_blocks, has_markdown_code_blocks
+
         result = []
         for sc in structured_content:
             if hasattr(sc, 'to_dict'):
-                result.append(sc.to_dict())
+                d = sc.to_dict()
             else:
-                # Fallback for older content types
-                result.append({
+                d = {
                     'content_type': getattr(sc, 'content_type', 'text'),
                     'data': getattr(sc, 'data', {})
-                })
+                }
+
+            if d.get('content_type') == 'text':
+                text = d.get('data', {}).get('text', '')
+                if text and has_markdown_code_blocks(text):
+                    base_id = d.get('content_id', '')
+                    status = d.get('status', 'completed')
+                    for idx, block in enumerate(parse_markdown_blocks(text)):
+                        if block['type'] == 'code_block':
+                            result.append({
+                                'content_id': f'{base_id}_s{idx}',
+                                'content_type': 'code_block',
+                                'data': {
+                                    'code': block['code'],
+                                    'language': block['language'],
+                                },
+                                'status': status,
+                            })
+                        else:
+                            result.append({
+                                'content_id': f'{base_id}_s{idx}',
+                                'content_type': 'text',
+                                'data': {'text': block['text']},
+                                'status': status,
+                            })
+                    continue
+
+            result.append(d)
         return result
 
     @classmethod

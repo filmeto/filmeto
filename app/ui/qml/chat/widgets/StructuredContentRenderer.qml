@@ -59,12 +59,18 @@ Item {
     function _computeContentHash(items) {
         if (!items || items.length === 0) return "empty"
         var hash = items.length.toString()
+        var dataLen = 0
         for (var i = 0; i < items.length && i < 5; i++) {
             var item = items[i]
             var type = item.content_type || item.type || "x"
             var title = item.title || item.tool_name || ""
             hash += "|" + type + ":" + title.substring(0, 20)
+            if (item.data) {
+                var t = item.data.text || item.data.code || item.data.thought || ""
+                dataLen += t.length
+            }
         }
+        hash += "#" + dataLen
         return hash
     }
 
@@ -533,11 +539,11 @@ Item {
     // Widget Components
     // ─────────────────────────────────────────────────────────────
 
-    // Text widget with selection and copy support
+    // Text widget with markdown rendering, selection and copy support
     Component {
         id: textWidgetComponent
 
-        SelectableText {
+        MarkdownText {
             property var data: ({})
             text: data.text || data.data?.text || ""
             textColor: root.textColor
