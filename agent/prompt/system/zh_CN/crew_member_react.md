@@ -33,6 +33,11 @@ version: 2.1
 {% for skill in skills_list %}
 ### {{ skill.name }}
 **描述**: {{ skill.description }}
+{% if skill.triggers %}
+
+**使用场景**:
+{{ skill.triggers }}
+{% endif %}
 
 {% endfor %}
 {% endif %}

@@ -595,13 +595,55 @@ class CrewMember:
             if not skill:
                 continue  # Skip unavailable skills
 
+            # Extract triggers from skill knowledge for better instruction following
+            triggers = self._extract_skill_triggers(skill.knowledge)
+
             skills_list.append({
                 'name': skill.name,
                 'description': skill.description,
-                # Keep only name and description for crew member prompts
+                'triggers': triggers,
             })
 
         return skills_list
+
+    def _extract_skill_triggers(self, knowledge: str, max_length: int = 500) -> str:
+        """Extract trigger conditions from skill knowledge.
+
+        Looks for 'When to Use' sections and extracts relevant trigger keywords.
+
+        Args:
+            knowledge: The skill knowledge string
+            max_length: Maximum length for the extracted triggers
+
+        Returns:
+            Extracted trigger conditions or empty string
+        """
+        if not knowledge:
+            return ""
+
+        # Try to find "When to Use" section
+        import re
+
+        # Common patterns for trigger sections
+        patterns = [
+            r'##\s*When to Use[^#]*',
+            r'##\s*何时使用[^#]*',
+            r'##\s*使用场景[^#]*',
+            r'\*\*When to Use[^*]*\*\*[^#]*',
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, knowledge, re.IGNORECASE | re.DOTALL)
+            if match:
+                triggers = match.group(0).strip()
+                if len(triggers) > max_length:
+                    triggers = triggers[:max_length] + "..."
+                return triggers
+
+        # Fallback: return first part of knowledge if no specific section found
+        if len(knowledge) > max_length:
+            return knowledge[:max_length] + "..."
+        return knowledge
 
     def _get_all_available_skills_as_structured_list(self, language: str = None) -> list:
         """Get all available skills as a structured list for advanced templating."""
@@ -609,10 +651,13 @@ class CrewMember:
 
         skills_list = []
         for skill in all_skills:  # all_skills is a list, not a dict
+            # Extract triggers from skill knowledge
+            triggers = self._extract_skill_triggers(skill.knowledge)
+
             skills_list.append({
                 'name': skill.name,
                 'description': skill.description,
-                # Keep only name and description for crew member prompts
+                'triggers': triggers,
             })
 
         return skills_list

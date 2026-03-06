@@ -33,6 +33,11 @@ You have access to the following skills. Review each skill's purpose to decide w
 {% for skill in skills_list %}
 ### {{ skill.name }}
 **Description**: {{ skill.description }}
+{% if skill.triggers %}
+
+**When to Use**:
+{{ skill.triggers }}
+{% endif %}
 
 {% endfor %}
 {% endif %}

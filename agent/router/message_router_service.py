@@ -152,16 +152,19 @@ class MessageRouterService:
             crew_title = member.config.metadata.get('crew_title', name) if member.config.metadata else name
             description = member.config.description or ""
 
-            # Simplified skills: only name and description
+            # Enhanced skills: include name, description, and triggers for better routing
             skills_list = []
             if member.config.skills and member.skill_service:
                 language = translation_manager.get_current_language()
                 for skill_name in member.config.skills:
                     skill = member.skill_service.get_skill(skill_name, language=language)
                     if skill:
+                        # Extract triggers for better skill matching
+                        triggers = self._extract_skill_triggers(skill.knowledge)
                         skills_list.append({
                             "name": skill.name,
-                            "description": skill.description or ""
+                            "description": skill.description or "",
+                            "triggers": triggers,
                         })
                     else:
                         # Fallback to just name if skill not found
@@ -395,6 +398,44 @@ Respond ONLY with the JSONL lines, no other text."""
             routed_members=[],
             member_messages={},
         )
+
+    def _extract_skill_triggers(self, knowledge: str, max_length: int = 500) -> str:
+        """Extract trigger conditions from skill knowledge for better routing.
+
+        Looks for 'When to Use' sections and extracts relevant trigger keywords.
+
+        Args:
+            knowledge: The skill knowledge string
+            max_length: Maximum length for the extracted triggers
+
+        Returns:
+            Extracted trigger conditions or empty string
+        """
+        if not knowledge:
+            return ""
+
+        import re
+
+        # Common patterns for trigger sections
+        patterns = [
+            r'##\s*When to Use[^#]*',
+            r'##\s*何时使用[^#]*',
+            r'##\s*使用场景[^#]*',
+            r'\*\*When to Use[^*]*\*\*[^#]*',
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, knowledge, re.IGNORECASE | re.DOTALL)
+            if match:
+                triggers = match.group(0).strip()
+                if len(triggers) > max_length:
+                    triggers = triggers[:max_length] + "..."
+                return triggers
+
+        # Fallback: return first part of knowledge if no specific section found
+        if len(knowledge) > max_length:
+            return knowledge[:max_length] + "..."
+        return knowledge
 
 
 # Singleton instance

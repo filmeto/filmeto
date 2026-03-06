@@ -16,6 +16,8 @@ version: 1.0
 以下 crew 成员可用（JSON 格式，包含名称、角色、描述和技能）：
 {{ crew_members_info }}
 
+**重要**：每个技能包含"triggers"字段，描述了该技能的触发场景。请仔细匹配用户消息与技能的触发条件。
+
 ## 最近对话历史
 {{ conversation_history }}
 
