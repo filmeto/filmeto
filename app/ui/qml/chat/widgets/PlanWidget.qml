@@ -54,18 +54,17 @@ Rectangle {
 
     property bool hasPlan: {
         if (mode === "panel") {
-            // Use explicit boolean conversion to handle undefined
-            if (planBridge && typeof planBridge.hasPlan === 'boolean') {
-                return planBridge.hasPlan
-            }
-            return false
+            return planBridge && planBridge.hasPlan === true
         }
         // Inline mode: check for plan_id or title/steps
-        if (!planData || typeof planData !== "object") return false
-        return (planData.plan_id && planData.plan_id.length > 0) ||
-               (planData.title && planData.title.length > 0) ||
-               (planData.steps && planData.steps.length > 0) ||
-               (planData.tasks && planData.tasks.length > 0)
+        if (!planData || typeof planData !== "object") {
+            return false
+        }
+        var hasId = planData.plan_id && String(planData.plan_id).length > 0
+        var hasTitle = planData.title && String(planData.title).length > 0
+        var hasSteps = planData.steps && Array.isArray(planData.steps) && planData.steps.length > 0
+        var hasTasks = planData.tasks && Array.isArray(planData.tasks) && planData.tasks.length > 0
+        return hasId || hasTitle || hasSteps || hasTasks
     }
     property bool hasTasks: tasksModel.length > 0
 
