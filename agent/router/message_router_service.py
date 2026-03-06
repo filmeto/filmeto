@@ -141,22 +141,21 @@ class MessageRouterService:
         # Get current language
         language = translation_manager.get_current_language()
 
-        # Build crew members info
+        # Build crew members info - only include name and role-related info
         crew_info_list = []
         for name, member in crew_members.items():
             # Skip the sender from being a routing target
             if name.lower() == sender_id.lower():
                 continue
 
+            # Only include essential info: name and role-related (crew_title, description)
             crew_title = member.config.metadata.get('crew_title', name) if member.config.metadata else name
-            skills = ", ".join(member.config.skills) if member.config.skills else "None"
-            description = member.config.description or "No description"
+            description = member.config.description or ""
 
             crew_info_list.append({
                 "name": name,
-                "crew_title": crew_title,
+                "role": crew_title,
                 "description": description,
-                "skills": skills,
             })
 
         # Build conversation history string
@@ -221,17 +220,17 @@ class MessageRouterService:
 
 ## Routing Rules
 1. Analyze the message and determine which crew members should respond
-2. Consider each member's role, skills, and description
+2. Consider each member's role and description
 3. Multiple members can be selected if the message requires collaboration
 4. Don't route to the sender
 5. If no specific member is needed, route to "producer" if available
 
 Respond ONLY with JSONL format (one JSON object per line, no markdown code blocks):
-{"crew_member": "member_name", "message": "customized message for this member"}
+{{"crew_member": "member_name", "message": "customized message for this member"}}
 
 Example for routing to two members:
-{"crew_member": "translator", "message": "Please translate this..."}
-{"crew_member": "editor", "message": "Please edit this..."}
+{{"crew_member": "translator", "message": "Please translate this..."}}
+{{"crew_member": "editor", "message": "Please edit this..."}}
 
 Respond ONLY with the JSONL lines, no other text."""
 
