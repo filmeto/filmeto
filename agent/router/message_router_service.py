@@ -148,14 +148,30 @@ class MessageRouterService:
             if name.lower() == sender_id.lower():
                 continue
 
-            # Only include essential info: name and role-related (crew_title, description)
+            # Only include essential info: name, role-related, and simplified skills
             crew_title = member.config.metadata.get('crew_title', name) if member.config.metadata else name
             description = member.config.description or ""
+
+            # Simplified skills: only name and description
+            skills_list = []
+            if member.config.skills and member.skill_service:
+                language = translation_manager.get_current_language()
+                for skill_name in member.config.skills:
+                    skill = member.skill_service.get_skill(skill_name, language=language)
+                    if skill:
+                        skills_list.append({
+                            "name": skill.name,
+                            "description": skill.description or ""
+                        })
+                    else:
+                        # Fallback to just name if skill not found
+                        skills_list.append({"name": skill_name})
 
             crew_info_list.append({
                 "name": name,
                 "role": crew_title,
                 "description": description,
+                "skills": skills_list,
             })
 
         # Build conversation history string
@@ -220,7 +236,7 @@ class MessageRouterService:
 
 ## Routing Rules
 1. Analyze the message and determine which crew members should respond
-2. Consider each member's role and description
+2. Consider each member's role, description, and skills
 3. Multiple members can be selected if the message requires collaboration
 4. Don't route to the sender
 5. If no specific member is needed, route to "producer" if available
