@@ -196,6 +196,7 @@ Item {
             model: root.crewReadBy || []
 
             Rectangle {
+                id: avatarRect
                 width: 20
                 height: 20
                 radius: width / 2
@@ -207,9 +208,15 @@ Item {
                     font.pixelSize: 10
                 }
 
+                MouseArea {
+                    id: avatarMouseArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                }
+
                 ToolTip {
                     text: modelData.name || ""
-                    visible: hovered
+                    visible: avatarMouseArea.containsMouse
                 }
             }
         }
