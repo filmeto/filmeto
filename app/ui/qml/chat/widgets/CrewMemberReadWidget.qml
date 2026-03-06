@@ -10,13 +10,13 @@ Row {
     property color widgetColor: "#4a90e2"
 
     spacing: 8
-    anchors.verticalCenter: parent.verticalCenter
+    height: 24  // Set explicit height for proper vertical centering
 
     // Crew member avatars row
     Row {
         id: avatarRow
         spacing: -6
-        anchors.verticalCenter: parent.verticalCenter
+        height: parent.height
 
         Repeater {
             model: (root.data.data && root.data.data.crew_members) ? root.data.data.crew_members : []
@@ -54,8 +54,8 @@ Row {
     Rectangle {
         width: 1
         height: 18
-        color: "#505050"
         anchors.verticalCenter: parent.verticalCenter
+        color: "#505050"
     }
 
     // Read status text
