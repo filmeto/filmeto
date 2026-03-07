@@ -65,6 +65,8 @@ Rectangle {
                 implicitWidth: 32
                 implicitHeight: 24
 
+                property bool copyBtnCopied: false
+
                 background: Rectangle {
                     color: copyBtn.hovered ? "#404040" : "transparent"
                     radius: 4
@@ -75,19 +77,17 @@ Rectangle {
                     anchors.centerIn: parent
 
                     Text {
-                        text: copyBtnCopied ? "✓" : "📋"
+                        text: copyBtn.copyBtnCopied ? "✓" : "📋"
                         font.pixelSize: 12
                     }
 
                     Text {
-                        visible: !copyBtnCopied
+                        visible: !copyBtn.copyBtnCopied
                         text: "复制"
                         color: textColor
                         font.pixelSize: 11
                     }
                 }
-
-                property bool copyBtnCopied: false
 
                 onClicked: {
                     root.copyToClipboard()
