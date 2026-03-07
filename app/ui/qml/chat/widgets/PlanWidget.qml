@@ -54,7 +54,9 @@ Rectangle {
 
     property bool hasPlan: {
         if (mode === "panel") {
-            return planBridge && planBridge.hasPlan === true
+            // Use != null to check both null and undefined
+            // Use Boolean() to ensure the result is always a boolean
+            return Boolean(planBridge != null && planBridge.hasPlan === true)
         }
         // Inline mode: check for plan_id or title/steps
         if (!planData || typeof planData !== "object") {
@@ -64,7 +66,7 @@ Rectangle {
         var hasTitle = planData.title && String(planData.title).length > 0
         var hasSteps = planData.steps && Array.isArray(planData.steps) && planData.steps.length > 0
         var hasTasks = planData.tasks && Array.isArray(planData.tasks) && planData.tasks.length > 0
-        return hasId || hasTitle || hasSteps || hasTasks
+        return Boolean(hasId || hasTitle || hasSteps || hasTasks)
     }
     property bool hasTasks: tasksModel.length > 0
 
