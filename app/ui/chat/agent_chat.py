@@ -28,6 +28,8 @@ class AgentChatWidget(BaseWidget):
 
     # Signal for error reporting
     error_occurred = Signal(str)
+    # Signal for crew member activity updates
+    crew_member_activity = Signal(str, bool)  # member_name, is_active
 
     def __init__(self, workspace: Workspace, parent=None):
         """Initialize the agent chat component."""
@@ -87,6 +89,8 @@ class AgentChatWidget(BaseWidget):
         self.prompt_input_widget.message_submitted.connect(self._on_message_submitted)
         self.chat_history_widget.reference_clicked.connect(self._on_reference_clicked)
         self.plan_widget.expandedChanged.connect(self._on_plan_expanded_changed)
+        # Forward crew member activity signal
+        self.chat_history_widget.crew_member_activity.connect(self.crew_member_activity.emit)
 
     def _auto_initialize_agent(self):
         """Auto-initialize agent when workspace has a project."""

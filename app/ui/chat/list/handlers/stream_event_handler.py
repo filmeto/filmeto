@@ -51,6 +51,7 @@ class StreamEventHandler:
         _metadata_resolver: Metadata resolver instance
         _update_agent_card_callback: Callback for updating agent cards
         _scroll_to_bottom_callback: Callback for scrolling
+        _crew_member_activity_callback: Callback for crew member activity updates
     """
 
     def __init__(
@@ -73,20 +74,24 @@ class StreamEventHandler:
         # Callbacks (to be set by widget)
         self._update_agent_card_callback: Optional[Callable] = None
         self._scroll_to_bottom_callback: Optional[Callable] = None
+        self._crew_member_activity_callback: Optional[Callable] = None
 
     def set_callbacks(
         self,
         update_agent_card: Optional[Callable] = None,
         scroll_to_bottom: Optional[Callable] = None,
+        crew_member_activity: Optional[Callable] = None,
     ) -> None:
         """Set callbacks for event handling.
 
         Args:
             update_agent_card: Callback for updating agent cards
             scroll_to_bottom: Callback for scrolling to bottom
+            crew_member_activity: Callback for crew member activity updates (member_name, is_active)
         """
         self._update_agent_card_callback = update_agent_card
         self._scroll_to_bottom_callback = scroll_to_bottom
+        self._crew_member_activity_callback = crew_member_activity
 
     def handle_stream_event(self, event, session) -> None:
         """Handle stream events.
@@ -226,6 +231,11 @@ class StreamEventHandler:
                     structured_content=[activity_content, typing_content],
                     is_complete=False,
                 )
+
+            # Notify crew member activity for sidebar update
+            if self._crew_member_activity_callback:
+                self._crew_member_activity_callback(sender_name, True)
+
             logger.debug(f"Added crew member activity indicator for {sender_name} (message_id: {message_id})")
 
         elif event.event_type == "crew_member_typing_end":
@@ -252,6 +262,11 @@ class StreamEventHandler:
                 })
                 # Force immediate UI update to ensure typing state changes
                 self._model.flush_updates()
+
+                # Notify crew member activity end for sidebar update
+                if self._crew_member_activity_callback:
+                    self._crew_member_activity_callback(sender_name, False)
+
                 logger.debug(f"Removed crew member activity indicator for {sender_name} (message_id: {message_id})")
             else:
                 logger.warning(f"[typing_end] Item not found for message_id: {message_id}")

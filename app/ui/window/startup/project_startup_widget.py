@@ -126,6 +126,23 @@ class ProjectStartupWidget(BaseWidget):
         # We'll connect to the agent chat component directly instead of the old prompt widget
         # The agent chat component has its own prompt widget
 
+        # Connect crew member activity to update the members panel
+        if hasattr(self, 'agent_chat_component') and self.agent_chat_component:
+            self.agent_chat_component.crew_member_activity.connect(self._on_crew_member_activity)
+
+    def _on_crew_member_activity(self, member_name: str, is_active: bool):
+        """Handle crew member activity updates.
+
+        Args:
+            member_name: Name of the crew member
+            is_active: True if the member is active (thinking/typing), False otherwise
+        """
+        # Get the members panel from the right panel switcher
+        if hasattr(self, 'right_panel_switcher'):
+            members_panel = self.right_panel_switcher.get_panel('members')
+            if members_panel and hasattr(members_panel, 'agent_chat_members_component'):
+                members_panel.agent_chat_members_component.set_member_active(member_name, is_active)
+
     def _apply_styles(self):
         """Apply styles to the widget."""
         # Styles are now in the global stylesheet

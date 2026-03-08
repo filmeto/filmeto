@@ -72,6 +72,7 @@ class QmlAgentChatListWidget(BaseWidget):
     reference_clicked = Signal(str, str)  # ref_type, ref_id
     message_complete = Signal(str, str)  # message_id, agent_name
     load_more_requested = Signal()
+    crew_member_activity = Signal(str, bool)  # member_name, is_active
 
     def __init__(self, workspace: "Workspace", parent=None):
         """Initialize the chat list widget.
@@ -191,6 +192,7 @@ class QmlAgentChatListWidget(BaseWidget):
         self._stream_event_handler.set_callbacks(
             update_agent_card=self._update_agent_card_internal,
             scroll_to_bottom=self._scroll_to_bottom,
+            crew_member_activity=lambda name, active: self.crew_member_activity.emit(name, active),
         )
 
         # HistoryManager callbacks
