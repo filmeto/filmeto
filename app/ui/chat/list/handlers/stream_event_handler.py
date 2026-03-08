@@ -18,6 +18,7 @@ from agent.chat.content import (
     TypingState,
     StructureContent,
     PlanContent,
+    CrewMemberActivityContent,
 )
 from agent.chat.agent_chat_types import ContentType
 
@@ -181,7 +182,10 @@ class StreamEventHandler:
             self._update_agent_card_callback(message_id, structured_content=text_dict)
 
     def _handle_typing_event(self, event) -> None:
-        """Handle crew_member_typing events to show/hide typing indicator.
+        """Handle crew_member_typing events to show crew member activity indicator.
+
+        Creates CrewMemberActivityContent to show which crew member is thinking,
+        along with TypingContent for backward compatibility with streaming state.
 
         Args:
             event: Typing event
@@ -200,28 +204,39 @@ class StreamEventHandler:
         message_id = run_id
 
         if event.event_type == "crew_member_typing":
-            # Create card with typing indicator
+            # Create card with crew member activity indicator
             self._skill_manager.get_or_create_agent_card(message_id, sender_name, sender_name)
-            # Add TypingContent with START state
+
+            # Create CrewMemberActivityContent with the thinking crew member
+            crew_member_data = {
+                "id": sender_id,
+                "name": sender_name,
+                "icon": sender_name[0].upper() if sender_name else "?",
+                "color": "#4a90e2"  # Default color, could be customized per agent
+            }
+            activity_content = CrewMemberActivityContent(
+                crew_members=[crew_member_data]
+            )
+            # Also add TypingContent with START state for backward compatibility
             typing_content = TypingContent(state=TypingState.START)
+
             if self._update_agent_card_callback:
                 self._update_agent_card_callback(
                     message_id,
-                    structured_content=typing_content,
+                    structured_content=[activity_content, typing_content],
                     is_complete=False,
                 )
-            logger.debug(f"Added typing indicator for {sender_name} (message_id: {message_id})")
+            logger.debug(f"Added crew member activity indicator for {sender_name} (message_id: {message_id})")
 
         elif event.event_type == "crew_member_typing_end":
-            # Add TypingContent with END state to mark completion in history
-            # Then filter out previous typing indicators to update UI state
+            # Remove activity indicator and add typing end marker
             item = self._model.get_item_by_message_id(message_id)
             if item:
-                # Remove existing typing START indicators to update UI state
+                # Remove existing crew_member_activity and typing START indicators
                 current_structured = item.get(self._model.STRUCTURED_CONTENT, [])
                 filtered_structured = [
                     sc for sc in current_structured
-                    if sc.get('content_type') != 'typing'
+                    if sc.get('content_type') not in ('crew_member_activity', 'typing')
                 ]
 
                 # Add TypingContent with END state to record in history
@@ -237,7 +252,7 @@ class StreamEventHandler:
                 })
                 # Force immediate UI update to ensure typing state changes
                 self._model.flush_updates()
-                logger.debug(f"Added typing_end indicator for {sender_name} (message_id: {message_id})")
+                logger.debug(f"Removed crew member activity indicator for {sender_name} (message_id: {message_id})")
             else:
                 logger.warning(f"[typing_end] Item not found for message_id: {message_id}")
 

@@ -52,7 +52,7 @@ Item {
     readonly property var _mainContentTypesLookup: ({
         "text": true, "code_block": true, "image": true, "video": true, "audio": true,
         "link": true, "button": true, "form": true, "file": true, "file_attachment": true,
-        "crew_member_read": true
+        "crew_member_read": true, "crew_member_activity": true
     })
 
     // Deep content hash for change detection
@@ -106,6 +106,7 @@ Item {
         var mainItems = []
         var thinkingItems = []
         var hasTypingStart = false
+        var hasCrewMemberActivity = false
         var mainTypes = root._mainContentTypesLookup
 
         for (var i = 0; i < src.length; i++) {
@@ -117,6 +118,9 @@ Item {
                 if ((data.state || "start") === "start") {
                     hasTypingStart = true
                 }
+            } else if (type === "crew_member_activity") {
+                hasCrewMemberActivity = true
+                mainItems.push(item)
             } else if (mainTypes[type] === true) {
                 mainItems.push(item)
             } else {
@@ -126,7 +130,7 @@ Item {
 
         _cache.mainItems = mainItems
         _cache.thinkingItems = thinkingItems
-        _cache.isStreaming = hasTypingStart
+        _cache.isStreaming = hasTypingStart || hasCrewMemberActivity
         _cache.mainContentCount = mainItems.length
         _cache.thinkingContentCount = thinkingItems.length
         _cache.typingContentCount = hasTypingStart ? 1 : 0
@@ -263,6 +267,7 @@ Item {
             case "error": return widgetSupport === "full" ? errorWidgetComponent : textWidgetComponent
             case "llm_output": return widgetSupport === "full" ? llmOutputComponent : textWidgetComponent
             case "crew_member_read": return widgetSupport === "full" ? crewMemberReadComponent : textWidgetComponent
+            case "crew_member_activity": return widgetSupport === "full" ? crewMemberActivityComponent : textWidgetComponent
             default: return textWidgetComponent
         }
     }
@@ -864,6 +869,17 @@ Item {
         id: crewMemberReadComponent
 
         CrewMemberReadWidget {
+            property var data: ({})
+            width: parent.width
+            widgetColor: root.widgetColor
+        }
+    }
+
+    // CrewMemberActivity widget (thinking/typing indicator)
+    Component {
+        id: crewMemberActivityComponent
+
+        CrewMemberActivityWidget {
             property var data: ({})
             width: parent.width
             widgetColor: root.widgetColor

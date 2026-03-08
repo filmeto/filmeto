@@ -57,6 +57,7 @@ class ContentType(Enum):
     PROGRESS = "progress"
     TYPING = "typing"
     CREW_MEMBER_READ = "crew_member_read"  # Message read by crew members (router)
+    CREW_MEMBER_ACTIVITY = "crew_member_activity"  # Crew member is thinking/typing
     METADATA = "metadata"
     ERROR = "error"
     LLM_OUTPUT = "llm_output"
