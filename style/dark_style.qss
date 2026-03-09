@@ -578,6 +578,11 @@ QTabWidget#agent_chat_tabs QTabBar {
     border: none;
 }
 
+QTabWidget#agent_chat_tabs::tab-bar {
+    left: 0px;
+    alignment: left;
+}
+
 QTabWidget#agent_chat_tabs QTabBar::tab {
     background-color: #2d2d2d;
     color: #888888;
