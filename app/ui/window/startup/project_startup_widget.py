@@ -122,13 +122,11 @@ class ProjectStartupWidget(BaseWidget):
 
     def _connect_signals(self):
         """Connect signals between components."""
-        # Connect prompt submission to the agent chat component
-        # We'll connect to the agent chat component directly instead of the old prompt widget
-        # The agent chat component has its own prompt widget
-
-        # Connect crew member activity to update the members panel
         if hasattr(self, 'agent_chat_component') and self.agent_chat_component:
             self.agent_chat_component.crew_member_activity.connect(self._on_crew_member_activity)
+
+        if hasattr(self, 'right_panel_switcher'):
+            self.right_panel_switcher.panel_switched.connect(self._on_panel_switched)
 
     def _on_crew_member_activity(self, member_name: str, is_active: bool):
         """Handle crew member activity updates.
@@ -142,6 +140,23 @@ class ProjectStartupWidget(BaseWidget):
             members_panel = self.right_panel_switcher.get_panel('members')
             if members_panel and hasattr(members_panel, 'agent_chat_members_component'):
                 members_panel.agent_chat_members_component.set_member_active(member_name, is_active)
+
+    def _on_panel_switched(self, panel_name: str):
+        """Connect member double-click signal when members panel first loads."""
+        if panel_name == 'members':
+            members_panel = self.right_panel_switcher.get_panel('members')
+            if members_panel and hasattr(members_panel, 'agent_chat_members_component'):
+                comp = members_panel.agent_chat_members_component
+                try:
+                    comp.member_double_clicked.disconnect(self._on_member_double_clicked)
+                except RuntimeError:
+                    pass
+                comp.member_double_clicked.connect(self._on_member_double_clicked)
+
+    def _on_member_double_clicked(self, crew_member):
+        """Handle double-click on a crew member to open private chat."""
+        if hasattr(self, 'agent_chat_component') and self.agent_chat_component:
+            self.agent_chat_component.open_private_chat(crew_member)
 
     def _apply_styles(self):
         """Apply styles to the widget."""
