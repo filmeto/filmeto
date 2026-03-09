@@ -144,6 +144,15 @@ QSplitter::handle{
     background-color: #1e1f22;
 }
 
+/* BasePanel Styles */
+#panelContent {
+    background-color: #1e1f22;
+}
+
+#panelContentStack {
+    background-color: #1e1f22;
+}
+
 /* Left Panel Dialog Styles */
 #LeftPanelDialogLeftPanel {
     background-color: #3d3f4e;
@@ -552,18 +561,21 @@ QTabWidget#startup_tabs QTabBar::tab:hover:!selected {
 
 /* Agent Chat Tabs */
 QTabWidget#agent_chat_tabs {
-    background-color: transparent;
+    background-color: #1e1f22;
     border: none;
 }
 
 QTabWidget#agent_chat_tabs::pane {
-    background-color: transparent;
+    background-color: #1e1f22;
     border: none;
     border-top: 1px solid #3c3f41;
+    margin: 0px;
+    padding: 0px;
 }
 
 QTabWidget#agent_chat_tabs QTabBar {
     background-color: transparent;
+    border: none;
 }
 
 QTabWidget#agent_chat_tabs QTabBar::tab {
@@ -573,6 +585,8 @@ QTabWidget#agent_chat_tabs QTabBar::tab {
     margin-right: 1px;
     border: none;
     border-bottom: 2px solid transparent;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
     font-size: 13px;
 }
 

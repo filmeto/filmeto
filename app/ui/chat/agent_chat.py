@@ -56,8 +56,13 @@ class AgentChatWidget(BaseWidget):
         self.tab_widget.setObjectName("agent_chat_tabs")
         self.tab_widget.setTabsClosable(True)
         self.tab_widget.setMovable(False)
-        self.tab_widget.setDocumentMode(True)
+        self.tab_widget.setDocumentMode(False)
         self.tab_widget.tabCloseRequested.connect(self._on_tab_close_requested)
+
+        # 设置标签宽度根据内容自适应
+        tab_bar = self.tab_widget.tabBar()
+        tab_bar.setExpanding(False)
+        tab_bar.setElideMode(Qt.ElideNone)
 
         self._setup_group_chat_tab()
 
