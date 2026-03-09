@@ -392,14 +392,16 @@ class StreamEventHandler:
             return
 
         # No active skill - handle as standalone content
-        item = self._model.get_item_by_message_id(event.message_id)
+        # Use run_id as message_id for AgentEvent (AgentEvent doesn't have message_id attribute)
+        message_id = run_id if run_id else str(uuid.uuid4())
+        item = self._model.get_item_by_message_id(message_id)
         if not item:
-            agent_name = getattr(event, "agent_name", "Unknown")
+            agent_name = getattr(event, "sender_name", getattr(event, "agent_name", "Unknown"))
             self._skill_manager.get_or_create_agent_card(
-                event.message_id,
+                message_id,
                 agent_name,
                 getattr(event, "title", None),
             )
 
         if self._update_agent_card_callback:
-            self._update_agent_card_callback(event.message_id, structured_content=content_dict)
+            self._update_agent_card_callback(message_id, structured_content=content_dict)
