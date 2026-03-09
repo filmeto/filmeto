@@ -198,6 +198,7 @@ class AgentChatMembersWidget(BaseWidget):
     """Agent chat members component showing crew members for a project."""
 
     member_selected = Signal(CrewMember)  # Emitted when a member is selected
+    member_double_clicked = Signal(CrewMember)  # Emitted when a member is double-clicked (open private chat)
     add_member_requested = Signal()       # Emitted when add member button is clicked
 
     def __init__(self, workspace: Workspace, parent=None):
@@ -258,6 +259,7 @@ class AgentChatMembersWidget(BaseWidget):
     def _connect_signals(self):
         """Connect internal signals."""
         self.search_input.textChanged.connect(self._filter_members)
+        self.list_widget.itemDoubleClicked.connect(self._on_item_double_clicked)
         
     def _on_item_selection_changed(self):
         """Handle when a list item is selected."""
@@ -266,6 +268,12 @@ class AgentChatMembersWidget(BaseWidget):
             crew_member = current_item.data(Qt.UserRole)
             if crew_member:
                 self.member_selected.emit(crew_member)
+
+    def _on_item_double_clicked(self, item: QListWidgetItem):
+        """Handle double-click on a list item to open private chat."""
+        crew_member = item.data(Qt.UserRole)
+        if crew_member:
+            self.member_double_clicked.emit(crew_member)
                 
     def _filter_members(self, text: str):
         """Filter the member list based on search text."""
