@@ -82,12 +82,16 @@ class PrivateChatWidget(BaseWidget):
                 content = msg.get("content", "")
                 sender_name = msg.get("sender_name", "")
                 message_id = msg.get("message_id", str(uuid.uuid4()))
+                is_event = msg.get("is_event", False)
 
                 if not content:
                     continue
 
                 if role == "user":
                     self.chat_list_widget.add_user_message(content)
+                elif role == "event":
+                    # Handle event messages with structured content
+                    self._load_event_message(msg)
                 else:
                     self.chat_list_widget.append_message(
                         sender_name or self.crew_member.config.name,
@@ -97,6 +101,64 @@ class PrivateChatWidget(BaseWidget):
 
         except Exception as e:
             logger.error(f"Error loading private chat history: {e}", exc_info=True)
+
+    def _load_event_message(self, msg: dict):
+        """Load an event message from history.
+
+        Args:
+            msg: The event message dictionary containing event details
+        """
+        try:
+            from agent.chat.content import StructureContent
+            from agent.chat.agent_chat_types import ContentType
+
+            event_type = msg.get("event_type", "")
+            sender_name = msg.get("sender_name", self.crew_member.config.name)
+            sender_id = msg.get("sender_id", self.crew_member.config.name)
+            run_id = msg.get("run_id", "")
+            message_id = msg.get("message_id", str(uuid.uuid4()))
+            content_dict = msg.get("content", {})
+
+            if not content_dict:
+                return
+
+            # Convert content dict to StructureContent
+            content_type_str = content_dict.get("content_type", "text")
+            try:
+                content_type = ContentType(content_type_str)
+            except ValueError:
+                content_type = ContentType.TEXT
+
+            # Create a mock event object for handle_stream_event
+            class MockEvent:
+                def __init__(self, event_type, sender_id, sender_name, run_id, content):
+                    self.event_type = event_type
+                    self.sender_id = sender_id
+                    self.sender_name = sender_name
+                    self.run_id = run_id
+                    self.content = content
+                    self.message_id = message_id
+
+            # Create StructureContent from dict
+            if isinstance(content_dict, dict):
+                content = StructureContent.from_dict(content_dict)
+            else:
+                from agent.chat.content import TextContent
+                content = TextContent(text=str(content_dict))
+
+            mock_event = MockEvent(
+                event_type=event_type,
+                sender_id=sender_id,
+                sender_name=sender_name,
+                run_id=run_id,
+                content=content
+            )
+
+            # Use the chat list widget's handle_stream_event to render the event
+            self.chat_list_widget.handle_stream_event(mock_event, None)
+
+        except Exception as e:
+            logger.error(f"Error loading event message: {e}", exc_info=True)
 
     def _on_message_submitted(self, message: str):
         if not message or self._is_processing:

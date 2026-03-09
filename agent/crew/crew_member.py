@@ -123,7 +123,7 @@ class CrewMember:
         run_id = str(uuid.uuid4())
 
         # First, emit a typing event to give immediate visual feedback
-        yield AgentEvent.create(
+        typing_start_event = AgentEvent.create(
             event_type=AgentEventType.CREW_MEMBER_TYPING.value,
             project_name=self.project_name,
             react_type=self.config.name,
@@ -137,10 +137,13 @@ class CrewMember:
                 state=TypingState.START
             )
         )
+        # Save typing start event to history
+        self._save_event_to_history(typing_start_event)
+        yield typing_start_event
 
         if not self.llm_service.validate_config():
             # Yield error event first
-            yield AgentEvent.error(
+            error_event = AgentEvent.error(
                 error_message="LLM service is not configured.",
                 project_name=self.project_name,
                 react_type=self.config.name,
@@ -149,8 +152,11 @@ class CrewMember:
                 sender_id=self.config.name,
                 sender_name=self.config.name,
             )
+            # Save error event to history
+            self._save_event_to_history(error_event)
+            yield error_event
             # Emit typing_end event after error to mark completion
-            yield AgentEvent.create(
+            typing_end_event = AgentEvent.create(
                 event_type=AgentEventType.CREW_MEMBER_TYPING_END.value,
                 project_name=self.project_name,
                 react_type=self.config.name,
@@ -164,6 +170,9 @@ class CrewMember:
                     state=TypingState.END
                 )
             )
+            # Save typing end event to history
+            self._save_event_to_history(typing_end_event)
+            yield typing_end_event
             return
 
         def build_prompt_function(user_question: str) -> str:
@@ -200,6 +209,9 @@ class CrewMember:
                 content=event.content  # Preserve the original content
             )
 
+            # Save ALL events to crew member history for complete traceability
+            self._save_event_to_history(enhanced_event)
+
             if event.event_type == AgentEventType.FINAL:
                 # Extract from content or payload (backward compat)
                 if event.content and hasattr(event.content, 'text'):
@@ -212,13 +224,13 @@ class CrewMember:
                 if final_response:
                     self.conversation_history.append({"role": "user", "content": message})
                     self.conversation_history.append({"role": "assistant", "content": final_response})
-                    # Save to history storage
+                    # Save to history storage (text messages for backward compatibility)
                     self._save_message_to_history("user", message, run_id)
                     self._save_message_to_history("assistant", final_response, run_id)
                 # Yield final response first
                 yield enhanced_event
                 # Emit typing_end event after final response to mark completion
-                yield AgentEvent.create(
+                typing_end_event = AgentEvent.create(
                     event_type=AgentEventType.CREW_MEMBER_TYPING_END.value,
                     project_name=self.project_name,
                     react_type=self.config.name,
@@ -232,6 +244,9 @@ class CrewMember:
                         state=TypingState.END
                     )
                 )
+                # Save typing end event to history
+                self._save_event_to_history(typing_end_event)
+                yield typing_end_event
                 break
             elif event.event_type == AgentEventType.ERROR:
                 # Extract from content or payload (backward compat)
@@ -243,13 +258,13 @@ class CrewMember:
                     error_message = "Unknown error occurred"
                 self.conversation_history.append({"role": "user", "content": message})
                 self.conversation_history.append({"role": "assistant", "content": error_message})
-                # Save to history storage
+                # Save to history storage (text messages for backward compatibility)
                 self._save_message_to_history("user", message, run_id)
                 self._save_message_to_history("assistant", error_message, run_id, is_error=True)
                 # Yield error event first
                 yield enhanced_event
                 # Emit typing_end event after error to mark completion
-                yield AgentEvent.create(
+                typing_end_event = AgentEvent.create(
                     event_type=AgentEventType.CREW_MEMBER_TYPING_END.value,
                     project_name=self.project_name,
                     react_type=self.config.name,
@@ -263,6 +278,9 @@ class CrewMember:
                         state=TypingState.END
                     )
                 )
+                # Save typing end event to history
+                self._save_event_to_history(typing_end_event)
+                yield typing_end_event
                 break
             else:
                 # Yield all other events (LLM_THINKING, TOOL_START, TOOL_PROGRESS, TOOL_END, etc.)
@@ -273,11 +291,11 @@ class CrewMember:
 
         if final_response is None:
             error_msg = "Reached max steps without a final response."
-            # Save to history storage
+            # Save to history storage (text messages for backward compatibility)
             self._save_message_to_history("user", message, run_id)
             self._save_message_to_history("assistant", error_msg, run_id, is_error=True)
             # Yield error event first
-            yield AgentEvent.error(
+            error_event = AgentEvent.error(
                 error_message=error_msg,
                 project_name=self.project_name,
                 react_type=self.config.name,
@@ -285,8 +303,11 @@ class CrewMember:
                 sender_id=self.config.name,
                 sender_name=self.config.name,
             )
+            # Save error event to history
+            self._save_event_to_history(error_event)
+            yield error_event
             # Emit typing_end event after error to mark completion
-            yield AgentEvent.create(
+            typing_end_event = AgentEvent.create(
                 event_type=AgentEventType.CREW_MEMBER_TYPING_END.value,
                 project_name=self.project_name,
                 react_type=self.config.name,
@@ -300,6 +321,9 @@ class CrewMember:
                     state=TypingState.END
                 )
             )
+            # Save typing end event to history
+            self._save_event_to_history(typing_end_event)
+            yield typing_end_event
             return
 
     def _save_message_to_history(self, role: str, content: str, run_id: str, is_error: bool = False):
@@ -338,6 +362,53 @@ class CrewMember:
             )
         except Exception as e:
             logger.error(f"Error saving message to history: {e}")
+
+    def _save_event_to_history(self, event: "AgentEvent"):
+        """
+        Save an AgentEvent to the crew member's history storage.
+
+        This method serializes the entire AgentEvent including its content,
+        allowing crew member history to capture full execution details like
+        LLM thinking, tool calls, skill execution, etc.
+
+        Args:
+            event: The AgentEvent to save
+        """
+        if not self.workspace or not self.project_name:
+            return
+
+        try:
+            workspace_path = _get_workspace_path(self.workspace)
+
+            # Serialize event content to dictionary
+            content_dict = {}
+            if event.content:
+                content_dict = event.content.to_dict()
+
+            # Build event message dictionary with full event details
+            event_dict = {
+                "message_id": str(uuid.uuid4()),
+                "run_id": event.run_id,
+                "role": "event",  # Special role to identify event messages
+                "sender_id": event.sender_id or self.config.name,
+                "sender_name": event.sender_name or self.config.name,
+                "event_type": event.event_type,
+                "step_id": event.step_id,
+                "timestamp": datetime.now().isoformat(),
+                "crew_title": self.crew_title,
+                "content": content_dict,
+                "is_event": True,  # Flag to identify event messages
+            }
+
+            crew_member_history_service.add_message(
+                workspace_path=workspace_path,
+                project_name=self.project_name,
+                crew_title=self.crew_title,
+                message=event_dict
+            )
+            logger.debug(f"Saved event {event.event_type} to crew member {self.crew_title} history")
+        except Exception as e:
+            logger.error(f"Error saving event to history: {e}")
 
     def get_history_latest(self, count: int = 20) -> List[Dict[str, Any]]:
         """
