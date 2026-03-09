@@ -595,6 +595,12 @@ QTabWidget#agent_chat_tabs QTabBar::tab {
     font-size: 13px;
 }
 
+QTabWidget#agent_chat_tabs QTabBar::tab:first {
+    font-family: "iconfont";
+    font-size: 16px;
+    padding: 6px 12px;
+}
+
 QTabWidget#agent_chat_tabs QTabBar::tab:selected {
     color: #E1E1E1;
     background-color: #383838;
@@ -602,10 +608,20 @@ QTabWidget#agent_chat_tabs QTabBar::tab:selected {
     font-weight: 500;
 }
 
+QTabWidget#agent_chat_tabs QTabBar::tab:first:selected {
+    font-family: "iconfont";
+    font-size: 16px;
+}
+
 QTabWidget#agent_chat_tabs QTabBar::tab:hover:!selected {
     color: #CCCCCC;
     background-color: #353535;
     border-bottom: 2px solid #454545;
+}
+
+QTabWidget#agent_chat_tabs QTabBar::tab:first:hover:!selected {
+    font-family: "iconfont";
+    font-size: 16px;
 }
 
 QTabWidget#agent_chat_tabs QTabBar::close-button {

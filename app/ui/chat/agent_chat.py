@@ -107,7 +107,8 @@ class AgentChatWidget(BaseWidget):
         self.plan_widget.expandedChanged.connect(self._on_plan_expanded_changed)
         self.chat_history_widget.crew_member_activity.connect(self.crew_member_activity.emit)
 
-        self.tab_widget.addTab(group_chat_container, tr("Group Chat"))
+        self.tab_widget.addTab(group_chat_container, "\ue89e")
+        self.tab_widget.setTabToolTip(GROUP_CHAT_TAB_INDEX, tr("Group Chat"))
 
     def open_private_chat(self, crew_member) -> None:
         """Open a private chat tab for a crew member, or switch to it if already open."""
