@@ -83,12 +83,13 @@ class PrivateChatWidget(BaseWidget):
                 sender_name = msg.get("sender_name", "")
                 message_id = msg.get("message_id", str(uuid.uuid4()))
                 is_event = msg.get("is_event", False)
+                timestamp = msg.get("timestamp", None)
 
                 if not content:
                     continue
 
                 if role == "user":
-                    self.chat_list_widget.add_user_message(content)
+                    self.chat_list_widget.add_user_message(content, timestamp=timestamp)
                 elif role == "event":
                     # Handle event messages with structured content
                     self._load_event_message(msg)
@@ -96,7 +97,8 @@ class PrivateChatWidget(BaseWidget):
                     self.chat_list_widget.append_message(
                         sender_name or self.crew_member.config.name,
                         content,
-                        message_id=message_id
+                        message_id=message_id,
+                        timestamp=timestamp
                     )
 
         except Exception as e:
@@ -118,6 +120,7 @@ class PrivateChatWidget(BaseWidget):
             run_id = msg.get("run_id", "")
             message_id = msg.get("message_id", str(uuid.uuid4()))
             content_dict = msg.get("content", {})
+            timestamp = msg.get("timestamp", None)
 
             if not content_dict:
                 return
@@ -156,6 +159,14 @@ class PrivateChatWidget(BaseWidget):
 
             # Use the chat list widget's handle_stream_event to render the event
             self.chat_list_widget.handle_stream_event(mock_event, None)
+
+            # Update the message timestamp if available
+            # Use run_id as the message_id since that's what handle_stream_event uses
+            if timestamp and run_id:
+                model = self.chat_list_widget._model
+                model.update_item(run_id, {
+                    model.TIMESTAMP: timestamp,
+                })
 
         except Exception as e:
             logger.error(f"Error loading event message: {e}", exc_info=True)

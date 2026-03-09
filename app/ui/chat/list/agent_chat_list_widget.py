@@ -307,11 +307,12 @@ class QmlAgentChatListWidget(BaseWidget):
 
     # ─── Public API ───────────────────────────────────────────────────────
 
-    def add_user_message(self, content: str) -> str:
+    def add_user_message(self, content: str, timestamp: str = None) -> str:
         """Add a user message to the chat.
 
         Args:
             content: The message content
+            timestamp: Optional timestamp for the message (ISO format)
 
         Returns:
             The message ID
@@ -331,7 +332,7 @@ class QmlAgentChatListWidget(BaseWidget):
             self._model.CONTENT_TYPE: "text",
             self._model.IS_READ: True,
             self._model.CREW_READ_BY: [],
-            self._model.TIMESTAMP: None,
+            self._model.TIMESTAMP: timestamp,
             self._model.DATE_GROUP: "",
         }
 
@@ -341,13 +342,14 @@ class QmlAgentChatListWidget(BaseWidget):
         self._scroll_to_bottom(force=True)
         return message_id
 
-    def append_message(self, sender: str, message: str, message_id: str = None) -> Optional[str]:
+    def append_message(self, sender: str, message: str, message_id: str = None, timestamp: str = None) -> Optional[str]:
         """Append a message to the chat.
 
         Args:
             sender: The sender name/ID
             message: The message content
             message_id: Optional message ID
+            timestamp: Optional timestamp for the message (ISO format)
 
         Returns:
             The message ID or None
@@ -357,7 +359,7 @@ class QmlAgentChatListWidget(BaseWidget):
 
         is_user = sender.lower() in ["user", tr("用户").lower(), tr("user").lower()]
         if is_user:
-            return self.add_user_message(message)
+            return self.add_user_message(message, timestamp=timestamp)
 
         if not message_id:
             message_id = str(uuid.uuid4())
@@ -376,7 +378,7 @@ class QmlAgentChatListWidget(BaseWidget):
             self._model.STRUCTURED_CONTENT: [],
             self._model.CONTENT_TYPE: "text",
             self._model.IS_READ: True,
-            self._model.TIMESTAMP: None,
+            self._model.TIMESTAMP: timestamp,
             self._model.DATE_GROUP: "",
         }
 
