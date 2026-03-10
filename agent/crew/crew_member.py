@@ -125,7 +125,11 @@ class CrewMember:
         # This ensures all events (LLM_THINKING, TOOL_*, FINAL, etc.) share the same message_id
         message_id = str(uuid.uuid4())
 
-        # First, emit a typing event to give immediate visual feedback
+        # First, save the user message to history BEFORE any crew member events
+        # This ensures correct ordering: user message -> crew member events
+        self._save_message_to_history("user", message, run_id, sender_type="user")
+
+        # Then, emit a typing event to give immediate visual feedback
         typing_start_event = AgentEvent.create(
             event_type=AgentEventType.CREW_MEMBER_TYPING.value,
             project_name=self.project_name,
@@ -228,8 +232,7 @@ class CrewMember:
                 if final_response:
                     self.conversation_history.append({"role": "user", "content": message})
                     self.conversation_history.append({"role": "assistant", "content": final_response})
-                    # Save to history storage (text messages for backward compatibility)
-                    self._save_message_to_history("user", message, run_id)
+                    # Save assistant response to history storage (user message already saved at start)
                     self._save_message_to_history("assistant", final_response, run_id)
                 # Yield final response first
                 yield enhanced_event
@@ -262,8 +265,7 @@ class CrewMember:
                     error_message = "Unknown error occurred"
                 self.conversation_history.append({"role": "user", "content": message})
                 self.conversation_history.append({"role": "assistant", "content": error_message})
-                # Save to history storage (text messages for backward compatibility)
-                self._save_message_to_history("user", message, run_id)
+                # Save assistant error to history storage (user message already saved at start)
                 self._save_message_to_history("assistant", error_message, run_id, is_error=True)
                 # Yield error event first
                 yield enhanced_event
@@ -295,8 +297,7 @@ class CrewMember:
 
         if final_response is None:
             error_msg = "Reached max steps without a final response."
-            # Save to history storage (text messages for backward compatibility)
-            self._save_message_to_history("user", message, run_id)
+            # Save assistant error to history storage (user message already saved at start)
             self._save_message_to_history("assistant", error_msg, run_id, is_error=True)
             # Yield error event first
             error_event = AgentEvent.error(
