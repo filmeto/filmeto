@@ -300,6 +300,7 @@ class React:
 
             # Forward all events directly from ToolService
             # ToolService is responsible for emitting tool_start, tool_progress, tool_end
+            # Use react_type as sender_id and sender_name to identify the crew member
             async for event in self.tool_service.execute_tool(
                 tool_name,
                 tool_args,
@@ -308,6 +309,8 @@ class React:
                 react_type=self.react_type,
                 run_id=self.run_id,
                 step_id=self.step_id,
+                sender_id=self.react_type,
+                sender_name=self.react_type,
             ):
                 yield event
 
