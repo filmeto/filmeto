@@ -1,6 +1,9 @@
 ---
 name: write_single_scene
-description: A skill to write and update individual scenes in the screenplay
+description: |-
+  Purpose: Write new scenes or update existing scenes with Hollywood-standard formatting and metadata.
+  Capabilities: Create/update scenes by scene_id, apply proper formatting, manage metadata (location, characters, story beat, etc.).
+  Trigger: When user wants to "write scene", "create scene", "update scene", "modify scene content", or work on a specific scene.
 ---
 
 # Single Scene Writing Skill

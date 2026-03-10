@@ -1,6 +1,9 @@
 ---
 name: production_plan
-description: Creates a comprehensive film production plan by analyzing crew capabilities, breaking down tasks, and scheduling crew member assignments. When invoking this skill, you MUST include complete team member information (name, role, description, and skills for each member) in the prompt to enable direct task assignment without additional queries.
+description: |-
+  Purpose: Create comprehensive film production plans by analyzing crew capabilities and scheduling multi-member collaborative tasks.
+  Capabilities: Evaluate task complexity, route single-member tasks via speak_to, create multi-member plans with dependencies via plan tool.
+  Trigger: When user wants to "create production plan", "schedule tasks", "assign crew members", or coordinate multi-person film projects.
 tools:
   - speak_to
   - plan

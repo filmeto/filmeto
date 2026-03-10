@@ -1,6 +1,9 @@
 ---
 name: read_single_scene
-description: A skill to read and retrieve individual scenes from the screenplay
+description: |-
+  Purpose: Read and retrieve individual scene content and metadata from the screenplay.
+  Capabilities: Access scene by scene_id, retrieve content and metadata, filter response to include only content or metadata.
+  Trigger: When user wants to "read scene", "show scene", "get scene content", or needs to review a specific scene.
 ---
 
 # Single Scene Reading Skill

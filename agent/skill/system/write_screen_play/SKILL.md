@@ -1,6 +1,9 @@
 ---
 name: write_screen_play
-description: A comprehensive screenplay writing skill that helps create, develop, and manage compelling screenplays for feature films or web series
+description: |-
+  Purpose: Create, develop, and manage complete screenplays for feature films or web series with Hollywood-standard formatting.
+  Capabilities: Multi-mode operation (creative/directive/analysis/optimization), scene CRUD operations, character management, story structure guidance.
+  Trigger: When user wants to "write screenplay", "create scene", "modify scene", "analyze screenplay", or any screenplay-related creative work.
 tools:
   - screen_play
 ---
