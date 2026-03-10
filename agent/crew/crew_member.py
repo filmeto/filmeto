@@ -139,7 +139,6 @@ class CrewMember:
             event_type=AgentEventType.CREW_MEMBER_TYPING.value,
             project_name=self.project_name,
             react_type=self.config.name,
-            run_id=run_id,
             step_id=0,
             sender_id=self.config.name,
             sender_name=self.config.name,
@@ -151,7 +150,7 @@ class CrewMember:
             message_id=message_id
         )
         # Save typing start event to history
-        self._save_event_to_history(typing_start_event, message_id)
+        self._save_event_to_history(typing_start_event, message_id, run_id=run_id)
         yield typing_start_event
 
         if not self.llm_service.validate_config():
@@ -160,21 +159,19 @@ class CrewMember:
                 error_message="LLM service is not configured.",
                 project_name=self.project_name,
                 react_type=self.config.name,
-                run_id=run_id,
                 step_id=0,
                 sender_id=self.config.name,
                 sender_name=self.config.name,
                 message_id=message_id
             )
             # Save error event to history
-            self._save_event_to_history(error_event, message_id)
+            self._save_event_to_history(error_event, message_id, run_id=run_id)
             yield error_event
             # Emit typing_end event after error to mark completion
             typing_end_event = AgentEvent.create(
                 event_type=AgentEventType.CREW_MEMBER_TYPING_END.value,
                 project_name=self.project_name,
                 react_type=self.config.name,
-                run_id=run_id,
                 step_id=0,
                 sender_id=self.config.name,
                 sender_name=self.config.name,
@@ -186,7 +183,7 @@ class CrewMember:
                 message_id=message_id
             )
             # Save typing end event to history
-            self._save_event_to_history(typing_end_event, message_id)
+            self._save_event_to_history(typing_end_event, message_id, run_id=run_id)
             yield typing_end_event
             return
 
@@ -213,22 +210,20 @@ class CrewMember:
             saw_event = True
 
             # Enhance event with sender information and preserve content
-            # Use the run_id generated at the start of chat_stream to ensure consistency
             enhanced_event = AgentEvent.create(
                 event_type=event.event_type,
                 project_name=event.project_name,
                 react_type=event.react_type,
-                run_id=run_id,  # Use the run_id from chat_stream, not from react_instance
                 step_id=event.step_id,
                 sender_id=self.config.name,
                 sender_name=self.config.name,
-                content=event.content,  # Preserve the original content
-                message_id=message_id  # Pass message_id for UI event grouping
+                content=event.content,
+                message_id=message_id
             )
 
             # Save ALL events to crew member history for complete traceability
             # Use the same message_id for all events in this conversation turn
-            self._save_event_to_history(enhanced_event, message_id)
+            self._save_event_to_history(enhanced_event, message_id, run_id=run_id)
 
             if event.event_type == AgentEventType.FINAL:
                 # Extract from content or payload (backward compat)
@@ -251,7 +246,6 @@ class CrewMember:
                     event_type=AgentEventType.CREW_MEMBER_TYPING_END.value,
                     project_name=self.project_name,
                     react_type=self.config.name,
-                    run_id=run_id,  # Use the run_id from chat_stream
                     step_id=event.step_id,
                     sender_id=self.config.name,
                     sender_name=self.config.name,
@@ -263,7 +257,7 @@ class CrewMember:
                     message_id=message_id
                 )
                 # Save typing end event to history
-                self._save_event_to_history(typing_end_event, message_id)
+                self._save_event_to_history(typing_end_event, message_id, run_id=run_id)
                 yield typing_end_event
                 break
             elif event.event_type == AgentEventType.ERROR:
@@ -285,7 +279,6 @@ class CrewMember:
                     event_type=AgentEventType.CREW_MEMBER_TYPING_END.value,
                     project_name=self.project_name,
                     react_type=self.config.name,
-                    run_id=run_id,  # Use the run_id from chat_stream
                     step_id=event.step_id,
                     sender_id=self.config.name,
                     sender_name=self.config.name,
@@ -297,7 +290,7 @@ class CrewMember:
                     message_id=message_id
                 )
                 # Save typing end event to history
-                self._save_event_to_history(typing_end_event, message_id)
+                self._save_event_to_history(typing_end_event, message_id, run_id=run_id)
                 yield typing_end_event
                 break
             else:
@@ -316,19 +309,17 @@ class CrewMember:
                 error_message=error_msg,
                 project_name=self.project_name,
                 react_type=self.config.name,
-                run_id=run_id,
                 sender_id=self.config.name,
                 sender_name=self.config.name,
             )
             # Save error event to history
-            self._save_event_to_history(error_event, message_id)
+            self._save_event_to_history(error_event, message_id, run_id=run_id)
             yield error_event
             # Emit typing_end event after error to mark completion
             typing_end_event = AgentEvent.create(
                 event_type=AgentEventType.CREW_MEMBER_TYPING_END.value,
                 project_name=self.project_name,
                 react_type=self.config.name,
-                run_id=run_id,
                 step_id=0,
                 sender_id=self.config.name,
                 sender_name=self.config.name,
@@ -339,7 +330,7 @@ class CrewMember:
                 )
             )
             # Save typing end event to history
-            self._save_event_to_history(typing_end_event, message_id)
+            self._save_event_to_history(typing_end_event, message_id, run_id=run_id)
             yield typing_end_event
             return
 
@@ -398,7 +389,7 @@ class CrewMember:
         except Exception as e:
             logger.error(f"Error saving message to history: {e}")
 
-    def _save_event_to_history(self, event: "AgentEvent", message_id: Optional[str] = None):
+    def _save_event_to_history(self, event: "AgentEvent", message_id: Optional[str] = None, run_id: str = ""):
         """
         Save an AgentEvent to the crew member's history storage.
 
@@ -430,7 +421,7 @@ class CrewMember:
             # Build event message dictionary with full event details
             event_dict = {
                 "message_id": event_message_id,
-                "run_id": event.run_id,
+                "run_id": run_id,
                 "role": "event",  # Special role to identify event messages
                 "sender_id": event.sender_id or self.config.name,
                 "sender_name": event.sender_name or self.config.name,

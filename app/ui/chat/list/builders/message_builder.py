@@ -440,7 +440,7 @@ class MessageBuilder:
         """Merge new content into an existing message bubble.
 
         Processes raw content items from the new batch and merges them into
-        the existing model item. Skill content is merged by run_id/skill_name,
+        the existing model item. Skill content is merged by skill_name,
         and content marked with _skill_name metadata is added as children of
         the matching skill.
 
@@ -512,19 +512,17 @@ class MessageBuilder:
     ) -> None:
         """Merge a skill entry with an existing skill in the list, or append it.
 
-        Finds a matching existing skill by run_id or skill_name and merges
+        Finds a matching existing skill by skill_name and merges
         state/children. If no match is found, the skill is appended.
         """
         new_data = new_skill.get('data', {})
-        new_run_id = new_data.get('run_id', '')
         new_skill_name = new_data.get('skill_name', '')
 
         for i, existing in enumerate(merged_content):
             if existing.get('content_type') != 'skill':
                 continue
             ed = existing.get('data', {})
-            if ((ed.get('run_id') == new_run_id and new_run_id) or
-                    (ed.get('skill_name') == new_skill_name and new_skill_name)):
+            if ed.get('skill_name') == new_skill_name and new_skill_name:
                 merged_content[i] = self._merge_skill_dicts(existing, new_skill)
                 return
 
@@ -740,7 +738,6 @@ class MessageBuilder:
             result=base_data.get("result", ""),
             error_message=base_data.get("error_message", ""),
             child_contents=child_contents if child_contents is not None else [],
-            run_id=base_data.get("run_id", ""),
         )
 
     def merge_skill_entries(

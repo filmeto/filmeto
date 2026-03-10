@@ -36,7 +36,6 @@ class ExecuteSkillTool(BaseTool):
         context: Optional["ToolContext"] = None,
         project_name: str = "",
         react_type: str = "",
-        run_id: str = "",
         step_id: int = 0,
         sender_id: str = "",
         sender_name: str = "",
@@ -53,7 +52,6 @@ class ExecuteSkillTool(BaseTool):
             context: ToolContext containing workspace and project info
             project_name: Project name for event tracking
             react_type: React type for event tracking
-            run_id: Run ID (internal checkpoint use)
             step_id: Step ID for event tracking
             sender_id: ID of the event sender
             sender_name: Display name of the event sender
@@ -68,9 +66,7 @@ class ExecuteSkillTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 sender_id,
                 sender_name,
                 error="Workspace not available in context"
@@ -90,9 +86,7 @@ class ExecuteSkillTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 sender_id,
                 sender_name,
                 error="skill_name is required"
@@ -103,9 +97,7 @@ class ExecuteSkillTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 sender_id,
                 sender_name,
                 error="prompt is required"
@@ -122,9 +114,7 @@ class ExecuteSkillTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 sender_id,
                 sender_name,
                 error=f"Skill '{skill_name}' not found"
@@ -133,7 +123,7 @@ class ExecuteSkillTool(BaseTool):
 
         try:
             crew_member_name = sender_id if sender_id else None
-            conversation_id = run_id if run_id else None
+            conversation_id = None
 
             final_response = None
             has_error = False
@@ -165,9 +155,7 @@ class ExecuteSkillTool(BaseTool):
                     yield self._create_event(
                         "error",
                         project_name,
-                        react_type,
-                        run_id,
-                        step_id,
+                        react_type,                        step_id,
                         sender_id,
                         sender_name,
                         error=error
@@ -179,7 +167,6 @@ class ExecuteSkillTool(BaseTool):
                         event_type=event.event_type,
                         project_name=event.project_name or project_name,
                         react_type=event.react_type or react_type,
-                        run_id=event.run_id or run_id,
                         step_id=event.step_id or step_id,
                         sender_id=sender_id,
                         sender_name=sender_name,
@@ -190,9 +177,7 @@ class ExecuteSkillTool(BaseTool):
                 yield self._create_event(
                     "tool_end",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     sender_id,
                     sender_name,
                     ok=True,
@@ -204,9 +189,7 @@ class ExecuteSkillTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 sender_id,
                 sender_name,
                 error=f"Error executing skill: {str(e)}"

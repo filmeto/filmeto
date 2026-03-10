@@ -86,7 +86,6 @@ class BaseTool(ABC):
         context: Optional["ToolContext"] = None,
         project_name: str = "",
         react_type: str = "",
-        run_id: str = "",
         step_id: int = 0,
         sender_id: str = "",
         sender_name: str = "",
@@ -102,7 +101,6 @@ class BaseTool(ABC):
             context: Optional ToolContext object containing workspace, project_name, etc.
             project_name: Project name for event tracking
             react_type: React type for event tracking
-            run_id: Run ID (internal checkpoint use)
             step_id: Step ID for event tracking
             sender_id: ID of the event sender
             sender_name: Display name of the event sender
@@ -150,7 +148,6 @@ class BaseTool(ABC):
         event_type: str,
         project_name: str = "",
         react_type: str = "",
-        run_id: str = "",
         step_id: int = 0,
         sender_id: str = "",
         sender_name: str = "",
@@ -159,7 +156,7 @@ class BaseTool(ABC):
         ok: bool = True,
         result: Any = None,
         tool_call_id: str = "",
-        progress: str = "",  # Added for tool_progress events
+        progress: str = "",
     ) -> "AgentEvent":
         """
         Create a ReactEvent for tool execution.
@@ -168,7 +165,6 @@ class BaseTool(ABC):
             event_type: Type of event (tool_progress, tool_end, error)
             project_name: Project name
             react_type: React type
-            run_id: Run ID (internal checkpoint use)
             step_id: Step ID
             sender_id: ID of the event sender
             sender_name: Display name of the event sender
@@ -189,16 +185,15 @@ class BaseTool(ABC):
             ErrorContent,
         )
 
-        # Generate tool_call_id if not provided
         if not tool_call_id:
-            tool_call_id = f"{run_id}_{step_id}_{self.name}"
+            tool_call_id = f"{step_id}_{self.name}"
 
         content = None
 
         if event_type == AgentEventType.TOOL_END.value:
             content = ToolCallContent(
                 tool_name=self.name,
-                tool_input={},  # tool_input was already captured in tool_start
+                tool_input={},
                 result=result,
                 error=None if ok else error,
                 tool_status="completed" if ok else "failed",
@@ -217,7 +212,6 @@ class BaseTool(ABC):
                 description=f"Error in {self.name}"
             )
         elif event_type == AgentEventType.TOOL_PROGRESS.value:
-            # For progress, use progress parameter if provided, otherwise use result
             progress_text = progress if progress else (result if isinstance(result, str) else str(error) if error else "Processing...")
             content = ProgressContent(
                 progress=progress_text,
@@ -230,7 +224,6 @@ class BaseTool(ABC):
             event_type=event_type,
             project_name=project_name,
             react_type=react_type,
-            run_id=run_id,
             step_id=step_id,
             sender_id=sender_id,
             sender_name=sender_name,

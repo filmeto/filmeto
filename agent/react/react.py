@@ -126,7 +126,6 @@ class React:
             event_type=event_type,
             project_name=self.project_name,
             react_type=self.react_type,
-            run_id=self.run_id,
             step_id=self.step_id,
             content=content
         )
@@ -309,7 +308,6 @@ class React:
                 tool_context,
                 project_name=self.project_name,
                 react_type=self.react_type,
-                run_id=self.run_id,
                 step_id=self.step_id,
                 sender_id=self.react_type,
                 sender_name=self.react_type,

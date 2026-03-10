@@ -86,7 +86,6 @@ class FilmetoRoutingManager:
 
         # Track active skill execution
         _active_skill_name: Optional[str] = None
-        _active_skill_run_id: Optional[str] = None
 
         # Track main content for sending to agent
         _collected_main_content: List[StructureContent] = []
@@ -104,13 +103,11 @@ class FilmetoRoutingManager:
             if event.event_type in (AgentEventType.SKILL_START.value, AgentEventType.SKILL_START):
                 if event.content and hasattr(event.content, "skill_name"):
                     _active_skill_name = event.content.skill_name
-                    _active_skill_run_id = getattr(event.content, "run_id", "") or event.run_id
             elif event.event_type in (
                 AgentEventType.SKILL_END.value, AgentEventType.SKILL_END,
                 AgentEventType.SKILL_ERROR.value, AgentEventType.SKILL_ERROR,
             ):
                 _active_skill_name = None
-                _active_skill_run_id = None
 
             # Create appropriate content based on event type
             content = event.content
@@ -129,7 +126,7 @@ class FilmetoRoutingManager:
 
             # Mark non-skill content with skill context
             if _active_skill_name and content:
-                self._mark_skill_context(content, _active_skill_name, _active_skill_run_id)
+                self._mark_skill_context(content, _active_skill_name)
 
             # Collect main content
             if content and send_main_content_to_agent and content.is_main_content():
@@ -140,7 +137,6 @@ class FilmetoRoutingManager:
                 event_type=event.event_type,
                 project_name=event.project_name,
                 react_type=event.react_type,
-                run_id=event.run_id,
                 step_id=event.step_id,
                 sender_id=event.sender_id,
                 sender_name=event.sender_name,
@@ -262,11 +258,9 @@ class FilmetoRoutingManager:
         return None
 
     def _mark_skill_context(
-        self, content: StructureContent, skill_name: str, skill_run_id: Optional[str]
+        self, content: StructureContent, skill_name: str
     ) -> None:
         """Mark content with skill context if inside a skill execution."""
-        from agent.react import AgentEventType
-
         is_skill_event = content.content_type in (
             ContentType.SKILL,
         )
@@ -275,8 +269,6 @@ class FilmetoRoutingManager:
             if content.metadata is None:
                 content.metadata = {}
             content.metadata["_skill_name"] = skill_name
-            if skill_run_id:
-                content.metadata["_skill_run_id"] = skill_run_id
 
     async def _send_event_to_signals(
         self,
@@ -344,7 +336,6 @@ class FilmetoRoutingManager:
             event_type=event.event_type,
             project_name=event.project_name,
             react_type=event.react_type,
-            run_id=event.run_id,
             step_id=event.step_id,
             sender_id=event.sender_id,
             sender_name=event.sender_name,

@@ -117,7 +117,6 @@ class PrivateChatWidget(BaseWidget):
             event_type = msg.get("event_type", "")
             sender_name = msg.get("sender_name", self.crew_member.config.name)
             sender_id = msg.get("sender_id", self.crew_member.config.name)
-            run_id = msg.get("run_id", "")
             message_id = msg.get("message_id", str(uuid.uuid4()))
             content_dict = msg.get("content", {})
             timestamp = msg.get("timestamp", None)
@@ -134,11 +133,10 @@ class PrivateChatWidget(BaseWidget):
 
             # Create a mock event object for handle_stream_event
             class MockEvent:
-                def __init__(self, event_type, sender_id, sender_name, run_id, content, message_id):
+                def __init__(self, event_type, sender_id, sender_name, content, message_id):
                     self.event_type = event_type
                     self.sender_id = sender_id
                     self.sender_name = sender_name
-                    self.run_id = run_id
                     self.content = content
                     self.message_id = message_id
 
@@ -153,7 +151,6 @@ class PrivateChatWidget(BaseWidget):
                 event_type=event_type,
                 sender_id=sender_id,
                 sender_name=sender_name,
-                run_id=run_id,
                 content=content,
                 message_id=message_id
             )
@@ -162,7 +159,6 @@ class PrivateChatWidget(BaseWidget):
             self.chat_list_widget.handle_stream_event(mock_event, None)
 
             # Update the message timestamp if available
-            # Use message_id for grouping, not run_id
             if timestamp and message_id:
                 model = self.chat_list_widget._model
                 model.update_item(message_id, {

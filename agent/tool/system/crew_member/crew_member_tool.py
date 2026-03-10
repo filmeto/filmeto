@@ -46,7 +46,6 @@ class CrewMemberTool(BaseTool):
         context: Optional["ToolContext"] = None,
         project_name: str = "",
         react_type: str = "",
-        run_id: str = "",
         step_id: int = 0,
         sender_id: str = "",
         sender_name: str = "",
@@ -63,7 +62,6 @@ class CrewMemberTool(BaseTool):
             context: ToolContext containing workspace and project info
             project_name: Project name for event tracking
             react_type: React type for event tracking
-            run_id: Run ID for event tracking
             step_id: Step ID for event tracking
             sender_id: ID of the event sender
             sender_name: Display name of the event sender
@@ -77,9 +75,7 @@ class CrewMemberTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="operation parameter is required"
                 )
                 return
@@ -90,36 +86,32 @@ class CrewMemberTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="Could not access project. Make sure you are in a valid project context."
                 )
                 return
 
             # Route to appropriate operation handler
             if operation == "create":
-                async for event in self._handle_create(project, parameters, project_name, react_type, run_id, step_id):
+                async for event in self._handle_create(project, parameters, project_name, react_type, step_id):
                     yield event
             elif operation == "delete":
-                async for event in self._handle_delete(project, parameters, project_name, react_type, run_id, step_id):
+                async for event in self._handle_delete(project, parameters, project_name, react_type, step_id):
                     yield event
             elif operation == "update":
-                async for event in self._handle_update(project, parameters, project_name, react_type, run_id, step_id):
+                async for event in self._handle_update(project, parameters, project_name, react_type, step_id):
                     yield event
             elif operation == "get":
-                async for event in self._handle_get(project, parameters, project_name, react_type, run_id, step_id):
+                async for event in self._handle_get(project, parameters, project_name, react_type, step_id):
                     yield event
             elif operation == "list":
-                async for event in self._handle_list(project, project_name, react_type, run_id, step_id):
+                async for event in self._handle_list(project, project_name, react_type, step_id):
                     yield event
             else:
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error=f"Unknown operation: {operation}. Valid operations: create, delete, update, get, list"
                 )
 
@@ -128,9 +120,7 @@ class CrewMemberTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -161,9 +151,7 @@ class CrewMemberTool(BaseTool):
         project: Any,
         parameters: Dict[str, Any],
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle create operation."""
         try:
@@ -172,9 +160,7 @@ class CrewMemberTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="data parameter is required for create operation"
                 )
                 return
@@ -184,9 +170,7 @@ class CrewMemberTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="name is required in data parameter"
                 )
                 return
@@ -197,18 +181,14 @@ class CrewMemberTool(BaseTool):
                 yield self._create_event(
                     "tool_progress",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     result=f"Created crew member '{data.get('name')}' at {file_path}"
                 )
 
                 yield self._create_event(
                     "tool_end",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     ok=True,
                     result={
                         "operation": "create",
@@ -222,9 +202,7 @@ class CrewMemberTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="Failed to create crew member"
                 )
         except Exception as e:
@@ -232,9 +210,7 @@ class CrewMemberTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -243,9 +219,7 @@ class CrewMemberTool(BaseTool):
         project: Any,
         parameters: Dict[str, Any],
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle delete operation."""
         try:
@@ -254,9 +228,7 @@ class CrewMemberTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="name parameter is required for delete operation"
                 )
                 return
@@ -267,18 +239,14 @@ class CrewMemberTool(BaseTool):
                 yield self._create_event(
                     "tool_progress",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     result=f"Deleted crew member '{name}'"
                 )
 
                 yield self._create_event(
                     "tool_end",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     ok=True,
                     result={
                         "operation": "delete",
@@ -291,9 +259,7 @@ class CrewMemberTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error=f"Failed to delete crew member '{name}'. Crew member not found."
                 )
         except Exception as e:
@@ -301,9 +267,7 @@ class CrewMemberTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -312,9 +276,7 @@ class CrewMemberTool(BaseTool):
         project: Any,
         parameters: Dict[str, Any],
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle update operation."""
         try:
@@ -325,9 +287,7 @@ class CrewMemberTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="name parameter is required for update operation"
                 )
                 return
@@ -336,9 +296,7 @@ class CrewMemberTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="data parameter is required for update operation"
                 )
                 return
@@ -349,18 +307,14 @@ class CrewMemberTool(BaseTool):
                 yield self._create_event(
                     "tool_progress",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     result=f"Updated crew member '{name}'"
                 )
 
                 yield self._create_event(
                     "tool_end",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     ok=True,
                     result={
                         "operation": "update",
@@ -373,9 +327,7 @@ class CrewMemberTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error=f"Failed to update crew member '{name}'. Crew member not found."
                 )
         except Exception as e:
@@ -383,9 +335,7 @@ class CrewMemberTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -394,9 +344,7 @@ class CrewMemberTool(BaseTool):
         project: Any,
         parameters: Dict[str, Any],
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle get operation."""
         try:
@@ -405,9 +353,7 @@ class CrewMemberTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="name parameter is required for get operation"
                 )
                 return
@@ -420,9 +366,7 @@ class CrewMemberTool(BaseTool):
                 yield self._create_event(
                     "tool_end",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     ok=True,
                     result={
                         "operation": "get",
@@ -435,9 +379,7 @@ class CrewMemberTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error=f"Crew member '{name}' not found"
                 )
         except Exception as e:
@@ -445,9 +387,7 @@ class CrewMemberTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -455,9 +395,7 @@ class CrewMemberTool(BaseTool):
         self,
         project: Any,
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle list operation."""
         try:
@@ -474,9 +412,7 @@ class CrewMemberTool(BaseTool):
             yield self._create_event(
                 "tool_end",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 ok=True,
                 result={
                     "operation": "list",
@@ -491,8 +427,6 @@ class CrewMemberTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )

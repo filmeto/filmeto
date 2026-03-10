@@ -226,7 +226,6 @@ class ToolService:
         tool_name: str,
         project_name: str = "",
         react_type: str = "",
-        run_id: str = "",
         step_id: int = 0,
         sender_id: str = "",
         sender_name: str = "",
@@ -241,7 +240,6 @@ class ToolService:
             tool_name: Name of the tool being executed
             project_name: Project name
             react_type: React type
-            run_id: Run ID (internal checkpoint use)
             step_id: Step ID
             sender_id: ID of the event sender
             sender_name: Display name of the event sender
@@ -300,7 +298,6 @@ class ToolService:
             event_type=event_type,
             project_name=project_name,
             react_type=react_type,
-            run_id=run_id,
             step_id=step_id,
             sender_id=sender_id,
             sender_name=sender_name,
@@ -315,7 +312,6 @@ class ToolService:
         context: Optional[ToolContext] = None,
         project_name: str = "",
         react_type: str = "",
-        run_id: str = "",
         step_id: int = 0,
         sender_id: str = "",
         sender_name: str = "",
@@ -332,7 +328,6 @@ class ToolService:
             context: Optional ToolContext object containing workspace and project info
             project_name: Project name for event tracking
             react_type: React type for event tracking
-            run_id: Run ID for internal checkpoint use
             step_id: Step ID for event tracking
             sender_id: ID of the event sender
             sender_name: Display name of the event sender
@@ -350,7 +345,6 @@ class ToolService:
                 tool_name,
                 project_name,
                 react_type,
-                run_id,
                 step_id,
                 sender_id,
                 sender_name,
@@ -367,7 +361,6 @@ class ToolService:
             tool_name,
             project_name,
             react_type,
-            run_id,
             step_id,
             sender_id,
             sender_name,
@@ -382,7 +375,6 @@ class ToolService:
                 context=context,
                 project_name=project_name,
                 react_type=react_type,
-                run_id=run_id,
                 step_id=step_id,
                 sender_id=sender_id,
                 sender_name=sender_name,
@@ -398,7 +390,6 @@ class ToolService:
                 tool_name,
                 project_name,
                 react_type,
-                run_id,
                 step_id,
                 sender_id,
                 sender_name,
@@ -411,7 +402,6 @@ class ToolService:
         context: Optional[ToolContext],
         project_name: str,
         react_type: str,
-        run_id: str,
         step_id: int,
     ):
         """Create a synchronous wrapper for execute_tool to be used in scripts.
@@ -423,7 +413,6 @@ class ToolService:
             context: ToolContext object containing workspace and project info
             project_name: Project name for event tracking
             react_type: React type for event tracking
-            run_id: Run ID for event tracking
             step_id: Step ID for event tracking
 
         Returns:
@@ -444,7 +433,6 @@ class ToolService:
                     context,
                     project_name,
                     react_type,
-                    run_id,
                     step_id,
                 ):
                     if event.event_type == "tool_end":
@@ -537,7 +525,6 @@ class ToolService:
         context: Optional[ToolContext] = None,
         project_name: str = "",
         react_type: str = "",
-        run_id: str = "",
         step_id: int = 0,
     ) -> Any:
         """
@@ -551,7 +538,6 @@ class ToolService:
             context: Optional ToolContext object containing workspace and project info
             project_name: Project name for event tracking (unused, for compatibility)
             react_type: React type for event tracking (unused, for compatibility)
-            run_id: Run ID for event tracking (unused, for compatibility)
             step_id: Step ID for event tracking (unused, for compatibility)
 
         Returns:
@@ -562,7 +548,7 @@ class ToolService:
 
         # Create the execute_tool wrapper for scripts
         script_execute_tool = self._create_script_tool_wrapper(
-            context, project_name, react_type, run_id, step_id
+            context, project_name, react_type, step_id
         )
 
         # ToolContext now provides the same interface as SkillContext
@@ -609,7 +595,6 @@ class ToolService:
         context: Optional[ToolContext] = None,
         project_name: str = "",
         react_type: str = "",
-        run_id: str = "",
         step_id: int = 0,
     ) -> Any:
         """
@@ -625,7 +610,6 @@ class ToolService:
             context: Optional ToolContext object containing workspace and project info
             project_name: Project name for event tracking (unused, for compatibility)
             react_type: React type for event tracking (unused, for compatibility)
-            run_id: Run ID for event tracking (unused, for compatibility)
             step_id: Step ID for event tracking (unused, for compatibility)
 
         Returns:
@@ -636,7 +620,7 @@ class ToolService:
 
         # Create the execute_tool wrapper for scripts
         script_execute_tool = self._create_script_tool_wrapper(
-            context, project_name, react_type, run_id, step_id
+            context, project_name, react_type, step_id
         )
 
         script_globals = {

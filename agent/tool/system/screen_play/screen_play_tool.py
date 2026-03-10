@@ -48,7 +48,6 @@ class ScreenPlayTool(BaseTool):
         context: Optional["ToolContext"] = None,
         project_name: str = "",
         react_type: str = "",
-        run_id: str = "",
         step_id: int = 0,
         sender_id: str = "",
         sender_name: str = "",
@@ -72,7 +71,6 @@ class ScreenPlayTool(BaseTool):
             context: ToolContext containing workspace and project info
             project_name: Project name for event tracking
             react_type: React type for event tracking
-            run_id: Run ID for event tracking
             step_id: Step ID for event tracking
             sender_id: ID of the event sender
             sender_name: Display name of the event sender
@@ -86,9 +84,7 @@ class ScreenPlayTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="operation parameter is required"
                 )
                 return
@@ -99,51 +95,47 @@ class ScreenPlayTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="Could not access screenplay manager. Make sure you are in a valid project context."
                 )
                 return
 
             # Route to appropriate operation handler
             if operation == "create":
-                async for event in self._handle_create(manager, parameters, project_name, react_type, run_id, step_id):
+                async for event in self._handle_create(manager, parameters, project_name, react_type, step_id):
                     yield event
             elif operation == "get":
-                async for event in self._handle_get(manager, parameters, project_name, react_type, run_id, step_id):
+                async for event in self._handle_get(manager, parameters, project_name, react_type, step_id):
                     yield event
             elif operation == "update":
-                async for event in self._handle_update(manager, parameters, project_name, react_type, run_id, step_id):
+                async for event in self._handle_update(manager, parameters, project_name, react_type, step_id):
                     yield event
             elif operation == "delete":
-                async for event in self._handle_delete(manager, parameters, project_name, react_type, run_id, step_id):
+                async for event in self._handle_delete(manager, parameters, project_name, react_type, step_id):
                     yield event
             elif operation == "delete_all":
-                async for event in self._handle_delete_all(manager, project_name, react_type, run_id, step_id):
+                async for event in self._handle_delete_all(manager, project_name, react_type, step_id):
                     yield event
             elif operation == "delete_batch":
-                async for event in self._handle_delete_batch(manager, parameters, project_name, react_type, run_id, step_id):
+                async for event in self._handle_delete_batch(manager, parameters, project_name, react_type, step_id):
                     yield event
             elif operation == "list":
-                async for event in self._handle_list(manager, project_name, react_type, run_id, step_id):
+                async for event in self._handle_list(manager, project_name, react_type, step_id):
                     yield event
             elif operation == "get_by_title":
-                async for event in self._handle_get_by_title(manager, parameters, project_name, react_type, run_id, step_id):
+                async for event in self._handle_get_by_title(manager, parameters, project_name, react_type, step_id):
                     yield event
             elif operation == "get_by_character":
-                async for event in self._handle_get_by_character(manager, parameters, project_name, react_type, run_id, step_id):
+                async for event in self._handle_get_by_character(manager, parameters, project_name, react_type, step_id):
                     yield event
             elif operation == "get_by_location":
-                async for event in self._handle_get_by_location(manager, parameters, project_name, react_type, run_id, step_id):
+                async for event in self._handle_get_by_location(manager, parameters, project_name, react_type, step_id):
                     yield event
             else:
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error=f"Unknown operation: {operation}. Valid operations: create, get, update, delete, delete_all, delete_batch, list, get_by_title, get_by_character, get_by_location"
                 )
 
@@ -152,9 +144,7 @@ class ScreenPlayTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -171,9 +161,7 @@ class ScreenPlayTool(BaseTool):
         manager: 'ScreenPlayManager',
         parameters: Dict[str, Any],
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle create operation."""
         try:
@@ -186,9 +174,7 @@ class ScreenPlayTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="scene_id parameter is required for create operation"
                 )
                 return
@@ -199,18 +185,14 @@ class ScreenPlayTool(BaseTool):
                 yield self._create_event(
                     "tool_progress",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     result=f"Created screenplay scene: {scene_id}"
                 )
 
                 yield self._create_event(
                     "tool_end",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     ok=True,
                     result={
                         "operation": "create",
@@ -223,9 +205,7 @@ class ScreenPlayTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error=f"Failed to create screenplay scene '{scene_id}'"
                 )
         except Exception as e:
@@ -233,9 +213,7 @@ class ScreenPlayTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -244,9 +222,7 @@ class ScreenPlayTool(BaseTool):
         manager: 'ScreenPlayManager',
         parameters: Dict[str, Any],
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle get operation - retrieve a single scene by ID."""
         try:
@@ -255,9 +231,7 @@ class ScreenPlayTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="scene_id parameter is required for get operation"
                 )
                 return
@@ -275,9 +249,7 @@ class ScreenPlayTool(BaseTool):
                 yield self._create_event(
                     "tool_end",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     ok=True,
                     result={
                         "operation": "get",
@@ -290,9 +262,7 @@ class ScreenPlayTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error=f"Scene '{scene_id}' not found"
                 )
         except Exception as e:
@@ -300,9 +270,7 @@ class ScreenPlayTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -311,9 +279,7 @@ class ScreenPlayTool(BaseTool):
         manager: 'ScreenPlayManager',
         parameters: Dict[str, Any],
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle update operation."""
         try:
@@ -326,9 +292,7 @@ class ScreenPlayTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="scene_id parameter is required for update operation"
                 )
                 return
@@ -337,9 +301,7 @@ class ScreenPlayTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="At least one of title, content, or metadata must be provided for update operation"
                 )
                 return
@@ -358,18 +320,14 @@ class ScreenPlayTool(BaseTool):
                 yield self._create_event(
                     "tool_progress",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     result=f"Updated screenplay scene '{scene_id}': {', '.join(updated_parts)}"
                 )
 
                 yield self._create_event(
                     "tool_end",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     ok=True,
                     result={
                         "operation": "update",
@@ -383,9 +341,7 @@ class ScreenPlayTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error=f"Failed to update screenplay scene '{scene_id}'. Scene may not exist."
                 )
         except Exception as e:
@@ -393,9 +349,7 @@ class ScreenPlayTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -404,9 +358,7 @@ class ScreenPlayTool(BaseTool):
         manager: 'ScreenPlayManager',
         parameters: Dict[str, Any],
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle delete operation."""
         try:
@@ -415,9 +367,7 @@ class ScreenPlayTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="scene_id parameter is required for delete operation"
                 )
                 return
@@ -428,18 +378,14 @@ class ScreenPlayTool(BaseTool):
                 yield self._create_event(
                     "tool_progress",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     result=f"Deleted screenplay scene: {scene_id}"
                 )
 
                 yield self._create_event(
                     "tool_end",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     ok=True,
                     result={
                         "operation": "delete",
@@ -452,9 +398,7 @@ class ScreenPlayTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error=f"Failed to delete screenplay scene '{scene_id}'. Scene may not exist."
                 )
         except Exception as e:
@@ -462,9 +406,7 @@ class ScreenPlayTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -472,9 +414,7 @@ class ScreenPlayTool(BaseTool):
         self,
         manager: 'ScreenPlayManager',
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle list operation - retrieve all scenes."""
         try:
@@ -506,9 +446,7 @@ class ScreenPlayTool(BaseTool):
             yield self._create_event(
                 "tool_end",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 ok=True,
                 result={
                     "operation": "list",
@@ -523,9 +461,7 @@ class ScreenPlayTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -534,9 +470,7 @@ class ScreenPlayTool(BaseTool):
         manager: 'ScreenPlayManager',
         parameters: Dict[str, Any],
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle get_by_title operation - find a scene by title."""
         try:
@@ -545,9 +479,7 @@ class ScreenPlayTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="title parameter is required for get_by_title operation"
                 )
                 return
@@ -561,9 +493,7 @@ class ScreenPlayTool(BaseTool):
                 yield self._create_event(
                     "tool_end",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     ok=True,
                     result={
                         "operation": "get_by_title",
@@ -576,9 +506,7 @@ class ScreenPlayTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error=f"No scene found with title '{title}'"
                 )
         except Exception as e:
@@ -586,9 +514,7 @@ class ScreenPlayTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -597,9 +523,7 @@ class ScreenPlayTool(BaseTool):
         manager: 'ScreenPlayManager',
         parameters: Dict[str, Any],
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle get_by_character operation - find scenes containing a character."""
         try:
@@ -608,9 +532,7 @@ class ScreenPlayTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="character_name parameter is required for get_by_character operation"
                 )
                 return
@@ -634,9 +556,7 @@ class ScreenPlayTool(BaseTool):
             yield self._create_event(
                 "tool_end",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 ok=True,
                 result={
                     "operation": "get_by_character",
@@ -652,9 +572,7 @@ class ScreenPlayTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -663,9 +581,7 @@ class ScreenPlayTool(BaseTool):
         manager: 'ScreenPlayManager',
         parameters: Dict[str, Any],
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle get_by_location operation - find scenes at a location."""
         try:
@@ -674,9 +590,7 @@ class ScreenPlayTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="location parameter is required for get_by_location operation"
                 )
                 return
@@ -700,9 +614,7 @@ class ScreenPlayTool(BaseTool):
             yield self._create_event(
                 "tool_end",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 ok=True,
                 result={
                     "operation": "get_by_location",
@@ -718,9 +630,7 @@ class ScreenPlayTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -728,9 +638,7 @@ class ScreenPlayTool(BaseTool):
         self,
         manager: 'ScreenPlayManager',
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle delete_all operation - delete all screenplay scenes.
 
@@ -746,9 +654,7 @@ class ScreenPlayTool(BaseTool):
                 yield self._create_event(
                     "tool_progress",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     result=f"Deleted all screenplay scenes: {deleted_count} scenes removed"
                 )
 
@@ -761,9 +667,7 @@ class ScreenPlayTool(BaseTool):
             yield self._create_event(
                 "tool_end",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 ok=True,
                 result={
                     "operation": "delete_all",
@@ -779,9 +683,7 @@ class ScreenPlayTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -790,9 +692,7 @@ class ScreenPlayTool(BaseTool):
         manager: 'ScreenPlayManager',
         parameters: Dict[str, Any],
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle delete_batch operation - delete multiple scenes by IDs.
 
@@ -804,9 +704,7 @@ class ScreenPlayTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="scene_ids parameter is required for delete_batch operation"
                 )
                 return
@@ -815,9 +713,7 @@ class ScreenPlayTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="scene_ids must be a list of scene identifiers"
                 )
                 return
@@ -832,9 +728,7 @@ class ScreenPlayTool(BaseTool):
                 yield self._create_event(
                     "tool_progress",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     result=f"Deleted {deleted_count} screenplay scenes"
                 )
 
@@ -849,9 +743,7 @@ class ScreenPlayTool(BaseTool):
             yield self._create_event(
                 "tool_end",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 ok=True,
                 result={
                     "operation": "delete_batch",
@@ -868,8 +760,6 @@ class ScreenPlayTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
