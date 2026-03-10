@@ -35,7 +35,6 @@ class ExecuteGeneratedCodeTool(BaseTool):
         context: Optional["ToolContext"] = None,
         project_name: str = "",
         react_type: str = "",
-        run_id: str = "",
         step_id: int = 0,
         sender_id: str = "",
         sender_name: str = "",
@@ -49,7 +48,6 @@ class ExecuteGeneratedCodeTool(BaseTool):
             context: ToolContext containing workspace and project info
             project_name: Project name for event tracking
             react_type: React type for event tracking
-            run_id: Run ID for event tracking
             step_id: Step ID for event tracking
             sender_id: ID of the event sender
             sender_name: Display name of the event sender
@@ -67,9 +65,7 @@ class ExecuteGeneratedCodeTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error="code is required"
             )
             return
@@ -86,9 +82,7 @@ class ExecuteGeneratedCodeTool(BaseTool):
             yield self._create_event(
                 "tool_progress",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 progress="Executing generated code..."
             )
 
@@ -98,18 +92,14 @@ class ExecuteGeneratedCodeTool(BaseTool):
                 argv,
                 context,
                 project_name=project_name,
-                react_type=react_type,
-                run_id=run_id,
-                step_id=step_id,
+                react_type=react_type,                step_id=step_id,
             )
 
             # Yield the final result
             yield self._create_event(
                 "tool_end",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 ok=True,
                 result=result
             )
@@ -119,8 +109,6 @@ class ExecuteGeneratedCodeTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )

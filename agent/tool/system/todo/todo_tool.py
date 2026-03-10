@@ -60,7 +60,6 @@ class TodoTool(BaseTool):
         context: Optional["ToolContext"] = None,
         project_name: str = "",
         react_type: str = "",
-        run_id: str = "",
         step_id: int = 0,
         sender_id: str = "",
         sender_name: str = "",
@@ -83,7 +82,6 @@ class TodoTool(BaseTool):
             context: ToolContext containing workspace and project info
             project_name: Project name for event tracking
             react_type: React type for event tracking
-            run_id: Run ID for event tracking
             step_id: Step ID for event tracking
             sender_id: ID of the event sender
             sender_name: Display name of the event sender
@@ -97,36 +95,34 @@ class TodoTool(BaseTool):
             # Route to appropriate operation handler
             if operation == "create":
                 async for event in self._handle_create(
-                    parameters, context, project_name, react_type, run_id, step_id
+                    parameters, context, project_name, react_type, step_id
                 ):
                     yield event
             elif operation == "delete":
                 async for event in self._handle_delete(
-                    parameters, context, project_name, react_type, run_id, step_id
+                    parameters, context, project_name, react_type, step_id
                 ):
                     yield event
             elif operation == "update":
                 async for event in self._handle_update(
-                    parameters, context, project_name, react_type, run_id, step_id
+                    parameters, context, project_name, react_type, step_id
                 ):
                     yield event
             elif operation == "get":
                 async for event in self._handle_get(
-                    parameters, context, project_name, react_type, run_id, step_id
+                    parameters, context, project_name, react_type, step_id
                 ):
                     yield event
             elif operation == "list":
                 async for event in self._handle_list(
-                    parameters, context, project_name, react_type, run_id, step_id
+                    parameters, context, project_name, react_type, step_id
                 ):
                     yield event
             else:
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error=f"Unknown operation: {operation}. Valid operations: create, delete, update, get, list"
                 )
 
@@ -135,9 +131,7 @@ class TodoTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -270,9 +264,7 @@ class TodoTool(BaseTool):
         parameters: Dict[str, Any],
         context: Optional["ToolContext"],
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle create operation - create new TODO items or replace the list."""
         try:
@@ -281,9 +273,7 @@ class TodoTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="todos parameter is required for create operation"
                 )
                 return
@@ -292,9 +282,7 @@ class TodoTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="todos parameter must be an array"
                 )
                 return
@@ -333,18 +321,14 @@ class TodoTool(BaseTool):
                 yield self._create_event(
                     "tool_progress",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     result=f"Created {created_count} new TODO items, updated {updated_count} items"
                 )
 
                 yield self._create_event(
                     "tool_end",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     ok=True,
                     result={
                         "operation": "create",
@@ -358,9 +342,7 @@ class TodoTool(BaseTool):
                 yield self._create_event(
                     "tool_end",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     ok=True,
                     result={
                         "operation": "create",
@@ -375,9 +357,7 @@ class TodoTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -386,9 +366,7 @@ class TodoTool(BaseTool):
         parameters: Dict[str, Any],
         context: Optional["ToolContext"],
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle delete operation - delete specific TODO items."""
         try:
@@ -397,9 +375,7 @@ class TodoTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="No React instance available for delete operation"
                 )
                 return
@@ -411,9 +387,7 @@ class TodoTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="Either todo_id or title parameter is required for delete operation"
                 )
                 return
@@ -433,9 +407,7 @@ class TodoTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error=f"No TODO item found with id='{todo_id}' or title='{title}'"
                 )
                 return
@@ -445,18 +417,14 @@ class TodoTool(BaseTool):
             yield self._create_event(
                 "tool_progress",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 result=f"Deleted {deleted_count} TODO item(s)"
             )
 
             yield self._create_event(
                 "tool_end",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 ok=True,
                 result={
                     "operation": "delete",
@@ -471,9 +439,7 @@ class TodoTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -482,9 +448,7 @@ class TodoTool(BaseTool):
         parameters: Dict[str, Any],
         context: Optional["ToolContext"],
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle update operation - update specific TODO items."""
         try:
@@ -493,9 +457,7 @@ class TodoTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="No React instance available for update operation"
                 )
                 return
@@ -510,9 +472,7 @@ class TodoTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="Either todo_id or title parameter is required for update operation"
                 )
                 return
@@ -548,9 +508,7 @@ class TodoTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error=f"No TODO item found with id='{todo_id}' or title='{title}'"
                 )
                 return
@@ -560,18 +518,14 @@ class TodoTool(BaseTool):
             yield self._create_event(
                 "tool_progress",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 result=f"Updated {updated_count} TODO item(s)"
             )
 
             yield self._create_event(
                 "tool_end",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 ok=True,
                 result={
                     "operation": "update",
@@ -586,9 +540,7 @@ class TodoTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -597,9 +549,7 @@ class TodoTool(BaseTool):
         parameters: Dict[str, Any],
         context: Optional["ToolContext"],
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle get operation - get specific TODO item or the entire list."""
         try:
@@ -608,9 +558,7 @@ class TodoTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="No React instance available for get operation"
                 )
                 return
@@ -628,9 +576,7 @@ class TodoTool(BaseTool):
                 yield self._create_event(
                     "tool_end",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     ok=True,
                     result={
                         "operation": "get",
@@ -652,9 +598,7 @@ class TodoTool(BaseTool):
                 yield self._create_event(
                     "tool_end",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     ok=True,
                     result={
                         "operation": "get",
@@ -666,9 +610,7 @@ class TodoTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error=f"No TODO item found with id='{todo_id}' or title='{title}'"
                 )
         except Exception as e:
@@ -676,9 +618,7 @@ class TodoTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -687,9 +627,7 @@ class TodoTool(BaseTool):
         parameters: Dict[str, Any],
         context: Optional["ToolContext"],
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle list operation - list all TODO items."""
         try:
@@ -710,9 +648,7 @@ class TodoTool(BaseTool):
             yield self._create_event(
                 "tool_end",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 ok=True,
                 result={
                     "operation": "list",
@@ -727,8 +663,6 @@ class TodoTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )

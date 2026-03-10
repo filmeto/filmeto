@@ -48,7 +48,6 @@ class VideoTimelineTool(BaseTool):
         context: Optional["ToolContext"] = None,
         project_name: str = "",
         react_type: str = "",
-        run_id: str = "",
         step_id: int = 0,
         sender_id: str = "",
         sender_name: str = "",
@@ -67,7 +66,6 @@ class VideoTimelineTool(BaseTool):
             context: ToolContext containing workspace and project info
             project_name: Project name for event tracking
             react_type: React type for event tracking
-            run_id: Run ID for event tracking
             step_id: Step ID for event tracking
             sender_id: ID of the event sender
             sender_name: Display name of the event sender
@@ -81,9 +79,7 @@ class VideoTimelineTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="operation parameter is required"
                 )
                 return
@@ -94,39 +90,35 @@ class VideoTimelineTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="Could not access timeline. Make sure you are in a valid project context."
                 )
                 return
 
             # Route to appropriate operation handler
             if operation == "add":
-                async for event in self._handle_add(timeline, project_name, react_type, run_id, step_id):
+                async for event in self._handle_add(timeline, project_name, react_type, step_id):
                     yield event
             elif operation == "delete":
-                async for event in self._handle_delete(timeline, parameters, project_name, react_type, run_id, step_id):
+                async for event in self._handle_delete(timeline, parameters, project_name, react_type, step_id):
                     yield event
             elif operation == "move":
-                async for event in self._handle_move(timeline, parameters, project_name, react_type, run_id, step_id):
+                async for event in self._handle_move(timeline, parameters, project_name, react_type, step_id):
                     yield event
             elif operation == "update":
-                async for event in self._handle_update(timeline, parameters, project_name, react_type, run_id, step_id):
+                async for event in self._handle_update(timeline, parameters, project_name, react_type, step_id):
                     yield event
             elif operation == "list":
-                async for event in self._handle_list_items(timeline, project_name, react_type, run_id, step_id):
+                async for event in self._handle_list_items(timeline, project_name, react_type, step_id):
                     yield event
             elif operation == "get":
-                async for event in self._handle_get(timeline, parameters, project_name, react_type, run_id, step_id):
+                async for event in self._handle_get(timeline, parameters, project_name, react_type, step_id):
                     yield event
             else:
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error=f"Unknown operation: {operation}. Valid operations: add, delete, move, update, list, get"
                 )
 
@@ -135,9 +127,7 @@ class VideoTimelineTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -156,9 +146,7 @@ class VideoTimelineTool(BaseTool):
         self,
         timeline: 'Timeline',
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle add operation."""
         try:
@@ -168,18 +156,14 @@ class VideoTimelineTool(BaseTool):
             yield self._create_event(
                 "tool_progress",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 result=f"Added new timeline item at index {new_index}"
             )
 
             yield self._create_event(
                 "tool_end",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 ok=True,
                 result={
                     "operation": "add",
@@ -194,9 +178,7 @@ class VideoTimelineTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -205,9 +187,7 @@ class VideoTimelineTool(BaseTool):
         timeline: 'Timeline',
         parameters: Dict[str, Any],
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle delete operation."""
         try:
@@ -216,9 +196,7 @@ class VideoTimelineTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="index parameter is required for delete operation"
                 )
                 return
@@ -231,18 +209,14 @@ class VideoTimelineTool(BaseTool):
                 yield self._create_event(
                     "tool_progress",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     result=f"Deleted timeline item at index {index}"
                 )
 
                 yield self._create_event(
                     "tool_end",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     ok=True,
                     result={
                         "operation": "delete",
@@ -256,18 +230,14 @@ class VideoTimelineTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error=f"Failed to delete timeline item at index {index}. Invalid index or item does not exist."
                 )
         except ValueError:
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error="index parameter must be a valid integer"
             )
         except Exception as e:
@@ -275,9 +245,7 @@ class VideoTimelineTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -286,9 +254,7 @@ class VideoTimelineTool(BaseTool):
         timeline: 'Timeline',
         parameters: Dict[str, Any],
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle move operation."""
         try:
@@ -299,9 +265,7 @@ class VideoTimelineTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="index and to_index parameters are required for move operation"
                 )
                 return
@@ -314,18 +278,14 @@ class VideoTimelineTool(BaseTool):
                 yield self._create_event(
                     "tool_progress",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     result=f"Moved timeline item from index {index} to {to_index}"
                 )
 
                 yield self._create_event(
                     "tool_end",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     ok=True,
                     result={
                         "operation": "move",
@@ -339,18 +299,14 @@ class VideoTimelineTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error=f"Failed to move timeline item. Invalid indices (from: {index}, to: {to_index}) or operation failed."
                 )
         except ValueError:
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error="index and to_index parameters must be valid integers"
             )
         except Exception as e:
@@ -358,9 +314,7 @@ class VideoTimelineTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -369,9 +323,7 @@ class VideoTimelineTool(BaseTool):
         timeline: 'Timeline',
         parameters: Dict[str, Any],
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle update operation."""
         try:
@@ -383,9 +335,7 @@ class VideoTimelineTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="index parameter is required for update operation"
                 )
                 return
@@ -394,9 +344,7 @@ class VideoTimelineTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="At least one of image_path or video_path must be provided for update operation"
                 )
                 return
@@ -408,9 +356,7 @@ class VideoTimelineTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error=f"Image file not found: {image_path}"
                 )
                 return
@@ -419,9 +365,7 @@ class VideoTimelineTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error=f"Video file not found: {video_path}"
                 )
                 return
@@ -438,18 +382,14 @@ class VideoTimelineTool(BaseTool):
                 yield self._create_event(
                     "tool_progress",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     result=f"Updated timeline item at index {index}: {', '.join(updated_parts)}"
                 )
 
                 yield self._create_event(
                     "tool_end",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     ok=True,
                     result={
                         "operation": "update",
@@ -464,18 +404,14 @@ class VideoTimelineTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error=f"Failed to update timeline item at index {index}. Invalid index or update failed."
                 )
         except ValueError:
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error="index parameter must be a valid integer"
             )
         except Exception as e:
@@ -483,9 +419,7 @@ class VideoTimelineTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -493,9 +427,7 @@ class VideoTimelineTool(BaseTool):
         self,
         timeline: 'Timeline',
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle list_timeline_items operation - retrieve comprehensive timeline information."""
         try:
@@ -523,9 +455,7 @@ class VideoTimelineTool(BaseTool):
             yield self._create_event(
                 "tool_end",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 ok=True,
                 result={
                     "operation": "list",
@@ -539,9 +469,7 @@ class VideoTimelineTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -550,9 +478,7 @@ class VideoTimelineTool(BaseTool):
         timeline: 'Timeline',
         parameters: Dict[str, Any],
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle get operation - retrieve a single timeline item by index."""
         try:
@@ -561,9 +487,7 @@ class VideoTimelineTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="index parameter is required for get operation"
                 )
                 return
@@ -574,9 +498,7 @@ class VideoTimelineTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error=f"Invalid index {index}. Valid range: 1-{timeline.get_item_count()}"
                 )
                 return
@@ -620,9 +542,7 @@ class VideoTimelineTool(BaseTool):
             yield self._create_event(
                 "tool_end",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 ok=True,
                 result={
                     "operation": "get",
@@ -635,9 +555,7 @@ class VideoTimelineTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error="index parameter must be a valid integer"
             )
         except Exception as e:
@@ -645,8 +563,6 @@ class VideoTimelineTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )

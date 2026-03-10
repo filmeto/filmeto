@@ -86,15 +86,14 @@ class SkillManager:
         """
         # Extract data from event content (SkillContent is already in event.content)
         skill_content = getattr(event, 'content', None)
-        # Use message_id for grouping, fallback to run_id for backward compatibility
-        message_id = getattr(event, "message_id", None) or getattr(event, "run_id", "")
+        message_id = getattr(event, "message_id", "") or ""
 
         if not skill_content or not isinstance(skill_content, SkillContent):
             # Fallback to data-based parsing for legacy events
             skill_name = event.data.get("skill_name", "Unknown")
             sender_name = event.data.get("sender_name", "Unknown")
             sender_id = event.data.get("sender_id", sender_name.lower())
-            message_id = message_id or event.data.get("message_id") or event.data.get("run_id", "")
+            message_id = message_id or event.data.get("message_id", "")
 
             if sender_id == "user":
                 return
@@ -220,8 +219,7 @@ class SkillManager:
         Args:
             event: Tool event from the stream
         """
-        # Use message_id for grouping, fallback to run_id for backward compatibility
-        message_id = getattr(event, "message_id", None) or getattr(event, "run_id", "")
+        message_id = getattr(event, "message_id", "") or ""
         step_id = getattr(event, "step_id", 0)
 
         # Check if this tool belongs to an active skill

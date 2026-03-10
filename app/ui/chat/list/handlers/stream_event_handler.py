@@ -121,8 +121,7 @@ class StreamEventHandler:
         Args:
             event: Error event
         """
-        # Use message_id for grouping, fallback to run_id for backward compatibility
-        message_id = getattr(event, "message_id", None) or getattr(event, "run_id", "")
+        message_id = getattr(event, "message_id", "") or ""
 
         # Prepare error content dict
         if hasattr(event, 'content') and event.content:
@@ -161,8 +160,7 @@ class StreamEventHandler:
         sender_name = event.data.get("sender_name", "Unknown")
         sender_id = event.data.get("sender_id", sender_name.lower())
         session_id = event.data.get("session_id", "unknown")
-        # Use message_id for grouping, fallback to run_id for backward compatibility
-        message_id = getattr(event, "message_id", None) or getattr(event, "run_id", "")
+        message_id = getattr(event, "message_id", "") or ""
 
         if sender_id == "user":
             return
@@ -200,8 +198,7 @@ class StreamEventHandler:
         if not sender_id or sender_id == "user":
             return
 
-        # Use message_id for grouping, fallback to run_id for backward compatibility
-        message_id = getattr(event, "message_id", None) or getattr(event, "run_id", "")
+        message_id = getattr(event, "message_id", "") or ""
         if not message_id:
             return
 
@@ -309,8 +306,7 @@ class StreamEventHandler:
         # For plan_created/plan_updated without explicit PlanContent,
         # content_dict should already have content_type="plan" from to_dict()
 
-        # Use message_id for grouping, fallback to run_id for backward compatibility
-        message_id = getattr(event, "message_id", None) or getattr(event, "run_id", "")
+        message_id = getattr(event, "message_id", "") or ""
         if message_id and self._skill_manager._active_skills.get(message_id):
             skill_info = self._skill_manager._active_skills[message_id]
             skill_info["child_contents"].append(content_dict)
@@ -348,8 +344,7 @@ class StreamEventHandler:
         if sender_id == "user":
             return
 
-        # Use message_id for grouping, fallback to run_id for backward compatibility
-        message_id = getattr(event, "message_id", None) or getattr(event, "run_id", "")
+        message_id = getattr(event, "message_id", "") or ""
 
         # Prepare content dict - handle all content types generically
         content_dict = None
