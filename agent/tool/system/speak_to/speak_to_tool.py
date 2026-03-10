@@ -45,7 +45,6 @@ class SpeakToTool(BaseTool):
         context: Optional["ToolContext"] = None,
         project_name: str = "",
         react_type: str = "",
-        run_id: str = "",
         step_id: int = 0,
         sender_id: str = "",
         sender_name: str = "",
@@ -62,7 +61,6 @@ class SpeakToTool(BaseTool):
             context: ToolContext containing workspace and project info
             project_name: Project name for event tracking
             react_type: React type for event tracking
-            run_id: Run ID for event tracking
             step_id: Step ID for event tracking
             sender_id: ID of the event sender (the crew member sending the message)
             sender_name: Display name of the event sender
@@ -79,9 +77,7 @@ class SpeakToTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     sender_id=sender_id,
                     sender_name=sender_name,
                     error="message parameter is required"
@@ -94,9 +90,7 @@ class SpeakToTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     sender_id=sender_id,
                     sender_name=sender_name,
                     error=f"Invalid mode '{mode}'. Valid modes: {', '.join(valid_modes)}"
@@ -108,9 +102,7 @@ class SpeakToTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     sender_id=sender_id,
                     sender_name=sender_name,
                     error=f"target parameter is required for '{mode}' mode"
@@ -121,19 +113,19 @@ class SpeakToTool(BaseTool):
             if mode == "public":
                 async for event in self._handle_public(
                     message, sender_id, sender_name, context,
-                    project_name, react_type, run_id, step_id
+                    project_name, react_type, step_id
                 ):
                     yield event
             elif mode == "specify":
                 async for event in self._handle_specify(
                     message, target, sender_id, sender_name, context,
-                    project_name, react_type, run_id, step_id
+                    project_name, react_type, step_id
                 ):
                     yield event
             elif mode == "private":
                 async for event in self._handle_private(
                     message, target, sender_id, sender_name, context,
-                    project_name, react_type, run_id, step_id
+                    project_name, react_type, step_id
                 ):
                     yield event
 
@@ -142,9 +134,7 @@ class SpeakToTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 sender_id=sender_id,
                 sender_name=sender_name,
                 error=str(e)
@@ -167,9 +157,7 @@ class SpeakToTool(BaseTool):
         sender_name: str,
         context: Optional["ToolContext"],
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """
         Handle public mode: send message directly to FilmetoAgent.chat().
@@ -181,9 +169,7 @@ class SpeakToTool(BaseTool):
         yield self._create_event(
             "tool_progress",
             project_name,
-            react_type,
-            run_id,
-            step_id,
+            react_type,            step_id,
             sender_id=sender_id,
             sender_name=sender_name,
             progress=f"Sending public message from {sender_name}"
@@ -208,9 +194,7 @@ class SpeakToTool(BaseTool):
         yield self._create_event(
             "tool_end",
             project_name,
-            react_type,
-            run_id,
-            step_id,
+            react_type,            step_id,
             sender_id=sender_id,
             sender_name=sender_name,
             ok=True,
@@ -230,9 +214,7 @@ class SpeakToTool(BaseTool):
         sender_name: str,
         context: Optional["ToolContext"],
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """
         Handle specify mode: send message with @mention directly to FilmetoAgent.chat().
@@ -244,9 +226,7 @@ class SpeakToTool(BaseTool):
         yield self._create_event(
             "tool_progress",
             project_name,
-            react_type,
-            run_id,
-            step_id,
+            react_type,            step_id,
             sender_id=sender_id,
             sender_name=sender_name,
             progress=f"Sending message from {sender_name} to @{target}"
@@ -273,9 +253,7 @@ class SpeakToTool(BaseTool):
         yield self._create_event(
             "tool_end",
             project_name,
-            react_type,
-            run_id,
-            step_id,
+            react_type,            step_id,
             sender_id=sender_id,
             sender_name=sender_name,
             ok=True,
@@ -296,9 +274,7 @@ class SpeakToTool(BaseTool):
         sender_name: str,
         context: Optional["ToolContext"],
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """
         Handle private mode: send message directly to target via event.
@@ -310,9 +286,7 @@ class SpeakToTool(BaseTool):
         yield self._create_event(
             "tool_progress",
             project_name,
-            react_type,
-            run_id,
-            step_id,
+            react_type,            step_id,
             sender_id=sender_id,
             sender_name=sender_name,
             progress=f"Sending private message from {sender_name} to {target}"
@@ -340,9 +314,7 @@ class SpeakToTool(BaseTool):
         yield AgentEvent.create(
             event_type="crew_member_private_message",
             project_name=project_name,
-            react_type=react_type,
-            run_id=run_id,
-            step_id=step_id,
+            react_type=react_type,            step_id=step_id,
             sender_id=sender_id,
             sender_name=sender_name,
             content=text_content
@@ -352,9 +324,7 @@ class SpeakToTool(BaseTool):
         yield self._create_event(
             "tool_end",
             project_name,
-            react_type,
-            run_id,
-            step_id,
+            react_type,            step_id,
             sender_id=sender_id,
             sender_name=sender_name,
             ok=True,

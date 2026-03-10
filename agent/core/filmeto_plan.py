@@ -438,7 +438,6 @@ class FilmetoPlanManager:
             error_message=message,
             project_name=self._resolve_project_name() or "default",
             react_type="system",
-            run_id="",
             sender_id="system",
             sender_name="System",
         )

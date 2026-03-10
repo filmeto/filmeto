@@ -118,7 +118,6 @@ class AgentEvent:
         project_name: Name of the project
         react_type: Type of ReAct process
         message_id: Unique identifier for grouping events (used by UI for event grouping)
-        run_id: Unique identifier for the current run (internal use for checkpoint, not exposed to UI)
         step_id: Step number in the current run
         sender_id: ID of the event sender (e.g., crew member name, agent name)
         sender_name: Display name of the event sender
@@ -133,7 +132,6 @@ class AgentEvent:
     project_name: str
     react_type: str
     message_id: str = ""  # For UI event grouping
-    run_id: str = ""  # Internal use for checkpoint only
     step_id: int = 0
     sender_id: str = ""
     sender_name: str = ""
@@ -176,8 +174,7 @@ class AgentEvent:
         event_type: str,
         project_name: str,
         react_type: str,
-        run_id: str,
-        step_id: int,
+        step_id: int = 0,
         sender_id: str = "",
         sender_name: str = "",
         content: Optional['StructureContent'] = None,
@@ -190,7 +187,6 @@ class AgentEvent:
             event_type: Type of event (from AgentEventType)
             project_name: Name of the project
             react_type: Type of ReAct process
-            run_id: Unique identifier for the current run (internal use for checkpoint)
             step_id: Step number in the current run
             sender_id: ID of the event sender (e.g., crew member name, agent name)
             sender_name: Display name of the event sender
@@ -207,7 +203,6 @@ class AgentEvent:
                 AgentEventType.TOOL_START.value,
                 project_name="my_project",
                 react_type="crew",
-                run_id="run_123",
                 step_id=1,
                 sender_id="script_writer",
                 sender_name="Script Writer",
@@ -223,7 +218,6 @@ class AgentEvent:
             project_name=project_name,
             react_type=react_type,
             message_id=message_id,
-            run_id=run_id,
             step_id=step_id,
             sender_id=sender_id,
             sender_name=sender_name,
@@ -235,7 +229,6 @@ class AgentEvent:
         error_message: str,
         project_name: str,
         react_type: str = "",
-        run_id: str = "",
         step_id: int = 0,
         sender_id: str = "",
         sender_name: str = "",
@@ -249,7 +242,6 @@ class AgentEvent:
             error_message: The error message
             project_name: Name of the project
             react_type: Type of ReAct process
-            run_id: Unique identifier for the current run (internal use for checkpoint)
             step_id: Step number in the current run
             sender_id: ID of the event sender
             sender_name: Display name of the event sender
@@ -259,7 +251,6 @@ class AgentEvent:
         Returns:
             AgentEvent with type ERROR
         """
-        # Create ErrorContent if not provided
         if content is None:
             from agent.chat.content import ErrorContent
             content = ErrorContent(
@@ -272,7 +263,6 @@ class AgentEvent:
             AgentEventType.ERROR.value,
             project_name=project_name,
             react_type=react_type,
-            run_id=run_id,
             step_id=step_id,
             sender_id=sender_id,
             sender_name=sender_name,
@@ -285,7 +275,6 @@ class AgentEvent:
         final_response: str,
         project_name: str,
         react_type: str = "",
-        run_id: str = "",
         step_id: int = 0,
         sender_id: str = "",
         sender_name: str = "",
@@ -299,7 +288,6 @@ class AgentEvent:
             final_response: The final response content
             project_name: Name of the project
             react_type: Type of ReAct process
-            run_id: Unique identifier for the current run
             step_id: Step number in the current run
             sender_id: ID of the event sender
             sender_name: Display name of the event sender
@@ -308,7 +296,6 @@ class AgentEvent:
         Returns:
             AgentEvent with type FINAL
         """
-        # Create TextContent if not provided
         if content is None:
             from agent.chat.content import TextContent
             content = TextContent(
@@ -321,7 +308,6 @@ class AgentEvent:
             AgentEventType.FINAL.value,
             project_name=project_name,
             react_type=react_type,
-            run_id=run_id,
             step_id=step_id,
             sender_id=sender_id,
             sender_name=sender_name,
@@ -334,7 +320,6 @@ class AgentEvent:
         tool_name: str,
         project_name: str,
         react_type: str = "",
-        run_id: str = "",
         step_id: int = 0,
         sender_id: str = "",
         sender_name: str = "",
@@ -350,7 +335,6 @@ class AgentEvent:
             tool_name: Name of the tool being started
             project_name: Name of the project
             react_type: Type of ReAct process
-            run_id: Unique identifier for the current run
             step_id: Step number in the current run
             sender_id: ID of the event sender
             sender_name: Display name of the event sender
@@ -361,12 +345,10 @@ class AgentEvent:
         Returns:
             AgentEvent with type TOOL_START
         """
-        # Create ToolCallContent if not provided
         if content is None:
             from agent.chat.content import ToolCallContent
-            # Generate tool_call_id if not provided
             if not tool_call_id:
-                tool_call_id = f"{run_id}_{step_id}_{tool_name}"
+                tool_call_id = f"{step_id}_{tool_name}"
             content = ToolCallContent(
                 tool_name=tool_name,
                 tool_input=tool_input or {},
@@ -379,7 +361,6 @@ class AgentEvent:
             AgentEventType.TOOL_START.value,
             project_name=project_name,
             react_type=react_type,
-            run_id=run_id,
             step_id=step_id,
             sender_id=sender_id,
             sender_name=sender_name,
@@ -393,7 +374,6 @@ class AgentEvent:
         progress: str,
         project_name: str,
         react_type: str = "",
-        run_id: str = "",
         step_id: int = 0,
         sender_id: str = "",
         sender_name: str = "",
@@ -408,7 +388,6 @@ class AgentEvent:
             progress: Progress message
             project_name: Name of the project
             react_type: Type of ReAct process
-            run_id: Unique identifier for the current run
             step_id: Step number in the current run
             sender_id: ID of the event sender
             sender_name: Display name of the event sender
@@ -417,7 +396,6 @@ class AgentEvent:
         Returns:
             AgentEvent with type TOOL_PROGRESS
         """
-        # Create ProgressContent if not provided
         if content is None:
             from agent.chat.content import ProgressContent
             content = ProgressContent(
@@ -431,7 +409,6 @@ class AgentEvent:
             AgentEventType.TOOL_PROGRESS.value,
             project_name=project_name,
             react_type=react_type,
-            run_id=run_id,
             step_id=step_id,
             sender_id=sender_id,
             sender_name=sender_name,
@@ -446,7 +423,6 @@ class AgentEvent:
         ok: bool = True,
         project_name: str = "",
         react_type: str = "",
-        run_id: str = "",
         step_id: int = 0,
         sender_id: str = "",
         sender_name: str = "",
@@ -463,7 +439,6 @@ class AgentEvent:
             ok: Whether execution succeeded
             project_name: Name of the project
             react_type: Type of ReAct process
-            run_id: Unique identifier for the current run
             step_id: Step number in the current run
             sender_id: ID of the event sender
             sender_name: Display name of the event sender
@@ -473,15 +448,13 @@ class AgentEvent:
         Returns:
             AgentEvent with type TOOL_END
         """
-        # Create ToolCallContent if not provided
         if content is None:
             from agent.chat.content import ToolCallContent
-            # Generate tool_call_id if not provided
             if not tool_call_id:
-                tool_call_id = f"{run_id}_{step_id}_{tool_name}"
+                tool_call_id = f"{step_id}_{tool_name}"
             content = ToolCallContent(
                 tool_name=tool_name,
-                tool_input={},  # tool_input was already captured in tool_start
+                tool_input={},
                 result=result,
                 error=None if ok else "Execution failed",
                 tool_status="completed" if ok else "failed",
@@ -498,7 +471,6 @@ class AgentEvent:
             AgentEventType.TOOL_END.value,
             project_name=project_name,
             react_type=react_type,
-            run_id=run_id,
             step_id=step_id,
             sender_id=sender_id,
             sender_name=sender_name,

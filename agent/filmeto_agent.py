@@ -360,7 +360,6 @@ class FilmetoAgent:
             error_message=message,
             project_name=resolve_project_name(self.project) or "default",
             react_type="system",
-            run_id="",
             sender_id="system",
             sender_name="System",
         )

@@ -6,7 +6,7 @@ import QtQuick.Layouts 1.15
 Rectangle {
     id: root
 
-    property var skillData: ({})  // Maps to SkillContent.data: {skill_name, state, progress_text, progress_percentage, result, error_message, child_contents, run_id}
+    property var skillData: ({})  // Maps to SkillContent.data: {skill_name, state, progress_text, progress_percentage, result, error_message, child_contents}
     property color widgetColor: "#4a90e2"
 
     // Internal state for expand/collapse

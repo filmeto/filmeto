@@ -47,7 +47,6 @@ class PlanTool(BaseTool):
         context: Optional["ToolContext"] = None,
         project_name: str = "",
         react_type: str = "",
-        run_id: str = "",
         step_id: int = 0,
         sender_id: str = "",
         sender_name: str = "",
@@ -67,7 +66,6 @@ class PlanTool(BaseTool):
             context: ToolContext containing workspace and project info
             project_name: Project name for event tracking
             react_type: React type for event tracking
-            run_id: Run ID for event tracking
             step_id: Step ID for event tracking
             sender_id: ID of the event sender
             sender_name: Display name of the event sender
@@ -81,9 +79,7 @@ class PlanTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="operation parameter is required"
                 )
                 return
@@ -96,9 +92,7 @@ class PlanTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="Workspace not available in context"
                 )
                 return
@@ -107,9 +101,7 @@ class PlanTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="Project name not available"
                 )
                 return
@@ -120,36 +112,34 @@ class PlanTool(BaseTool):
             # Route to appropriate operation handler
             if operation == "create":
                 async for event in self._handle_create(
-                    plan_service, parameters, effective_project_name, project_name, react_type, run_id, step_id
+                    plan_service, parameters, effective_project_name, project_name, react_type, step_id
                 ):
                     yield event
             elif operation == "delete":
                 async for event in self._handle_delete(
-                    plan_service, parameters, effective_project_name, project_name, react_type, run_id, step_id
+                    plan_service, parameters, effective_project_name, project_name, react_type, step_id
                 ):
                     yield event
             elif operation == "update":
                 async for event in self._handle_update(
-                    plan_service, parameters, effective_project_name, project_name, react_type, run_id, step_id
+                    plan_service, parameters, effective_project_name, project_name, react_type, step_id
                 ):
                     yield event
             elif operation == "get":
                 async for event in self._handle_get(
-                    plan_service, parameters, effective_project_name, project_name, react_type, run_id, step_id
+                    plan_service, parameters, effective_project_name, project_name, react_type, step_id
                 ):
                     yield event
             elif operation == "list":
                 async for event in self._handle_list(
-                    plan_service, parameters, effective_project_name, project_name, react_type, run_id, step_id
+                    plan_service, parameters, effective_project_name, project_name, react_type, step_id
                 ):
                     yield event
             else:
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error=f"Unknown operation: {operation}. Valid operations: create, delete, update, get, list"
                 )
 
@@ -158,9 +148,7 @@ class PlanTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -169,9 +157,7 @@ class PlanTool(BaseTool):
         event_type: str,
         plan: 'Plan',
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int,
+        react_type: str,        step_id: int,
         operation: str = "create"
     ) -> AgentEvent:
         """Create a plan-related AgentEvent with PlanContent.
@@ -181,7 +167,6 @@ class PlanTool(BaseTool):
             plan: The Plan model object
             project_name: Project name for event tracking
             react_type: React type for event tracking
-            run_id: Run ID for event tracking
             step_id: Step ID for event tracking
             operation: Operation type (create, update, get, list, delete)
 
@@ -195,9 +180,7 @@ class PlanTool(BaseTool):
         return AgentEvent.create(
             event_type=event_type,
             project_name=project_name,
-            react_type=react_type,
-            run_id=run_id,
-            step_id=step_id,
+            react_type=react_type,            step_id=step_id,
             content=content
         )
 
@@ -270,9 +253,7 @@ class PlanTool(BaseTool):
         parameters: Dict[str, Any],
         effective_project_name: str,
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle create operation."""
         try:
@@ -296,9 +277,7 @@ class PlanTool(BaseTool):
             yield self._create_event(
                 "tool_progress",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 result=f"Created plan '{title}' with ID {plan.id}"
             )
 
@@ -307,9 +286,7 @@ class PlanTool(BaseTool):
                 event_type=AgentEventType.PLAN_CREATED.value,
                 plan=plan,
                 project_name=project_name,
-                react_type=react_type,
-                run_id=run_id,
-                step_id=step_id,
+                react_type=react_type,                step_id=step_id,
                 operation="create"
             )
 
@@ -317,9 +294,7 @@ class PlanTool(BaseTool):
             yield self._create_event(
                 "tool_end",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 ok=True,
                 result={
                     "operation": "create",
@@ -334,9 +309,7 @@ class PlanTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -346,9 +319,7 @@ class PlanTool(BaseTool):
         parameters: Dict[str, Any],
         effective_project_name: str,
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle delete operation."""
         try:
@@ -357,9 +328,7 @@ class PlanTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="plan_id parameter is required for delete operation"
                 )
                 return
@@ -370,18 +339,14 @@ class PlanTool(BaseTool):
                 yield self._create_event(
                     "tool_progress",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     result=f"Deleted plan with ID {plan_id}"
                 )
 
                 yield self._create_event(
                     "tool_end",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     ok=True,
                     result={
                         "operation": "delete",
@@ -394,9 +359,7 @@ class PlanTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error=f"Failed to delete plan with ID {plan_id}. Plan not found."
                 )
         except Exception as e:
@@ -404,9 +367,7 @@ class PlanTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -416,9 +377,7 @@ class PlanTool(BaseTool):
         parameters: Dict[str, Any],
         effective_project_name: str,
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle update operation."""
         try:
@@ -427,9 +386,7 @@ class PlanTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="plan_id parameter is required for update operation"
                 )
                 return
@@ -459,9 +416,7 @@ class PlanTool(BaseTool):
                 yield self._create_event(
                     "tool_progress",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     result=f"Updated plan with ID {plan_id}"
                 )
 
@@ -470,9 +425,7 @@ class PlanTool(BaseTool):
                     event_type=AgentEventType.PLAN_UPDATED.value,
                     plan=plan,
                     project_name=project_name,
-                    react_type=react_type,
-                    run_id=run_id,
-                    step_id=step_id,
+                    react_type=react_type,                    step_id=step_id,
                     operation="update"
                 )
 
@@ -480,9 +433,7 @@ class PlanTool(BaseTool):
                 yield self._create_event(
                     "tool_end",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     ok=True,
                     result={
                         "operation": "update",
@@ -495,9 +446,7 @@ class PlanTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error=f"Failed to update plan with ID {plan_id}. Plan not found."
                 )
         except Exception as e:
@@ -505,9 +454,7 @@ class PlanTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -517,9 +464,7 @@ class PlanTool(BaseTool):
         parameters: Dict[str, Any],
         effective_project_name: str,
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle get operation."""
         try:
@@ -528,9 +473,7 @@ class PlanTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error="plan_id parameter is required for get operation"
                 )
                 return
@@ -545,9 +488,7 @@ class PlanTool(BaseTool):
                 yield self._create_event(
                     "tool_end",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     ok=True,
                     result={
                         "operation": "get",
@@ -560,9 +501,7 @@ class PlanTool(BaseTool):
                 yield self._create_event(
                     "error",
                     project_name,
-                    react_type,
-                    run_id,
-                    step_id,
+                    react_type,                    step_id,
                     error=f"Plan with ID {plan_id} not found"
                 )
         except Exception as e:
@@ -570,9 +509,7 @@ class PlanTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
 
@@ -582,9 +519,7 @@ class PlanTool(BaseTool):
         parameters: Dict[str, Any],
         effective_project_name: str,
         project_name: str,
-        react_type: str,
-        run_id: str,
-        step_id: int
+        react_type: str,        step_id: int
     ) -> AsyncGenerator["AgentEvent", None]:
         """Handle list operation."""
         try:
@@ -601,9 +536,7 @@ class PlanTool(BaseTool):
             yield self._create_event(
                 "tool_end",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 ok=True,
                 result={
                     "operation": "list",
@@ -618,8 +551,6 @@ class PlanTool(BaseTool):
             yield self._create_event(
                 "error",
                 project_name,
-                react_type,
-                run_id,
-                step_id,
+                react_type,                step_id,
                 error=str(e)
             )
