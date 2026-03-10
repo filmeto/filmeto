@@ -121,6 +121,9 @@ class CrewMember:
         # Generate a run_id for this session
         import uuid
         run_id = str(uuid.uuid4())
+        # Generate a single message_id for all events in this conversation turn
+        # This ensures all events (LLM_THINKING, TOOL_*, FINAL, etc.) share the same message_id
+        message_id = str(uuid.uuid4())
 
         # First, emit a typing event to give immediate visual feedback
         typing_start_event = AgentEvent.create(
@@ -138,7 +141,7 @@ class CrewMember:
             )
         )
         # Save typing start event to history
-        self._save_event_to_history(typing_start_event)
+        self._save_event_to_history(typing_start_event, message_id)
         yield typing_start_event
 
         if not self.llm_service.validate_config():
@@ -153,7 +156,7 @@ class CrewMember:
                 sender_name=self.config.name,
             )
             # Save error event to history
-            self._save_event_to_history(error_event)
+            self._save_event_to_history(error_event, message_id)
             yield error_event
             # Emit typing_end event after error to mark completion
             typing_end_event = AgentEvent.create(
@@ -171,7 +174,7 @@ class CrewMember:
                 )
             )
             # Save typing end event to history
-            self._save_event_to_history(typing_end_event)
+            self._save_event_to_history(typing_end_event, message_id)
             yield typing_end_event
             return
 
@@ -210,7 +213,8 @@ class CrewMember:
             )
 
             # Save ALL events to crew member history for complete traceability
-            self._save_event_to_history(enhanced_event)
+            # Use the same message_id for all events in this conversation turn
+            self._save_event_to_history(enhanced_event, message_id)
 
             if event.event_type == AgentEventType.FINAL:
                 # Extract from content or payload (backward compat)
@@ -245,7 +249,7 @@ class CrewMember:
                     )
                 )
                 # Save typing end event to history
-                self._save_event_to_history(typing_end_event)
+                self._save_event_to_history(typing_end_event, message_id)
                 yield typing_end_event
                 break
             elif event.event_type == AgentEventType.ERROR:
@@ -279,7 +283,7 @@ class CrewMember:
                     )
                 )
                 # Save typing end event to history
-                self._save_event_to_history(typing_end_event)
+                self._save_event_to_history(typing_end_event, message_id)
                 yield typing_end_event
                 break
             else:
@@ -304,7 +308,7 @@ class CrewMember:
                 sender_name=self.config.name,
             )
             # Save error event to history
-            self._save_event_to_history(error_event)
+            self._save_event_to_history(error_event, message_id)
             yield error_event
             # Emit typing_end event after error to mark completion
             typing_end_event = AgentEvent.create(
@@ -322,7 +326,7 @@ class CrewMember:
                 )
             )
             # Save typing end event to history
-            self._save_event_to_history(typing_end_event)
+            self._save_event_to_history(typing_end_event, message_id)
             yield typing_end_event
             return
 
@@ -363,7 +367,7 @@ class CrewMember:
         except Exception as e:
             logger.error(f"Error saving message to history: {e}")
 
-    def _save_event_to_history(self, event: "AgentEvent"):
+    def _save_event_to_history(self, event: "AgentEvent", message_id: Optional[str] = None):
         """
         Save an AgentEvent to the crew member's history storage.
 
@@ -373,6 +377,9 @@ class CrewMember:
 
         Args:
             event: The AgentEvent to save
+            message_id: Optional message ID to use. If not provided, generates a new one.
+                       For events in the same conversation turn, pass the same message_id
+                       to group them together in the UI.
         """
         if not self.workspace or not self.project_name:
             return
@@ -385,9 +392,13 @@ class CrewMember:
             if event.content:
                 content_dict = event.content.to_dict()
 
+            # Use provided message_id or generate a new one
+            # IMPORTANT: For streaming responses, all events should share the same message_id
+            event_message_id = message_id if message_id else str(uuid.uuid4())
+
             # Build event message dictionary with full event details
             event_dict = {
-                "message_id": str(uuid.uuid4()),
+                "message_id": event_message_id,
                 "run_id": event.run_id,
                 "role": "event",  # Special role to identify event messages
                 "sender_id": event.sender_id or self.config.name,
