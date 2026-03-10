@@ -117,7 +117,8 @@ class AgentEvent:
         event_type: Type of event (llm_thinking, tool_start, tool_progress, tool_end, llm_output, final, error)
         project_name: Name of the project
         react_type: Type of ReAct process
-        run_id: Unique identifier for the current run
+        message_id: Unique identifier for grouping events (used by UI for event grouping)
+        run_id: Unique identifier for the current run (internal use for checkpoint, not exposed to UI)
         step_id: Step number in the current run
         sender_id: ID of the event sender (e.g., crew member name, agent name)
         sender_name: Display name of the event sender
@@ -131,8 +132,9 @@ class AgentEvent:
     event_type: str
     project_name: str
     react_type: str
-    run_id: str
-    step_id: int
+    message_id: str = ""  # For UI event grouping
+    run_id: str = ""  # Internal use for checkpoint only
+    step_id: int = 0
     sender_id: str = ""
     sender_name: str = ""
     content: Optional['StructureContent'] = None
@@ -178,7 +180,8 @@ class AgentEvent:
         step_id: int,
         sender_id: str = "",
         sender_name: str = "",
-        content: Optional['StructureContent'] = None
+        content: Optional['StructureContent'] = None,
+        message_id: str = ""
     ) -> "AgentEvent":
         """
         Create an AgentEvent with the given parameters.
@@ -187,11 +190,12 @@ class AgentEvent:
             event_type: Type of event (from AgentEventType)
             project_name: Name of the project
             react_type: Type of ReAct process
-            run_id: Unique identifier for the current run
+            run_id: Unique identifier for the current run (internal use for checkpoint)
             step_id: Step number in the current run
             sender_id: ID of the event sender (e.g., crew member name, agent name)
             sender_name: Display name of the event sender
             content: Structured content for the event (StructureContent subclass)
+            message_id: Unique identifier for grouping events (used by UI)
 
         Returns:
             AgentEvent object
@@ -210,13 +214,15 @@ class AgentEvent:
                 content=ToolCallContent(
                     tool_name="my_tool",
                     tool_input={"arg": "value"}
-                )
+                ),
+                message_id="msg_abc123"
             )
         """
         return AgentEvent(
             event_type=event_type,
             project_name=project_name,
             react_type=react_type,
+            message_id=message_id,
             run_id=run_id,
             step_id=step_id,
             sender_id=sender_id,
@@ -233,7 +239,8 @@ class AgentEvent:
         step_id: int = 0,
         sender_id: str = "",
         sender_name: str = "",
-        content: Optional['StructureContent'] = None
+        content: Optional['StructureContent'] = None,
+        message_id: str = ""
     ) -> "AgentEvent":
         """
         Create an error event.
@@ -242,11 +249,12 @@ class AgentEvent:
             error_message: The error message
             project_name: Name of the project
             react_type: Type of ReAct process
-            run_id: Unique identifier for the current run
+            run_id: Unique identifier for the current run (internal use for checkpoint)
             step_id: Step number in the current run
             sender_id: ID of the event sender
             sender_name: Display name of the event sender
             content: Structured content for the event (optional, will be created if not provided)
+            message_id: Unique identifier for grouping events
 
         Returns:
             AgentEvent with type ERROR
@@ -268,7 +276,8 @@ class AgentEvent:
             step_id=step_id,
             sender_id=sender_id,
             sender_name=sender_name,
-            content=content
+            content=content,
+            message_id=message_id
         )
 
     @staticmethod
@@ -280,7 +289,8 @@ class AgentEvent:
         step_id: int = 0,
         sender_id: str = "",
         sender_name: str = "",
-        content: Optional['StructureContent'] = None
+        content: Optional['StructureContent'] = None,
+        message_id: str = ""
     ) -> "AgentEvent":
         """
         Create a final response event.
@@ -315,7 +325,8 @@ class AgentEvent:
             step_id=step_id,
             sender_id=sender_id,
             sender_name=sender_name,
-            content=content
+            content=content,
+            message_id=message_id
         )
 
     @staticmethod
@@ -329,7 +340,8 @@ class AgentEvent:
         sender_name: str = "",
         content: Optional['StructureContent'] = None,
         tool_call_id: str = "",
-        tool_input: Optional[Dict[str, Any]] = None
+        tool_input: Optional[Dict[str, Any]] = None,
+        message_id: str = ""
     ) -> "AgentEvent":
         """
         Create a tool start event.
@@ -371,7 +383,8 @@ class AgentEvent:
             step_id=step_id,
             sender_id=sender_id,
             sender_name=sender_name,
-            content=content
+            content=content,
+            message_id=message_id
         )
 
     @staticmethod
@@ -384,7 +397,8 @@ class AgentEvent:
         step_id: int = 0,
         sender_id: str = "",
         sender_name: str = "",
-        content: Optional['StructureContent'] = None
+        content: Optional['StructureContent'] = None,
+        message_id: str = ""
     ) -> "AgentEvent":
         """
         Create a tool progress event.
@@ -421,7 +435,8 @@ class AgentEvent:
             step_id=step_id,
             sender_id=sender_id,
             sender_name=sender_name,
-            content=content
+            content=content,
+            message_id=message_id
         )
 
     @staticmethod
@@ -436,7 +451,8 @@ class AgentEvent:
         sender_id: str = "",
         sender_name: str = "",
         content: Optional['StructureContent'] = None,
-        tool_call_id: str = ""
+        tool_call_id: str = "",
+        message_id: str = ""
     ) -> "AgentEvent":
         """
         Create a tool end event.
@@ -486,5 +502,6 @@ class AgentEvent:
             step_id=step_id,
             sender_id=sender_id,
             sender_name=sender_name,
-            content=content
+            content=content,
+            message_id=message_id
         )

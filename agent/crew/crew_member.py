@@ -147,7 +147,8 @@ class CrewMember:
                 title="Typing",
                 description="Agent is processing your request",
                 state=TypingState.START
-            )
+            ),
+            message_id=message_id
         )
         # Save typing start event to history
         self._save_event_to_history(typing_start_event, message_id)
@@ -163,6 +164,7 @@ class CrewMember:
                 step_id=0,
                 sender_id=self.config.name,
                 sender_name=self.config.name,
+                message_id=message_id
             )
             # Save error event to history
             self._save_event_to_history(error_event, message_id)
@@ -180,7 +182,8 @@ class CrewMember:
                     title="Typing",
                     description="Agent processing completed",
                     state=TypingState.END
-                )
+                ),
+                message_id=message_id
             )
             # Save typing end event to history
             self._save_event_to_history(typing_end_event, message_id)
@@ -206,7 +209,7 @@ class CrewMember:
         final_response = None
         saw_event = False
 
-        async for event in react_instance.chat_stream(message):
+        async for event in react_instance.chat_stream(message, message_id=message_id):
             saw_event = True
 
             # Enhance event with sender information and preserve content
@@ -219,7 +222,8 @@ class CrewMember:
                 step_id=event.step_id,
                 sender_id=self.config.name,
                 sender_name=self.config.name,
-                content=event.content  # Preserve the original content
+                content=event.content,  # Preserve the original content
+                message_id=message_id  # Pass message_id for UI event grouping
             )
 
             # Save ALL events to crew member history for complete traceability
@@ -255,7 +259,8 @@ class CrewMember:
                         title="Typing",
                         description="Agent processing completed",
                         state=TypingState.END
-                    )
+                    ),
+                    message_id=message_id
                 )
                 # Save typing end event to history
                 self._save_event_to_history(typing_end_event, message_id)
@@ -288,7 +293,8 @@ class CrewMember:
                         title="Typing",
                         description="Agent processing completed",
                         state=TypingState.END
-                    )
+                    ),
+                    message_id=message_id
                 )
                 # Save typing end event to history
                 self._save_event_to_history(typing_end_event, message_id)

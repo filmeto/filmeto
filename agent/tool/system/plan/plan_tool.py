@@ -51,6 +51,7 @@ class PlanTool(BaseTool):
         step_id: int = 0,
         sender_id: str = "",
         sender_name: str = "",
+        message_id: str = "",
     ) -> AsyncGenerator["AgentEvent", None]:
         """
         Execute the plan tool asynchronously.

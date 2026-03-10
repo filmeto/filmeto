@@ -39,6 +39,7 @@ class ExecuteGeneratedCodeTool(BaseTool):
         step_id: int = 0,
         sender_id: str = "",
         sender_name: str = "",
+        message_id: str = "",
     ) -> AsyncGenerator["AgentEvent", None]:
         """
         Execute dynamically generated Python code using ToolService.execute_script_content.

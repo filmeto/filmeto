@@ -90,6 +90,7 @@ class BaseTool(ABC):
         step_id: int = 0,
         sender_id: str = "",
         sender_name: str = "",
+        message_id: str = "",
     ) -> AsyncGenerator["AgentEvent", None]:
         """
         Execute the tool with given parameters and context.
@@ -101,10 +102,11 @@ class BaseTool(ABC):
             context: Optional ToolContext object containing workspace, project_name, etc.
             project_name: Project name for event tracking
             react_type: React type for event tracking
-            run_id: Run ID for event tracking
+            run_id: Run ID (internal checkpoint use)
             step_id: Step ID for event tracking
             sender_id: ID of the event sender
             sender_name: Display name of the event sender
+            message_id: Message ID for UI event grouping
 
         Yields:
             ReactEvent objects with types:
@@ -152,6 +154,7 @@ class BaseTool(ABC):
         step_id: int = 0,
         sender_id: str = "",
         sender_name: str = "",
+        message_id: str = "",
         error: str = "",
         ok: bool = True,
         result: Any = None,
@@ -165,10 +168,11 @@ class BaseTool(ABC):
             event_type: Type of event (tool_progress, tool_end, error)
             project_name: Project name
             react_type: React type
-            run_id: Run ID
+            run_id: Run ID (internal checkpoint use)
             step_id: Step ID
             sender_id: ID of the event sender
             sender_name: Display name of the event sender
+            message_id: Message ID for UI event grouping
             error: Error message (for error events)
             ok: Whether operation succeeded (for tool_end events)
             result: Operation result (for tool_end events)
@@ -230,5 +234,6 @@ class BaseTool(ABC):
             step_id=step_id,
             sender_id=sender_id,
             sender_name=sender_name,
-            content=content
+            content=content,
+            message_id=message_id
         )
