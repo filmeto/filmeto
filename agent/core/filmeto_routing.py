@@ -91,7 +91,8 @@ class FilmetoRoutingManager:
         # Track main content for sending to agent
         _collected_main_content: List[StructureContent] = []
 
-        async for event in crew_member.chat_stream(message, plan_id=plan_id):
+        # Group chat routing: use sender_id="system" to indicate routed message
+        async for event in crew_member.chat_stream(message, plan_id=plan_id, sender_id="system", sender_name="System"):
             # Add metadata to the event payload
             event_payload = dict(event.payload)
             if metadata:

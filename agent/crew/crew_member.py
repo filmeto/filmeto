@@ -104,6 +104,8 @@ class CrewMember:
         self,
         message: str,
         plan_id: Optional[str] = None,
+        sender_id: str = "user",
+        sender_name: str = "User",
     ) -> AsyncIterator["AgentEvent"]:
         """
         Stream chat responses as ReactEvent objects.
@@ -111,6 +113,9 @@ class CrewMember:
         Args:
             message: The user message to process
             plan_id: Optional plan ID for context
+            sender_id: ID of the message sender. Use "user" for direct private chat,
+                      "system" or other values for group chat routing.
+            sender_name: Display name of the sender.
 
         Yields:
             ReactEvent: Events from the ReAct execution process
@@ -127,7 +132,7 @@ class CrewMember:
 
         # First, save the user message to history BEFORE any crew member events
         # This ensures correct ordering: user message -> crew member events
-        self._save_message_to_history("user", message, run_id, sender_type="user")
+        self._save_message_to_history("user", message, run_id, sender_id=sender_id, sender_name=sender_name)
 
         # Then, emit a typing event to give immediate visual feedback
         typing_start_event = AgentEvent.create(
@@ -232,7 +237,7 @@ class CrewMember:
                 if final_response:
                     self.conversation_history.append({"role": "user", "content": message})
                     self.conversation_history.append({"role": "assistant", "content": final_response})
-                    # Save assistant response to history storage (user message already saved at start)
+                    # Save assistant response to history storage
                     self._save_message_to_history("assistant", final_response, run_id)
                 # Yield final response first
                 yield enhanced_event
@@ -265,7 +270,7 @@ class CrewMember:
                     error_message = "Unknown error occurred"
                 self.conversation_history.append({"role": "user", "content": message})
                 self.conversation_history.append({"role": "assistant", "content": error_message})
-                # Save assistant error to history storage (user message already saved at start)
+                # Save assistant error to history storage
                 self._save_message_to_history("assistant", error_message, run_id, is_error=True)
                 # Yield error event first
                 yield enhanced_event
@@ -297,7 +302,7 @@ class CrewMember:
 
         if final_response is None:
             error_msg = "Reached max steps without a final response."
-            # Save assistant error to history storage (user message already saved at start)
+            # Save assistant error to history storage
             self._save_message_to_history("assistant", error_msg, run_id, is_error=True)
             # Yield error event first
             error_event = AgentEvent.error(
@@ -337,7 +342,8 @@ class CrewMember:
         content: str,
         run_id: str,
         is_error: bool = False,
-        sender_type: str = "system"
+        sender_id: Optional[str] = None,
+        sender_name: Optional[str] = None,
     ):
         """
         Save a message to the crew member's history storage.
@@ -347,9 +353,8 @@ class CrewMember:
             content: Message content
             run_id: Run ID for this conversation session
             is_error: Whether this is an error message
-            sender_type: Type of sender for user role messages - "system" (routed from FilmetoAgent)
-                        or "user" (direct user input). Default is "system" since most messages
-                        come through the message router.
+            sender_id: Sender ID (defaults to role-based: crew member name for assistant, "user" for user)
+            sender_name: Sender display name (defaults to sender_id)
         """
         if not self.workspace or not self.project_name:
             return
@@ -357,23 +362,20 @@ class CrewMember:
         try:
             workspace_path = _get_workspace_path(self.workspace)
 
-            # Determine sender based on role and sender_type
+            # Determine sender based on role if not provided
             if role == "assistant":
-                sender_id = self.config.name
-                sender_name = self.config.name
+                final_sender_id = sender_id or self.config.name
+                final_sender_name = sender_name or self.config.name
             else:
-                # For user role, use sender_type to determine the sender
-                # "system" indicates message was routed from FilmetoAgent
-                # "user" indicates direct user input
-                sender_id = sender_type
-                sender_name = "System" if sender_type == "system" else "User"
+                final_sender_id = sender_id or "user"
+                final_sender_name = sender_name or "User"
 
             message_dict = {
                 "message_id": str(uuid.uuid4()),
                 "run_id": run_id,
                 "role": role,
-                "sender_id": sender_id,
-                "sender_name": sender_name,
+                "sender_id": final_sender_id,
+                "sender_name": final_sender_name,
                 "content": content,
                 "timestamp": datetime.now().isoformat(),
                 "crew_title": self.crew_title,
