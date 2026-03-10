@@ -134,7 +134,7 @@ class PrivateChatWidget(BaseWidget):
 
             # Create a mock event object for handle_stream_event
             class MockEvent:
-                def __init__(self, event_type, sender_id, sender_name, run_id, content):
+                def __init__(self, event_type, sender_id, sender_name, run_id, content, message_id):
                     self.event_type = event_type
                     self.sender_id = sender_id
                     self.sender_name = sender_name
@@ -154,17 +154,18 @@ class PrivateChatWidget(BaseWidget):
                 sender_id=sender_id,
                 sender_name=sender_name,
                 run_id=run_id,
-                content=content
+                content=content,
+                message_id=message_id
             )
 
             # Use the chat list widget's handle_stream_event to render the event
             self.chat_list_widget.handle_stream_event(mock_event, None)
 
             # Update the message timestamp if available
-            # Use run_id as the message_id since that's what handle_stream_event uses
-            if timestamp and run_id:
+            # Use message_id for grouping, not run_id
+            if timestamp and message_id:
                 model = self.chat_list_widget._model
-                model.update_item(run_id, {
+                model.update_item(message_id, {
                     model.TIMESTAMP: timestamp,
                 })
 

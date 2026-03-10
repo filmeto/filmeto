@@ -392,8 +392,8 @@ class StreamEventHandler:
             return
 
         # No active skill - handle as standalone content
-        # Use run_id as message_id for AgentEvent (AgentEvent doesn't have message_id attribute)
-        message_id = run_id if run_id else str(uuid.uuid4())
+        # Use message_id from event for grouping, fallback to run_id or generate new
+        message_id = getattr(event, "message_id", None) or (run_id if run_id else str(uuid.uuid4()))
         item = self._model.get_item_by_message_id(message_id)
         if not item:
             agent_name = getattr(event, "sender_name", getattr(event, "agent_name", "Unknown"))
