@@ -121,7 +121,8 @@ class StreamEventHandler:
         Args:
             event: Error event
         """
-        run_id = getattr(event, "run_id", "")
+        # Use message_id for grouping, fallback to run_id for backward compatibility
+        message_id = getattr(event, "message_id", None) or getattr(event, "run_id", "")
 
         # Prepare error content dict
         if hasattr(event, 'content') and event.content:
@@ -134,15 +135,14 @@ class StreamEventHandler:
             error_dict = ErrorContent(error_message=error_content).to_dict()
 
         # If there's an active skill, add error to its child_contents
-        if run_id and self._skill_manager._active_skills.get(run_id):
-            skill_info = self._skill_manager._active_skills[run_id]
-            message_id = skill_info["message_id"]
+        if message_id and self._skill_manager._active_skills.get(message_id):
+            skill_info = self._skill_manager._active_skills[message_id]
             skill_info["child_contents"].append(error_dict)
-            self._skill_manager.add_child_to_skill(message_id, error_dict, run_id=run_id)
+            self._skill_manager.add_child_to_skill(message_id, error_dict)
             return
 
         # No active skill - handle as standalone error
-        message_id = str(uuid.uuid4())
+        message_id = message_id or str(uuid.uuid4())
         self._skill_manager.get_or_create_agent_card(message_id, "System", "System")
         if self._update_agent_card_callback:
             self._update_agent_card_callback(
@@ -161,7 +161,8 @@ class StreamEventHandler:
         sender_name = event.data.get("sender_name", "Unknown")
         sender_id = event.data.get("sender_id", sender_name.lower())
         session_id = event.data.get("session_id", "unknown")
-        run_id = getattr(event, "run_id", "")
+        # Use message_id for grouping, fallback to run_id for backward compatibility
+        message_id = getattr(event, "message_id", None) or getattr(event, "run_id", "")
 
         if sender_id == "user":
             return
@@ -170,17 +171,15 @@ class StreamEventHandler:
         text_dict = TextContent(text=content).to_dict()
 
         # If there's an active skill, add text to its child_contents
-        if run_id and self._skill_manager._active_skills.get(run_id):
-            skill_info = self._skill_manager._active_skills[run_id]
-            message_id = skill_info["message_id"]
+        if message_id and self._skill_manager._active_skills.get(message_id):
+            skill_info = self._skill_manager._active_skills[message_id]
             skill_info["child_contents"].append(text_dict)
-            self._skill_manager.add_child_to_skill(message_id, text_dict, run_id=run_id)
+            self._skill_manager.add_child_to_skill(message_id, text_dict)
             return
 
         # No active skill - handle as standalone content
-        message_id = event.data.get("message_id")
         if not message_id:
-            message_id = f"response_{session_id}_{uuid.uuid4()}"
+            message_id = event.data.get("message_id") or f"response_{session_id}_{uuid.uuid4()}"
 
         self._skill_manager.get_or_create_agent_card(message_id, sender_name, sender_name)
         if self._update_agent_card_callback:
@@ -201,12 +200,10 @@ class StreamEventHandler:
         if not sender_id or sender_id == "user":
             return
 
-        # Use run_id as the message_id since all events in a session share the same ID
-        run_id = getattr(event, "run_id", "")
-        if not run_id:
+        # Use message_id for grouping, fallback to run_id for backward compatibility
+        message_id = getattr(event, "message_id", None) or getattr(event, "run_id", "")
+        if not message_id:
             return
-
-        message_id = run_id
 
         if event.event_type == "crew_member_typing":
             # Create card with crew member activity indicator
@@ -312,17 +309,15 @@ class StreamEventHandler:
         # For plan_created/plan_updated without explicit PlanContent,
         # content_dict should already have content_type="plan" from to_dict()
 
-        # Check if this content belongs to an active skill
-        run_id = getattr(event, "run_id", "")
-        if run_id and self._skill_manager._active_skills.get(run_id):
-            skill_info = self._skill_manager._active_skills[run_id]
-            message_id = skill_info["message_id"]
+        # Use message_id for grouping, fallback to run_id for backward compatibility
+        message_id = getattr(event, "message_id", None) or getattr(event, "run_id", "")
+        if message_id and self._skill_manager._active_skills.get(message_id):
+            skill_info = self._skill_manager._active_skills[message_id]
             skill_info["child_contents"].append(content_dict)
-            self._skill_manager.add_child_to_skill(message_id, content_dict, run_id=run_id)
+            self._skill_manager.add_child_to_skill(message_id, content_dict)
             return
 
         # No active skill - handle as standalone content
-        message_id = getattr(event, "message_id", None)
         if not message_id:
             message_id = str(uuid.uuid4())
 
@@ -338,7 +333,7 @@ class StreamEventHandler:
         if self._update_agent_card_callback:
             self._update_agent_card_callback(message_id, structured_content=content_dict)
 
-        logger.debug(f"Handled plan event: {event.event_type} for message: {message_id[:8]}...")
+        logger.debug(f"Handled plan event: {event.event_type} for message: {message_id[:8] if len(message_id) > 8 else message_id}...")
 
     def _handle_content_event(self, event) -> None:
         """Handle events with content.
@@ -353,8 +348,8 @@ class StreamEventHandler:
         if sender_id == "user":
             return
 
-        # Check if this content belongs to an active skill
-        run_id = getattr(event, "run_id", "")
+        # Use message_id for grouping, fallback to run_id for backward compatibility
+        message_id = getattr(event, "message_id", None) or getattr(event, "run_id", "")
 
         # Prepare content dict - handle all content types generically
         content_dict = None
@@ -384,16 +379,15 @@ class StreamEventHandler:
                 content_dict = TextContent(text=event.content).to_dict()
 
         # If there's an active skill, add ALL content to its child_contents
-        if run_id and self._skill_manager._active_skills.get(run_id):
-            skill_info = self._skill_manager._active_skills[run_id]
-            message_id = skill_info["message_id"]
+        if message_id and self._skill_manager._active_skills.get(message_id):
+            skill_info = self._skill_manager._active_skills[message_id]
             skill_info["child_contents"].append(content_dict)
-            self._skill_manager.add_child_to_skill(message_id, content_dict, run_id=run_id)
+            self._skill_manager.add_child_to_skill(message_id, content_dict)
             return
 
         # No active skill - handle as standalone content
-        # Use message_id from event for grouping, fallback to run_id or generate new
-        message_id = getattr(event, "message_id", None) or (run_id if run_id else str(uuid.uuid4()))
+        # Use message_id from event for grouping, or generate new
+        message_id = message_id or str(uuid.uuid4())
         item = self._model.get_item_by_message_id(message_id)
         if not item:
             agent_name = getattr(event, "sender_name", getattr(event, "agent_name", "Unknown"))

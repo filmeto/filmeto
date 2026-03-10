@@ -29,7 +29,7 @@ class SkillManager:
     """Manages skill lifecycle and content merging for the chat list.
 
     This class handles:
-    - Active skill tracking by run_id
+    - Active skill tracking by message_id
     - Skill name to message_id mapping
     - Skill event handling (start/progress/end/error)
     - Tool event handling as children of skills
@@ -40,7 +40,7 @@ class SkillManager:
         _model: QML model instance
         _metadata_resolver: Resolver for crew member metadata
         _scroll_manager: Scroll manager for auto-scrolling
-        _active_skills: Active skills by run_id
+        _active_skills: Active skills by message_id
         _skill_name_to_message_id: Mapping of skill name to message_id
         _agent_current_cards: Current agent card by agent name
         _active_tools: Active tools by tool_call_id for merging events
@@ -63,13 +63,13 @@ class SkillManager:
         self._metadata_resolver = metadata_resolver
         self._scroll_manager = scroll_manager
 
-        # Active skills tracking: {run_id: {message_id, skill_name, sender_name, state, child_contents}}
+        # Active skills tracking: {message_id: {skill_name, sender_name, state, child_contents}}
         self._active_skills: Dict[str, Dict[str, Any]] = {}
         # Skill name to message_id mapping for combining skills: {skill_name: message_id}
         self._skill_name_to_message_id: Dict[str, str] = {}
         # Current agent cards: {agent_name: message_id}
         self._agent_current_cards: Dict[str, str] = {}
-        # Active tools tracking for merging: {tool_call_id: {run_id, message_id, tool_name, status}}
+        # Active tools tracking for merging: {tool_call_id: {message_id, tool_name, status}}
         self._active_tools: Dict[str, Dict[str, Any]] = {}
 
     def handle_skill_event(self, event) -> None:
@@ -86,15 +86,15 @@ class SkillManager:
         """
         # Extract data from event content (SkillContent is already in event.content)
         skill_content = getattr(event, 'content', None)
-        run_id = getattr(event, "run_id", "")
+        # Use message_id for grouping, fallback to run_id for backward compatibility
+        message_id = getattr(event, "message_id", None) or getattr(event, "run_id", "")
 
         if not skill_content or not isinstance(skill_content, SkillContent):
             # Fallback to data-based parsing for legacy events
             skill_name = event.data.get("skill_name", "Unknown")
             sender_name = event.data.get("sender_name", "Unknown")
             sender_id = event.data.get("sender_id", sender_name.lower())
-            run_id = run_id or event.data.get("run_id", "")
-            message_id = event.data.get("message_id") or f"skill_{run_id}_{skill_name}"
+            message_id = message_id or event.data.get("message_id") or event.data.get("run_id", "")
 
             if sender_id == "user":
                 return
@@ -134,7 +134,7 @@ class SkillManager:
                 progress_percentage=progress_percentage,
                 result=result,
                 error_message=error_message,
-                run_id=run_id,
+                message_id=message_id,
                 title=f"Skill: {skill_name}",
                 description=f"Skill execution: {skill_name}",
             )
@@ -143,7 +143,6 @@ class SkillManager:
             skill_name = skill_content.skill_name
             sender_name = getattr(event, 'sender_name', 'Unknown')
             sender_id = getattr(event, 'sender_id', sender_name.lower())
-            message_id = f"skill_{run_id}_{skill_name}"
 
             if sender_id == "user":
                 return
@@ -156,9 +155,8 @@ class SkillManager:
             else:
                 self._skill_name_to_message_id[skill_name] = message_id
 
-            # Track the active skill
-            self._active_skills[run_id] = {
-                "message_id": message_id,
+            # Track the active skill by message_id
+            self._active_skills[message_id] = {
                 "skill_name": skill_name,
                 "sender_name": sender_name,
                 "state": SkillExecutionState.IN_PROGRESS,
@@ -170,8 +168,8 @@ class SkillManager:
 
         elif event.event_type == "skill_progress":
             # Update the active skill
-            if run_id in self._active_skills:
-                self._active_skills[run_id]["state"] = SkillExecutionState.IN_PROGRESS
+            if message_id in self._active_skills:
+                self._active_skills[message_id]["state"] = SkillExecutionState.IN_PROGRESS
                 self._update_skill_content(message_id, skill_content)
             else:
                 # Skill progress without start - create new
@@ -180,8 +178,7 @@ class SkillManager:
                 else:
                     self._skill_name_to_message_id[skill_name] = message_id
 
-                self._active_skills[run_id] = {
-                    "message_id": message_id,
+                self._active_skills[message_id] = {
                     "skill_name": skill_name,
                     "sender_name": sender_name,
                     "state": SkillExecutionState.IN_PROGRESS,
@@ -191,15 +188,15 @@ class SkillManager:
                 self._update_skill_content(message_id, skill_content, create_new=True)
 
         elif event.event_type == "skill_end":
-            self._finalize_skill(run_id, skill_name, message_id, sender_name, skill_content)
+            self._finalize_skill(message_id, skill_name, sender_name, skill_content)
 
         elif event.event_type == "skill_error":
             # Finalize the skill with error
-            if run_id in self._active_skills:
-                self._active_skills[run_id]["state"] = SkillExecutionState.ERROR
-                skill_content.child_contents = self._active_skills[run_id]["child_contents"]
+            if message_id in self._active_skills:
+                self._active_skills[message_id]["state"] = SkillExecutionState.ERROR
+                skill_content.child_contents = self._active_skills[message_id]["child_contents"]
                 self._update_skill_content(message_id, skill_content)
-                del self._active_skills[run_id]
+                del self._active_skills[message_id]
                 self._cleanup_skill_name_mapping(skill_name)
             else:
                 # Skill error without start - create new
@@ -216,23 +213,23 @@ class SkillManager:
         """Handle tool events - merges tool lifecycle events by tool_call_id.
 
         Tool events (tool_start, tool_progress, tool_end, tool_error) are
-        associated with the active skill via run_id and stored as child contents.
+        associated with the active skill via message_id and stored as child contents.
         Events with the same tool_call_id are merged using state priority:
         failed > completed > started
 
         Args:
             event: Tool event from the stream
         """
-        run_id = getattr(event, "run_id", "")
+        # Use message_id for grouping, fallback to run_id for backward compatibility
+        message_id = getattr(event, "message_id", None) or getattr(event, "run_id", "")
         step_id = getattr(event, "step_id", 0)
 
         # Check if this tool belongs to an active skill
-        if run_id not in self._active_skills:
-            logger.debug(f"Tool event without active skill: run_id={run_id}")
+        if message_id not in self._active_skills:
+            logger.debug(f"Tool event without active skill: message_id={message_id}")
             return
 
-        skill_info = self._active_skills[run_id]
-        message_id = skill_info["message_id"]
+        skill_info = self._active_skills[message_id]
 
         # Get tool_name from event.content if available, fallback to event attribute or event.data
         tool_name = "unknown"
@@ -244,13 +241,13 @@ class SkillManager:
             tool_name = event.data.get("tool_name", "unknown")
 
         # Get or generate tool_call_id for tracking
-        # Use event.content.tool_call_id if available, otherwise generate from run_id + step_id + tool_name
+        # Use event.content.tool_call_id if available, otherwise generate from message_id + step_id + tool_name
 
         if hasattr(event, 'content') and event.content and hasattr(event.content, 'tool_call_id') and event.content.tool_call_id:
             tool_call_id = event.content.tool_call_id
         else:
-            # Generate tool_call_id from run_id + step_id + tool_name for legacy events
-            tool_call_id = f"{run_id}_{step_id}_{tool_name}"
+            # Generate tool_call_id from message_id + step_id + tool_name for legacy events
+            tool_call_id = f"{message_id}_{step_id}_{tool_name}"
 
         # Create tool content from event
         tool_content = None
@@ -270,7 +267,6 @@ class SkillManager:
             )
             # Track the active tool
             self._active_tools[tool_call_id] = {
-                "run_id": run_id,
                 "message_id": message_id,
                 "tool_name": tool_name,
                 "status": "started",
@@ -339,13 +335,12 @@ class SkillManager:
         if tool_content:
             tool_dict = tool_content.to_dict()
             # Use merge logic instead of simple append
-            self._add_or_merge_tool_child(message_id, tool_dict, run_id, tool_call_id)
+            self._add_or_merge_tool_child(message_id, tool_dict, tool_call_id)
 
     def _add_or_merge_tool_child(
         self,
         message_id: str,
         tool_content: Dict[str, Any],
-        run_id: str,
         tool_call_id: str
     ) -> None:
         """Add or merge tool content in skill's child_contents.
@@ -356,7 +351,6 @@ class SkillManager:
         Args:
             message_id: The message ID containing the skill
             tool_content: The tool content dictionary
-            run_id: The run_id to identify which skill to update
             tool_call_id: Unique identifier for the tool call
         """
         item = self._model.get_item(self._model.get_row_by_message_id(message_id) or 0)
@@ -369,9 +363,11 @@ class SkillManager:
         for sc in current_structured:
             if sc.get("content_type") == "skill":
                 sc_data = sc.get("data", {})
-                # If run_id is provided, only update matching skills
-                if run_id is not None:
-                    if sc_data.get("run_id") != run_id:
+                # Only update the skill that matches this message_id
+                # (skill_name matching as fallback for backward compatibility)
+                skill_name = sc_data.get("skill_name", "")
+                if skill_name in self._skill_name_to_message_id:
+                    if self._skill_name_to_message_id[skill_name] != message_id:
                         new_structured.append(copy.deepcopy(sc))
                         continue
 
@@ -561,15 +557,14 @@ class SkillManager:
 
         current_structured = item.get(self._model.STRUCTURED_CONTENT, [])
 
-        # Check for existing skill with same run_id or skill_name
+        # Check for existing skill with same message_id or skill_name
         existing_skill_entry = None
         existing_skill_index = -1
         for i, sc in enumerate(current_structured):
             if sc.get("content_type") == "skill":
                 sc_data = sc.get("data", {})
-                # Match by run_id first, then by skill_name
-                if (sc_data.get("run_id") == skill_content.run_id and skill_content.run_id) or \
-                   (sc_data.get("skill_name") == skill_content.skill_name):
+                # Match by skill_name (since message_id groups all events)
+                if sc_data.get("skill_name") == skill_content.skill_name:
                     existing_skill_entry = sc
                     existing_skill_index = i
                     break
@@ -685,16 +680,13 @@ class SkillManager:
     def add_child_to_skill(
         self,
         message_id: str,
-        child_content: Dict[str, Any],
-        run_id: Optional[str] = None
+        child_content: Dict[str, Any]
     ) -> None:
         """Add a child content to the skill's child_contents list.
 
         Args:
             message_id: The message ID containing the skill
             child_content: The child content dictionary to add
-            run_id: Optional run_id to identify which skill to update.
-                    If not provided, adds to all skills (legacy behavior).
         """
         item = self._model.get_item(self._model.get_row_by_message_id(message_id) or 0)
         if not item:
@@ -706,9 +698,10 @@ class SkillManager:
         for sc in current_structured:
             if sc.get("content_type") == "skill":
                 sc_data = sc.get("data", {})
-                # If run_id is provided, only update matching skills
-                if run_id is not None:
-                    if sc_data.get("run_id") != run_id:
+                # Only update the skill that matches this message_id
+                skill_name = sc_data.get("skill_name", "")
+                if skill_name in self._skill_name_to_message_id:
+                    if self._skill_name_to_message_id[skill_name] != message_id:
                         new_structured.append(copy.deepcopy(sc))
                         continue
 
@@ -786,26 +779,24 @@ class SkillManager:
 
     def _finalize_skill(
         self,
-        run_id: str,
-        skill_name: str,
         message_id: str,
+        skill_name: str,
         sender_name: str,
         skill_content: SkillContent
     ) -> None:
         """Finalize a skill (on skill_end event).
 
         Args:
-            run_id: The run_id of the skill
-            skill_name: The name of the skill
             message_id: The message ID for the skill
+            skill_name: The name of the skill
             sender_name: The sender name
             skill_content: The skill content to finalize
         """
-        if run_id in self._active_skills:
-            self._active_skills[run_id]["state"] = SkillExecutionState.COMPLETED
-            skill_content.child_contents = self._active_skills[run_id]["child_contents"]
+        if message_id in self._active_skills:
+            self._active_skills[message_id]["state"] = SkillExecutionState.COMPLETED
+            skill_content.child_contents = self._active_skills[message_id]["child_contents"]
             self._update_skill_content(message_id, skill_content)
-            del self._active_skills[run_id]
+            del self._active_skills[message_id]
             self._cleanup_skill_name_mapping(skill_name)
         else:
             # Skill end without start - create new
@@ -824,7 +815,7 @@ class SkillManager:
         Args:
             skill_name: The name of the skill to check
         """
-        for r_id, skill_info in self._active_skills.items():
+        for msg_id, skill_info in self._active_skills.items():
             if skill_info["skill_name"] == skill_name:
                 break
         else:
