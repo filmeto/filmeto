@@ -40,6 +40,7 @@ class ExecuteSkillTool(BaseTool):
         step_id: int = 0,
         sender_id: str = "",
         sender_name: str = "",
+        message_id: str = "",
     ) -> AsyncGenerator["AgentEvent", None]:
         """
         Execute a skill using SkillService.chat_stream().
@@ -52,10 +53,11 @@ class ExecuteSkillTool(BaseTool):
             context: ToolContext containing workspace and project info
             project_name: Project name for event tracking
             react_type: React type for event tracking
-            run_id: Run ID for event tracking
+            run_id: Run ID (internal checkpoint use)
             step_id: Step ID for event tracking
             sender_id: ID of the event sender
             sender_name: Display name of the event sender
+            message_id: Message ID for UI event grouping
 
         Yields:
             ReactEvent objects with progress updates and results
@@ -144,7 +146,7 @@ class ExecuteSkillTool(BaseTool):
                     max_steps=max_steps,
                     crew_member_name=crew_member_name,
                     conversation_id=conversation_id,
-                    run_id=run_id,
+                    message_id=message_id,
             ):
                 if event.event_type == AgentEventType.FINAL:
                     if event.content and hasattr(event.content, 'text'):

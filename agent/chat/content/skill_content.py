@@ -45,8 +45,8 @@ class SkillContent(StructureContent):
     # Nested child content (tool calls, etc. during skill execution)
     child_contents: List[Dict[str, Any]] = field(default_factory=list)
 
-    # Run ID for tracking skill execution lifecycle
-    run_id: str = ""
+    # Message ID for tracking skill execution lifecycle and UI grouping
+    message_id: str = ""
 
     # Legacy metadata fields (for skill description)
     parameters: List[Dict[str, Any]] = field(default_factory=list)
@@ -58,7 +58,7 @@ class SkillContent(StructureContent):
             "skill_name": self.skill_name,
             "description": self.skill_description,
             "state": self.state.value if isinstance(self.state, SkillExecutionState) else self.state,
-            "run_id": self.run_id,
+            "message_id": self.message_id,
         }
         # Add progress info if in progress
         if self.state == SkillExecutionState.IN_PROGRESS:
@@ -117,9 +117,9 @@ class SkillContent(StructureContent):
             progress_text=data_dict.get("progress_text", ""),
             result=data_dict.get("result", ""),
             error_message=data_dict.get("error_message", ""),
-            # Child contents and run_id
+            # Child contents and message_id
             child_contents=data_dict.get("child_contents", []),
-            run_id=data_dict.get("run_id", ""),
+            message_id=data_dict.get("message_id", ""),
             # Legacy fields
             parameters=data_dict.get("parameters", []),
             example_call=data_dict.get("example_call"),

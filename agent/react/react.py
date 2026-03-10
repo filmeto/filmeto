@@ -51,6 +51,7 @@ class React:
         max_steps: int = 20,
         checkpoint_interval: int = 1,
         run_id: Optional[str] = None,
+        message_id: Optional[str] = None,
     ):
         self.workspace = workspace
         self.project_name = project_name
@@ -61,6 +62,7 @@ class React:
         self.max_steps = max_steps
         self.checkpoint_interval = checkpoint_interval
         self.tool_service = ToolService()
+        self.message_id = message_id or ""  # For UI event grouping
 
         if workspace and hasattr(workspace, "get_path"):
             self.workspace_root = workspace.get_path()
@@ -311,6 +313,7 @@ class React:
                 step_id=self.step_id,
                 sender_id=self.react_type,
                 sender_name=self.react_type,
+                message_id=self.message_id,
             ):
                 yield event
 
@@ -482,7 +485,7 @@ class React:
                 max_steps=max_steps,
                 crew_member_name=self.react_type,
                 conversation_id=self.run_id,
-                run_id=self.run_id,
+                message_id=self.message_id,
             ):
                 # Forward all events from skill execution
                 yield event
@@ -531,8 +534,16 @@ class React:
             self.messages.append({"role": "assistant", "content": response_text})
             self.messages.append({"role": "user", "content": f"Error: {error_msg}"})
 
-    async def chat_stream(self, user_message: Optional[str]) -> AsyncGenerator[AgentEvent, None]:
-        """Main ReAct loop with thread safety and iterative pending message processing."""
+    async def chat_stream(self, user_message: Optional[str], message_id: str = "") -> AsyncGenerator[AgentEvent, None]:
+        """Main ReAct loop with thread safety and iterative pending message processing.
+
+        Args:
+            user_message: The user message to process
+            message_id: Message ID for UI event grouping (optional, will use instance's message_id if not provided)
+        """
+        # Update message_id if provided
+        if message_id:
+            self.message_id = message_id
         async with self._loop_lock:
             if self._in_react_loop:
                 # If loop is already running, queue the message and return

@@ -45,7 +45,7 @@ class SkillChat:
         max_steps: int = 10,
         crew_member_name: Optional[str] = None,
         conversation_id: Optional[str] = None,
-        run_id: Optional[str] = None,
+        message_id: Optional[str] = None,
     ) -> AsyncGenerator["AgentEvent", None]:
         """通过 React 流式执行 skill
 
@@ -59,8 +59,8 @@ class SkillChat:
             max_steps: Maximum number of ReAct steps
             crew_member_name: Name of the crew member calling this skill (for react_type uniqueness)
             conversation_id: Unique conversation/session ID (for react_type uniqueness)
-            run_id: Optional external run_id for event tracking. If provided, it will be used
-                   instead of generating a new one, allowing all events to be linked together.
+            message_id: Optional external message_id for event tracking and UI grouping.
+                       If provided, it will be used instead of generating a new one.
 
         Yields:
             AgentEvent objects for skill execution progress (including SKILL_START, SKILL_PROGRESS, SKILL_END, SKILL_ERROR)
@@ -73,10 +73,14 @@ class SkillChat:
         else:
             project_name = getattr(project, 'project_name', 'default_project') if project else 'default_project'
 
-        # Use provided run_id or generate a unique one for this skill execution
+        # Generate internal run_id for React checkpoint (not exposed to UI)
         import uuid
-        if not run_id:
-            run_id = str(uuid.uuid4())[:8]
+        run_id = str(uuid.uuid4())[:8]
+
+        # Use provided message_id or generate one for UI grouping
+        if not message_id:
+            message_id = str(uuid.uuid4())[:8]
+
         step_id = 0
 
         # Build unique react_type to prevent checkpoint pollution
@@ -91,7 +95,7 @@ class SkillChat:
             conversation_part = conversation_id
         else:
             # Generate a unique conversation ID if not provided
-            conversation_part = f"conv_{run_id}"
+            conversation_part = f"conv_{message_id}"
 
         react_type = f"skill_{skill.name}_{crew_member_part}_{conversation_part}"
 
@@ -116,8 +120,9 @@ class SkillChat:
                 progress_text="Starting execution...",
                 title=f"Skill: {skill.name}",
                 description=skill.description,
-                run_id=run_id
-            )
+                message_id=message_id
+            ),
+            message_id=message_id
         )
 
         try:
@@ -168,6 +173,7 @@ class SkillChat:
                 llm_service=llm_service,
                 max_steps=max_steps,
                 run_id=run_id,
+                message_id=message_id,
             )
 
             # Track tool events to emit skill progress
@@ -214,8 +220,9 @@ class SkillChat:
                             progress_percentage=None,
                             title=f"Skill Progress: {skill.name}",
                             description=description_text,
-                            run_id=run_id
-                        )
+                            message_id=message_id
+                        ),
+                        message_id=message_id
                     )
 
             # Emit SKILL_END event on successful completion
@@ -245,8 +252,9 @@ class SkillChat:
                     progress_percentage=100,
                     title=f"Skill Completed: {skill.name}",
                     description=description_text,
-                    run_id=run_id
-                )
+                    message_id=message_id
+                ),
+                message_id=message_id
             )
 
         except Exception as e:
@@ -268,8 +276,9 @@ class SkillChat:
                     error_message=str(e),
                     title=f"Skill Error: {skill.name}",
                     description=f"Error executing skill: {skill.name}",
-                    run_id=run_id
-                )
+                    message_id=message_id
+                ),
+                message_id=message_id
             )
 
     def _build_skill_react_prompt(self, skill, user_question, available_tool_names, args) -> str:
