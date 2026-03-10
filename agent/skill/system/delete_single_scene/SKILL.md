@@ -1,6 +1,9 @@
 ---
 name: delete_single_scene
-description: A skill to delete individual scenes from the screenplay
+description: |-
+  Purpose: Delete individual scenes from the screenplay that are no longer needed.
+  Capabilities: Remove scenes by scene_id, verify deletion status, handle non-existent scenes gracefully.
+  Trigger: When user requests "delete scene", "remove scene", or wants to remove a specific scene by ID.
 ---
 
 # Single Scene Deletion Skill

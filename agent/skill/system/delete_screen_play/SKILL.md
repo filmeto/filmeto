@@ -1,6 +1,9 @@
 ---
 name: delete_screen_play
-description: Delete screenplay scenes from the project. Use this skill when user says "delete screenplay", "clear screenplay", "remove scenes", "delete all scenes", or wants to start fresh with the screenplay.
+description: |-
+  Purpose: Delete multiple or all screenplay scenes from the project for major restructuring or fresh start.
+  Capabilities: Delete all scenes at once or selectively delete specific scenes by IDs, verify deletion status.
+  Trigger: When user says "delete screenplay", "clear screenplay", "remove scenes", "delete all scenes", or wants to start fresh.
 ---
 
 # Screenplay Deletion Skill

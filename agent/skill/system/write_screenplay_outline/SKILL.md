@@ -1,6 +1,9 @@
 ---
 name: write_screenplay_outline
-description: A skill to generate screenplay outlines and create scenes in the project
+description: |-
+  Purpose: Generate complete screenplay outlines from story concepts and automatically create structured scenes.
+  Capabilities: Break down story concept into scenes, assign metadata, follow Hollywood structure, support genre-specific templates.
+  Trigger: When user wants to "generate outline", "create outline from concept", "develop story structure", or start a new screenplay.
 ---
 
 # Screenplay Outline Writing Skill
