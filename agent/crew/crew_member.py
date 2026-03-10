@@ -210,11 +210,12 @@ class CrewMember:
             saw_event = True
 
             # Enhance event with sender information and preserve content
+            # Use the run_id generated at the start of chat_stream to ensure consistency
             enhanced_event = AgentEvent.create(
                 event_type=event.event_type,
                 project_name=event.project_name,
                 react_type=event.react_type,
-                run_id=event.run_id,
+                run_id=run_id,  # Use the run_id from chat_stream, not from react_instance
                 step_id=event.step_id,
                 sender_id=self.config.name,
                 sender_name=self.config.name,
@@ -246,7 +247,7 @@ class CrewMember:
                     event_type=AgentEventType.CREW_MEMBER_TYPING_END.value,
                     project_name=self.project_name,
                     react_type=self.config.name,
-                    run_id=event.run_id,
+                    run_id=run_id,  # Use the run_id from chat_stream
                     step_id=event.step_id,
                     sender_id=self.config.name,
                     sender_name=self.config.name,
@@ -279,7 +280,7 @@ class CrewMember:
                     event_type=AgentEventType.CREW_MEMBER_TYPING_END.value,
                     project_name=self.project_name,
                     react_type=self.config.name,
-                    run_id=event.run_id,
+                    run_id=run_id,  # Use the run_id from chat_stream
                     step_id=event.step_id,
                     sender_id=self.config.name,
                     sender_name=self.config.name,
