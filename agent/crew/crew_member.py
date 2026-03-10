@@ -123,16 +123,13 @@ class CrewMember:
         from agent.react import react_service, AgentEventType, AgentEvent
         from agent.chat.content import TypingContent, TypingState
 
-        # Generate a run_id for this session
-        import uuid
-        run_id = str(uuid.uuid4())
         # Generate a single message_id for all events in this conversation turn
         # This ensures all events (LLM_THINKING, TOOL_*, FINAL, etc.) share the same message_id
         message_id = str(uuid.uuid4())
 
         # First, save the user message to history BEFORE any crew member events
         # This ensures correct ordering: user message -> crew member events
-        self._save_message_to_history("user", message, run_id, sender_id=sender_id, sender_name=sender_name)
+        self._save_message_to_history("user", message, sender_id=sender_id, sender_name=sender_name)
 
         # Then, emit a typing event to give immediate visual feedback
         typing_start_event = AgentEvent.create(
@@ -150,7 +147,7 @@ class CrewMember:
             message_id=message_id
         )
         # Save typing start event to history
-        self._save_event_to_history(typing_start_event, message_id, run_id=run_id)
+        self._save_event_to_history(typing_start_event, message_id)
         yield typing_start_event
 
         if not self.llm_service.validate_config():
@@ -165,7 +162,7 @@ class CrewMember:
                 message_id=message_id
             )
             # Save error event to history
-            self._save_event_to_history(error_event, message_id, run_id=run_id)
+            self._save_event_to_history(error_event, message_id)
             yield error_event
             # Emit typing_end event after error to mark completion
             typing_end_event = AgentEvent.create(
@@ -183,7 +180,7 @@ class CrewMember:
                 message_id=message_id
             )
             # Save typing end event to history
-            self._save_event_to_history(typing_end_event, message_id, run_id=run_id)
+            self._save_event_to_history(typing_end_event, message_id)
             yield typing_end_event
             return
 
@@ -223,7 +220,7 @@ class CrewMember:
 
             # Save ALL events to crew member history for complete traceability
             # Use the same message_id for all events in this conversation turn
-            self._save_event_to_history(enhanced_event, message_id, run_id=run_id)
+            self._save_event_to_history(enhanced_event, message_id)
 
             if event.event_type == AgentEventType.FINAL:
                 # Extract from content or payload (backward compat)
@@ -238,7 +235,7 @@ class CrewMember:
                     self.conversation_history.append({"role": "user", "content": message})
                     self.conversation_history.append({"role": "assistant", "content": final_response})
                     # Save assistant response to history storage
-                    self._save_message_to_history("assistant", final_response, run_id)
+                    self._save_message_to_history("assistant", final_response)
                 # Yield final response first
                 yield enhanced_event
                 # Emit typing_end event after final response to mark completion
@@ -257,7 +254,7 @@ class CrewMember:
                     message_id=message_id
                 )
                 # Save typing end event to history
-                self._save_event_to_history(typing_end_event, message_id, run_id=run_id)
+                self._save_event_to_history(typing_end_event, message_id)
                 yield typing_end_event
                 break
             elif event.event_type == AgentEventType.ERROR:
@@ -271,7 +268,7 @@ class CrewMember:
                 self.conversation_history.append({"role": "user", "content": message})
                 self.conversation_history.append({"role": "assistant", "content": error_message})
                 # Save assistant error to history storage
-                self._save_message_to_history("assistant", error_message, run_id, is_error=True)
+                self._save_message_to_history("assistant", error_message, is_error=True)
                 # Yield error event first
                 yield enhanced_event
                 # Emit typing_end event after error to mark completion
@@ -290,7 +287,7 @@ class CrewMember:
                     message_id=message_id
                 )
                 # Save typing end event to history
-                self._save_event_to_history(typing_end_event, message_id, run_id=run_id)
+                self._save_event_to_history(typing_end_event, message_id)
                 yield typing_end_event
                 break
             else:
@@ -303,7 +300,7 @@ class CrewMember:
         if final_response is None:
             error_msg = "Reached max steps without a final response."
             # Save assistant error to history storage
-            self._save_message_to_history("assistant", error_msg, run_id, is_error=True)
+            self._save_message_to_history("assistant", error_msg, is_error=True)
             # Yield error event first
             error_event = AgentEvent.error(
                 error_message=error_msg,
@@ -313,7 +310,7 @@ class CrewMember:
                 sender_name=self.config.name,
             )
             # Save error event to history
-            self._save_event_to_history(error_event, message_id, run_id=run_id)
+            self._save_event_to_history(error_event, message_id)
             yield error_event
             # Emit typing_end event after error to mark completion
             typing_end_event = AgentEvent.create(
@@ -330,7 +327,7 @@ class CrewMember:
                 )
             )
             # Save typing end event to history
-            self._save_event_to_history(typing_end_event, message_id, run_id=run_id)
+            self._save_event_to_history(typing_end_event, message_id)
             yield typing_end_event
             return
 
@@ -338,7 +335,6 @@ class CrewMember:
         self,
         role: str,
         content: str,
-        run_id: str,
         is_error: bool = False,
         sender_id: Optional[str] = None,
         sender_name: Optional[str] = None,
@@ -349,7 +345,6 @@ class CrewMember:
         Args:
             role: Message role ("user" or "assistant")
             content: Message content
-            run_id: Run ID for this conversation session
             is_error: Whether this is an error message
             sender_id: Sender ID (defaults to role-based: crew member name for assistant, "user" for user)
             sender_name: Sender display name (defaults to sender_id)
@@ -370,7 +365,6 @@ class CrewMember:
 
             message_dict = {
                 "message_id": str(uuid.uuid4()),
-                "run_id": run_id,
                 "role": role,
                 "sender_id": final_sender_id,
                 "sender_name": final_sender_name,
@@ -389,7 +383,7 @@ class CrewMember:
         except Exception as e:
             logger.error(f"Error saving message to history: {e}")
 
-    def _save_event_to_history(self, event: "AgentEvent", message_id: Optional[str] = None, run_id: str = ""):
+    def _save_event_to_history(self, event: "AgentEvent", message_id: Optional[str] = None):
         """
         Save an AgentEvent to the crew member's history storage.
 
@@ -421,7 +415,6 @@ class CrewMember:
             # Build event message dictionary with full event details
             event_dict = {
                 "message_id": event_message_id,
-                "run_id": run_id,
                 "role": "event",  # Special role to identify event messages
                 "sender_id": event.sender_id or self.config.name,
                 "sender_name": event.sender_name or self.config.name,

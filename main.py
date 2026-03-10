@@ -14,6 +14,25 @@ except ImportError:
     # litellm might not be available yet, which is fine
     pass
 
+# Suppress Pydantic serialization warnings from LiteLLM's internal logging
+# These warnings occur when LiteLLM logs responses with mismatched Pydantic model fields
+import warnings
+warnings.filterwarnings(
+    "ignore",
+    message="Pydantic serializer warnings",
+    category=UserWarning
+)
+warnings.filterwarnings(
+    "ignore",
+    message=".*Expected.*fields but got.*",
+    category=UserWarning
+)
+warnings.filterwarnings(
+    "ignore",
+    message=".*Expected.*StreamingChoices.*",
+    category=UserWarning
+)
+
 from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import QApplication
 
