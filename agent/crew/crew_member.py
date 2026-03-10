@@ -330,7 +330,14 @@ class CrewMember:
             yield typing_end_event
             return
 
-    def _save_message_to_history(self, role: str, content: str, run_id: str, is_error: bool = False):
+    def _save_message_to_history(
+        self,
+        role: str,
+        content: str,
+        run_id: str,
+        is_error: bool = False,
+        sender_type: str = "system"
+    ):
         """
         Save a message to the crew member's history storage.
 
@@ -339,6 +346,9 @@ class CrewMember:
             content: Message content
             run_id: Run ID for this conversation session
             is_error: Whether this is an error message
+            sender_type: Type of sender for user role messages - "system" (routed from FilmetoAgent)
+                        or "user" (direct user input). Default is "system" since most messages
+                        come through the message router.
         """
         if not self.workspace or not self.project_name:
             return
@@ -346,12 +356,23 @@ class CrewMember:
         try:
             workspace_path = _get_workspace_path(self.workspace)
 
+            # Determine sender based on role and sender_type
+            if role == "assistant":
+                sender_id = self.config.name
+                sender_name = self.config.name
+            else:
+                # For user role, use sender_type to determine the sender
+                # "system" indicates message was routed from FilmetoAgent
+                # "user" indicates direct user input
+                sender_id = sender_type
+                sender_name = "System" if sender_type == "system" else "User"
+
             message_dict = {
                 "message_id": str(uuid.uuid4()),
                 "run_id": run_id,
                 "role": role,
-                "sender_id": self.config.name if role == "assistant" else "user",
-                "sender_name": self.config.name if role == "assistant" else "User",
+                "sender_id": sender_id,
+                "sender_name": sender_name,
                 "content": content,
                 "timestamp": datetime.now().isoformat(),
                 "crew_title": self.crew_title,
