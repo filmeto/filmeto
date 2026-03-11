@@ -367,6 +367,16 @@ class QmlAgentChatListWidget(BaseWidget):
         if not message_id:
             message_id = str(uuid.uuid4())
 
+        # Check if a message with the same message_id already exists
+        existing_row = self._model.get_row_by_message_id(message_id)
+        if existing_row is not None:
+            # Update existing message instead of adding a new one
+            self._model.update_item(message_id, {
+                self._model.CONTENT: message,
+            })
+            self._scroll_to_bottom(force=True)
+            return message_id
+
         agent_color, agent_icon, crew_member_data = self._metadata_resolver.resolve_agent_metadata(sender)
         start_time = QmlAgentChatListModel._format_start_time(timestamp) if timestamp else ""
         date_group = QmlAgentChatListModel._get_date_group(timestamp) if timestamp else ""

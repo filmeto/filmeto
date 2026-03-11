@@ -51,7 +51,8 @@ Item {
     readonly property var _mainContentTypesLookup: ({
         "text": true, "code_block": true, "image": true, "video": true, "audio": true,
         "link": true, "button": true, "form": true, "file": true, "file_attachment": true,
-        "crew_member_read": true, "crew_member_activity": true
+        "crew_member_read": true, "crew_member_activity": true,
+        "llm_output": true, "final": true
     })
 
     // Deep content hash for change detection
@@ -198,6 +199,9 @@ Item {
             var type = item.content_type || item.type || "text"
 
             if (type === "typing") {
+                // Add typing content to main items for display
+                mainTypes[type] = true
+                mainItems.push(item)
                 var data = item.data || {}
                 if ((data.state || "start") === "start") {
                     hasTypingStart = true
@@ -356,6 +360,8 @@ Item {
             case "metadata": return widgetSupport === "full" ? metadataWidgetComponent : textWidgetComponent
             case "error": return widgetSupport === "full" ? errorWidgetComponent : textWidgetComponent
             case "llm_output": return widgetSupport === "full" ? llmOutputComponent : textWidgetComponent
+            case "typing": return widgetSupport === "full" ? typingComponent : textWidgetComponent
+            case "final": return textWidgetComponent
             case "crew_member_read": return widgetSupport === "full" ? crewMemberReadComponent : textWidgetComponent
             case "crew_member_activity": return widgetSupport === "full" ? crewMemberActivityComponent : textWidgetComponent
             default: return textWidgetComponent
@@ -951,6 +957,26 @@ Item {
             widgetColor: root.widgetColor
             output: data.output || data.data?.output || ""
             title: data.title || data.data?.title || "LLM Output"
+        }
+    }
+
+    // Typing indicator widget
+    Component {
+        id: typingComponent
+
+        Item {
+            property var data: ({})
+
+            width: parent ? parent.width : 0
+            height: 20
+
+            Text {
+                anchors.centerIn: parent
+                // Check both data.state and data.data.state for compatibility
+                text: (data.state || (data.data && data.data.state) || "start") === "end" ? "✓" : "typing..."
+                color: root.textColor
+                font.pixelSize: 12
+            }
         }
     }
 

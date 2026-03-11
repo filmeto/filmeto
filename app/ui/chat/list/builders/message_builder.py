@@ -159,7 +159,15 @@ class MessageBuilder:
                     group["max_gsn"] = msg_gsn
 
             # Track content_id -> highest GSN and collect content items
-            content_list = msg_data.get("content") or []
+            content = msg_data.get("content")
+            # Handle both list and dict content types (events store content as dict)
+            if isinstance(content, dict):
+                content_list = [content]
+            elif isinstance(content, list):
+                content_list = content
+            else:
+                content_list = []
+
             if content_list:
                 cgm = content_gsn_map  # local alias to avoid repeated global lookup
                 for content_item in content_list:
