@@ -222,12 +222,10 @@ class MessageBuilder:
             else:
                 no_id_list.append(item)
 
-        # Single sort: chronological (ascending GSN)
-        ordered = sorted(
-            by_id.values(),
-            key=lambda x: content_gsn_map.get(x.get("content_id", ""), 0)
-        )
-        return ordered + no_id_list + non_dict_items
+        # Single sort: chronological (ascending GSN); no-id items get 0 and sort first
+        to_sort = list(by_id.values()) + no_id_list
+        to_sort.sort(key=lambda x: content_gsn_map.get(x.get("content_id", ""), 0))
+        return to_sort + non_dict_items
 
     def _extract_item_gsn(self, item: ChatListItem) -> int:
         """Extract GSN from a ChatListItem for sorting.

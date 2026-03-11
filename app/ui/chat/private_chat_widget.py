@@ -158,11 +158,13 @@ class PrivateChatWidget(BaseWidget):
             # Use the chat list widget's handle_stream_event to render the event
             self.chat_list_widget.handle_stream_event(mock_event, None)
 
-            # Update the message timestamp if available
+            # Update the message timestamp and formatted startTime if available
             if timestamp and message_id:
+                from app.ui.chat.list.agent_chat_list_model import QmlAgentChatListModel
                 model = self.chat_list_widget._model
                 model.update_item(message_id, {
                     model.TIMESTAMP: timestamp,
+                    model.START_TIME: QmlAgentChatListModel._format_start_time(timestamp),
                 })
 
         except Exception as e:
