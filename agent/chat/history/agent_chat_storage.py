@@ -113,34 +113,11 @@ class MessageLogStorage:
             f.flush()
             os.fsync(f.fileno())
 
-    def _get_offset(self, line_index: int) -> Optional[int]:
-        """
-        Get the byte offset for a given line index using pread.
-
-        Args:
-            line_index: Line index (0-based)
-
-        Returns:
-            Byte offset in data.log, or None if index out of range
-        """
-        if line_index < 0:
-            return None
-
-        offset_position = line_index * Constants.INDEX_ENTRY_SIZE
-
-        try:
-            with open(self.index_path, 'rb') as f:
-                # Use pread to read without moving file pointer
-                data = os.pread(f.fileno(), Constants.INDEX_ENTRY_SIZE, offset_position)
-                if len(data) != Constants.INDEX_ENTRY_SIZE:
-                    return None
-                return struct.unpack('<Q', data)[0]
-        except Exception:
-            return None
-
     def _get_offsets(self, start: int, count: int) -> List[int]:
-        """
-        Get multiple byte offsets using pread.
+        """Get multiple byte offsets in a single pread call.
+
+        Reads the entire needed index slice at once instead of one pread per
+        entry, reducing N syscalls to 1.
 
         Args:
             start: Starting line index
@@ -149,13 +126,23 @@ class MessageLogStorage:
         Returns:
             List of byte offsets
         """
-        offsets = []
-        for i in range(start, start + count):
-            offset = self._get_offset(i)
-            if offset is None:
-                break
-            offsets.append(offset)
-        return offsets
+        if count <= 0:
+            return []
+
+        byte_start = start * Constants.INDEX_ENTRY_SIZE
+        byte_len = count * Constants.INDEX_ENTRY_SIZE
+
+        try:
+            with open(self.index_path, 'rb') as f:
+                data = os.pread(f.fileno(), byte_len, byte_start)
+        except Exception:
+            return []
+
+        n_entries = len(data) // Constants.INDEX_ENTRY_SIZE
+        return [
+            struct.unpack_from('<Q', data, i * Constants.INDEX_ENTRY_SIZE)[0]
+            for i in range(n_entries)
+        ]
 
     def _escape_message(self, message: Dict[str, Any]) -> str:
         """Escape message to single-line JSON format."""
@@ -177,35 +164,6 @@ class MessageLogStorage:
             return json.loads(line)
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse message line: {e}. Line preview: {line[:100]}")
-            return None
-
-    def _read_line_at_offset(self, offset: int) -> Optional[str]:
-        """
-        Read a single line starting at the given offset using pread.
-
-        Args:
-            offset: Byte offset in data.log
-
-        Returns:
-            Line content (without newline), or None if read fails
-        """
-        try:
-            with open(self.data_log_path, 'rb') as f:
-                # Read a reasonable chunk (max 64KB per line)
-                chunk = os.pread(f.fileno(), 65536, offset)
-                if not chunk:
-                    return None
-
-                # Find the newline
-                newline_pos = chunk.find(b'\n')
-                if newline_pos == -1:
-                    # No newline found, read until EOF
-                    return chunk.decode('utf-8').strip()
-
-                line_bytes = chunk[:newline_pos]
-                return line_bytes.decode('utf-8').strip()
-        except Exception as e:
-            logger.error(f"Error reading line at offset {offset}: {e}")
             return None
 
     def append_message(self, message: Dict[str, Any]) -> bool:
@@ -263,10 +221,16 @@ class MessageLogStorage:
         return self._line_count
 
     def get_messages(self, start: int, count: int) -> List[Dict[str, Any]]:
-        """
-        Get messages by range using index-based lookups.
+        """Get messages by range using a single contiguous data read.
 
-        This method uses os.pread() for lock-free concurrent reads.
+        Strategy:
+        1. Read the required index slice in one pread (N+1 offsets so we know
+           where each line ends).
+        2. Read the entire data block from first_offset to last_offset+line in
+           one pread.
+        3. Slice the block by relative offsets — zero per-line syscalls.
+
+        Falls back to per-line reads if the contiguous read fails.
 
         Args:
             start: Starting line index (0-based)
@@ -282,23 +246,55 @@ class MessageLogStorage:
             return []
 
         end = min(start + count, self._line_count)
-        messages = []
+        actual_count = end - start
 
         try:
-            # Get offsets for all requested lines
-            offsets = self._get_offsets(start, end - start)
+            # Read N+1 index entries so we know the end boundary of the last
+            # line (= start of the next entry, or EOF for the very last line).
+            n_index = min(actual_count + 1, self._line_count - start)
+            offsets = self._get_offsets(start, n_index)
 
-            for i, offset in enumerate(offsets):
-                line = self._read_line_at_offset(offset)
-                if line:
-                    msg = self._unescape_message(line)
-                    if msg:
-                        messages.append(msg)
+            if not offsets:
+                return []
+
+            first_offset = offsets[0]
+
+            # Determine the end byte of the last message we care about.
+            if len(offsets) > actual_count:
+                # We have the offset of the entry *after* the last one —
+                # that is the exact end boundary.
+                last_end = offsets[actual_count]
+            else:
+                # Last entry in the file: read to EOF (use a large cap).
+                last_end = first_offset + 10 * 1024 * 1024  # 10 MB safety cap
+
+            block_size = last_end - first_offset
+
+            with open(self.data_log_path, 'rb') as f:
+                block = os.pread(f.fileno(), block_size, first_offset)
+
+            messages = []
+            for i in range(actual_count):
+                rel_start = offsets[i] - first_offset
+                if i + 1 < len(offsets):
+                    rel_end = offsets[i + 1] - first_offset
+                    line_bytes = block[rel_start:rel_end]
+                else:
+                    # Last line: find newline in remaining bytes
+                    line_bytes = block[rel_start:]
+
+                line = line_bytes.decode('utf-8', errors='replace').strip()
+                if not line:
+                    continue
+                msg = self._unescape_message(line)
+                if msg:
+                    messages.append(msg)
+
+            return messages
 
         except Exception as e:
-            logger.error(f"Error reading messages: {e}")
-
-        return messages
+            logger.error(f"Error reading messages (batch): {e}", exc_info=True)
+            return []
 
     def get_latest_messages(self, count: int = 20) -> List[Dict[str, Any]]:
         """
@@ -466,41 +462,28 @@ class MessageLogArchive:
         """Get total line count in archive."""
         return self._line_count
 
-    def _get_offset(self, line_index: int) -> Optional[int]:
-        """Get the byte offset for a given line index."""
-        if line_index < 0:
-            return None
+    def _get_offsets(self, start: int, count: int) -> List[int]:
+        """Get multiple byte offsets in a single pread call."""
+        if count <= 0:
+            return []
 
-        offset_position = line_index * Constants.INDEX_ENTRY_SIZE
+        byte_start = start * Constants.INDEX_ENTRY_SIZE
+        byte_len = count * Constants.INDEX_ENTRY_SIZE
 
         try:
             with open(self.index_path, 'rb') as f:
-                data = os.pread(f.fileno(), Constants.INDEX_ENTRY_SIZE, offset_position)
-                if len(data) != Constants.INDEX_ENTRY_SIZE:
-                    return None
-                return struct.unpack('<Q', data)[0]
+                data = os.pread(f.fileno(), byte_len, byte_start)
         except Exception:
-            return None
+            return []
 
-    def _read_line_at_offset(self, offset: int) -> Optional[str]:
-        """Read a single line starting at the given offset using pread."""
-        try:
-            with open(self.data_log_path, 'rb') as f:
-                chunk = os.pread(f.fileno(), 65536, offset)
-                if not chunk:
-                    return None
-
-                newline_pos = chunk.find(b'\n')
-                if newline_pos == -1:
-                    return chunk.decode('utf-8').strip()
-
-                line_bytes = chunk[:newline_pos]
-                return line_bytes.decode('utf-8').strip()
-        except Exception:
-            return None
+        n_entries = len(data) // Constants.INDEX_ENTRY_SIZE
+        return [
+            struct.unpack_from('<Q', data, i * Constants.INDEX_ENTRY_SIZE)[0]
+            for i in range(n_entries)
+        ]
 
     def get_messages(self, start: int, count: int) -> List[Dict[str, Any]]:
-        """Get messages from archive by range."""
+        """Get messages from archive using a single contiguous data read."""
         if start < 0 or count <= 0:
             return []
 
@@ -508,26 +491,50 @@ class MessageLogArchive:
             return []
 
         end = min(start + count, self._line_count)
-        messages = []
+        actual_count = end - start
 
         try:
-            for i in range(start, end):
-                offset = self._get_offset(i)
-                if offset is None:
-                    break
+            n_index = min(actual_count + 1, self._line_count - start)
+            offsets = self._get_offsets(start, n_index)
 
-                line = self._read_line_at_offset(offset)
-                if line:
-                    try:
-                        msg = json.loads(line)
-                        messages.append(msg)
-                    except json.JSONDecodeError:
-                        pass
+            if not offsets:
+                return []
+
+            first_offset = offsets[0]
+
+            if len(offsets) > actual_count:
+                last_end = offsets[actual_count]
+            else:
+                last_end = first_offset + 10 * 1024 * 1024
+
+            block_size = last_end - first_offset
+
+            with open(self.data_log_path, 'rb') as f:
+                block = os.pread(f.fileno(), block_size, first_offset)
+
+            messages = []
+            for i in range(actual_count):
+                rel_start = offsets[i] - first_offset
+                if i + 1 < len(offsets):
+                    rel_end = offsets[i + 1] - first_offset
+                    line_bytes = block[rel_start:rel_end]
+                else:
+                    line_bytes = block[rel_start:]
+
+                line = line_bytes.decode('utf-8', errors='replace').strip()
+                if not line:
+                    continue
+                try:
+                    msg = json.loads(line)
+                    messages.append(msg)
+                except json.JSONDecodeError:
+                    pass
+
+            return messages
 
         except Exception as e:
-            logger.error(f"Error reading archive: {e}")
-
-        return messages
+            logger.error(f"Error reading archive (batch): {e}")
+            return []
 
     def get_latest_messages(self, count: int = 20) -> List[Dict[str, Any]]:
         """Get latest N messages from archive (most recent first)."""
