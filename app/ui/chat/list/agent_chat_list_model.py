@@ -150,8 +150,36 @@ class QmlAgentChatListModel(QAbstractListModel):
         self.endInsertRows()
         return row
 
+    def add_items_batch(self, items: List[Dict[str, Any]]) -> int:
+        """Append multiple items in a single beginInsertRows/endInsertRows call.
+
+        Compared to calling add_item() N times this emits only one rowsInserted
+        signal, which is significantly faster when loading history pages.
+
+        Args:
+            items: List of message dictionaries to append
+
+        Returns:
+            Row index of the first inserted item, or -1 if items is empty
+        """
+        if not items:
+            return -1
+        first_row = len(self._items)
+        last_row = first_row + len(items) - 1
+        self.beginInsertRows(QModelIndex(), first_row, last_row)
+        for i, item in enumerate(items):
+            self._items.append(item)
+            msg_id = item.get(self.MESSAGE_ID)
+            if msg_id:
+                self._message_id_to_row[msg_id] = first_row + i
+        self.endInsertRows()
+        return first_row
+
     def prepend_items(self, items: List[Dict[str, Any]]) -> int:
         """Insert items at the beginning of the model.
+
+        Only updates the index for new items and offsets existing entries by
+        ``count`` – avoids a full rebuild of ``_message_id_to_row``.
 
         Args:
             items: List of message dictionaries to prepend
@@ -163,13 +191,18 @@ class QmlAgentChatListModel(QAbstractListModel):
             return 0
         count = len(items)
         self.beginInsertRows(QModelIndex(), 0, count - 1)
+
+        # Shift all existing row indices up by `count` in one pass
+        for key in self._message_id_to_row:
+            self._message_id_to_row[key] += count
+
+        # Insert new items and register their indices (0 … count-1)
         self._items = list(items) + self._items
-        # Rebuild index map
-        self._message_id_to_row.clear()
-        for i, item in enumerate(self._items):
+        for i, item in enumerate(items):
             msg_id = item.get(self.MESSAGE_ID)
             if msg_id:
                 self._message_id_to_row[msg_id] = i
+
         self.endInsertRows()
         return count
 

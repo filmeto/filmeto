@@ -227,10 +227,13 @@ class HistoryManager:
                     return
 
                 qml_items = result["qml_items"]
+                # Filter duplicates then insert all at once (single rowsInserted signal)
+                new_qml_items = []
                 for qml_item, msg_id in zip(qml_items, result["message_ids"]):
                     if msg_id not in self._load_state.known_message_ids:
-                        self._model.add_item(qml_item)
+                        new_qml_items.append(qml_item)
                         self._load_state.known_message_ids.add(msg_id)
+                self._model.add_items_batch(new_qml_items)
 
                 self._load_state.active_log_count = result["active_log_count"]
                 self._load_state.current_line_offset = result["active_log_count"]
