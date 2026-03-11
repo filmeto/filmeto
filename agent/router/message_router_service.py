@@ -182,8 +182,7 @@ class MessageRouterService:
         if conversation_history:
             history_lines = []
             for msg in conversation_history:
-                role = msg.get("role", "unknown")
-                sender = msg.get("sender_id", msg.get("sender_name", role))
+                sender = msg.get("sender_id") or msg.get("sender_name") or "unknown"
                 content = msg.get("content", "")
                 if content:
                     # Truncate long messages

@@ -440,7 +440,6 @@ class CrewMember:
             # Build event message dictionary with full event details
             event_dict = {
                 "message_id": event_message_id,
-                "role": "event",  # Special role to identify event messages
                 "sender_id": event.sender_id or self.config.name,
                 "sender_name": event.sender_name or self.config.name,
                 "event_type": event.event_type,
