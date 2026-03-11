@@ -6,7 +6,9 @@ This package contains components that:
 """
 
 from app.ui.chat.list.builders.message_builder import MessageBuilder
+from app.ui.chat.list.builders.message_converter import MessageConverter
 
 __all__ = [
     "MessageBuilder",
+    "MessageConverter",
 ]

@@ -45,6 +45,142 @@ def _invalidate_time_caches_if_needed() -> Any:
     return today
 
 
+def _get_date_group(timestamp) -> str:
+    """Get date group key for message separators (module-level, thread-safe)."""
+    if not timestamp:
+        return ""
+
+    today = _invalidate_time_caches_if_needed()
+    cache_key = (timestamp, today)
+    cached = _date_group_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    if isinstance(timestamp, str):
+        try:
+            msg_date = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+        except ValueError:
+            try:
+                msg_date = datetime.fromtimestamp(float(timestamp))
+            except (ValueError, TypeError):
+                logger.debug(f"Could not parse timestamp: {timestamp}")
+                return ""
+    elif isinstance(timestamp, (int, float)):
+        msg_date = datetime.fromtimestamp(timestamp)
+    else:
+        return ""
+
+    yesterday = today - timedelta(days=1)
+    this_week_start = today - timedelta(days=today.weekday())
+    last_week_start = this_week_start - timedelta(days=7)
+    this_month_start = today.replace(day=1)
+    msg_date_only = msg_date.date()
+
+    if msg_date_only == today:
+        result = "Today"
+    elif msg_date_only == yesterday:
+        result = "Yesterday"
+    elif msg_date_only >= this_week_start:
+        result = "This Week"
+    elif msg_date_only >= last_week_start:
+        result = "Last Week"
+    elif msg_date_only >= this_month_start:
+        result = "This Month"
+    else:
+        result = msg_date.strftime("%B %Y")
+
+    _date_group_cache[cache_key] = result
+    return result
+
+
+def _format_start_time(timestamp) -> str:
+    """Format timestamp as start time with date context (module-level, thread-safe)."""
+    if not timestamp:
+        return ""
+
+    today = _invalidate_time_caches_if_needed()
+    cache_key = (timestamp, today)
+    cached = _start_time_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    try:
+        if isinstance(timestamp, str):
+            msg_date = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+        elif isinstance(timestamp, (int, float)):
+            msg_date = datetime.fromtimestamp(timestamp)
+        else:
+            return ""
+
+        msg_date_only = msg_date.date()
+        if msg_date_only == today:
+            result = msg_date.strftime("%H:%M")
+        elif msg_date_only == today - timedelta(days=1):
+            result = f"昨天 {msg_date.strftime('%H:%M')}"
+        elif msg_date.year == today.year:
+            result = msg_date.strftime("%m-%d %H:%M")
+        else:
+            result = msg_date.strftime("%Y-%m-%d %H:%M")
+    except (ValueError, TypeError):
+        result = ""
+
+    _start_time_cache[cache_key] = result
+    return result
+
+
+def _format_duration(start_timestamp, end_timestamp=None) -> str:
+    """Format duration between timestamps (module-level, thread-safe)."""
+    if not start_timestamp:
+        return ""
+
+    if end_timestamp is not None:
+        cache_key = (start_timestamp, end_timestamp)
+        cached = _duration_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+    try:
+        if isinstance(start_timestamp, str):
+            start_time = datetime.fromisoformat(start_timestamp.replace('Z', '+00:00'))
+        elif isinstance(start_timestamp, (int, float)):
+            start_time = datetime.fromtimestamp(start_timestamp)
+        else:
+            return ""
+
+        if end_timestamp:
+            if isinstance(end_timestamp, str):
+                end_time = datetime.fromisoformat(end_timestamp.replace('Z', '+00:00'))
+            elif isinstance(end_timestamp, (int, float)):
+                end_time = datetime.fromtimestamp(end_timestamp)
+            else:
+                end_time = datetime.now()
+        else:
+            end_time = datetime.now()
+
+        delta = end_time - start_time
+        total_seconds = int(delta.total_seconds())
+
+        if total_seconds < 0:
+            result = ""
+        elif total_seconds < 60:
+            result = f"{total_seconds}s"
+        elif total_seconds < 3600:
+            minutes = total_seconds // 60
+            seconds = total_seconds % 60
+            result = f"{minutes}m {seconds}s" if seconds else f"{minutes}m"
+        else:
+            hours = total_seconds // 3600
+            minutes = (total_seconds % 3600) // 60
+            result = f"{hours}h {minutes}m" if minutes else f"{hours}h"
+
+    except (ValueError, TypeError):
+        result = ""
+
+    if end_timestamp is not None:
+        _duration_cache[(start_timestamp, end_timestamp)] = result
+    return result
+
+
 class QmlAgentChatListModel(QAbstractListModel):
     """QML-compatible model for chat messages.
 
@@ -342,176 +478,16 @@ class QmlAgentChatListModel(QAbstractListModel):
         self.endResetModel()
 
     @staticmethod
-    def _get_date_group(timestamp: Optional[float]) -> str:
-        """Get date group key for message separators.
-
-        Groups messages by: Today / Yesterday / This Week / Last Week /
-        This Month / <Month Year>.  Result is cached keyed on
-        (timestamp, today) and invalidated on day change.
-
-        Args:
-            timestamp: Unix timestamp (float) or ISO 8601 string (str)
-
-        Returns:
-            Date group string
-        """
-        if not timestamp:
-            return ""
-
-        today = _invalidate_time_caches_if_needed()
-        cache_key = (timestamp, today)
-        cached = _date_group_cache.get(cache_key)
-        if cached is not None:
-            return cached
-
-        if isinstance(timestamp, str):
-            try:
-                msg_date = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-            except ValueError:
-                try:
-                    msg_date = datetime.fromtimestamp(float(timestamp))
-                except (ValueError, TypeError):
-                    logger.debug(f"Could not parse timestamp: {timestamp}")
-                    return ""
-        elif isinstance(timestamp, (int, float)):
-            msg_date = datetime.fromtimestamp(timestamp)
-        else:
-            return ""
-
-        yesterday = today - timedelta(days=1)
-        this_week_start = today - timedelta(days=today.weekday())
-        last_week_start = this_week_start - timedelta(days=7)
-        this_month_start = today.replace(day=1)
-        msg_date_only = msg_date.date()
-
-        if msg_date_only == today:
-            result = "Today"
-        elif msg_date_only == yesterday:
-            result = "Yesterday"
-        elif msg_date_only >= this_week_start:
-            result = "This Week"
-        elif msg_date_only >= last_week_start:
-            result = "Last Week"
-        elif msg_date_only >= this_month_start:
-            result = "This Month"
-        else:
-            result = msg_date.strftime("%B %Y")
-
-        _date_group_cache[cache_key] = result
-        return result
+    def _get_date_group(timestamp) -> str:
+        return _get_date_group(timestamp)
 
     @staticmethod
     def _format_start_time(timestamp) -> str:
-        """Format timestamp as start time with date context.
-
-        Display format: "HH:MM" (today) / "昨天 HH:MM" / "MM-DD HH:MM" /
-        "YYYY-MM-DD HH:MM".  Result is cached keyed on (timestamp, today)
-        and invalidated on day change.
-
-        Args:
-            timestamp: Unix timestamp (float) or ISO 8601 string
-
-        Returns:
-            Formatted time string
-        """
-        if not timestamp:
-            return ""
-
-        today = _invalidate_time_caches_if_needed()
-        cache_key = (timestamp, today)
-        cached = _start_time_cache.get(cache_key)
-        if cached is not None:
-            return cached
-
-        try:
-            if isinstance(timestamp, str):
-                msg_date = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-            elif isinstance(timestamp, (int, float)):
-                msg_date = datetime.fromtimestamp(timestamp)
-            else:
-                return ""
-
-            msg_date_only = msg_date.date()
-            if msg_date_only == today:
-                result = msg_date.strftime("%H:%M")
-            elif msg_date_only == today - timedelta(days=1):
-                result = f"昨天 {msg_date.strftime('%H:%M')}"
-            elif msg_date.year == today.year:
-                result = msg_date.strftime("%m-%d %H:%M")
-            else:
-                result = msg_date.strftime("%Y-%m-%d %H:%M")
-        except (ValueError, TypeError):
-            result = ""
-
-        _start_time_cache[cache_key] = result
-        return result
+        return _format_start_time(timestamp)
 
     @staticmethod
     def _format_duration(start_timestamp, end_timestamp=None) -> str:
-        """Format duration between start and end timestamps.
-
-        When end_timestamp is provided the result is stable and cached keyed
-        on (start_timestamp, end_timestamp).  Open-ended durations
-        (end_timestamp=None) always compute against datetime.now() and are
-        never cached.
-
-        Args:
-            start_timestamp: Start time (Unix timestamp or ISO string)
-            end_timestamp: End time (defaults to now if None)
-
-        Returns:
-            Formatted duration string (e.g., "45s", "2m 30s", "1h 15m")
-        """
-        if not start_timestamp:
-            return ""
-
-        # Only cache when both endpoints are fixed
-        if end_timestamp is not None:
-            cache_key = (start_timestamp, end_timestamp)
-            cached = _duration_cache.get(cache_key)
-            if cached is not None:
-                return cached
-
-        try:
-            if isinstance(start_timestamp, str):
-                start_time = datetime.fromisoformat(start_timestamp.replace('Z', '+00:00'))
-            elif isinstance(start_timestamp, (int, float)):
-                start_time = datetime.fromtimestamp(start_timestamp)
-            else:
-                return ""
-
-            if end_timestamp:
-                if isinstance(end_timestamp, str):
-                    end_time = datetime.fromisoformat(end_timestamp.replace('Z', '+00:00'))
-                elif isinstance(end_timestamp, (int, float)):
-                    end_time = datetime.fromtimestamp(end_timestamp)
-                else:
-                    end_time = datetime.now()
-            else:
-                end_time = datetime.now()
-
-            delta = end_time - start_time
-            total_seconds = int(delta.total_seconds())
-
-            if total_seconds < 0:
-                result = ""
-            elif total_seconds < 60:
-                result = f"{total_seconds}s"
-            elif total_seconds < 3600:
-                minutes = total_seconds // 60
-                seconds = total_seconds % 60
-                result = f"{minutes}m {seconds}s" if seconds else f"{minutes}m"
-            else:
-                hours = total_seconds // 3600
-                minutes = (total_seconds % 3600) // 60
-                result = f"{hours}h {minutes}m" if minutes else f"{hours}h"
-
-        except (ValueError, TypeError):
-            result = ""
-
-        if end_timestamp is not None:
-            _duration_cache[(start_timestamp, end_timestamp)] = result
-        return result
+        return _format_duration(start_timestamp, end_timestamp)
 
     @staticmethod
     def _serialize_structured_content(structured_content: List[StructureContent]) -> List[Dict[str, Any]]:
@@ -535,206 +511,13 @@ class QmlAgentChatListModel(QAbstractListModel):
 
     @classmethod
     def from_chat_list_item(cls, chat_list_item: 'ChatListItem') -> Dict[str, Any]:
-        """Convert a ChatListItem to QML model item.
+        """Convert a ChatListItem to a QML model dict.
 
-        Args:
-            chat_list_item: ChatListItem instance
-
-        Returns:
-            Dictionary suitable for QML model
+        Delegates to MessageConverter which is safe to call from background
+        threads (no Qt objects touched).
         """
-        from app.ui.chat.list.agent_chat_list_items import ChatListItem
-        from agent.chat.content import TextContent, ThinkingContent, TypingContent, ToolCallContent
-        from agent.chat.content import ContentType
-        from utils.i18n_utils import tr
-
-        if not isinstance(chat_list_item, ChatListItem):
-            return {}
-
-        # Get timestamp from metadata
-        # For user messages: use chat_list_item.metadata
-        # For agent messages: use agent_message.metadata (with fallback to chat_list_item.metadata)
-        timestamp = None
-        if chat_list_item.is_user:
-            # User message: get timestamp from item metadata
-            timestamp = chat_list_item.metadata.get('timestamp')
-        elif chat_list_item.agent_message and chat_list_item.agent_message.metadata:
-            # Agent message: prefer agent_message metadata
-            timestamp = chat_list_item.agent_message.metadata.get('timestamp')
-            if not timestamp:
-                timestamp = chat_list_item.metadata.get('timestamp')
-
-        # Extract text content for quick access
-        content = ""
-        if chat_list_item.is_user:
-            content = chat_list_item.user_content
-        elif chat_list_item.agent_message:
-            # Extract content based on content type
-            for sc in chat_list_item.agent_message.structured_content:
-                sc_type = sc.content_type if hasattr(sc, 'content_type') else ContentType.TEXT
-
-                if sc_type == ContentType.TEXT and isinstance(sc, TextContent):
-                    content = sc.text or ""
-                    break
-                elif sc_type == ContentType.THINKING:
-                    if isinstance(sc, ThinkingContent):
-                        content = sc.thought or ""
-                    elif hasattr(sc, 'data') and isinstance(sc.data, dict):
-                        content = sc.data.get('thought', '')
-                    break
-                elif sc_type == ContentType.PROGRESS:
-                    if hasattr(sc, 'data') and isinstance(sc.data, dict):
-                        content = sc.data.get('progress', '')
-                    break
-                elif sc_type == ContentType.TOOL_CALL:
-                    if hasattr(sc, 'data') and isinstance(sc.data, dict):
-                        tool_name = sc.data.get('tool_name', '')
-                        if tool_name:
-                            content = f"调用工具: {tool_name}"
-                    break
-                elif sc_type == ContentType.TYPING:
-                    # Skip typing indicators for content display
-                    continue
-
-            # If still no content, try to get from any content item
-            if not content:
-                for sc in chat_list_item.agent_message.structured_content:
-                    if hasattr(sc, 'text') and sc.text:
-                        content = sc.text
-                        break
-                    elif hasattr(sc, 'data') and isinstance(sc.data, dict):
-                        data = sc.data
-                        if 'text' in data:
-                            text_value = data['text']
-                            # Check if text contains a JSON code block that needs parsing
-                            if text_value and isinstance(text_value, str):
-                                # Try to extract JSON from markdown code blocks
-                                import re
-                                # Match ```json\n{...}\n``` or ```\n{...}\n```
-                                json_match = re.search(r'```(?:json)?\s*\n([\s\S]*?)\n```', text_value)
-                                if json_match:
-                                    try:
-                                        inner_json = json_match.group(1).strip()
-                                        parsed = json.loads(inner_json)
-                                        # Extract 'final' field if it's a response wrapper
-                                        if isinstance(parsed, dict) and 'final' in parsed:
-                                            content = parsed['final']
-                                        elif isinstance(parsed, str):
-                                            content = parsed
-                                        else:
-                                            content = text_value
-                                    except (json.JSONDecodeError, TypeError, ValueError) as e:
-                                        logger.debug(f"Failed to parse JSON code block: {e}, using original text")
-                                        # If parsing fails, use original text
-                                        content = text_value
-                                else:
-                                    content = text_value
-                            else:
-                                content = text_value
-                            break
-                        elif 'progress' in data:
-                            content = data['progress']
-                            break
-                        elif 'thought' in data:
-                            content = data['thought']
-                            break
-                        elif 'tool_name' in data:
-                            content = f"工具: {data['tool_name']}"
-                            break
-
-            # Use "..." for command/typing messages with no extractable content
-            if not content and chat_list_item.agent_message:
-                # Check if message is system/typing/metadata type without real content
-                # Derive from first structured content item
-                message_type = None
-                if chat_list_item.agent_message.structured_content:
-                    message_type = chat_list_item.agent_message.structured_content[0].content_type
-
-                if message_type in {ContentType.METADATA, ContentType.TYPING, ContentType.PROGRESS}:
-                    # Check if there's actual content (not just typing)
-                    has_real_content = any(
-                        hasattr(sc, 'content_type') and sc.content_type != ContentType.TYPING
-                        for sc in chat_list_item.agent_message.structured_content
-                    )
-                    if not has_real_content:
-                        content = "..."  # Placeholder for processing state
-
-        # Determine primary content type for delegate selection
-        # Priority: text > thinking > progress > tool_call > typing
-        content_type = "text"
-        if not chat_list_item.is_user and chat_list_item.agent_message:
-            # Find the most relevant content type (excluding typing)
-            type_priority = [
-                ContentType.TEXT,
-                ContentType.THINKING,
-                ContentType.PROGRESS,
-                ContentType.TOOL_CALL,
-                ContentType.TYPING,
-            ]
-            for sc in chat_list_item.agent_message.structured_content:
-                if hasattr(sc, 'content_type'):
-                    ct = sc.content_type
-                    if ct in type_priority and ct != ContentType.TYPING:
-                        content_type = ct.value
-                        break
-            # Only use typing if there's nothing else
-            if content_type == "text" and not content:
-                for sc in chat_list_item.agent_message.structured_content:
-                    if hasattr(sc, 'content_type') and sc.content_type == ContentType.TYPING:
-                        content_type = "typing"
-                        break
-
-        # Serialize structured content
-        structured_content = []
-        if not chat_list_item.is_user and chat_list_item.agent_message:
-            structured_content = cls._serialize_structured_content(
-                chat_list_item.agent_message.structured_content
-            )
-
-        # Format start time and duration
-        start_time = cls._format_start_time(timestamp)
-
-        # Calculate duration
-        duration = ""
-        if chat_list_item.is_user:
-            # User message: get end_timestamp from item metadata
-            end_timestamp = chat_list_item.metadata.get('end_timestamp')
-            if end_timestamp:
-                duration = cls._format_duration(timestamp, end_timestamp)
-        elif chat_list_item.agent_message:
-            # Agent message: check for typing indicator and end timestamp
-            has_typing = any(
-                hasattr(sc, 'content_type') and sc.content_type == ContentType.TYPING
-                for sc in chat_list_item.agent_message.structured_content
-            )
-            # Get end timestamp from metadata if available
-            end_timestamp = None
-            if chat_list_item.agent_message.metadata:
-                end_timestamp = chat_list_item.agent_message.metadata.get('end_timestamp')
-
-            # Only show duration if message is complete or has explicit end time
-            if not has_typing or end_timestamp:
-                duration = cls._format_duration(timestamp, end_timestamp)
-
-        result = {
-            cls.MESSAGE_ID: chat_list_item.message_id,
-            cls.SENDER_ID: chat_list_item.sender_id,
-            cls.SENDER_NAME: chat_list_item.sender_name,
-            cls.IS_USER: chat_list_item.is_user,
-            cls.CONTENT: content,
-            cls.AGENT_COLOR: chat_list_item.agent_color,
-            cls.AGENT_ICON: chat_list_item.agent_icon,
-            cls.CREW_METADATA: chat_list_item.crew_member_metadata,
-            cls.STRUCTURED_CONTENT: structured_content,
-            cls.CONTENT_TYPE: content_type,
-            cls.IS_READ: True,
-            cls.TIMESTAMP: timestamp,
-            cls.DATE_GROUP: cls._get_date_group(timestamp),
-            cls.START_TIME: start_time,
-            cls.DURATION: duration,
-        }
-        result[cls.CREW_READ_BY] = getattr(chat_list_item, "crew_read_by", None) or []
-        return result
+        from app.ui.chat.list.builders.message_converter import MessageConverter
+        return MessageConverter.from_chat_list_item(chat_list_item)
 
     @classmethod
     def from_agent_message(
@@ -742,61 +525,14 @@ class QmlAgentChatListModel(QAbstractListModel):
         agent_message: AgentMessage,
         agent_color: str = "#4a90e2",
         agent_icon: str = "🤖",
-        crew_metadata: Optional[Dict[str, Any]] = None
+        crew_metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Convert an AgentMessage to QML model item.
+        """Convert an AgentMessage to a QML model dict.
 
-        Args:
-            agent_message: AgentMessage instance
-            agent_color: Display color for agent
-            agent_icon: Display icon for agent
-            crew_metadata: Additional crew member metadata
-
-        Returns:
-            Dictionary suitable for QML model
+        Delegates to MessageConverter which is safe to call from background
+        threads (no Qt objects touched).
         """
-        timestamp = None
-        if agent_message.metadata:
-            timestamp = agent_message.metadata.get('timestamp')
-
-        # Determine primary content type
-        content_type = "text"
-        for sc in agent_message.structured_content:
-            if sc.content_type != ContentType.TEXT:
-                content_type = sc.content_type.value
-                break
-
-        structured_content = cls._serialize_structured_content(
-            agent_message.structured_content
+        from app.ui.chat.list.builders.message_converter import MessageConverter
+        return MessageConverter.from_agent_message(
+            agent_message, agent_color, agent_icon, crew_metadata
         )
-
-        # Format start time and duration
-        start_time = cls._format_start_time(timestamp)
-        has_typing = any(
-            hasattr(sc, 'content_type') and sc.content_type == ContentType.TYPING
-            for sc in agent_message.structured_content
-        )
-        end_timestamp = None
-        if agent_message.metadata:
-            end_timestamp = agent_message.metadata.get('end_timestamp')
-        duration = cls._format_duration(timestamp, end_timestamp) if (not has_typing or end_timestamp) else ""
-
-        result = {
-            cls.MESSAGE_ID: agent_message.message_id,
-            cls.SENDER_ID: agent_message.sender_id,
-            cls.SENDER_NAME: agent_message.sender_name,
-            cls.IS_USER: False,
-            cls.CONTENT: "",  # Use structuredContent instead
-            cls.AGENT_COLOR: agent_color,
-            cls.AGENT_ICON: agent_icon,
-            cls.CREW_METADATA: crew_metadata or {},
-            cls.STRUCTURED_CONTENT: structured_content,
-            cls.CONTENT_TYPE: content_type,
-            cls.IS_READ: True,
-            cls.TIMESTAMP: timestamp,
-            cls.DATE_GROUP: cls._get_date_group(timestamp),
-            cls.START_TIME: start_time,
-            cls.DURATION: duration,
-        }
-        result[cls.CREW_READ_BY] = []
-        return result

@@ -192,9 +192,10 @@ class HistoryManager:
                     if msg_gsn > 0 and msg_gsn < min_gsn:
                         min_gsn = msg_gsn
 
+                from app.ui.chat.list.builders.message_converter import MessageConverter
                 items = message_builder.build_items_from_raw_messages(raw_messages)
                 qml_items = [
-                    self._model.from_chat_list_item(item) for item in items
+                    MessageConverter.from_chat_list_item(item) for item in items
                 ]
 
                 return {
@@ -307,10 +308,11 @@ class HistoryManager:
                     if msg_gsn > 0 and msg_gsn < batch_min_gsn:
                         batch_min_gsn = msg_gsn
 
+                from app.ui.chat.list.builders.message_converter import MessageConverter
                 all_items = message_builder.build_items_from_raw_messages(older_messages)
                 new_items = [i for i in all_items if i.message_id not in known_ids_snapshot]
                 qml_items = [
-                    self._model.from_chat_list_item(item) for item in new_items
+                    MessageConverter.from_chat_list_item(item) for item in new_items
                 ]
 
                 return {
