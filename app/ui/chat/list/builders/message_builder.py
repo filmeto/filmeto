@@ -54,6 +54,7 @@ class MessageBuilder:
         """
         self._metadata_resolver = metadata_resolver
         self._model = model
+        self._skill_state_priority: Optional[Dict[str, int]] = None
 
     @staticmethod
     def _copy_content_item(item: Dict[str, Any]) -> Dict[str, Any]:
@@ -195,9 +196,10 @@ class MessageBuilder:
     ) -> List[Dict[str, Any]]:
         """Deduplicate content items by content_id, keeping the highest GSN version.
 
-        For metadata content, we use deterministic content_id based on
-        (message_id, event_type). When multiple entries have the same content_id
-        (due to updates), we keep the one with the highest GSN.
+        Single pass to build by content_id; one sort for chronological order.
+        For metadata content, we use deterministic content_id. When multiple
+        entries have the same content_id, we keep one (content_gsn_map already
+        has max GSN per id from grouping).
 
         Args:
             content_items: List of content items to deduplicate
@@ -206,37 +208,26 @@ class MessageBuilder:
         Returns:
             Deduplicated list of content items with highest GSN for each content_id
         """
-        # Separate dict and non-dict items
-        dict_items = [item for item in content_items if isinstance(item, dict)]
-        non_dict_items = [item for item in content_items if not isinstance(item, dict)]
+        by_id: Dict[str, Dict[str, Any]] = {}
+        no_id_list: List[Dict[str, Any]] = []
+        non_dict_items: List[Any] = []
 
-        # Sort dict items by GSN descending (highest first)
-        # This ensures we keep the latest version for duplicates
-        dict_items.sort(
-            key=lambda x: content_gsn_map.get(x.get("content_id", ""), 0),
-            reverse=True
-        )
-
-        seen_content_ids = set()
-        deduplicated = []
-
-        for content_item in dict_items:
-            content_id = content_item.get("content_id", "")
-            if content_id and content_id in seen_content_ids:
+        for item in content_items:
+            if not isinstance(item, dict):
+                non_dict_items.append(item)
                 continue
+            content_id = item.get("content_id", "") or ""
             if content_id:
-                seen_content_ids.add(content_id)
-            deduplicated.append(content_item)
+                by_id[content_id] = item
+            else:
+                no_id_list.append(item)
 
-        # Add back non-dict items
-        deduplicated.extend(non_dict_items)
-
-        # Restore chronological order (ascending GSN) after deduplication
-        deduplicated.sort(
+        # Single sort: chronological (ascending GSN)
+        ordered = sorted(
+            by_id.values(),
             key=lambda x: content_gsn_map.get(x.get("content_id", ""), 0)
         )
-
-        return deduplicated
+        return ordered + no_id_list + non_dict_items
 
     def _extract_item_gsn(self, item: ChatListItem) -> int:
         """Extract GSN from a ChatListItem for sorting.
@@ -620,62 +611,47 @@ class MessageBuilder:
         return result
 
     def _get_skill_state_priority(self) -> Dict[str, int]:
-        """Get the priority mapping for skill execution states.
+        """Get the priority mapping for skill execution states (cached).
 
         Higher priority states override lower ones during merging.
-
-        Returns:
-            Dictionary mapping state values to priority levels (higher = more important)
         """
-        from agent.chat.content import SkillExecutionState
-        return {
-            SkillExecutionState.ERROR.value: 4,
-            SkillExecutionState.COMPLETED.value: 3,
-            SkillExecutionState.IN_PROGRESS.value: 2,
-            SkillExecutionState.PENDING.value: 1,
-        }
+        if self._skill_state_priority is None:
+            from agent.chat.content import SkillExecutionState
+            self._skill_state_priority = {
+                SkillExecutionState.ERROR.value: 4,
+                SkillExecutionState.COMPLETED.value: 3,
+                SkillExecutionState.IN_PROGRESS.value: 2,
+                SkillExecutionState.PENDING.value: 1,
+            }
+        return self._skill_state_priority
 
     def _determine_base_skill_entry(self, entries: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Determine which skill entry should be used as the base for merging.
 
-        Uses state priority to select the most important entry as the base.
-        If all entries have the same priority (e.g., all in_progress),
-        the last entry (most recent) is used.
-
-        Args:
-            entries: List of skill content entries (dict format)
-
-        Returns:
-            The entry that should be used as base
+        Single pass: find max-priority entry; if all same priority and in_progress,
+        use the last (most recent) entry.
         """
         state_priority = self._get_skill_state_priority()
+        in_progress_prio = state_priority.get("in_progress", 2)
 
-        # Sort entries by state priority (highest first)
-        sorted_entries = sorted(
-            entries,
-            key=lambda e: state_priority.get(
-                e.get("data", {}).get("state", ""),
-                0
-            ),
-            reverse=True
+        best_entry = entries[0]
+        best_prio = state_priority.get(
+            best_entry.get("data", {}).get("state", ""), 0
         )
+        all_same = True
 
-        # Check if all entries have the same state priority
-        highest_priority = state_priority.get(
-            sorted_entries[0].get("data", {}).get("state", ""),
-            0
-        )
-        all_same_priority = all(
-            state_priority.get(e.get("data", {}).get("state", ""), 0) == highest_priority
-            for e in entries
-        )
+        for e in entries[1:]:
+            prio = state_priority.get(e.get("data", {}).get("state", ""), 0)
+            if prio > best_prio:
+                best_entry = e
+                best_prio = prio
+                all_same = False
+            elif prio != best_prio:
+                all_same = False
 
-        # If all are in_progress with same priority, use the last (most recent)
-        # Otherwise use the highest priority entry
-        if all_same_priority and highest_priority == state_priority.get("in_progress", 2):
+        if all_same and best_prio == in_progress_prio:
             return entries[-1]
-        else:
-            return sorted_entries[0]
+        return best_entry
 
     def _merge_child_contents(self, entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Merge child contents from multiple skill entries.
