@@ -16,7 +16,6 @@ class StopReason(str, Enum):
 class ReactConfig:
     """Default configuration values for React."""
     DEFAULT_MAX_STEPS = 20
-    DEFAULT_CHECKPOINT_INTERVAL = 1
     DEFAULT_MAX_INSTANCES = 100
     DEFAULT_TEMPERATURE = 0.7
     DEFAULT_TIMEOUT_SECONDS = 300  # 5 minutes

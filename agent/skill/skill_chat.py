@@ -73,7 +73,7 @@ class SkillChat:
         else:
             project_name = getattr(project, 'project_name', 'default_project') if project else 'default_project'
 
-        # Generate internal run_id for React checkpoint (not exposed to UI)
+        # Generate internal run_id for React (event correlation)
         import uuid
         run_id = str(uuid.uuid4())[:8]
 
@@ -83,7 +83,7 @@ class SkillChat:
 
         step_id = 0
 
-        # Build unique react_type to prevent checkpoint pollution
+        # Build unique react_type to isolate conversations
         # Format: skill_{skill_name}_{crew_member}_{conversation_id}
         # This ensures different conversations and different crew members are isolated
         if crew_member_name:
