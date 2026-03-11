@@ -391,7 +391,6 @@ class CrewMember:
 
             message_dict = {
                 "message_id": message_id if message_id else str(uuid.uuid4()),
-                "role": role,
                 "sender_id": final_sender_id,
                 "sender_name": final_sender_name,
                 "content": content,
