@@ -318,6 +318,8 @@ class QmlAgentChatListWidget(BaseWidget):
             The message ID
         """
         message_id = str(uuid.uuid4())
+        start_time = QmlAgentChatListModel._format_start_time(timestamp) if timestamp else ""
+        date_group = QmlAgentChatListModel._get_date_group(timestamp) if timestamp else ""
 
         item = {
             self._model.MESSAGE_ID: message_id,
@@ -333,7 +335,8 @@ class QmlAgentChatListWidget(BaseWidget):
             self._model.IS_READ: True,
             self._model.CREW_READ_BY: [],
             self._model.TIMESTAMP: timestamp,
-            self._model.DATE_GROUP: "",
+            self._model.START_TIME: start_time,
+            self._model.DATE_GROUP: date_group,
         }
 
         self._model.add_item(item)
@@ -365,6 +368,8 @@ class QmlAgentChatListWidget(BaseWidget):
             message_id = str(uuid.uuid4())
 
         agent_color, agent_icon, crew_member_data = self._metadata_resolver.resolve_agent_metadata(sender)
+        start_time = QmlAgentChatListModel._format_start_time(timestamp) if timestamp else ""
+        date_group = QmlAgentChatListModel._get_date_group(timestamp) if timestamp else ""
 
         item = {
             self._model.MESSAGE_ID: message_id,
@@ -379,7 +384,8 @@ class QmlAgentChatListWidget(BaseWidget):
             self._model.CONTENT_TYPE: "text",
             self._model.IS_READ: True,
             self._model.TIMESTAMP: timestamp,
-            self._model.DATE_GROUP: "",
+            self._model.START_TIME: start_time,
+            self._model.DATE_GROUP: date_group,
         }
 
         self._model.add_item(item)
