@@ -7,10 +7,18 @@ This service provides:
 - Message storage for crew member conversations
 - History query support (get latest, get after/before offset, get by GSN)
 - Reuses MessageLogStorage for high-performance storage
+
+Signal:
+    crew_member_message_saved is emitted after a message is successfully
+    written to storage. UI components (e.g. PrivateChatWidget) can listen
+    to this signal to render system-routed messages in real-time.
+    Args: sender, workspace_path (str), project_name (str),
+          crew_title (str), message (dict)
 """
 
 import logging
 import os
+import blinker
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from threading import Lock
@@ -18,6 +26,9 @@ from threading import Lock
 from agent.chat.history.agent_chat_storage import MessageLogStorage
 
 logger = logging.getLogger(__name__)
+
+# Signal emitted when a message is written to a crew member's private history.
+crew_member_message_saved = blinker.Signal()
 
 
 class CrewMemberHistoryService:
@@ -82,6 +93,9 @@ class CrewMemberHistoryService:
         """
         Add a message to crew member history.
 
+        After a successful write, emits ``crew_member_message_saved`` so that
+        open PrivateChatWidget instances can render the message immediately.
+
         Args:
             workspace_path: Path to workspace
             project_name: Name of project
@@ -92,7 +106,19 @@ class CrewMemberHistoryService:
             True if successful
         """
         storage = self.get_storage(workspace_path, project_name, crew_title)
-        return storage.append_message(message)
+        success = storage.append_message(message)
+        if success:
+            try:
+                crew_member_message_saved.send(
+                    self,
+                    workspace_path=workspace_path,
+                    project_name=project_name,
+                    crew_title=crew_title,
+                    message=message,
+                )
+            except Exception as e:
+                logger.error(f"Error emitting crew_member_message_saved signal: {e}")
+        return success
 
     def get_latest_messages(
         self,

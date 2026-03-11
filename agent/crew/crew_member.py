@@ -251,9 +251,9 @@ class CrewMember:
                 if final_response:
                     self.conversation_history.append({"role": "user", "content": message})
                     self.conversation_history.append({"role": "assistant", "content": final_response})
-                    # Save assistant response to history storage (skip if response goes to group chat)
+                    # Save assistant response with same message_id as group chat for consistent grouping
                     if record_to_private_history:
-                        self._save_message_to_history("assistant", final_response)
+                        self._save_message_to_history("assistant", final_response, message_id=message_id)
                 # Yield final response first
                 yield enhanced_event
                 # Emit typing_end event after final response to mark completion
@@ -286,9 +286,8 @@ class CrewMember:
                     error_message = "Unknown error occurred"
                 self.conversation_history.append({"role": "user", "content": message})
                 self.conversation_history.append({"role": "assistant", "content": error_message})
-                # Save assistant error to history storage (skip if response goes to group chat)
                 if record_to_private_history:
-                    self._save_message_to_history("assistant", error_message, is_error=True)
+                    self._save_message_to_history("assistant", error_message, is_error=True, message_id=message_id)
                 # Yield error event first
                 yield enhanced_event
                 # Emit typing_end event after error to mark completion
@@ -320,9 +319,8 @@ class CrewMember:
 
         if final_response is None:
             error_msg = "Reached max steps without a final response."
-            # Save assistant error to history storage (skip if response goes to group chat)
             if record_to_private_history:
-                self._save_message_to_history("assistant", error_msg, is_error=True)
+                self._save_message_to_history("assistant", error_msg, is_error=True, message_id=message_id)
             # Yield error event first
             error_event = AgentEvent.error(
                 error_message=error_msg,
@@ -362,6 +360,7 @@ class CrewMember:
         is_error: bool = False,
         sender_id: Optional[str] = None,
         sender_name: Optional[str] = None,
+        message_id: Optional[str] = None,
     ):
         """
         Save a message to the crew member's history storage.
@@ -372,6 +371,9 @@ class CrewMember:
             is_error: Whether this is an error message
             sender_id: Sender ID (defaults to role-based: crew member name for assistant, "user" for user)
             sender_name: Sender display name (defaults to sender_id)
+            message_id: Optional message ID. When provided (e.g. for assistant final response),
+                       use it so private history aligns with group chat message_id and messages
+                       are not split when loaded by message_builder.
         """
         if not self.workspace or not self.project_name:
             return
@@ -388,7 +390,7 @@ class CrewMember:
                 final_sender_name = sender_name or "User"
 
             message_dict = {
-                "message_id": str(uuid.uuid4()),
+                "message_id": message_id if message_id else str(uuid.uuid4()),
                 "role": role,
                 "sender_id": final_sender_id,
                 "sender_name": final_sender_name,
