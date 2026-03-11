@@ -60,10 +60,18 @@ class MessageBuilder:
     def _copy_content_item(item: Dict[str, Any]) -> Dict[str, Any]:
         """Return an independent copy of a content item dict.
 
-        Used when appending content to merged lists so the model owns its data.
-        Single-item deepcopy is kept here; bulk copies are avoided elsewhere.
+        Content items have at most two mutable levels: the top-level dict and
+        the 'data' sub-dict. A two-level shallow copy is sufficient to prevent
+        callers from sharing mutable state without the cost of a full deepcopy.
+        Nested values inside 'data' (strings, numbers, lists-of-strings) are
+        immutable or are replaced wholesale on update, so shallow is safe.
         """
-        return copy.deepcopy(item)
+        result = dict(item)
+        if "data" in result and isinstance(result["data"], dict):
+            result["data"] = dict(result["data"])
+        if "metadata" in result and isinstance(result["metadata"], dict):
+            result["metadata"] = dict(result["metadata"])
+        return result
 
     def _resolve_crew_read_by(
         self, raw_crew_members: Optional[List[Dict[str, Any]]]
@@ -163,30 +171,30 @@ class MessageBuilder:
             # Collect content items
             message_groups[message_id]["content_items"].extend(content_list)
 
-        # Build items from grouped messages with deduplication
+        # Sort groups by max_gsn before building so the result is already in
+        # chronological order. Sorting lightweight group dicts avoids calling
+        # _extract_item_gsn() on fully-constructed ChatListItem objects.
+        sorted_groups = sorted(message_groups.values(), key=lambda g: g["max_gsn"])
+
         items = []
-        for message_id, group_data in message_groups.items():
+        for group_data in sorted_groups:
+            message_id = group_data["base"].get("message_id") or ""
             logger.debug(f"Building item for message_id: {message_id[:8]}, content_items count: {len(group_data['content_items'])}")
 
-            # Apply smart deduplication
             deduplicated_content = self._deduplicate_content_items(
                 group_data["content_items"],
                 content_gsn_map
             )
 
-            # Create combined message
             combined_msg = dict(group_data["base"])
             combined_msg["content"] = deduplicated_content
 
             logger.debug(f"  Combined content count: {len(deduplicated_content)}, types: {[c.get('content_type') for c in deduplicated_content if isinstance(c, dict)]}")
 
-            # Build item from combined message
             item = self.build_item_from_history(combined_msg)
             if item:
                 items.append(item)
 
-        # Sort by max GSN to get chronological order
-        items.sort(key=lambda item: self._extract_item_gsn(item))
         return items
 
     def _deduplicate_content_items(
@@ -807,7 +815,8 @@ class MessageBuilder:
         for child in base_children:
             child_id = child.get("content_id") if isinstance(child, dict) else None
             all_children.append(
-                MessageBuilder._copy_content_item(child) if isinstance(child, dict) else copy.deepcopy(child)
+                MessageBuilder._copy_content_item(child) if isinstance(child, dict)
+                else copy.copy(child)
             )
             if child_id:
                 seen_ids.add(child_id)
@@ -818,7 +827,8 @@ class MessageBuilder:
             if child_id and child_id in seen_ids:
                 continue
             all_children.append(
-                MessageBuilder._copy_content_item(child) if isinstance(child, dict) else copy.deepcopy(child)
+                MessageBuilder._copy_content_item(child) if isinstance(child, dict)
+                else copy.copy(child)
             )
             if child_id:
                 seen_ids.add(child_id)
