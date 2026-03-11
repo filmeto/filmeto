@@ -134,42 +134,40 @@ class MessageBuilder:
         content_gsn_map: Dict[str, int] = {}
 
         for msg_data in raw_messages:
-            message_id = msg_data.get("message_id") or msg_data.get("metadata", {}).get("message_id", "")
+            # Cache metadata dict once – avoids two separate .get("metadata", {}) calls
+            meta = msg_data.get("metadata") or {}
+            message_id = msg_data.get("message_id") or meta.get("message_id", "")
             if not message_id:
                 continue
 
-            # Get GSN for this message
-            msg_gsn = msg_data.get("metadata", {}).get("gsn", 0)
+            msg_gsn: int = meta.get("gsn", 0)
 
-            # Initialize group if needed
-            if message_id not in message_groups:
+            group = message_groups.get(message_id)
+            if group is None:
                 message_groups[message_id] = {
                     "base": msg_data,
                     "content_items": [],
-                    "max_gsn": msg_gsn
+                    "max_gsn": msg_gsn,
                 }
-            else:
                 group = message_groups[message_id]
+            else:
                 # Prefer message with text content as base (not crew_member_read only)
-                # crew_member_read may have same sender_id as user message
-                current_base_type = (group["base"].get("message_type") or "")
-                new_type = (msg_data.get("message_type") or "")
-                if new_type == "text" and current_base_type != "text":
+                if (msg_data.get("message_type") or "") == "text" and \
+                        (group["base"].get("message_type") or "") != "text":
                     group["base"] = msg_data
-                # Update max GSN
                 if msg_gsn > group["max_gsn"]:
                     group["max_gsn"] = msg_gsn
 
-            # Track content_id -> GSN mapping
-            content_list = msg_data.get("content", [])
-            for content_item in content_list:
-                if isinstance(content_item, dict):
-                    content_id = content_item.get("content_id")
-                    if content_id and msg_gsn > content_gsn_map.get(content_id, 0):
-                        content_gsn_map[content_id] = msg_gsn
-
-            # Collect content items
-            message_groups[message_id]["content_items"].extend(content_list)
+            # Track content_id -> highest GSN and collect content items
+            content_list = msg_data.get("content") or []
+            if content_list:
+                cgm = content_gsn_map  # local alias to avoid repeated global lookup
+                for content_item in content_list:
+                    if isinstance(content_item, dict):
+                        content_id = content_item.get("content_id")
+                        if content_id and msg_gsn > cgm.get(content_id, 0):
+                            cgm[content_id] = msg_gsn
+                group["content_items"].extend(content_list)
 
         # Sort groups by max_gsn before building so the result is already in
         # chronological order. Sorting lightweight group dicts avoids calling
@@ -224,16 +222,19 @@ class MessageBuilder:
             if not isinstance(item, dict):
                 non_dict_items.append(item)
                 continue
-            content_id = item.get("content_id", "") or ""
+            content_id = item.get("content_id") or ""
             if content_id:
                 by_id[content_id] = item
             else:
                 no_id_list.append(item)
 
-        # Single sort: chronological (ascending GSN); no-id items get 0 and sort first
-        to_sort = list(by_id.values()) + no_id_list
-        to_sort.sort(key=lambda x: content_gsn_map.get(x.get("content_id", ""), 0))
-        return to_sort + non_dict_items
+        # Build (gsn, item) pairs once so the sort key is a plain int lookup,
+        # not a repeated dict.get() call.
+        cgm = content_gsn_map
+        keyed = [(cgm.get(cid, 0), item) for cid, item in by_id.items()]
+        keyed += [(0, item) for item in no_id_list]
+        keyed.sort(key=lambda t: t[0])
+        return [item for _, item in keyed] + non_dict_items
 
     def _extract_item_gsn(self, item: ChatListItem) -> int:
         """Extract GSN from a ChatListItem for sorting.
