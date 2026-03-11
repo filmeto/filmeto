@@ -83,6 +83,8 @@ class ReactStorage:
                 pending_user_messages=data['pending_user_messages'],
                 last_tool_calls=data.get('last_tool_calls'),
                 last_tool_results=data.get('last_tool_results'),
+                todo_state=data.get('todo_state'),
+                todo_patches=data.get('todo_patches'),
                 created_at=data.get('created_at', time.time()),
                 updated_at=data.get('updated_at', time.time())
             )
