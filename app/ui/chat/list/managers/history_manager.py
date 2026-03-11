@@ -16,6 +16,7 @@ from typing import Dict, List, Any, Optional, TYPE_CHECKING, Callable
 from PySide6.QtCore import QTimer
 
 from app.ui.chat.list.agent_chat_list_items import LoadState
+from app.ui.worker.worker import run_in_background, BackgroundWorker
 
 if TYPE_CHECKING:
     from app.data.workspace import Workspace
@@ -76,6 +77,11 @@ class HistoryManager:
         # New data check timer
         self._new_data_check_timer = QTimer()
         self._new_data_check_timer.timeout.connect(self._check_for_new_data)
+
+        # Guard flags for async loads
+        self._loading_recent = False
+        self._recent_worker: Optional[BackgroundWorker] = None
+        self._older_worker: Optional[BackgroundWorker] = None
 
         # Callbacks (to be set by widget)
         self._on_load_more_callback: Optional[Callable] = None
@@ -139,52 +145,44 @@ class HistoryManager:
         return self._history
 
     def load_recent_conversation(self) -> None:
-        """Load recent conversation from history.
+        """Load recent conversation from history off the UI thread.
 
-        Storage layer returns raw messages as stored (no merging).
-        MessageBuilder handles ALL grouping and merging logic.
-
-        This ensures consistency between history loading and real-time streaming.
+        The heavy work (disk IO + message building) runs in a BackgroundWorker.
+        Only Qt-model mutations run on the main thread in the finished callback.
         """
-        try:
-            project = self._workspace.get_project()
-            if not project:
-                logger.warning("No project found, skipping history load")
-                return
+        if self._loading_recent:
+            return
+        self._loading_recent = True
 
-            history = self.get_history()
-            if not history:
-                logger.warning("Could not get history instance")
-                return
+        workspace_path = self._workspace.workspace_path
+        project_name = self._workspace.project_name
+        page_size = self.PAGE_SIZE
+        message_builder = self._message_builder
 
-            # Get raw messages from storage (no merging done by storage layer)
-            raw_messages = history.get_latest_messages(count=self.PAGE_SIZE)
+        def _fetch() -> Optional[Dict[str, Any]]:
+            """Runs in background thread: IO + parsing, no Qt model access."""
+            try:
+                project = self._workspace.get_project()
+                if not project:
+                    return None
 
-            # Update load state
-            self._load_state.active_log_count = history.storage.get_message_count()
-            self._load_state.current_line_offset = self._load_state.active_log_count
+                history = self.get_history()
+                if not history:
+                    return None
 
-            # Initialize GSN tracking if not already set
-            if self._load_state.current_gsn == 0:
+                raw_messages = history.get_latest_messages(count=page_size)
+                active_log_count = history.storage.get_message_count()
+                total_count = history.get_total_count()
+
+                current_gsn = 0
                 try:
                     from agent.chat.history.agent_chat_history_service import FastMessageHistoryService
-                    self._load_state.current_gsn = FastMessageHistoryService.get_current_gsn(
-                        self._workspace.workspace_path,
-                        self._workspace.project_name
+                    current_gsn = FastMessageHistoryService.get_current_gsn(
+                        workspace_path, project_name
                     )
-                    logger.debug(f"Initialized current GSN: {self._load_state.current_gsn}")
                 except Exception as e:
-                    logger.debug(f"Could not initialize GSN tracking (using legacy mode): {e}")
+                    logger.debug(f"Could not initialize GSN tracking: {e}")
 
-            # Clear model for fresh load
-            self._model.clear()
-            self._load_state.known_message_ids.clear()
-            self._load_state.unique_message_count = 0
-            self._load_state.total_loaded_count = 0
-            self._load_state.has_more_older = False
-
-            if raw_messages:
-                # Track GSN range
                 max_gsn = 0
                 min_gsn = float('inf')
                 for msg_data in raw_messages:
@@ -194,54 +192,83 @@ class HistoryManager:
                     if msg_gsn > 0 and msg_gsn < min_gsn:
                         min_gsn = msg_gsn
 
-                # Update GSN tracking
-                self._load_state.last_seen_gsn = max_gsn
-                self._load_state.min_loaded_gsn = min_gsn if min_gsn != float('inf') else 0
-                logger.debug(f"Updated GSN range: min={self._load_state.min_loaded_gsn}, max={self._load_state.last_seen_gsn}")
+                items = message_builder.build_items_from_raw_messages(raw_messages)
+                qml_items = [
+                    self._model.from_chat_list_item(item) for item in items
+                ]
 
-                # Delegate ALL grouping and merging to MessageBuilder
-                # This ensures consistency with real-time streaming
-                items = self._message_builder.build_items_from_raw_messages(raw_messages)
+                return {
+                    "qml_items": qml_items,
+                    "raw_count": len(raw_messages),
+                    "total_count": total_count,
+                    "active_log_count": active_log_count,
+                    "max_gsn": max_gsn,
+                    "min_gsn": min_gsn if min_gsn != float('inf') else 0,
+                    "current_gsn": current_gsn,
+                    "message_ids": [item.message_id for item in items],
+                }
+            except Exception as e:
+                logger.error(f"Background fetch error (recent): {e}", exc_info=True)
+                return None
 
-                # Load into model
-                for item in items:
-                    if item.message_id not in self._load_state.known_message_ids:
-                        qml_item = self._model.from_chat_list_item(item)
+        def _on_finished(result: Optional[Dict[str, Any]]) -> None:
+            """Runs on main thread: update Qt model and load state."""
+            self._loading_recent = False
+            self._recent_worker = None
+            try:
+                self._model.clear()
+                self._load_state.known_message_ids.clear()
+                self._load_state.unique_message_count = 0
+                self._load_state.total_loaded_count = 0
+                self._load_state.has_more_older = False
+
+                if not result:
+                    logger.info("No messages found in history")
+                    return
+
+                qml_items = result["qml_items"]
+                for qml_item, msg_id in zip(qml_items, result["message_ids"]):
+                    if msg_id not in self._load_state.known_message_ids:
                         self._model.add_item(qml_item)
-                        self._load_state.known_message_ids.add(item.message_id)
+                        self._load_state.known_message_ids.add(msg_id)
 
-                self._load_state.unique_message_count = len(items)
-                # Track raw message count for accurate has_more_older detection
-                self._load_state.total_loaded_count = len(raw_messages)
+                self._load_state.active_log_count = result["active_log_count"]
+                self._load_state.current_line_offset = result["active_log_count"]
+                self._load_state.last_seen_gsn = result["max_gsn"]
+                self._load_state.min_loaded_gsn = result["min_gsn"]
+                self._load_state.unique_message_count = len(qml_items)
+                self._load_state.total_loaded_count = result["raw_count"]
+                self._load_state.has_more_older = result["raw_count"] < result["total_count"]
+                if result["current_gsn"] > 0 and self._load_state.current_gsn == 0:
+                    self._load_state.current_gsn = result["current_gsn"]
 
-                # Fix has_more_older logic: compare raw message count with total in storage
-                # This is more accurate than comparing unique message count
-                total_count = history.get_total_count()
-                self._load_state.has_more_older = self._load_state.total_loaded_count < total_count
+                logger.info(
+                    f"Loaded {len(qml_items)} unique messages from {result['raw_count']} "
+                    f"raw records (total in storage: {result['total_count']})"
+                )
 
-                logger.info(f"Loaded {len(items)} unique messages from {len(raw_messages)} raw records (total in storage: {total_count})")
-
-                # Force QML to update model binding
                 if self._refresh_qml_callback:
                     self._refresh_qml_callback()
-
-                # Scroll to bottom after loading
                 if self._scroll_to_bottom_callback:
                     QTimer.singleShot(0, lambda: self._scroll_to_bottom_callback(force=True))
 
-            else:
-                self._model.clear()
-                self._load_state.known_message_ids.clear()
-                logger.info("No messages found in history")
+            except Exception as e:
+                logger.error(f"Error applying recent conversation to model: {e}", exc_info=True)
 
-        except Exception as e:
-            logger.error(f"Error loading recent conversation: {e}", exc_info=True)
+        def _on_error(msg: str, exc) -> None:
+            self._loading_recent = False
+            self._recent_worker = None
+            logger.error(f"Background load_recent_conversation error: {msg}")
+
+        self._recent_worker = run_in_background(
+            _fetch, on_finished=_on_finished, on_error=_on_error
+        )
 
     def load_older_messages(self) -> None:
-        """Load older messages when user scrolls to top.
+        """Load older messages when user scrolls to top (background thread).
 
-        Storage layer returns raw messages as stored (no merging).
-        MessageBuilder handles ALL grouping and merging logic.
+        The heavy work (disk IO + message building) runs in a BackgroundWorker.
+        Only Qt-model mutations and load-state updates run on the main thread.
         """
         if self._loading_older or not self._load_state.has_more_older:
             return
@@ -250,78 +277,116 @@ class HistoryManager:
         if self._qml_root:
             self._qml_root.setProperty("isLoadingOlder", True)
 
-        try:
-            # Use enhanced history with GSN support
-            from agent.chat.history.global_sequence_manager import get_enhanced_history
+        min_loaded_gsn = self._load_state.min_loaded_gsn
+        known_ids_snapshot = set(self._load_state.known_message_ids)
+        page_size = self.PAGE_SIZE
+        message_builder = self._message_builder
+        workspace_path = self._workspace.workspace_path
+        project_name = self._workspace.project_name
 
-            enhanced_history = get_enhanced_history(
-                self._workspace.workspace_path,
-                self._workspace.project_name
-            )
+        def _fetch() -> Optional[Dict[str, Any]]:
+            """Runs in background thread: IO + parsing."""
+            try:
+                from agent.chat.history.global_sequence_manager import get_enhanced_history
 
-            # Use GSN-based cursor instead of line_offset
-            max_gsn = self._load_state.min_loaded_gsn
-            older_messages = enhanced_history.get_messages_before_gsn(max_gsn, count=self.PAGE_SIZE)
+                enhanced_history = get_enhanced_history(workspace_path, project_name)
+                older_messages = enhanced_history.get_messages_before_gsn(
+                    min_loaded_gsn, count=page_size
+                )
+                total_count = enhanced_history.get_total_count()
 
-            if not older_messages:
-                self._load_state.has_more_older = False
-                return
+                if not older_messages:
+                    return {"empty": True, "total_count": total_count}
 
-            # Track min GSN in this batch for next load
-            batch_min_gsn = self._load_state.min_loaded_gsn
-            for msg_data in older_messages:
-                msg_gsn = msg_data.get('metadata', {}).get('gsn', 0)
-                if msg_gsn > 0 and msg_gsn < batch_min_gsn:
-                    batch_min_gsn = msg_gsn
+                batch_min_gsn = min_loaded_gsn
+                for msg_data in older_messages:
+                    msg_gsn = msg_data.get('metadata', {}).get('gsn', 0)
+                    if msg_gsn > 0 and msg_gsn < batch_min_gsn:
+                        batch_min_gsn = msg_gsn
 
-            # Delegate ALL grouping and merging to MessageBuilder
-            # This ensures consistency with real-time streaming
-            all_items = self._message_builder.build_items_from_raw_messages(older_messages)
+                all_items = message_builder.build_items_from_raw_messages(older_messages)
+                new_items = [i for i in all_items if i.message_id not in known_ids_snapshot]
+                qml_items = [
+                    self._model.from_chat_list_item(item) for item in new_items
+                ]
 
-            # Filter out already known message_ids
-            items = []
-            for item in all_items:
-                if item.message_id not in self._load_state.known_message_ids:
-                    items.append(item)
-                    self._load_state.known_message_ids.add(item.message_id)
+                return {
+                    "empty": False,
+                    "qml_items": qml_items,
+                    "message_ids": [i.message_id for i in new_items],
+                    "raw_count": len(older_messages),
+                    "batch_min_gsn": batch_min_gsn,
+                    "total_count": total_count,
+                }
+            except Exception as e:
+                logger.error(f"Background fetch error (older): {e}", exc_info=True)
+                return None
 
-            if items:
-                # Save the first visible message ID and item count before prepending
-                first_visible_id = None
-                item_count_before_load = self._model.rowCount()
-                if self._get_first_visible_message_id_callback:
-                    first_visible_id = self._get_first_visible_message_id_callback()
+        def _on_finished(result: Optional[Dict[str, Any]]) -> None:
+            """Runs on main thread: update Qt model and load state."""
+            try:
+                if not result or result.get("empty"):
+                    self._load_state.has_more_older = False
+                    return
 
-                # Convert to QML format and prepend
-                qml_items = [self._model.from_chat_list_item(item) for item in items]
-                self._model.prepend_items(qml_items)
+                qml_items = result["qml_items"]
+                new_ids = result["message_ids"]
 
-                self._load_state.unique_message_count += len(items)
-                # Track raw message count for accurate has_more_older detection
-                self._load_state.total_loaded_count += len(older_messages)
-                # Update GSN cursor only if it actually changed
-                if batch_min_gsn < self._load_state.min_loaded_gsn:
-                    self._load_state.min_loaded_gsn = batch_min_gsn
+                if qml_items:
+                    first_visible_id = None
+                    item_count_before_load = self._model.rowCount()
+                    if self._get_first_visible_message_id_callback:
+                        first_visible_id = self._get_first_visible_message_id_callback()
 
-                self._prune_model_bottom()
+                    self._model.prepend_items(qml_items)
+                    for msg_id in new_ids:
+                        self._load_state.known_message_ids.add(msg_id)
 
-                # Restore scroll position after a delay to let QML update
-                if first_visible_id and self._restore_scroll_position_callback:
-                    saved_id = first_visible_id
-                    QTimer.singleShot(0, lambda: self._restore_scroll_position_callback(saved_id, item_count_before_load))
+                    self._load_state.unique_message_count += len(qml_items)
+                    self._load_state.total_loaded_count += result["raw_count"]
 
-                logger.debug(f"Prepended {len(items)} older messages from {len(older_messages)} raw records, new min_gsn={self._load_state.min_loaded_gsn}")
+                    if result["batch_min_gsn"] < self._load_state.min_loaded_gsn:
+                        self._load_state.min_loaded_gsn = result["batch_min_gsn"]
 
-            # Fix has_more_older logic: use raw message count for accurate detection
-            total_count = enhanced_history.get_total_count()
-            self._load_state.has_more_older = self._load_state.total_loaded_count < total_count
+                    self._prune_model_bottom()
 
-        except Exception as e:
-            logger.error(f"Error loading older messages: {e}", exc_info=True)
-        finally:
+                    if first_visible_id and self._restore_scroll_position_callback:
+                        saved_id = first_visible_id
+                        QTimer.singleShot(
+                            0,
+                            lambda: self._restore_scroll_position_callback(
+                                saved_id, item_count_before_load
+                            ),
+                        )
+
+                    logger.debug(
+                        f"Prepended {len(qml_items)} older messages from "
+                        f"{result['raw_count']} raw records, "
+                        f"new min_gsn={self._load_state.min_loaded_gsn}"
+                    )
+
+                self._load_state.has_more_older = (
+                    self._load_state.total_loaded_count < result["total_count"]
+                )
+
+            except Exception as e:
+                logger.error(f"Error applying older messages to model: {e}", exc_info=True)
+            finally:
+                self._loading_older = False
+                self._older_worker = None
+                if self._qml_root:
+                    self._qml_root.setProperty("isLoadingOlder", False)
+
+        def _on_error(msg: str, exc) -> None:
             self._loading_older = False
+            self._older_worker = None
             if self._qml_root:
                 self._qml_root.setProperty("isLoadingOlder", False)
+            logger.error(f"Background load_older_messages error: {msg}")
+
+        self._older_worker = run_in_background(
+            _fetch, on_finished=_on_finished, on_error=_on_error
+        )
 
     def _prune_model_bottom(self) -> None:
         """Remove excess items from bottom in one batch."""
