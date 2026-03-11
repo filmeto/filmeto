@@ -106,6 +106,8 @@ class CrewMember:
         plan_id: Optional[str] = None,
         sender_id: str = "user",
         sender_name: str = "User",
+        message_id: Optional[str] = None,
+        record_to_private_history: bool = True,
     ) -> AsyncIterator["AgentEvent"]:
         """
         Stream chat responses as ReactEvent objects.
@@ -116,6 +118,13 @@ class CrewMember:
             sender_id: ID of the message sender. Use "user" for direct private chat,
                       "system" or other values for group chat routing.
             sender_name: Display name of the sender.
+            message_id: Optional message ID. If not provided, generates a new one.
+                       When called from group chat routing, pass the same message_id
+                       to ensure consistency between group and private chat messages.
+            record_to_private_history: Whether to record events to crew member's
+                      private history. Set to False when the response will be sent
+                      to group chat (send_main_content_to_agent=True) to avoid
+                      duplicate recording.
 
         Yields:
             ReactEvent: Events from the ReAct execution process
@@ -125,11 +134,14 @@ class CrewMember:
 
         # Generate a single message_id for all events in this conversation turn
         # This ensures all events (LLM_THINKING, TOOL_*, FINAL, etc.) share the same message_id
-        message_id = str(uuid.uuid4())
+        # Use provided message_id for consistency with group chat
+        message_id = message_id or str(uuid.uuid4())
 
         # First, save the user message to history BEFORE any crew member events
         # This ensures correct ordering: user message -> crew member events
-        self._save_message_to_history("user", message, sender_id=sender_id, sender_name=sender_name)
+        # Skip saving to private history if response will be sent to group chat
+        if record_to_private_history:
+            self._save_message_to_history("user", message, sender_id=sender_id, sender_name=sender_name)
 
         # Then, emit a typing event to give immediate visual feedback
         typing_start_event = AgentEvent.create(
@@ -146,8 +158,9 @@ class CrewMember:
             ),
             message_id=message_id
         )
-        # Save typing start event to history
-        self._save_event_to_history(typing_start_event, message_id)
+        # Save typing start event to history (skip if response goes to group chat)
+        if record_to_private_history:
+            self._save_event_to_history(typing_start_event, message_id)
         yield typing_start_event
 
         if not self.llm_service.validate_config():
@@ -161,8 +174,9 @@ class CrewMember:
                 sender_name=self.config.name,
                 message_id=message_id
             )
-            # Save error event to history
-            self._save_event_to_history(error_event, message_id)
+            # Save error event to history (skip if response goes to group chat)
+            if record_to_private_history:
+                self._save_event_to_history(error_event, message_id)
             yield error_event
             # Emit typing_end event after error to mark completion
             typing_end_event = AgentEvent.create(
@@ -179,8 +193,9 @@ class CrewMember:
                 ),
                 message_id=message_id
             )
-            # Save typing end event to history
-            self._save_event_to_history(typing_end_event, message_id)
+            # Save typing end event to history (skip if response goes to group chat)
+            if record_to_private_history:
+                self._save_event_to_history(typing_end_event, message_id)
             yield typing_end_event
             return
 
@@ -220,7 +235,9 @@ class CrewMember:
 
             # Save ALL events to crew member history for complete traceability
             # Use the same message_id for all events in this conversation turn
-            self._save_event_to_history(enhanced_event, message_id)
+            # Skip saving to private history if response goes to group chat
+            if record_to_private_history:
+                self._save_event_to_history(enhanced_event, message_id)
 
             if event.event_type == AgentEventType.FINAL:
                 # Extract from content or payload (backward compat)
@@ -234,8 +251,9 @@ class CrewMember:
                 if final_response:
                     self.conversation_history.append({"role": "user", "content": message})
                     self.conversation_history.append({"role": "assistant", "content": final_response})
-                    # Save assistant response to history storage
-                    self._save_message_to_history("assistant", final_response)
+                    # Save assistant response to history storage (skip if response goes to group chat)
+                    if record_to_private_history:
+                        self._save_message_to_history("assistant", final_response)
                 # Yield final response first
                 yield enhanced_event
                 # Emit typing_end event after final response to mark completion
@@ -253,8 +271,9 @@ class CrewMember:
                     ),
                     message_id=message_id
                 )
-                # Save typing end event to history
-                self._save_event_to_history(typing_end_event, message_id)
+                # Save typing end event to history (skip if response goes to group chat)
+                if record_to_private_history:
+                    self._save_event_to_history(typing_end_event, message_id)
                 yield typing_end_event
                 break
             elif event.event_type == AgentEventType.ERROR:
@@ -267,8 +286,9 @@ class CrewMember:
                     error_message = "Unknown error occurred"
                 self.conversation_history.append({"role": "user", "content": message})
                 self.conversation_history.append({"role": "assistant", "content": error_message})
-                # Save assistant error to history storage
-                self._save_message_to_history("assistant", error_message, is_error=True)
+                # Save assistant error to history storage (skip if response goes to group chat)
+                if record_to_private_history:
+                    self._save_message_to_history("assistant", error_message, is_error=True)
                 # Yield error event first
                 yield enhanced_event
                 # Emit typing_end event after error to mark completion
@@ -286,8 +306,9 @@ class CrewMember:
                     ),
                     message_id=message_id
                 )
-                # Save typing end event to history
-                self._save_event_to_history(typing_end_event, message_id)
+                # Save typing end event to history (skip if response goes to group chat)
+                if record_to_private_history:
+                    self._save_event_to_history(typing_end_event, message_id)
                 yield typing_end_event
                 break
             else:
@@ -299,8 +320,9 @@ class CrewMember:
 
         if final_response is None:
             error_msg = "Reached max steps without a final response."
-            # Save assistant error to history storage
-            self._save_message_to_history("assistant", error_msg, is_error=True)
+            # Save assistant error to history storage (skip if response goes to group chat)
+            if record_to_private_history:
+                self._save_message_to_history("assistant", error_msg, is_error=True)
             # Yield error event first
             error_event = AgentEvent.error(
                 error_message=error_msg,
@@ -309,8 +331,9 @@ class CrewMember:
                 sender_id=self.config.name,
                 sender_name=self.config.name,
             )
-            # Save error event to history
-            self._save_event_to_history(error_event, message_id)
+            # Save error event to history (skip if response goes to group chat)
+            if record_to_private_history:
+                self._save_event_to_history(error_event, message_id)
             yield error_event
             # Emit typing_end event after error to mark completion
             typing_end_event = AgentEvent.create(
@@ -326,8 +349,9 @@ class CrewMember:
                     state=TypingState.END
                 )
             )
-            # Save typing end event to history
-            self._save_event_to_history(typing_end_event, message_id)
+            # Save typing end event to history (skip if response goes to group chat)
+            if record_to_private_history:
+                self._save_event_to_history(typing_end_event, message_id)
             yield typing_end_event
             return
 
