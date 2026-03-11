@@ -22,7 +22,6 @@ from .types import (
     AgentEvent,
     AgentEventType,
     ReactStatus,
-    CheckpointData,
     ReactAction,
     ToolAction,
     FinalAction,
@@ -31,7 +30,6 @@ from .types import (
     ActionType,
     TodoState,
 )
-from .storage import ReactStorage
 
 
 class React:
@@ -49,7 +47,6 @@ class React:
         available_tool_names: Optional[List[str]] = None,
         llm_service: Optional[LlmService] = None,
         max_steps: int = 20,
-        checkpoint_interval: int = 1,
         run_id: Optional[str] = None,
         message_id: Optional[str] = None,
     ):
@@ -60,7 +57,6 @@ class React:
         self.available_tool_names = available_tool_names or []
         self.llm_service = llm_service or LlmService(workspace)
         self.max_steps = max_steps
-        self.checkpoint_interval = checkpoint_interval
         self.tool_service = ToolService()
         self.message_id = message_id or ""  # For UI event grouping
 
@@ -69,21 +65,13 @@ class React:
         else:
             self.workspace_root = "workspace"
 
-        self.storage = ReactStorage(
-            project_name=project_name,
-            react_type=react_type,
-            workspace_root=self.workspace_root,
-        )
-
-        # Priority: external run_id > checkpoint run_id > empty string
-        self.run_id: str = ""
+        self.run_id: str = run_id or ""
         self.step_id: int = 0
         self.status: str = ReactStatus.IDLE
         self.messages: List[Dict[str, str]] = []
         self.pending_user_messages: List[str] = []
         self._in_react_loop: bool = False
         self._loop_lock = asyncio.Lock()
-        self._steps_since_checkpoint: int = 0
 
         # Metrics
         self._total_llm_calls: int = 0
@@ -94,22 +82,6 @@ class React:
         # TODO state
         self.todo_state = TodoState()
         self._pending_todo_update = None
-
-        # Set run_id from external parameter if provided
-        if run_id:
-            self.run_id = run_id
-        else:
-            # Try to restore from checkpoint
-            checkpoint = self.storage.load_checkpoint()
-            if checkpoint and checkpoint.status == ReactStatus.RUNNING:
-                self.run_id = checkpoint.run_id
-                self.step_id = checkpoint.step_id
-                self.status = checkpoint.status
-                self.messages = checkpoint.messages
-                self.pending_user_messages = list(checkpoint.pending_user_messages)
-                # Restore TODO state from checkpoint
-                if checkpoint.todo_state:
-                    self.todo_state = TodoState.from_dict(checkpoint.todo_state)
 
     def _create_event(self, event_type: str, content=None) -> AgentEvent:
         """
@@ -129,30 +101,6 @@ class React:
             step_id=self.step_id,
             content=content
         )
-
-    def _update_checkpoint(self) -> None:
-        """Save checkpoint state to storage."""
-        checkpoint_data = CheckpointData(
-            run_id=self.run_id,
-            step_id=self.step_id,
-            status=self.status,
-            messages=self.messages,
-            pending_user_messages=self.pending_user_messages,
-            last_tool_calls=[],
-            last_tool_results=[],
-            todo_state=self.todo_state.to_dict(),
-        )
-        try:
-            self.storage.save_checkpoint(checkpoint_data)
-        except (IOError, OSError) as e:
-            logger.error(f"Failed to save checkpoint: {e}")
-
-    def _maybe_update_checkpoint(self) -> None:
-        """Update checkpoint only if enough steps have passed."""
-        self._steps_since_checkpoint += 1
-        if self._steps_since_checkpoint >= self.checkpoint_interval:
-            self._update_checkpoint()
-            self._steps_since_checkpoint = 0
 
     def _drain_pending_messages(self) -> List[str]:
         messages = self.pending_user_messages[:]
@@ -174,7 +122,6 @@ class React:
             self.run_id = f"run_{uuid.uuid4().hex[:16]}_{self.project_name}_{self.react_type}"
         self.step_id = 0
         self.status = ReactStatus.RUNNING
-        self._steps_since_checkpoint = 0
 
         # Reset metrics for new run
         self._total_llm_calls = 0
@@ -547,7 +494,6 @@ class React:
                 # If loop is already running, queue the message and return
                 if user_message:
                     self.pending_user_messages.append(user_message)
-                    self._maybe_update_checkpoint()
                 return
 
             # Add initial user message
@@ -562,7 +508,6 @@ class React:
                 self._start_new_run(pending_messages)
 
             self._in_react_loop = True
-            self._maybe_update_checkpoint()
 
         try:
             # Main ReAct loop - iteratively process all messages
@@ -570,7 +515,6 @@ class React:
                 # Process messages until we reach a terminal state
                 for step in range(self.step_id, self.max_steps):
                     self.step_id = step
-                    self._maybe_update_checkpoint()
 
                     # Check for new pending messages (added while we're processing)
                     new_pending = self._drain_pending_messages()
@@ -668,7 +612,6 @@ class React:
                     if action.is_final():
                         assert isinstance(action, FinalAction), f"Expected FinalAction, got {type(action)}"
                         self.status = ReactStatus.FINAL
-                        self._update_checkpoint()
                         final_payload = action.to_final_payload()
                         yield self._create_event(
                             AgentEventType.FINAL,
@@ -687,7 +630,6 @@ class React:
                         stop_reason=ReactActionParser.get_max_steps_stop_reason()
                     )
                     self.status = ReactStatus.FINAL
-                    self._update_checkpoint()
                     max_steps_payload = max_steps_action.to_final_payload()
                     yield self._create_event(
                         AgentEventType.FINAL,
@@ -706,12 +648,10 @@ class React:
                     pending_messages = self._drain_pending_messages()
                     self._start_new_run(pending_messages)
                     self._in_react_loop = True
-                    self._maybe_update_checkpoint()
 
         except Exception as exc:
             logger.error(f"React loop error: {exc}", exc_info=True)
             self.status = ReactStatus.FAILED
-            self._update_checkpoint()
             yield self._create_event(
                 AgentEventType.ERROR,
                 content=ErrorContent(
@@ -725,31 +665,6 @@ class React:
         finally:
             async with self._loop_lock:
                 self._in_react_loop = False
-                self._update_checkpoint()
-
-    async def resume(self) -> AsyncGenerator[AgentEvent, None]:
-        checkpoint = self.storage.load_checkpoint()
-        if not checkpoint:
-            yield self._create_event(
-                AgentEventType.ERROR,
-                content=ErrorContent(
-                    error_message="No checkpoint found to resume from",
-                    error_type="CheckpointError",
-                    details="Cannot resume ReAct process without a saved checkpoint",
-                    title="Resume Error",
-                    description="No checkpoint available"
-                )
-            )
-            return
-
-        self.run_id = checkpoint.run_id
-        self.step_id = checkpoint.step_id
-        self.status = checkpoint.status
-        self.messages = checkpoint.messages
-        self.pending_user_messages = list(checkpoint.pending_user_messages)
-
-        async for event in self.chat_stream(None):
-            yield event
 
     async def __aenter__(self):
         """Async context manager entry."""

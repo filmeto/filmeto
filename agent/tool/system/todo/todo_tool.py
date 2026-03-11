@@ -39,7 +39,7 @@ class TodoTool(BaseTool):
     - get: Get specific TODO item or the entire TODO list
     - list: List all TODO items with their current status
 
-    TODO state is persisted in the React checkpoint for recovery.
+    TODO state is held in the React instance for the duration of the run.
     Each React loop has its own isolated TODO state.
     """
 
@@ -69,7 +69,7 @@ class TodoTool(BaseTool):
         Execute the todo tool asynchronously.
 
         This method updates the TODO state in the React instance through the ToolContext.
-        The React instance is responsible for storing the TODO state in checkpoints.
+        The React instance holds the TODO state in memory for the run.
 
         Args:
             parameters: Dictionary containing:

@@ -62,7 +62,6 @@ class ReactService:
         workspace=None,
         llm_service=None,
         max_steps: int = 20,
-        checkpoint_interval: int = 1,
     ) -> React:
         instance_key = self._generate_instance_key(project_name, react_type)
 
@@ -81,7 +80,6 @@ class ReactService:
                 available_tool_names=available_tool_names,
                 llm_service=llm_service,
                 max_steps=max_steps,
-                checkpoint_interval=checkpoint_interval,
             )
 
             self._instances[instance_key] = react_instance
