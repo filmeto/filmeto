@@ -55,6 +55,15 @@ class MessageBuilder:
         self._metadata_resolver = metadata_resolver
         self._model = model
 
+    @staticmethod
+    def _copy_content_item(item: Dict[str, Any]) -> Dict[str, Any]:
+        """Return an independent copy of a content item dict.
+
+        Used when appending content to merged lists so the model owns its data.
+        Single-item deepcopy is kept here; bulk copies are avoided elsewhere.
+        """
+        return copy.deepcopy(item)
+
     def _resolve_crew_read_by(
         self, raw_crew_members: Optional[List[Dict[str, Any]]]
     ) -> List[Dict[str, Any]]:
@@ -457,7 +466,8 @@ class MessageBuilder:
                 return
 
             current_structured = current_item.get(self._model.STRUCTURED_CONTENT, [])
-            merged_content = copy.deepcopy(current_structured)
+            # Shallow copy of list only; we replace/filter elements, do not mutate kept items
+            merged_content = list(current_structured)
             new_content_list = combined_msg.get("content", [])
 
             for content_item in new_content_list:
@@ -474,15 +484,15 @@ class MessageBuilder:
                 elif skill_ref:
                     self._add_content_to_skill_child(merged_content, content_item, skill_ref)
                 elif content_type == 'text':
-                    merged_content.append(copy.deepcopy(content_item))
+                    merged_content.append(self._copy_content_item(content_item))
                 elif content_type == 'thinking':
                     merged_content = [c for c in merged_content
                                       if c.get('content_type') != 'thinking']
-                    merged_content.append(copy.deepcopy(content_item))
+                    merged_content.append(self._copy_content_item(content_item))
                 elif content_type == 'typing':
                     merged_content = [c for c in merged_content
                                       if c.get('content_type') != 'typing']
-                    merged_content.append(copy.deepcopy(content_item))
+                    merged_content.append(self._copy_content_item(content_item))
                 elif content_type == 'crew_member_read':
                     # Extract crew_member_read and update crew_read_by field
                     raw_crew_members = content_item.get("data", {}).get("crew_members", [])
@@ -498,7 +508,7 @@ class MessageBuilder:
                                         if c.get('content_id')}
                         if content_id in existing_ids:
                             continue
-                    merged_content.append(copy.deepcopy(content_item))
+                    merged_content.append(self._copy_content_item(content_item))
 
             updates = {self._model.STRUCTURED_CONTENT: merged_content}
             self._model.update_item(message_id, updates)
@@ -526,7 +536,7 @@ class MessageBuilder:
                 merged_content[i] = self._merge_skill_dicts(existing, new_skill)
                 return
 
-        merged_content.append(copy.deepcopy(new_skill))
+        merged_content.append(self._copy_content_item(new_skill))
 
     def _add_content_to_skill_child(
         self,
@@ -545,18 +555,21 @@ class MessageBuilder:
             if ed.get('skill_name') != skill_name:
                 continue
 
-            updated = copy.deepcopy(existing)
-            children = updated.setdefault('data', {}).setdefault('child_contents', [])
+            # Shallow clone of skill dict and data; only child_contents list is extended
+            updated = dict(existing)
+            updated['data'] = dict(existing.get('data', {}))
+            children = list(updated['data'].get('child_contents', []))
             content_id = child_item.get('content_id')
             if content_id:
                 existing_ids = {c.get('content_id') for c in children if c.get('content_id')}
                 if content_id in existing_ids:
                     return
-            children.append(copy.deepcopy(child_item))
+            children.append(self._copy_content_item(child_item))
+            updated['data']['child_contents'] = children
             merged_content[i] = updated
             return
 
-        merged_content.append(copy.deepcopy(child_item))
+        merged_content.append(self._copy_content_item(child_item))
 
     def _merge_skill_dicts(
         self, existing: Dict[str, Any], new: Dict[str, Any]
@@ -590,14 +603,15 @@ class MessageBuilder:
         )
 
         if new_prio >= existing_prio:
-            result = copy.deepcopy(new)
-            result.setdefault('data', {})['child_contents'] = merged_children
-            # Preserve content_id from existing to keep QML identity stable
+            result = dict(new)
+            result['data'] = dict(new.get('data', {}))
+            result['data']['child_contents'] = merged_children
             if existing.get('content_id'):
                 result['content_id'] = existing['content_id']
         else:
-            result = copy.deepcopy(existing)
-            result.setdefault('data', {})['child_contents'] = merged_children
+            result = dict(existing)
+            result['data'] = dict(existing.get('data', {}))
+            result['data']['child_contents'] = merged_children
             if new_data.get('progress_text'):
                 result['data']['progress_text'] = new_data['progress_text']
             if new_data.get('progress_percentage') is not None:
@@ -815,10 +829,12 @@ class MessageBuilder:
         all_children = []
         seen_ids = set()
 
-        # Add base children first
+        # Add base children first (copy so caller's lists are not mutated)
         for child in base_children:
             child_id = child.get("content_id") if isinstance(child, dict) else None
-            all_children.append(copy.deepcopy(child))
+            all_children.append(
+                MessageBuilder._copy_content_item(child) if isinstance(child, dict) else copy.deepcopy(child)
+            )
             if child_id:
                 seen_ids.add(child_id)
 
@@ -826,9 +842,10 @@ class MessageBuilder:
         for child in new_children:
             child_id = child.get("content_id") if isinstance(child, dict) else None
             if child_id and child_id in seen_ids:
-                # Duplicate, skip
                 continue
-            all_children.append(copy.deepcopy(child))
+            all_children.append(
+                MessageBuilder._copy_content_item(child) if isinstance(child, dict) else copy.deepcopy(child)
+            )
             if child_id:
                 seen_ids.add(child_id)
 
