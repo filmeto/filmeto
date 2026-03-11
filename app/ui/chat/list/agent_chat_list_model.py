@@ -76,6 +76,11 @@ class QmlAgentChatListModel(QAbstractListModel):
         self._items: List[Dict[str, Any]] = []
         self._message_id_to_row: Dict[str, int] = {}
 
+        # Pre-built role name cache for data() to avoid roleNames() + decode on every access
+        self._role_name_cache: Dict[int, str] = {}
+        for role, name_bytes in self.roleNames().items():
+            self._role_name_cache[role] = name_bytes.data().decode()
+
         # Batched dataChanged support
         self._dirty_rows: Set[int] = set()
         self._batch_timer = QTimer(self)
@@ -122,16 +127,9 @@ class QmlAgentChatListModel(QAbstractListModel):
         if row >= len(self._items):
             return None
 
-        item = self._items[row]
-
-        # Use roleNames to get the role name (QByteArray)
-        role_names = self.roleNames()
-        role_name_bytes = role_names.get(role)
-
-        if role_name_bytes:
-            # Convert QByteArray to string for dict lookup
-            role_name = role_name_bytes.data().decode()
-            return item.get(role_name)
+        role_name = self._role_name_cache.get(role)
+        if role_name:
+            return self._items[row].get(role_name)
 
         return None
 
