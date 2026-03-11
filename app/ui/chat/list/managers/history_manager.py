@@ -324,31 +324,32 @@ class HistoryManager:
                 self._qml_root.setProperty("isLoadingOlder", False)
 
     def _prune_model_bottom(self) -> None:
-        """Remove excess items from bottom."""
+        """Remove excess items from bottom in one batch."""
         excess = self._model.rowCount() - self.MAX_MODEL_ITEMS
-        if excess > 0:
-            for _ in range(excess):
-                if self._model.rowCount() > 0:
-                    item = self._model.get_item(self._model.rowCount() - 1)
-                    if item:
-                        msg_id = item.get(self._model.MESSAGE_ID)
-                        if msg_id in self._load_state.known_message_ids:
-                            self._load_state.known_message_ids.remove(msg_id)
-                    self._model.remove_last_n(1)
+        if excess <= 0:
+            return
+        count = self._model.rowCount()
+        for row in range(count - excess, count):
+            item = self._model.get_item(row)
+            if item:
+                msg_id = item.get(self._model.MESSAGE_ID)
+                if msg_id and msg_id in self._load_state.known_message_ids:
+                    self._load_state.known_message_ids.discard(msg_id)
+        self._model.remove_last_n(excess)
 
     def _prune_model_top(self) -> None:
-        """Remove excess items from top."""
+        """Remove excess items from top in one batch."""
         excess = self._model.rowCount() - self.MAX_MODEL_ITEMS
-        if excess > 0:
-            for _ in range(excess):
-                if self._model.rowCount() > 0:
-                    item = self._model.get_item(0)
-                    if item:
-                        msg_id = item.get(self._model.MESSAGE_ID)
-                        if msg_id in self._load_state.known_message_ids:
-                            self._load_state.known_message_ids.remove(msg_id)
-                    self._model.remove_first_n(1)
-            self._load_state.has_more_older = True
+        if excess <= 0:
+            return
+        for row in range(excess):
+            item = self._model.get_item(row)
+            if item:
+                msg_id = item.get(self._model.MESSAGE_ID)
+                if msg_id and msg_id in self._load_state.known_message_ids:
+                    self._load_state.known_message_ids.discard(msg_id)
+        self._model.remove_first_n(excess)
+        self._load_state.has_more_older = True
 
     def clear_all_caches_and_model(self) -> None:
         """Clear all caches and the model."""
