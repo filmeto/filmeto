@@ -73,7 +73,92 @@ Item {
         return hash
     }
 
-    // Single-pass content categorization
+    // Lazy markdown splitter: expand a single text item into text + code_block segments.
+    // Runs in QML only for visible delegates, replacing the Python-side pre-splitting.
+    function _splitMarkdownItem(item) {
+        var data = item.data || {}
+        var text = data.text || ""
+        if (!text || (text.indexOf("```") === -1 && text.indexOf("~~~") === -1)) {
+            return [item]
+        }
+
+        // Check that there are at least two fence markers (open + close or open only)
+        var first = text.indexOf("```")
+        if (first === -1) first = text.indexOf("~~~")
+        var fence = text.substring(first, first + 3)
+        var rest = text.substring(first + 3)
+        if (rest.indexOf(fence) === -1 && rest.indexOf("~~~") === -1) {
+            // Unclosed fence – keep as plain text (streaming partial)
+            return [item]
+        }
+
+        var baseId = item.content_id || ""
+        var status = item.status || "completed"
+        var lines = text.split("\n")
+        var segments = []
+        var textBuf = []
+        var codeBuf = []
+        var inCode = false
+        var fenceMarker = ""
+        var codeLang = ""
+
+        for (var li = 0; li < lines.length; li++) {
+            var line = lines[li]
+            if (!inCode) {
+                var m = line.match(/^(`{3,}|~{3,})([\w+#.-]*)\s*$/)
+                if (m) {
+                    // Flush accumulated text
+                    var textStr = textBuf.join("\n").trim()
+                    if (textStr) {
+                        segments.push({ content_id: baseId + "_s" + segments.length,
+                                        content_type: "text",
+                                        data: { text: textStr },
+                                        status: status })
+                    }
+                    textBuf = []
+                    inCode = true
+                    fenceMarker = m[1]
+                    codeLang = m[2] || "text"
+                    codeBuf = []
+                } else {
+                    textBuf.push(line)
+                }
+            } else {
+                var stripped = line.trim()
+                var isClose = stripped === fenceMarker ||
+                    (stripped.length >= fenceMarker.length &&
+                     stripped.split("").every(function(c){ return c === fenceMarker[0] }))
+                if (isClose) {
+                    inCode = false
+                    segments.push({ content_id: baseId + "_s" + segments.length,
+                                    content_type: "code_block",
+                                    data: { code: codeBuf.join("\n"), language: codeLang },
+                                    status: status })
+                    codeBuf = []
+                } else {
+                    codeBuf.push(line)
+                }
+            }
+        }
+
+        // Unclosed fence: treat remaining as plain text
+        if (inCode) {
+            textBuf.push(fenceMarker + codeLang)
+            for (var ci = 0; ci < codeBuf.length; ci++) textBuf.push(codeBuf[ci])
+        }
+
+        var tailText = textBuf.join("\n").trim()
+        if (tailText) {
+            segments.push({ content_id: baseId + "_s" + segments.length,
+                            content_type: "text",
+                            data: { text: tailText },
+                            status: status })
+        }
+
+        return segments.length > 0 ? segments : [item]
+    }
+
+    // Single-pass content categorization (with lazy markdown splitting for text items)
     function _categorizeContent() {
         var src = root.structuredContent
 
@@ -89,7 +174,7 @@ Item {
             return
         }
 
-        // Basic support mode - pass through
+        // Basic support mode - pass through without splitting
         if (root.widgetSupport !== "full") {
             root._mainItems = src
             root._thinkingItems = []
@@ -101,7 +186,7 @@ Item {
             return
         }
 
-        // Single pass categorization
+        // Single pass: categorize + lazily split text items containing code fences
         var mainItems = []
         var thinkingItems = []
         var hasTypingStart = false
@@ -120,6 +205,12 @@ Item {
             } else if (type === "crew_member_activity") {
                 hasCrewMemberActivity = true
                 mainItems.push(item)
+            } else if (type === "text") {
+                // Lazily split text items with code fences into text/code_block segments
+                var segs = _splitMarkdownItem(item)
+                for (var s = 0; s < segs.length; s++) {
+                    mainItems.push(segs[s])
+                }
             } else if (mainTypes[type] === true) {
                 mainItems.push(item)
             } else {
