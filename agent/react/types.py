@@ -4,7 +4,6 @@ ReAct pattern types - backward compatibility module.
 This module re-exports all types from their respective modules.
 New code should import directly from the specific modules:
 - event: ReactEvent, ReactEventType
-- checkpoint: CheckpointData
 - status: ReactStatus
 - actions: ActionType, ReactAction, ToolAction, FinalAction, ErrorAction
 - parser: ReactActionParser
@@ -13,9 +12,6 @@ New code should import directly from the specific modules:
 
 # Event types
 from agent.event.agent_event import AgentEvent, AgentEventType
-
-# Checkpoint data
-from .checkpoint import CheckpointData
 
 # Status constants
 from .status import ReactStatus
@@ -37,8 +33,6 @@ __all__ = [
     # Event types
     "AgentEvent",
     "AgentEventType",
-    # Checkpoint
-    "CheckpointData",
     # Status
     "ReactStatus",
     # Actions

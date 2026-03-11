@@ -60,11 +60,6 @@ class React:
         self.tool_service = ToolService()
         self.message_id = message_id or ""  # For UI event grouping
 
-        if workspace and hasattr(workspace, "get_path"):
-            self.workspace_root = workspace.get_path()
-        else:
-            self.workspace_root = "workspace"
-
         self.run_id: str = run_id or ""
         self.step_id: int = 0
         self.status: str = ReactStatus.IDLE
