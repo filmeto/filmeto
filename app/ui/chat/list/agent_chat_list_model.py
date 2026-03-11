@@ -234,7 +234,18 @@ class QmlAgentChatListModel(QAbstractListModel):
     def __init__(self, parent: Optional[QObject] = None):
         super().__init__(parent)
         self._items: List[Dict[str, Any]] = []
+        # _message_id_to_row stores a "virtual" row index that has no direct
+        # relationship to the physical list position until adjusted by the
+        # cumulative prepend offset.
+        #
+        # Invariant:  real_row = stored_value - _prepend_offset
+        #             stored_value = real_row + _prepend_offset
+        #
+        # When prepend_items(count) is called we want every existing real_row
+        # to increase by count.  Because stored values are unchanged we just
+        # increment _prepend_offset by count — O(1) instead of O(N).
         self._message_id_to_row: Dict[str, int] = {}
+        self._prepend_offset: int = 0
 
         # Pre-built role name cache for data() to avoid roleNames() + decode on every access
         self._role_name_cache: Dict[int, str] = {}
@@ -306,7 +317,7 @@ class QmlAgentChatListModel(QAbstractListModel):
         self.beginInsertRows(QModelIndex(), row, row)
         self._items.append(item)
         if item.get(self.MESSAGE_ID):
-            self._message_id_to_row[item[self.MESSAGE_ID]] = row
+            self._message_id_to_row[item[self.MESSAGE_ID]] = row + self._prepend_offset
         self.endInsertRows()
         return row
 
@@ -331,7 +342,7 @@ class QmlAgentChatListModel(QAbstractListModel):
             self._items.append(item)
             msg_id = item.get(self.MESSAGE_ID)
             if msg_id:
-                self._message_id_to_row[msg_id] = first_row + i
+                self._message_id_to_row[msg_id] = first_row + i + self._prepend_offset
         self.endInsertRows()
         return first_row
 
@@ -352,16 +363,19 @@ class QmlAgentChatListModel(QAbstractListModel):
         count = len(items)
         self.beginInsertRows(QModelIndex(), 0, count - 1)
 
-        # Shift all existing row indices up by `count` in one pass
-        for key in self._message_id_to_row:
-            self._message_id_to_row[key] += count
+        # Shift every existing entry O(1): decrement offset so that for each
+        # existing stored value s:  real_new = s - offset_new
+        #                                    = s - (offset_old - count)
+        #                                    = (s - offset_old) + count   ✓
+        self._prepend_offset -= count
 
-        # Insert new items and register their indices (0 … count-1)
+        # New items sit at real rows 0 … count-1.
+        # stored = real + offset_new = i + self._prepend_offset  (after decrement)
         self._items = list(items) + self._items
         for i, item in enumerate(items):
             msg_id = item.get(self.MESSAGE_ID)
             if msg_id:
-                self._message_id_to_row[msg_id] = i
+                self._message_id_to_row[msg_id] = i + self._prepend_offset
 
         self.endInsertRows()
         return count
@@ -373,11 +387,13 @@ class QmlAgentChatListModel(QAbstractListModel):
             return
         self.beginRemoveRows(QModelIndex(), 0, n - 1)
         for i in range(n):
-            item = self._items[i]
-            msg_id = item.get(self.MESSAGE_ID)
+            msg_id = self._items[i].get(self.MESSAGE_ID)
             if msg_id:
                 self._message_id_to_row.pop(msg_id, None)
         self._items = self._items[n:]
+        # Advance the offset so every remaining stored value still maps to the
+        # correct (now-shifted) real row index.
+        self._prepend_offset += n
         self.endRemoveRows()
 
     def remove_last_n(self, n: int) -> None:
@@ -409,11 +425,12 @@ class QmlAgentChatListModel(QAbstractListModel):
         Returns:
             True if item was found and updated
         """
-        row = self._message_id_to_row.get(message_id)
-        if row is None:
+        stored = self._message_id_to_row.get(message_id)
+        if stored is None:
             return False
 
-        if row >= len(self._items):
+        row = stored - self._prepend_offset
+        if row < 0 or row >= len(self._items):
             return False
 
         self._items[row].update(updates)
@@ -457,14 +474,20 @@ class QmlAgentChatListModel(QAbstractListModel):
 
     def get_item_by_message_id(self, message_id: str) -> Optional[Dict[str, Any]]:
         """Get item by its message ID."""
-        row = self._message_id_to_row.get(message_id)
-        if row is not None and 0 <= row < len(self._items):
+        stored = self._message_id_to_row.get(message_id)
+        if stored is None:
+            return None
+        row = stored - self._prepend_offset
+        if 0 <= row < len(self._items):
             return self._items[row]
         return None
 
     def get_row_by_message_id(self, message_id: str) -> Optional[int]:
         """Get row index for a message ID."""
-        return self._message_id_to_row.get(message_id)
+        stored = self._message_id_to_row.get(message_id)
+        if stored is None:
+            return None
+        return stored - self._prepend_offset
 
     def clear(self) -> None:
         """Clear all items from the model."""
@@ -475,6 +498,7 @@ class QmlAgentChatListModel(QAbstractListModel):
         self.beginResetModel()
         self._items = []
         self._message_id_to_row = {}
+        self._prepend_offset = 0
         self.endResetModel()
 
     @staticmethod
