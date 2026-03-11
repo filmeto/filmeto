@@ -35,6 +35,8 @@ class PrivateChatWidget(BaseWidget):
     error_occurred = Signal(str)
     # Internal signal to marshal blinker callback onto the Qt main thread
     _new_history_message = Signal(dict)
+    # Signal emitted when tab becomes active/inactive
+    active_changed = Signal(bool)
 
     def __init__(self, workspace: Workspace, crew_member: CrewMember, parent=None):
         super().__init__(workspace)
@@ -43,6 +45,9 @@ class PrivateChatWidget(BaseWidget):
 
         self.crew_member = crew_member
         self._is_processing = False
+        self._is_active = False  # Track if this tab is currently active
+        self._history_loaded = False  # Track if initial history has been loaded
+        self._last_rendered_offset = 0  # Track last rendered message offset for incremental loading
 
         self.error_occurred.connect(self._on_error)
         self._new_history_message.connect(self._render_history_message)
@@ -83,6 +88,8 @@ class PrivateChatWidget(BaseWidget):
 
             messages = self.crew_member.get_history_latest(100)
             if not messages:
+                self._sync_last_rendered_offset()
+                self._history_loaded = True
                 return
 
             messages.reverse()
@@ -111,8 +118,12 @@ class PrivateChatWidget(BaseWidget):
                         timestamp=timestamp
                     )
 
+            self._sync_last_rendered_offset()
+            self._history_loaded = True
+
         except Exception as e:
             logger.error(f"Error loading private chat history: {e}", exc_info=True)
+            self._history_loaded = True
 
     def _load_event_message(self, msg: dict):
         """Load an event message from history.
@@ -206,6 +217,9 @@ class PrivateChatWidget(BaseWidget):
 
         Filters for this crew member and forwards to the Qt main thread
         via the _new_history_message signal.
+
+        Only renders if the tab is active; otherwise messages will be
+        loaded incrementally when the tab becomes active.
         """
         if self._is_processing:
             return
@@ -213,10 +227,28 @@ class PrivateChatWidget(BaseWidget):
             return
         if workspace_path != getattr(self.workspace, "workspace_path", None):
             return
-        self._new_history_message.emit(message)
+        # Only render if tab is active; inactive tabs will load incrementally on activation
+        if not self._is_active:
+            return
+        # Emit with update_offset flag for real-time rendering
+        self._new_history_message.emit({"message": message, "update_offset": True})
 
-    def _render_history_message(self, msg: dict):
-        """Render a single history message on the Qt main thread."""
+    def _render_history_message(self, data: dict):
+        """Render a single history message on the Qt main thread.
+
+        Args:
+            data: Either a message dict directly, or a dict with 'message' and 'update_offset' keys.
+                  When called from signal, it's {'message': msg, 'update_offset': bool}.
+                  When called directly (e.g., from incremental loading), it's just the message.
+        """
+        # Handle both formats: direct message or wrapped with update_offset flag
+        if "message" in data:
+            msg = data["message"]
+            update_offset = data.get("update_offset", False)
+        else:
+            msg = data
+            update_offset = False
+
         role = msg.get("role", "")
         content = msg.get("content", "")
         sender_name = msg.get("sender_name", "")
@@ -239,6 +271,100 @@ class PrivateChatWidget(BaseWidget):
                 timestamp=timestamp,
             )
 
+        # Track rendered message count for incremental loading (real-time only)
+        if update_offset:
+            self._last_rendered_offset += 1
+
+    # ------------------------------------------------------------------
+    # Active state management for incremental loading
+    # ------------------------------------------------------------------
+
+    def set_active(self, active: bool):
+        """Set the active state of this private chat tab.
+
+        When becoming active, loads any missed messages incrementally.
+        """
+        if self._is_active == active:
+            return
+
+        self._is_active = active
+        self.active_changed.emit(active)
+
+        if active:
+            # Tab is now active, load any missed messages incrementally
+            self._load_incremental_messages()
+
+    def is_active(self) -> bool:
+        """Check if this tab is currently active."""
+        return self._is_active
+
+    def _sync_last_rendered_offset(self):
+        """Set _last_rendered_offset to current storage count (e.g. after initial load or after user stream)."""
+        try:
+            from agent.crew.crew_member_history_service import crew_member_history_service
+            workspace_path = getattr(self.workspace, "workspace_path", None)
+            project = self.workspace.get_project() if self.workspace else None
+            project_name = project.project_name if project else "default"
+            if not workspace_path:
+                return
+            self._last_rendered_offset = crew_member_history_service.get_latest_line_offset(
+                workspace_path, project_name, self.crew_member.crew_title
+            )
+        except Exception as e:
+            logger.debug(f"Could not sync last rendered offset: {e}")
+
+    def _load_incremental_messages(self):
+        """Load messages that arrived while the tab was inactive."""
+        # Skip if initial history hasn't been loaded yet
+        if not self._history_loaded:
+            return
+
+        try:
+            from agent.crew.crew_member_history_service import crew_member_history_service
+
+            workspace_path = getattr(self.workspace, "workspace_path", None)
+            project = self.workspace.get_project() if self.workspace else None
+            project_name = project.project_name if project else "default"
+            crew_title = self.crew_member.crew_title
+            if not workspace_path:
+                return
+
+            # Get current total offset
+            current_offset = crew_member_history_service.get_latest_line_offset(
+                workspace_path, project_name, crew_title
+            )
+
+            # Check if there are new messages since last render
+            if current_offset <= self._last_rendered_offset:
+                return
+
+            # Load messages after the last rendered offset
+            new_messages = crew_member_history_service.get_messages_after(
+                workspace_path,
+                project_name,
+                crew_title,
+                self._last_rendered_offset,
+                count=current_offset - self._last_rendered_offset
+            )
+
+            if not new_messages:
+                return
+
+            logger.debug(
+                f"Loading {len(new_messages)} incremental messages for {crew_title} "
+                f"(offset: {self._last_rendered_offset} -> {current_offset})"
+            )
+
+            # Render each new message (without update_offset, as offset is set at the end)
+            for msg in new_messages:
+                self._render_history_message(msg)
+
+            # Update the last rendered offset
+            self._last_rendered_offset = current_offset
+
+        except Exception as e:
+            logger.error(f"Error loading incremental messages: {e}", exc_info=True)
+
     # ------------------------------------------------------------------
 
     def _on_message_submitted(self, message: str):
@@ -259,12 +385,13 @@ class PrivateChatWidget(BaseWidget):
         try:
             async for event in self.crew_member.chat_stream(message):
                 self.chat_list_widget.handle_stream_event(event, None)
-
         except Exception as e:
             logger.error(f"Error in private chat: {e}", exc_info=True)
             self.error_occurred.emit(f"{tr('Error')}: {str(e)}")
         finally:
             self._is_processing = False
+            # Sync offset so switching away and back does not reload and duplicate these messages
+            self._sync_last_rendered_offset()
 
     def _on_error(self, error_message: str):
         if self.chat_list_widget:

@@ -45,6 +45,9 @@ class AgentChatWidget(BaseWidget):
 
         self._setup_ui()
 
+        # Connect tab change to manage active state of private chat widgets
+        self.tab_widget.currentChanged.connect(self._on_tab_changed)
+
         QTimer.singleShot(100, self._auto_initialize_agent)
 
     def _setup_ui(self):
@@ -112,6 +115,8 @@ class AgentChatWidget(BaseWidget):
 
     def open_private_chat(self, crew_member) -> None:
         """Open a private chat tab for a crew member, or switch to it if already open."""
+        from app.ui.chat.private_chat_widget import PrivateChatWidget
+
         member_name = crew_member.config.name
 
         if member_name in self._private_tabs:
@@ -122,8 +127,9 @@ class AgentChatWidget(BaseWidget):
             else:
                 del self._private_tabs[member_name]
 
-        from app.ui.chat.private_chat_widget import PrivateChatWidget
         private_widget = PrivateChatWidget(self.workspace, crew_member, self)
+        # New private chat tab starts as inactive (will be activated by _on_tab_changed)
+        private_widget.set_active(False)
 
         icon_text = crew_member.config.icon or crew_member.config.name[0].upper()
         tab_title = crew_member.config.name.title()
@@ -154,6 +160,19 @@ class AgentChatWidget(BaseWidget):
 
         if widget:
             widget.deleteLater()
+
+    def _on_tab_changed(self, index: int):
+        """Handle tab change - update active state of private chat widgets."""
+        from app.ui.chat.private_chat_widget import PrivateChatWidget
+
+        # Deactivate all private chat tabs
+        for i in range(1, self.tab_widget.count()):
+            widget = self.tab_widget.widget(i)
+            if isinstance(widget, PrivateChatWidget):
+                widget.set_active(i == index)
+
+        # The newly active tab (if it's a private chat) will load incremental messages
+        # via its set_active(True) call
 
     def _rebuild_tab_index_map(self):
         """Rebuild the name->index mapping after tab removal."""
