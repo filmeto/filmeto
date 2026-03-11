@@ -8,56 +8,44 @@ description: |-
 
 # Screenplay Deletion Skill
 
-This skill allows the agent to delete screenplay scenes from the project. It supports two modes: complete deletion of all scenes, or selective deletion of specific scenes.
+This skill deletes screenplay scenes from the project. Two modes: delete all scenes, or delete specific scenes by IDs.
+
+## Execution Priority (Critical)
+
+**Execute the delete immediately. Do NOT:**
+- Read the full screenplay or list all scenes before deleting (unless you need scene_ids for partial mode)
+- Ask the user to confirm again—phrases like "delete screenplay" or "clear screenplay" are explicit intent; proceed to execute
+- Spend steps on warnings or backup suggestions before calling the skill
+
+**Do:**
+- When user says delete/clear screenplay (all): call `execute_skill_script` with `delete_screen_play` and `{"delete_mode": "all"}` in the same or next step
+- When user wants specific scenes removed: obtain scene_ids (e.g. from a prior list or user message), then call with `delete_mode: "partial"` and `scene_ids`
+- Report the script result (deleted_count, message) after execution
 
 ## Capabilities
 
 - Delete all screenplay scenes in the project (full cleanup)
 - Delete specific scenes by their scene_ids (selective cleanup)
-- Verify deletion status
 - Handle cases where scenes do not exist
 
 ## Constraints
 
-- **Requires Context**: This skill requires a valid ToolContext with access to a screenplay manager
-- **Requires Screenplay Manager**: The project must have an initialized screenplay manager
-- **Destructive Operation**: This skill permanently deletes scene files - use with extreme caution
+- **Requires Context**: Valid ToolContext with screenplay manager
+- **Destructive**: Permanently deletes scene files
 
 ## Input Requirements
 
-Provide these inputs when calling the script via `execute_skill_script`:
+Call via `execute_skill_script` with:
 
 ### Full Deletion (delete all scenes)
-- `delete_mode` (string): Must be `"all"` to delete all scenes
+- `delete_mode` (string): `"all"`
 - No other parameters required
 
 ### Partial Deletion (delete specific scenes)
-- `delete_mode` (string): Must be `"partial"` to delete specific scenes
-- `scene_ids` (list of strings, required): List of scene identifiers to delete (e.g., `["scene_001", "scene_002"]`)
+- `delete_mode` (string): `"partial"`
+- `scene_ids` (list of strings, required): e.g. `["scene_001", "scene_002"]`
 
-If required parameters are missing, ask for them in the final response instead of calling the script.
-
-## When to Use This Skill
-
-**This is a DANGEROUS operation. Only use this skill when:**
-
-1. The current screenplay completely fails to meet requirements and needs to be rewritten from scratch
-2. There are fundamental story structure problems that cannot be fixed by editing
-3. The user explicitly requests to clear the screenplay
-4. A major plot revision requires removing multiple scenes
-
-**Do NOT use this skill for:**
-- Minor scene adjustments (use `update` operation instead)
-- Deleting a single scene (use `delete_single_scene` skill instead)
-- Simple dialogue or description changes (use `update` operation instead)
-
-## Important Warnings
-
-**Before executing this skill:**
-1. Always confirm with the user that they want to proceed with deletion
-2. Clearly state which scenes will be deleted (all or specific list)
-3. Warn that this operation cannot be undone
-4. Consider suggesting to backup the screenplay first
+If user said "delete all" / "clear screenplay" and parameters are clear, do not ask for confirmation—invoke the script. Only ask when mode or scene_ids are genuinely ambiguous.
 
 ## Example Arguments
 
