@@ -146,14 +146,7 @@ class MessageLogStorage:
 
     def _escape_message(self, message: Dict[str, Any]) -> str:
         """Escape message to single-line JSON format."""
-        json_str = json.dumps(message, ensure_ascii=False, separators=(',', ':'))
-        # Validate that the JSON can be parsed back
-        try:
-            json.loads(json_str)
-        except json.JSONDecodeError as e:
-            logger.warning(f"Generated invalid JSON, attempting to fix: {e}")
-            json_str = json.dumps(message, ensure_ascii=False)
-        return json_str
+        return json.dumps(message, ensure_ascii=False, separators=(',', ':'))
 
     def _unescape_message(self, line: str) -> Optional[Dict[str, Any]]:
         """Unescape message from single-line JSON format."""
