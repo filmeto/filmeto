@@ -11,7 +11,7 @@ Performance optimizations:
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional, Set
+from typing import List, Dict, Any, Optional, Set, Tuple
 from PySide6.QtCore import Qt, QAbstractListModel, QModelIndex, QObject, Slot, Property, QTimer, Signal
 
 from agent.chat.agent_chat_message import AgentMessage
@@ -19,6 +19,30 @@ from agent.chat.agent_chat_types import ContentType
 from agent.chat.content import StructureContent
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Module-level time-format caches
+#
+# _format_start_time and _get_date_group depend on "today", so we key them on
+# (timestamp, today_date).  The caches are dicts that are cleared whenever the
+# calendar date changes.  _format_duration is cached only when both endpoints
+# are known (end_timestamp is not None); open-ended durations must not be cached.
+# ---------------------------------------------------------------------------
+_today_cache_key: Optional[Any] = None   # last seen date.today()
+_start_time_cache: Dict[Tuple, str] = {}
+_date_group_cache: Dict[Tuple, str] = {}
+_duration_cache: Dict[Tuple, str] = {}   # keyed on (start, end) – end is never None
+
+
+def _invalidate_time_caches_if_needed() -> Any:
+    """Clear date-sensitive caches when the calendar day has rolled over."""
+    global _today_cache_key, _start_time_cache, _date_group_cache
+    today = datetime.now().date()
+    if today != _today_cache_key:
+        _today_cache_key = today
+        _start_time_cache.clear()
+        _date_group_cache.clear()
+    return today
 
 
 class QmlAgentChatListModel(QAbstractListModel):
@@ -321,13 +345,9 @@ class QmlAgentChatListModel(QAbstractListModel):
     def _get_date_group(timestamp: Optional[float]) -> str:
         """Get date group key for message separators.
 
-        Groups messages by:
-        - Today
-        - Yesterday
-        - This week
-        - Last week
-        - This month
-        - Older
+        Groups messages by: Today / Yesterday / This Week / Last Week /
+        This Month / <Month Year>.  Result is cached keyed on
+        (timestamp, today) and invalidated on day change.
 
         Args:
             timestamp: Unix timestamp (float) or ISO 8601 string (str)
@@ -338,12 +358,16 @@ class QmlAgentChatListModel(QAbstractListModel):
         if not timestamp:
             return ""
 
-        # Handle both Unix timestamp (float) and ISO 8601 string
+        today = _invalidate_time_caches_if_needed()
+        cache_key = (timestamp, today)
+        cached = _date_group_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         if isinstance(timestamp, str):
             try:
                 msg_date = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
             except ValueError:
-                # Try parsing as Unix timestamp
                 try:
                     msg_date = datetime.fromtimestamp(float(timestamp))
                 except (ValueError, TypeError):
@@ -354,37 +378,35 @@ class QmlAgentChatListModel(QAbstractListModel):
         else:
             return ""
 
-        now = datetime.now()
-        today = now.date()
         yesterday = today - timedelta(days=1)
         this_week_start = today - timedelta(days=today.weekday())
         last_week_start = this_week_start - timedelta(days=7)
-        this_month_start = now.replace(day=1)
-
+        this_month_start = today.replace(day=1)
         msg_date_only = msg_date.date()
 
         if msg_date_only == today:
-            return "Today"
+            result = "Today"
         elif msg_date_only == yesterday:
-            return "Yesterday"
+            result = "Yesterday"
         elif msg_date_only >= this_week_start:
-            return "This Week"
+            result = "This Week"
         elif msg_date_only >= last_week_start:
-            return "Last Week"
-        elif msg_date_only >= this_month_start.date():
-            return "This Month"
+            result = "Last Week"
+        elif msg_date_only >= this_month_start:
+            result = "This Month"
         else:
-            return msg_date.strftime("%B %Y")
+            result = msg_date.strftime("%B %Y")
+
+        _date_group_cache[cache_key] = result
+        return result
 
     @staticmethod
     def _format_start_time(timestamp) -> str:
         """Format timestamp as start time with date context.
 
-        Display format depends on how recent the message is:
-        - Today: "HH:MM"
-        - Yesterday: "昨天 HH:MM"
-        - This year: "MM-DD HH:MM"
-        - Older: "YYYY-MM-DD HH:MM"
+        Display format: "HH:MM" (today) / "昨天 HH:MM" / "MM-DD HH:MM" /
+        "YYYY-MM-DD HH:MM".  Result is cached keyed on (timestamp, today)
+        and invalidated on day change.
 
         Args:
             timestamp: Unix timestamp (float) or ISO 8601 string
@@ -395,6 +417,12 @@ class QmlAgentChatListModel(QAbstractListModel):
         if not timestamp:
             return ""
 
+        today = _invalidate_time_caches_if_needed()
+        cache_key = (timestamp, today)
+        cached = _start_time_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         try:
             if isinstance(timestamp, str):
                 msg_date = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
@@ -403,28 +431,29 @@ class QmlAgentChatListModel(QAbstractListModel):
             else:
                 return ""
 
-            now = datetime.now()
-            today = now.date()
             msg_date_only = msg_date.date()
-
             if msg_date_only == today:
-                # Today: just show time
-                return msg_date.strftime("%H:%M")
+                result = msg_date.strftime("%H:%M")
             elif msg_date_only == today - timedelta(days=1):
-                # Yesterday
-                return f"昨天 {msg_date.strftime('%H:%M')}"
-            elif msg_date.year == now.year:
-                # This year: show month-day time
-                return msg_date.strftime("%m-%d %H:%M")
+                result = f"昨天 {msg_date.strftime('%H:%M')}"
+            elif msg_date.year == today.year:
+                result = msg_date.strftime("%m-%d %H:%M")
             else:
-                # Older: show full date
-                return msg_date.strftime("%Y-%m-%d %H:%M")
+                result = msg_date.strftime("%Y-%m-%d %H:%M")
         except (ValueError, TypeError):
-            return ""
+            result = ""
+
+        _start_time_cache[cache_key] = result
+        return result
 
     @staticmethod
     def _format_duration(start_timestamp, end_timestamp=None) -> str:
         """Format duration between start and end timestamps.
+
+        When end_timestamp is provided the result is stable and cached keyed
+        on (start_timestamp, end_timestamp).  Open-ended durations
+        (end_timestamp=None) always compute against datetime.now() and are
+        never cached.
 
         Args:
             start_timestamp: Start time (Unix timestamp or ISO string)
@@ -435,6 +464,13 @@ class QmlAgentChatListModel(QAbstractListModel):
         """
         if not start_timestamp:
             return ""
+
+        # Only cache when both endpoints are fixed
+        if end_timestamp is not None:
+            cache_key = (start_timestamp, end_timestamp)
+            cached = _duration_cache.get(cache_key)
+            if cached is not None:
+                return cached
 
         try:
             if isinstance(start_timestamp, str):
@@ -458,25 +494,24 @@ class QmlAgentChatListModel(QAbstractListModel):
             total_seconds = int(delta.total_seconds())
 
             if total_seconds < 0:
-                return ""
-
-            if total_seconds < 60:
-                return f"{total_seconds}s"
+                result = ""
+            elif total_seconds < 60:
+                result = f"{total_seconds}s"
             elif total_seconds < 3600:
                 minutes = total_seconds // 60
                 seconds = total_seconds % 60
-                if seconds > 0:
-                    return f"{minutes}m {seconds}s"
-                return f"{minutes}m"
+                result = f"{minutes}m {seconds}s" if seconds else f"{minutes}m"
             else:
                 hours = total_seconds // 3600
                 minutes = (total_seconds % 3600) // 60
-                if minutes > 0:
-                    return f"{hours}h {minutes}m"
-                return f"{hours}h"
+                result = f"{hours}h {minutes}m" if minutes else f"{hours}h"
 
         except (ValueError, TypeError):
-            return ""
+            result = ""
+
+        if end_timestamp is not None:
+            _duration_cache[(start_timestamp, end_timestamp)] = result
+        return result
 
     @staticmethod
     def _serialize_structured_content(structured_content: List[StructureContent]) -> List[Dict[str, Any]]:
