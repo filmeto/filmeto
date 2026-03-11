@@ -34,18 +34,17 @@ Item {
 
     implicitHeight: contentColumn.height
 
-    // ─── PERFORMANCE: Cache store in QtObject to avoid binding reactions ─────
-    QtObject {
-        id: _cache
-        property string contentHash: ""
-        property int mainContentCount: 0
-        property int thinkingContentCount: 0
-        property int typingContentCount: 0
-        property var mainItems: []
-        property var thinkingItems: []
-        property bool isStreaming: false
-        property bool initialized: false
-    }
+    // ─── Use component properties instead of QtObject for proper binding updates ─────
+    // QtObject properties don't trigger binding re-evaluation, causing UI not to update
+    // when thinking content is added in real-time
+    property string _contentHash: ""
+    property int _mainContentCount: 0
+    property int _thinkingContentCount: 0
+    property int _typingContentCount: 0
+    property var _mainItems: []
+    property var _thinkingItems: []
+    property bool _isStreaming: false
+    property bool _initialized: false
 
     // Main content types lookup
     // Note: plan_task and todo_write are shown in Thinking section (collapsible)
@@ -80,25 +79,25 @@ Item {
 
         // Empty content fallback
         if (!src || src.length === 0) {
-            _cache.mainItems = root.content ? [{ content_type: "text", text: root.content }] : []
-            _cache.thinkingItems = []
-            _cache.isStreaming = false
-            _cache.mainContentCount = _cache.mainItems.length
-            _cache.thinkingContentCount = 0
-            _cache.typingContentCount = 0
-            _cache.initialized = true
+            root._mainItems = root.content ? [{ content_type: "text", text: root.content }] : []
+            root._thinkingItems = []
+            root._isStreaming = false
+            root._mainContentCount = root._mainItems.length
+            root._thinkingContentCount = 0
+            root._typingContentCount = 0
+            root._initialized = true
             return
         }
 
         // Basic support mode - pass through
         if (root.widgetSupport !== "full") {
-            _cache.mainItems = src
-            _cache.thinkingItems = []
-            _cache.isStreaming = false
-            _cache.mainContentCount = src.length
-            _cache.thinkingContentCount = 0
-            _cache.typingContentCount = 0
-            _cache.initialized = true
+            root._mainItems = src
+            root._thinkingItems = []
+            root._isStreaming = false
+            root._mainContentCount = src.length
+            root._thinkingContentCount = 0
+            root._typingContentCount = 0
+            root._initialized = true
             return
         }
 
@@ -128,13 +127,13 @@ Item {
             }
         }
 
-        _cache.mainItems = mainItems
-        _cache.thinkingItems = thinkingItems
-        _cache.isStreaming = hasTypingStart || hasCrewMemberActivity
-        _cache.mainContentCount = mainItems.length
-        _cache.thinkingContentCount = thinkingItems.length
-        _cache.typingContentCount = hasTypingStart ? 1 : 0
-        _cache.initialized = true
+        root._mainItems = mainItems
+        root._thinkingItems = thinkingItems
+        root._isStreaming = hasTypingStart || hasCrewMemberActivity
+        root._mainContentCount = mainItems.length
+        root._thinkingContentCount = thinkingItems.length
+        root._typingContentCount = hasTypingStart ? 1 : 0
+        root._initialized = true
     }
 
     // Debounced content update timer
@@ -144,8 +143,8 @@ Item {
         repeat: false
         onTriggered: {
             var newHash = root._computeContentHash(root.structuredContent)
-            if (newHash !== _cache.contentHash) {
-                _cache.contentHash = newHash
+            if (newHash !== root._contentHash) {
+                root._contentHash = newHash
                 root._categorizeContent()
             }
         }
@@ -160,11 +159,11 @@ Item {
     }
 
     // Exposed readonly properties
-    readonly property var mainContentItems: _cache.mainItems
-    readonly property var thinkingItems: _cache.thinkingItems
-    readonly property bool isStreaming: _cache.isStreaming
-    readonly property bool hasThinkingSection: (_cache.thinkingContentCount > 0 || _cache.isStreaming) && widgetSupport === "full"
-    readonly property bool isInitialized: _cache.initialized
+    readonly property var mainContentItems: root._mainItems
+    readonly property var thinkingItems: root._thinkingItems
+    readonly property bool isStreaming: root._isStreaming
+    readonly property bool hasThinkingSection: (root._thinkingContentCount > 0 || root._isStreaming) && widgetSupport === "full"
+    readonly property bool isInitialized: root._initialized
 
     // Thinking section state
     property bool thinkingExpanded: false
@@ -174,14 +173,14 @@ Item {
     function _getThinkingSummary() {
         if (!root.hasThinkingSection || !root.thinkingContentLoaded) return ""
 
-        var items = _cache.thinkingItems
+        var items = root._thinkingItems
         if (items.length > 0) {
             var latest = items[items.length - 1]
             return _computeSummary(latest)
         }
 
-        if (_cache.isStreaming && _cache.mainContentCount > 0) {
-            var latestMain = _cache.mainItems[_cache.mainItems.length - 1]
+        if (root._isStreaming && root._mainContentCount > 0) {
+            var latestMain = root._mainItems[root._mainItems.length - 1]
             var mainType = latestMain.content_type || latestMain.type || "text"
             switch (mainType) {
                 case "text": return "Generating text..."
@@ -279,13 +278,13 @@ Item {
 
         // ─── Content Section (flat display, always visible) ─────────
         Repeater {
-            model: _cache.mainContentCount
+            model: root._mainContentCount
 
             delegate: Loader {
                 id: mainWidgetLoader
                 width: contentColumn.width
 
-                property var widgetData: _cache.mainItems[index] || ({})
+                property var widgetData: root._mainItems[index] || ({})
                 property var loadedItem: null
 
                 sourceComponent: root._resolveComponent(
@@ -402,11 +401,11 @@ Item {
                         Text {
                             text: {
                                 if (root.isStreaming) {
-                                    return _cache.thinkingContentCount > 0
-                                        ? "Thinking (" + _cache.thinkingContentCount + ")"
+                                    return root._thinkingContentCount > 0
+                                        ? "Thinking (" + root._thinkingContentCount + ")"
                                         : "Thinking..."
                                 }
-                                var count = _cache.thinkingContentCount
+                                var count = root._thinkingContentCount
                                 return count > 0
                                     ? "Thinking Process (" + count + ")"
                                     : "Thinking Process"
@@ -440,7 +439,7 @@ Item {
 
                         // Expand/collapse arrow (only when there are items)
                         Text {
-                            visible: _cache.thinkingContentCount > 0
+                            visible: root._thinkingContentCount > 0
                             text: root.thinkingExpanded ? "▲" : "▼"
                             color: Qt.rgba(root.textColor.r, root.textColor.g, root.textColor.b, 0.4)
                             font.pixelSize: 9
@@ -450,9 +449,9 @@ Item {
 
                     MouseArea {
                         anchors.fill: parent
-                        cursorShape: _cache.thinkingContentCount > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
+                        cursorShape: root._thinkingContentCount > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
                         onClicked: {
-                            if (_cache.thinkingContentCount > 0) {
+                            if (root._thinkingContentCount > 0) {
                                 root.thinkingExpanded = !root.thinkingExpanded
                             }
                         }
@@ -462,12 +461,12 @@ Item {
                 // Expanded thinking content area - LAZY LOADED
                 Loader {
                     id: thinkingContentLoader
-                    visible: root.thinkingExpanded && _cache.thinkingContentCount > 0
+                    visible: root.thinkingExpanded && root._thinkingContentCount > 0
                     width: parent.width
                     height: visible ? (item ? item.implicitHeight : 0) : 0
 
                     // Key optimization: only activate when expanded
-                    active: root.thinkingExpanded && _cache.thinkingContentCount > 0
+                    active: root.thinkingExpanded && root._thinkingContentCount > 0
 
                     onActiveChanged: {
                         if (active) {
@@ -497,13 +496,13 @@ Item {
                             spacing: 8
 
                             Repeater {
-                                model: _cache.thinkingContentCount
+                                model: root._thinkingContentCount
 
                                 delegate: Loader {
                                     id: thinkingWidgetLoader
                                     width: thinkingContentCol.width
 
-                                    property var widgetData: _cache.thinkingItems[index] || ({})
+                                    property var widgetData: root._thinkingItems[index] || ({})
                                     property var loadedItem: null
 
                                     sourceComponent: root._resolveComponent(
