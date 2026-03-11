@@ -95,21 +95,23 @@ class PrivateChatWidget(BaseWidget):
             messages.reverse()
 
             for msg in messages:
-                role = msg.get("role", "")
+                sender_id = msg.get("sender_id", "")
                 content = msg.get("content", "")
                 sender_name = msg.get("sender_name", "")
                 message_id = msg.get("message_id", str(uuid.uuid4()))
-                is_event = msg.get("is_event", False)
+                # Prefer is_event; support legacy messages that only have role
+                is_event = msg.get("is_event", False) or msg.get("role") == "event"
                 timestamp = msg.get("timestamp", None)
 
                 if not content:
                     continue
 
-                if role == "user":
-                    self.chat_list_widget.add_user_message(content, timestamp=timestamp)
-                elif role == "event":
+                # Determine message type by is_event and sender_id (no role)
+                if is_event:
                     # Handle event messages with structured content
                     self._load_event_message(msg)
+                elif (sender_id and sender_id.lower() == "user") or msg.get("role") == "user":
+                    self.chat_list_widget.add_user_message(content, timestamp=timestamp)
                 else:
                     self.chat_list_widget.append_message(
                         sender_name or self.crew_member.config.name,
@@ -249,20 +251,21 @@ class PrivateChatWidget(BaseWidget):
             msg = data
             update_offset = False
 
-        role = msg.get("role", "")
+        sender_id = msg.get("sender_id", "")
         content = msg.get("content", "")
         sender_name = msg.get("sender_name", "")
         message_id = msg.get("message_id", str(uuid.uuid4()))
-        is_event = msg.get("is_event", False)
+        is_event = msg.get("is_event", False) or msg.get("role") == "event"
         timestamp = msg.get("timestamp", None)
 
         if not content:
             return
 
-        if role == "user":
-            self.chat_list_widget.add_user_message(content, timestamp=timestamp)
-        elif role == "event":
+        # Determine message type by is_event and sender_id (no role)
+        if is_event:
             self._load_event_message(msg)
+        elif (sender_id and sender_id.lower() == "user") or msg.get("role") == "user":
+            self.chat_list_widget.add_user_message(content, timestamp=timestamp)
         else:
             self.chat_list_widget.append_message(
                 sender_name or self.crew_member.config.name,

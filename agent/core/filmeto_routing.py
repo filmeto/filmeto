@@ -550,7 +550,6 @@ class FilmetoRoutingManager:
                 text = extract_text_content(msg)
                 if text:
                     history.append({
-                        "role": "user" if msg.sender_id == "user" else "assistant",
                         "sender_id": msg.sender_id,
                         "sender_name": msg.sender_name,
                         "content": text,
