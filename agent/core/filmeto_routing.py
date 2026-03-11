@@ -90,20 +90,15 @@ class FilmetoRoutingManager:
         # Track main content for sending to agent
         _collected_main_content: List[StructureContent] = []
 
-        # Determine if response should be recorded to private history
-        # If response will be sent to group chat (send_main_content_to_agent=True),
-        # don't record to private history to avoid duplicate recording
-        record_to_private_history = not send_main_content_to_agent
-
         # Group chat routing: use sender_id="system" to indicate routed message
-        # Pass message_id for consistency and record_to_private_history to control history recording
+        # Always record to crew member's private history for full traceability
         async for event in crew_member.chat_stream(
             message,
             plan_id=plan_id,
             sender_id="system",
             sender_name="System",
             message_id=message_id,
-            record_to_private_history=record_to_private_history,
+            record_to_private_history=True,
         ):
             # Add metadata to the event payload
             event_payload = dict(event.payload)
