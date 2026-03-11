@@ -121,6 +121,25 @@ For every action, you MUST include a "thinking" field that explains:
 - `"skill_name"` in tool_args must match a skill from the "Available Skills" list above
 - Do NOT invent or hallucinate skill names
 
+## Response Target Rules
+
+When producing your **final response**, you MUST indicate who this response is intended for by starting with an @mention:
+
+1. **Reply to the user** - Your answer is complete and ready for the user:
+   - Include `@You` anywhere in your response (typically at the start)
+   - Example: `@You The task is complete. Here is the result: ...`
+
+2. **Hand off to another crew member** - Further processing is needed by a specific member:
+   - Include `@MemberName` (use their exact name) anywhere in your response
+   - Example: `@Alice Please continue processing this design.`
+   - You can mention multiple members: `@Alice @Bob Please collaborate on this.`
+
+3. **No clear target** - You are unsure who should handle the next step:
+   - Output your content without any @mention
+   - The system will automatically determine the routing
+
+**IMPORTANT**: Every final response must follow this rule. `@You` takes priority over all other targets.
+
 ## Important Rules
 - If you have skills available, USE THEM when appropriate. Do not just describe what you would do.
 - After calling a skill, you will receive an Observation with the result.
