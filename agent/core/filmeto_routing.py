@@ -17,6 +17,8 @@ from agent.chat.content import (
 from agent.chat.agent_chat_types import ContentType
 from agent.core.filmeto_constants import PRODUCER_NAME
 from agent.core.filmeto_utils import extract_text_content
+from agent.router.message_target import MessageTarget, TargetType
+from agent.router.message_router_service import RoutingDecision
 
 if TYPE_CHECKING:
     from agent.crew.crew_member import CrewMember
@@ -27,6 +29,9 @@ if TYPE_CHECKING:
     from agent.chat.agent_chat_signals import AgentChatSignals
 
 logger = logging.getLogger(__name__)
+
+
+MAX_ROUTING_DEPTH = 5  # Maximum hops before the routing chain is forcibly terminated
 
 
 class FilmetoRoutingManager:
@@ -46,6 +51,8 @@ class FilmetoRoutingManager:
         self._message_router = message_router
         self._signals = signals
         self._conversation_history = conversation_history
+        # Per-session routing state: session_id -> (depth, visited_senders frozenset)
+        self._routing_state: Dict[str, Any] = {}
 
     async def stream_crew_member(
         self,
@@ -57,6 +64,8 @@ class FilmetoRoutingManager:
         message_id: Optional[str] = None,
         record_to_agent_history: bool = True,
         send_main_content_to_agent: bool = False,
+        routing_depth: int = 0,
+        visited_senders: Optional[frozenset] = None,
     ) -> AsyncGenerator["AgentEvent", None]:
         """
         Stream responses from a crew member.
@@ -70,6 +79,8 @@ class FilmetoRoutingManager:
             message_id: Optional message ID (generated if not provided)
             record_to_agent_history: Whether to record to agent history
             send_main_content_to_agent: Whether to send collected main content to agent
+            routing_depth: Current hop depth in the routing chain (loop protection)
+            visited_senders: Set of sender IDs already seen in this chain (cycle detection)
 
         Yields:
             AgentEvent objects
@@ -165,7 +176,9 @@ class FilmetoRoutingManager:
         # After streaming ends, send collected main content if requested
         if send_main_content_to_agent and _collected_main_content:
             await self._send_main_content_to_agent(
-                crew_member, _collected_main_content, message_id, session_id
+                crew_member, _collected_main_content, message_id, session_id,
+                routing_depth=routing_depth,
+                visited_senders=visited_senders,
             )
 
     def _create_content_from_event(
@@ -397,9 +410,10 @@ class FilmetoRoutingManager:
         main_content: List[StructureContent],
         message_id: str,
         session_id: str,
+        routing_depth: int = 0,
+        visited_senders: Optional[frozenset] = None,
     ) -> None:
         """Send crew member's main content to agent for group chat routing."""
-        # Extract text from main content items
         text_parts = []
         for content in main_content:
             if isinstance(content, TextContent) and content.text:
@@ -415,11 +429,10 @@ class FilmetoRoutingManager:
         sender_name = crew_member.config.name.capitalize()
 
         logger.info(
-            f"Sending crew member main content to agent: "
-            f"sender={sender_id}, content_length={len(combined_text)}"
+            f"Crew member main content ready for routing: "
+            f"sender={sender_id}, depth={routing_depth}, length={len(combined_text)}"
         )
 
-        # Create AgentMessage for the crew member's main content
         crew_member_message = AgentMessage(
             sender_id=sender_id,
             sender_name=sender_name,
@@ -428,19 +441,18 @@ class FilmetoRoutingManager:
         )
         crew_member_message.metadata["session_id"] = session_id
 
-        # Record to conversation history
         self._conversation_history.append(crew_member_message)
-
-        # Send the message via signals
         await self._signals.send_agent_message(crew_member_message)
 
-        # Use LLM routing
+        # Route response: @mention fast-path first, LLM routing as fallback
         await self.route_message_with_llm(
             message=combined_text,
             sender_id=sender_id,
             sender_name=sender_name,
             session_id=session_id,
             user_message_id=message_id,
+            _routing_depth=routing_depth,
+            _visited_senders=visited_senders,
         )
 
     async def route_message_with_llm(
@@ -450,10 +462,41 @@ class FilmetoRoutingManager:
         sender_name: str,
         session_id: str,
         user_message_id: Optional[str] = None,
+        _routing_depth: int = 0,
+        _visited_senders: Optional[frozenset] = None,
     ) -> None:
         """
-        Route a message to appropriate crew members using LLM-based routing.
+        Route a message to appropriate crew members.
+
+        First attempts @mention-based routing (no LLM call needed).
+        Falls back to LLM routing only when no explicit @mention is found.
+
+        Loop protection:
+        - _routing_depth tracks the hop count for this routing chain.
+          When it reaches MAX_ROUTING_DEPTH the chain is terminated.
+        - _visited_senders accumulates sender IDs seen so far. A sender
+          appearing twice signals a cycle and terminates the chain immediately.
         """
+        if _visited_senders is None:
+            _visited_senders = frozenset()
+
+        # --- Loop / depth protection ---
+        if _routing_depth >= MAX_ROUTING_DEPTH:
+            logger.warning(
+                f"Routing chain terminated: max depth {MAX_ROUTING_DEPTH} reached "
+                f"(sender={sender_id}, chain={sorted(_visited_senders)})"
+            )
+            return
+
+        if sender_id.lower() in {s.lower() for s in _visited_senders}:
+            logger.warning(
+                f"Routing cycle detected: {sender_id} already in chain "
+                f"{sorted(_visited_senders)} — terminating"
+            )
+            return
+
+        _visited_senders = _visited_senders | {sender_id}
+
         crew_members = self._crew_manager.crew_members
 
         if not crew_members:
@@ -466,8 +509,42 @@ class FilmetoRoutingManager:
                     pass
             return
 
+        # --- @mention-based routing (fast path, no LLM call) ---
+        # Exclude the sender itself from available targets (by name and by sender_id)
+        available_names = [
+            name for name in crew_members
+            if name.lower() != sender_id.lower()
+        ]
+        target = MessageTarget.parse_from_content(message, available_names)
+
+        if target.target_type == TargetType.USER:
+            logger.info(
+                f"@You detected from '{sender_id}' (depth={_routing_depth}) — ending routing chain"
+            )
+            return
+
+        if target.target_type == TargetType.MEMBER:
+            logger.info(
+                f"@mention routing: '{sender_id}' -> {target.target_names} "
+                f"(depth={_routing_depth}, msg={message[:80]!r})"
+            )
+            decision = RoutingDecision(
+                routed_members=target.target_names,
+                member_messages={name: message for name in target.target_names},
+            )
+            if user_message_id:
+                await self._emit_crew_member_read(
+                    decision.routed_members, sender_id, sender_name, user_message_id, session_id
+                )
+            await self._dispatch_to_members(
+                decision, message, session_id,
+                routing_depth=_routing_depth + 1,
+                visited_senders=_visited_senders,
+            )
+            return
+
+        # --- LLM-based routing (no explicit @mention found) ---
         try:
-            # Build conversation history for context
             history = []
             for msg in self._conversation_history[-20:]:
                 text = extract_text_content(msg)
@@ -479,8 +556,9 @@ class FilmetoRoutingManager:
                         "content": text,
                     })
 
-            # Get routing decision from LLM
-            logger.info(f"Routing message from {sender_id}: {message[:100]}...")
+            logger.info(
+                f"LLM routing from '{sender_id}' (depth={_routing_depth}): {message[:100]!r}..."
+            )
             decision = await self._message_router.route_message(
                 message=message,
                 sender_id=sender_id,
@@ -500,16 +578,18 @@ class FilmetoRoutingManager:
                         pass
                 return
 
-            logger.info(f"Routed to: {decision.routed_members}")
+            logger.info(f"LLM routed to: {decision.routed_members}")
 
-            # Emit crew_member_read
             if user_message_id and decision.routed_members:
                 await self._emit_crew_member_read(
                     decision.routed_members, sender_id, sender_name, user_message_id, session_id
                 )
 
-            # Dispatch to routed members in parallel
-            await self._dispatch_to_members(decision, message, session_id)
+            await self._dispatch_to_members(
+                decision, message, session_id,
+                routing_depth=_routing_depth + 1,
+                visited_senders=_visited_senders,
+            )
 
         except Exception as e:
             logger.error(f"Error in LLM routing: {e}", exc_info=True)
@@ -555,7 +635,12 @@ class FilmetoRoutingManager:
             await self._signals.send_agent_message(read_msg)
 
     async def _dispatch_to_members(
-        self, decision, message: str, session_id: str
+        self,
+        decision,
+        message: str,
+        session_id: str,
+        routing_depth: int = 0,
+        visited_senders: Optional[frozenset] = None,
     ) -> None:
         """Dispatch messages to routed crew members in parallel."""
 
@@ -574,6 +659,8 @@ class FilmetoRoutingManager:
                 session_id=session_id,
                 record_to_agent_history=False,
                 send_main_content_to_agent=True,
+                routing_depth=routing_depth,
+                visited_senders=visited_senders,
             ):
                 pass
 
