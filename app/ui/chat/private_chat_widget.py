@@ -192,6 +192,8 @@ class PrivateChatWidget(BaseWidget):
 
         Uses MessageBuilder for consistent rendering with group chat.
         User messages are handled separately with add_user_message.
+        For agent messages with the same message_id (streaming chunks),
+        merges into the existing card instead of creating duplicates.
 
         Args:
             msg: The message dictionary to render
@@ -202,7 +204,7 @@ class PrivateChatWidget(BaseWidget):
         message_id = msg.get("message_id", str(uuid.uuid4()))
         timestamp = msg.get("timestamp", None)
 
-        if not content:
+        if content is None or content == "":
             return
 
         # User messages special handling
@@ -211,11 +213,22 @@ class PrivateChatWidget(BaseWidget):
             self.chat_list_widget.add_user_message(user_text, timestamp=timestamp)
             return
 
-        # Other messages use MessageBuilder
+        # Normalize content to list (history may store single content as dict)
+        if isinstance(content, dict):
+            msg = {**msg, "content": [content]}
+        elif not isinstance(content, list):
+            msg = {**msg, "content": []}
+
+        model = self.chat_list_widget._model
+        existing_row = model.get_row_by_message_id(message_id)
+        if existing_row is not None:
+            self._message_builder.merge_content_into_existing_bubble(message_id, msg)
+            return
+
         item = self._message_builder.build_item_from_history(msg)
         if item:
             qml_item = MessageConverter.from_chat_list_item(item)
-            self.chat_list_widget._model.add_item(qml_item)
+            model.add_item(qml_item)
 
     def _extract_user_text(self, content) -> str:
         """Extract text from user message content.
