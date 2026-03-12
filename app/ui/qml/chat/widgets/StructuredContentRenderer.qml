@@ -52,7 +52,7 @@ Item {
         "text": true, "code_block": true, "image": true, "video": true, "audio": true,
         "link": true, "button": true, "form": true, "file": true, "file_attachment": true,
         "crew_member_read": true, "crew_member_activity": true,
-        "llm_output": true, "final": true
+        "final": true
     })
 
     // Deep content hash for change detection
