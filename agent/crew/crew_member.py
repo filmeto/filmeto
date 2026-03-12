@@ -389,6 +389,14 @@ class CrewMember:
                 final_sender_id = sender_id or "user"
                 final_sender_name = sender_name or "User"
 
+            # Determine event_type based on role and is_error
+            if is_error:
+                event_type = "error"
+            elif role == "assistant":
+                event_type = "final"
+            else:
+                event_type = "user"
+
             message_dict = {
                 "message_id": message_id if message_id else str(uuid.uuid4()),
                 "sender_id": final_sender_id,
@@ -397,6 +405,8 @@ class CrewMember:
                 "timestamp": datetime.now().isoformat(),
                 "crew_title": self.crew_title,
                 "is_error": is_error,
+                "event_type": event_type,
+                "is_event": True,  # Mark as event for consistent history loading
             }
 
             crew_member_history_service.add_message(
