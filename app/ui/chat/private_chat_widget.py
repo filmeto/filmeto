@@ -56,6 +56,21 @@ class PrivateChatWidget(BaseWidget):
 
         QTimer.singleShot(200, self._load_history)
 
+    @staticmethod
+    def _is_structured_content(content) -> bool:
+        """Check if content is structured (has content_type).
+
+        Structured content should be rendered via handle_stream_event,
+        while plain text content can be rendered directly.
+
+        Args:
+            content: The content to check (can be any type)
+
+        Returns:
+            True if content is a dict with content_type, False otherwise
+        """
+        return isinstance(content, dict) and "content_type" in content
+
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -95,30 +110,7 @@ class PrivateChatWidget(BaseWidget):
             messages.reverse()
 
             for msg in messages:
-                sender_id = msg.get("sender_id", "")
-                content = msg.get("content", "")
-                sender_name = msg.get("sender_name", "")
-                message_id = msg.get("message_id", str(uuid.uuid4()))
-                # Prefer is_event; support legacy messages that only have role
-                is_event = msg.get("is_event", False) or msg.get("role") == "event"
-                timestamp = msg.get("timestamp", None)
-
-                if not content:
-                    continue
-
-                # Determine message type by is_event and sender_id (no role)
-                if is_event:
-                    # Handle event messages with structured content
-                    self._load_event_message(msg)
-                elif (sender_id and sender_id.lower() == "user") or msg.get("role") == "user":
-                    self.chat_list_widget.add_user_message(content, timestamp=timestamp)
-                else:
-                    self.chat_list_widget.append_message(
-                        sender_name or self.crew_member.config.name,
-                        content,
-                        message_id=message_id,
-                        timestamp=timestamp
-                    )
+                self._render_message(msg)
 
             self._sync_last_rendered_offset()
             self._history_loaded = True
@@ -251,32 +243,49 @@ class PrivateChatWidget(BaseWidget):
             msg = data
             update_offset = False
 
+        self._render_message(msg)
+
+        # Track rendered message count for incremental loading (real-time only)
+        if update_offset:
+            self._last_rendered_offset += 1
+
+    def _render_message(self, msg: dict):
+        """Render a message based on its content structure.
+
+        Uses content structure (content_type) to determine rendering method:
+        - User messages: add_user_message()
+        - Structured content (has content_type): handle_stream_event()
+        - Plain text: append_message()
+
+        Args:
+            msg: The message dictionary to render
+        """
         sender_id = msg.get("sender_id", "")
         content = msg.get("content", "")
         sender_name = msg.get("sender_name", "")
         message_id = msg.get("message_id", str(uuid.uuid4()))
-        is_event = msg.get("is_event", False) or msg.get("role") == "event"
         timestamp = msg.get("timestamp", None)
 
         if not content:
             return
 
-        # Determine message type by is_event and sender_id (no role)
-        if is_event:
-            self._load_event_message(msg)
-        elif (sender_id and sender_id.lower() == "user") or msg.get("role") == "user":
+        # User messages are handled separately
+        if sender_id and sender_id.lower() == "user":
             self.chat_list_widget.add_user_message(content, timestamp=timestamp)
+            return
+
+        # Check if content is structured (has content_type)
+        if self._is_structured_content(content):
+            # Structured content: use handle_stream_event for proper rendering
+            self._load_event_message(msg)
         else:
+            # Plain text content: render directly
             self.chat_list_widget.append_message(
                 sender_name or self.crew_member.config.name,
                 content,
                 message_id=message_id,
                 timestamp=timestamp,
             )
-
-        # Track rendered message count for incremental loading (real-time only)
-        if update_offset:
-            self._last_rendered_offset += 1
 
     # ------------------------------------------------------------------
     # Active state management for incremental loading

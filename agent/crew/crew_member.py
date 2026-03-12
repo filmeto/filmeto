@@ -406,7 +406,7 @@ class CrewMember:
                 "crew_title": self.crew_title,
                 "is_error": is_error,
                 "event_type": event_type,
-                "is_event": True,  # Mark as event for consistent history loading
+                # Note: is_event field removed - rendering now based on content structure
             }
 
             crew_member_history_service.add_message(
@@ -457,7 +457,7 @@ class CrewMember:
                 "timestamp": datetime.now().isoformat(),
                 "crew_title": self.crew_title,
                 "content": content_dict,
-                "is_event": True,  # Flag to identify event messages
+                # Note: is_event field removed - rendering now based on content.content_type
             }
 
             crew_member_history_service.add_message(
