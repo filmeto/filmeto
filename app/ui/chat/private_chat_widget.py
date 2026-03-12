@@ -204,7 +204,7 @@ class PrivateChatWidget(BaseWidget):
         message_id = msg.get("message_id", str(uuid.uuid4()))
         timestamp = msg.get("timestamp", None)
 
-        if content is None or content == "":
+        if content is None or content == "" or content == [] or content == {}:
             return
 
         # User messages special handling
