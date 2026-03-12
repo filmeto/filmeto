@@ -94,7 +94,8 @@ class React:
             project_name=self.project_name,
             react_type=self.react_type,
             step_id=self.step_id,
-            content=content
+            content=content,
+            message_id=self.message_id
         )
 
     def _drain_pending_messages(self) -> List[str]:
