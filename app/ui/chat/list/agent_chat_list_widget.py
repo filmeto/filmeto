@@ -273,6 +273,9 @@ class QmlAgentChatListWidget(BaseWidget):
                             items.append(sc.to_dict())
                         elif isinstance(sc, dict):
                             items.append(sc)
+                elif isinstance(structured_content, dict):
+                    # Handle single dict (e.g., from TextContent.to_dict())
+                    items = [structured_content]
                 else:
                     items = []
 
