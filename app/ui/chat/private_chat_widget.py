@@ -63,13 +63,24 @@ class PrivateChatWidget(BaseWidget):
         Structured content should be rendered via handle_stream_event,
         while plain text content can be rendered directly.
 
+        Supports two formats:
+        - Single dict with content_type (crew member history format)
+        - List of dicts where first item has content_type (agent history format)
+
         Args:
             content: The content to check (can be any type)
 
         Returns:
-            True if content is a dict with content_type, False otherwise
+            True if content is structured, False otherwise
         """
-        return isinstance(content, dict) and "content_type" in content
+        # Format 1: Single dict with content_type (crew member history)
+        if isinstance(content, dict) and "content_type" in content:
+            return True
+        # Format 2: List of dicts with content_type (agent history)
+        if isinstance(content, list) and len(content) > 0:
+            first_item = content[0]
+            return isinstance(first_item, dict) and "content_type" in first_item
+        return False
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -122,29 +133,26 @@ class PrivateChatWidget(BaseWidget):
     def _load_event_message(self, msg: dict):
         """Load an event message from history.
 
+        Supports two content formats:
+        - Single dict with content_type (crew member history format)
+        - List of dicts with content_type (agent history format)
+
         Args:
             msg: The event message dictionary containing event details
         """
         try:
-            from agent.chat.content import StructureContent
+            from agent.chat.content import StructureContent, TextContent
             from agent.chat.agent_chat_types import ContentType
 
             event_type = msg.get("event_type", "")
             sender_name = msg.get("sender_name", self.crew_member.config.name)
             sender_id = msg.get("sender_id", self.crew_member.config.name)
             message_id = msg.get("message_id", str(uuid.uuid4()))
-            content_dict = msg.get("content", {})
+            content_data = msg.get("content", {})
             timestamp = msg.get("timestamp", None)
 
-            if not content_dict:
+            if not content_data:
                 return
-
-            # Convert content dict to StructureContent
-            content_type_str = content_dict.get("content_type", "text")
-            try:
-                content_type = ContentType(content_type_str)
-            except ValueError:
-                content_type = ContentType.TEXT
 
             # Create a mock event object for handle_stream_event
             class MockEvent:
@@ -155,23 +163,38 @@ class PrivateChatWidget(BaseWidget):
                     self.content = content
                     self.message_id = message_id
 
-            # Create StructureContent from dict
-            if isinstance(content_dict, dict):
-                content = StructureContent.from_dict(content_dict)
+            # Helper function to process a single content dict
+            def process_content_dict(content_dict):
+                if not isinstance(content_dict, dict):
+                    return TextContent(text=str(content_dict))
+                return StructureContent.from_dict(content_dict)
+
+            # Handle different content formats
+            if isinstance(content_data, list):
+                # List format (agent history): process each content item
+                for content_dict in content_data:
+                    if not content_dict:
+                        continue
+                    content = process_content_dict(content_dict)
+                    mock_event = MockEvent(
+                        event_type=event_type,
+                        sender_id=sender_id,
+                        sender_name=sender_name,
+                        content=content,
+                        message_id=message_id
+                    )
+                    self.chat_list_widget.handle_stream_event(mock_event, None)
             else:
-                from agent.chat.content import TextContent
-                content = TextContent(text=str(content_dict))
-
-            mock_event = MockEvent(
-                event_type=event_type,
-                sender_id=sender_id,
-                sender_name=sender_name,
-                content=content,
-                message_id=message_id
-            )
-
-            # Use the chat list widget's handle_stream_event to render the event
-            self.chat_list_widget.handle_stream_event(mock_event, None)
+                # Single dict format (crew member history)
+                content = process_content_dict(content_data)
+                mock_event = MockEvent(
+                    event_type=event_type,
+                    sender_id=sender_id,
+                    sender_name=sender_name,
+                    content=content,
+                    message_id=message_id
+                )
+                self.chat_list_widget.handle_stream_event(mock_event, None)
 
             # Update the message timestamp and formatted startTime if available
             if timestamp and message_id:
@@ -271,7 +294,22 @@ class PrivateChatWidget(BaseWidget):
 
         # User messages are handled separately
         if sender_id and sender_id.lower() == "user":
-            self.chat_list_widget.add_user_message(content, timestamp=timestamp)
+            # Extract text from content (handle both string and structured formats)
+            if isinstance(content, str):
+                user_text = content
+            elif isinstance(content, list) and len(content) > 0:
+                # List format: extract text from first item
+                first_item = content[0]
+                if isinstance(first_item, dict):
+                    user_text = first_item.get("text", str(first_item))
+                else:
+                    user_text = str(first_item)
+            elif isinstance(content, dict):
+                # Dict format: extract text
+                user_text = content.get("text", str(content))
+            else:
+                user_text = str(content)
+            self.chat_list_widget.add_user_message(user_text, timestamp=timestamp)
             return
 
         # Check if content is structured (has content_type)
