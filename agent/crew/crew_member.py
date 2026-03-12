@@ -379,6 +379,8 @@ class CrewMember:
             return
 
         try:
+            from agent.chat.content import TextContent, ErrorContent
+
             workspace_path = _get_workspace_path(self.workspace)
 
             # Determine sender based on role if not provided
@@ -392,16 +394,28 @@ class CrewMember:
             # Determine event_type based on role and is_error
             if is_error:
                 event_type = "error"
-            elif role == "assistant":
-                event_type = "final"
             else:
-                event_type = "user"
+                event_type = "final" if role == "assistant" else "user"
+
+            # Wrap content in structured content for consistent rendering
+            if is_error:
+                structured_content = ErrorContent(
+                    error_message=content,
+                    title="Error",
+                    description="An error occurred"
+                )
+            else:
+                structured_content = TextContent(
+                    text=content,
+                    title=final_sender_name if role == "assistant" else None
+                )
+            content_dict = structured_content.to_dict()
 
             message_dict = {
                 "message_id": message_id if message_id else str(uuid.uuid4()),
                 "sender_id": final_sender_id,
                 "sender_name": final_sender_name,
-                "content": content,
+                "content": content_dict,
                 "timestamp": datetime.now().isoformat(),
                 "crew_title": self.crew_title,
                 "is_error": is_error,
