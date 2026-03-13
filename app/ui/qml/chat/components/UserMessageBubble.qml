@@ -30,31 +30,52 @@ Item {
 
     // Internal bubble padding
     readonly property int bubblePadding: 12
+    readonly property int minBubbleWidth: 80
+    readonly property int minContentWidth: 56  // minBubbleWidth - bubblePadding*2
 
     // Available width for bubble (total width minus avatar space on both sides)
-    readonly property int availableWidth: Math.max(80, width - totalAvatarWidth)
+    readonly property int availableWidth: Math.max(minBubbleWidth, width - totalAvatarWidth)
     // Max content area width (single source of truth; bubble width = this + 2*bubblePadding, capped by availableWidth)
-    readonly property int maxContentWidth: Math.max(56, availableWidth - bubblePadding * 2)
+    readonly property int maxContentWidth: Math.max(minContentWidth, availableWidth - bubblePadding * 2)
 
     // Pre-calculated content width from text measurement (matches MarkdownText font.pixelSize 14)
-    property real preferredContentWidth: 80
-    function _updatePreferredContentWidth() {
-        var textToMeasure = root.content || ""
-        if (root.structuredContent && root.structuredContent.length > 0) {
-            var first = root.structuredContent[0]
-            var data = first.data || first
-            if (data.text !== undefined) textToMeasure = data.text
-        }
-        if (!textToMeasure) {
-            preferredContentWidth = Math.min(80, root.maxContentWidth)
-            return
-        }
-        var lines = textToMeasure.split("\n")
-        var maxW = 80
+    property real preferredContentWidth: minContentWidth
+    function _stripMarkdownForMeasure(s) {
+        if (!s) return ""
+        var t = s.replace(/\*\*/g, "").replace(/__/g, "").replace(/`/g, "")
+        return t.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")  // [text](url) -> text
+    }
+    function _measureTextWidth(text) {
+        if (!text || !text.trim()) return minContentWidth
+        var lines = _stripMarkdownForMeasure(text).split("\n")
+        var maxW = minContentWidth
         for (var i = 0; i < lines.length; i++) {
-            _textMetrics.text = lines[i]
+            var line = lines[i]
+            if (line.length === 0) continue
+            _textMetrics.text = line
             var w = _textMetrics.advanceWidth
             if (w > maxW) maxW = Math.ceil(w)
+        }
+        return maxW
+    }
+    function _updatePreferredContentWidth() {
+        var textsToMeasure = []
+        if (root.content && root.content.trim()) textsToMeasure.push(root.content)
+        if (root.structuredContent && root.structuredContent.length > 0) {
+            for (var j = 0; j < root.structuredContent.length; j++) {
+                var item = root.structuredContent[j]
+                var data = item.data || item
+                if (data.text !== undefined && data.text) textsToMeasure.push(data.text)
+            }
+        }
+        if (textsToMeasure.length === 0) {
+            preferredContentWidth = Math.min(minContentWidth, root.maxContentWidth)
+            return
+        }
+        var maxW = minContentWidth
+        for (var k = 0; k < textsToMeasure.length; k++) {
+            var w = _measureTextWidth(textsToMeasure[k])
+            if (w > maxW) maxW = w
         }
         preferredContentWidth = Math.min(maxW, root.maxContentWidth)
     }
@@ -65,6 +86,7 @@ Item {
     TextMetrics {
         id: _textMetrics
         font.pixelSize: 14
+        font.weight: Font.Normal
     }
 
     implicitHeight: 12 + headerRow.height + 12 + bubbleContainer.height + 8 + (crewReadByRow.visible ? crewReadByRow.height + 4 : 0)
@@ -153,7 +175,7 @@ Item {
             property real explicitContentWidth: 0
             readonly property real calculatedContentWidth: Math.min(root.maxContentWidth, Math.max(root.preferredContentWidth, explicitContentWidth))
 
-            width: Math.min(Math.max(80, calculatedContentWidth + bubblePadding * 2), availableWidth)
+            width: Math.min(Math.max(root.minBubbleWidth, calculatedContentWidth + bubblePadding * 2), availableWidth)
             height: contentLoader.implicitHeight + bubblePadding * 2
 
             color: bubbleColor
@@ -167,7 +189,7 @@ Item {
                     top: parent.top
                     margins: bubblePadding
                 }
-                width: availableWidth - bubblePadding * 2
+                width: bubble.calculatedContentWidth
                 structuredContent: root.structuredContent
                 content: root.content
                 textColor: root.textColor
@@ -188,7 +210,7 @@ Item {
                     interval: 100  // Increased from 50ms to reduce frequency during rapid updates
                     onTriggered: {
                         if (contentLoader.children && contentLoader.children.length > 0) {
-                            var maxW = 80
+                            var maxW = root.minContentWidth
                             // contentLoader.children[0] is the contentColumn
                             var contentColumn = contentLoader.children[0]
                             if (contentColumn && contentColumn.children) {
@@ -206,7 +228,7 @@ Item {
                                     }
                                 }
                             }
-                            bubble.explicitContentWidth = Math.min(root.maxContentWidth, Math.max(80, maxW))
+                            bubble.explicitContentWidth = Math.min(root.maxContentWidth, Math.max(root.minContentWidth, maxW))
                         }
                     }
                 }
