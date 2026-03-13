@@ -316,6 +316,9 @@ class AgentChatMembersWidget(BaseWidget):
             self.list_widget.addItem(list_item)
             self.list_widget.setItemWidget(list_item, item_widget)
 
+        # Prune active state for members no longer in the list (e.g. removed)
+        self._active_members = {k for k in self._active_members if k in self._item_widgets}
+
     def set_member_active(self, member_name: str, active: bool):
         """Set the activity state of a crew member.
 

@@ -40,6 +40,9 @@ class AgentChatWidget(BaseWidget):
         self._agent_ready = False
         self._agent_lock = asyncio.Lock()
         self._private_tabs: Dict[str, int] = {}  # crew_member_name -> tab_index
+        # Cached reference for blinker connect/disconnect (same object required)
+        self._crew_activity_handler = self._on_crew_member_activity_from_agent
+        self._pending_crew_activity: list = []  # [(member_name, active), ...] replayed after init
 
         self.error_occurred.connect(self._on_error)
 
@@ -211,6 +214,12 @@ class AgentChatWidget(BaseWidget):
                 )
 
                 self._agent_ready = True
+                self.agent.signals.connect_crew_member_activity(
+                    self._crew_activity_handler, weak=False
+                )
+                for member_name, active in self._pending_crew_activity:
+                    self.crew_member_activity.emit(member_name, active)
+                self._pending_crew_activity.clear()
                 logger.info(f"Agent initialized for project '{project_name}'")
                 return True
 
@@ -218,6 +227,7 @@ class AgentChatWidget(BaseWidget):
                 logger.error(f"Failed to initialize agent: {e}", exc_info=True)
                 self.agent = None
                 self._agent_ready = False
+                self._pending_crew_activity.clear()
                 return False
 
     def _on_message_submitted(self, message: str):
@@ -282,11 +292,26 @@ class AgentChatWidget(BaseWidget):
         temperature = 0.7
         return model, temperature
 
+    def _on_crew_member_activity_from_agent(self, sender, member_name=None, active=None):
+        """Forward agent signals crew_member_activity to Qt signal (group chat path)."""
+        if member_name is None or active is None:
+            return
+        if self._agent_ready:
+            self.crew_member_activity.emit(member_name, active)
+        else:
+            self._pending_crew_activity.append((member_name, active))
+
     def on_project_switch(self, project: Any) -> None:
         if not project:
             return
 
         self._agent_ready = False
+        self._pending_crew_activity.clear()
+        if self.agent and hasattr(self.agent, "signals"):
+            try:
+                self.agent.signals.disconnect_crew_member_activity(self._crew_activity_handler)
+            except Exception as e:
+                logger.debug("Could not disconnect crew_member_activity signal: %s", e)
         self.agent = None
 
         asyncio.ensure_future(self._initialize_agent())
