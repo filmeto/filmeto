@@ -32,6 +32,7 @@ class AgentChatSignals:
 
     def __init__(self, consume_interval_ms: int | float | None = None):
         self.__agent_message_send = blinker.Signal()
+        self.__crew_member_activity_send = blinker.Signal()
         self._consume_interval_ms = (
             self.CONSUME_INTERVAL_MS if consume_interval_ms is None else consume_interval_ms
         )
@@ -62,6 +63,18 @@ class AgentChatSignals:
             receiver: The function to disconnect
         """
         self.__agent_message_send.disconnect(receiver)
+
+    def connect_crew_member_activity(self, receiver, weak: bool = True):
+        """Connect a receiver for crew member activity (member_name, active)."""
+        self.__crew_member_activity_send.connect(receiver, weak=weak)
+
+    def disconnect_crew_member_activity(self, receiver):
+        """Disconnect a receiver from crew member activity signal."""
+        self.__crew_member_activity_send.disconnect(receiver)
+
+    def emit_crew_member_activity(self, member_name: str, active: bool) -> None:
+        """Emit crew member activity (typing start/end) for sidebar updates."""
+        self.__crew_member_activity_send.send(self, member_name=member_name, active=active)
 
     async def _ensure_consumer_running(self) -> None:
         """

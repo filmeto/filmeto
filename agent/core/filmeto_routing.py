@@ -167,6 +167,13 @@ class FilmetoRoutingManager:
                 enhanced_event, crew_member, message_id, record_to_agent_history, send_main_content_to_agent
             )
 
+            # Emit crew member activity for sidebar. Group chat uses this path; private chat
+            # uses StreamEventHandler._crew_member_activity_callback. Both end at set_member_active.
+            if event.event_type == AgentEventType.CREW_MEMBER_TYPING.value:
+                self._signals.emit_crew_member_activity(event.sender_name, True)
+            elif event.event_type == AgentEventType.CREW_MEMBER_TYPING_END.value:
+                self._signals.emit_crew_member_activity(event.sender_name, False)
+
             # Handle crew member messages that need further processing
             if event.event_type == AgentEventType.CREW_MEMBER_MESSAGE:
                 await self._handle_crew_member_message(event, content, session_id)
