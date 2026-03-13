@@ -244,6 +244,9 @@ class FilmetoAgent:
                     message,
                     plan_id=None,
                     session_id=session_id,
+                    record_to_agent_history=False,
+                    message_sender_id=sender_id,
+                    message_sender_name=sender_name,
                 ):
                     pass
                 return

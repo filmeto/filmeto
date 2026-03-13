@@ -66,6 +66,8 @@ class FilmetoRoutingManager:
         send_main_content_to_agent: bool = False,
         routing_depth: int = 0,
         visited_senders: Optional[frozenset] = None,
+        message_sender_id: Optional[str] = None,
+        message_sender_name: Optional[str] = None,
     ) -> AsyncGenerator["AgentEvent", None]:
         """
         Stream responses from a crew member.
@@ -81,6 +83,8 @@ class FilmetoRoutingManager:
             send_main_content_to_agent: Whether to send collected main content to agent
             routing_depth: Current hop depth in the routing chain (loop protection)
             visited_senders: Set of sender IDs already seen in this chain (cycle detection)
+            message_sender_id: When set (e.g. direct @mention), used as sender in private history
+            message_sender_name: Display name for message_sender_id in private history
 
         Yields:
             AgentEvent objects
@@ -101,13 +105,14 @@ class FilmetoRoutingManager:
         # Track main content for sending to agent
         _collected_main_content: List[StructureContent] = []
 
-        # Group chat routing: use sender_id="system" to indicate routed message
-        # Always record to crew member's private history for full traceability
+        # Direct @mention: use message_sender_id/name so private chat shows user. Else "system".
+        effective_sender_id = message_sender_id if message_sender_id is not None else "system"
+        effective_sender_name = message_sender_name if message_sender_name is not None else "System"
         async for event in crew_member.chat_stream(
             message,
             plan_id=plan_id,
-            sender_id="system",
-            sender_name="System",
+            sender_id=effective_sender_id,
+            sender_name=effective_sender_name,
             message_id=message_id,
             record_to_private_history=True,
         ):
