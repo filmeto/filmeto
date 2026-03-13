@@ -33,6 +33,39 @@ Item {
 
     // Available width for bubble (total width minus avatar space on both sides)
     readonly property int availableWidth: Math.max(80, width - totalAvatarWidth)
+    // Max content area width (single source of truth; bubble width = this + 2*bubblePadding, capped by availableWidth)
+    readonly property int maxContentWidth: Math.max(56, availableWidth - bubblePadding * 2)
+
+    // Pre-calculated content width from text measurement (matches MarkdownText font.pixelSize 14)
+    property real preferredContentWidth: 80
+    function _updatePreferredContentWidth() {
+        var textToMeasure = root.content || ""
+        if (root.structuredContent && root.structuredContent.length > 0) {
+            var first = root.structuredContent[0]
+            var data = first.data || first
+            if (data.text !== undefined) textToMeasure = data.text
+        }
+        if (!textToMeasure) {
+            preferredContentWidth = Math.min(80, root.maxContentWidth)
+            return
+        }
+        var lines = textToMeasure.split("\n")
+        var maxW = 80
+        for (var i = 0; i < lines.length; i++) {
+            _textMetrics.text = lines[i]
+            var w = _textMetrics.advanceWidth
+            if (w > maxW) maxW = Math.ceil(w)
+        }
+        preferredContentWidth = Math.min(maxW, root.maxContentWidth)
+    }
+    onContentChanged: _updatePreferredContentWidth()
+    onStructuredContentChanged: _updatePreferredContentWidth()
+    onAvailableWidthChanged: _updatePreferredContentWidth()
+
+    TextMetrics {
+        id: _textMetrics
+        font.pixelSize: 14
+    }
 
     implicitHeight: 12 + headerRow.height + 12 + bubbleContainer.height + 8 + (crewReadByRow.visible ? crewReadByRow.height + 4 : 0)
 
@@ -116,8 +149,9 @@ Item {
         Rectangle {
             id: bubble
 
-            // Calculate content width based on actual content
-            property real calculatedContentWidth: 150
+            // Pre-calculated from TextMetrics (root.preferredContentWidth) + post-layout from children (explicitContentWidth); never exceed maxContentWidth
+            property real explicitContentWidth: 0
+            readonly property real calculatedContentWidth: Math.min(root.maxContentWidth, Math.max(root.preferredContentWidth, explicitContentWidth))
 
             width: Math.min(Math.max(80, calculatedContentWidth + bubblePadding * 2), availableWidth)
             height: contentLoader.implicitHeight + bubblePadding * 2
@@ -172,7 +206,7 @@ Item {
                                     }
                                 }
                             }
-                            bubble.calculatedContentWidth = maxW
+                            bubble.explicitContentWidth = Math.min(root.maxContentWidth, Math.max(80, maxW))
                         }
                     }
                 }
