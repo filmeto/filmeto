@@ -99,8 +99,8 @@ class FilmetoRoutingManager:
         # Track content IDs for hierarchical relationships
         content_tracking: Dict[str, str] = {}
 
-        # Track active skill execution
-        _active_skill_name: Optional[str] = None
+        # Stack of active skill content_ids for folding (supports nested skills)
+        _active_skill_content_id_stack: List[str] = []
 
         # Track main content for sending to agent
         _collected_main_content: List[StructureContent] = []
@@ -123,15 +123,23 @@ class FilmetoRoutingManager:
             if plan_id:
                 event_payload["plan_id"] = plan_id
 
-            # Track skill execution boundaries
+            # Track skill execution boundaries (stack supports nested skills)
             if event.event_type in (AgentEventType.SKILL_START.value, AgentEventType.SKILL_START):
-                if event.content and hasattr(event.content, "skill_name"):
-                    _active_skill_name = event.content.skill_name
+                if event.content and getattr(event.content, "content_id", None):
+                    _active_skill_content_id_stack.append(event.content.content_id)
             elif event.event_type in (
                 AgentEventType.SKILL_END.value, AgentEventType.SKILL_END,
                 AgentEventType.SKILL_ERROR.value, AgentEventType.SKILL_ERROR,
             ):
-                _active_skill_name = None
+                current_content_id = getattr(event.content, "content_id", None) if event.content else None
+                if _active_skill_content_id_stack:
+                    if current_content_id and _active_skill_content_id_stack[-1] == current_content_id:
+                        _active_skill_content_id_stack.pop()
+                    elif current_content_id and current_content_id in _active_skill_content_id_stack:
+                        # O(n) remove; acceptable for normal depth. Could use a different structure if deep nesting + out-of-order becomes common.
+                        _active_skill_content_id_stack.remove(current_content_id)
+                    else:
+                        _active_skill_content_id_stack.pop()
 
             # Create appropriate content based on event type
             content = event.content
@@ -148,9 +156,10 @@ class FilmetoRoutingManager:
                     yield result
                 continue
 
-            # Mark non-skill content with skill context
-            if _active_skill_name and content:
-                self._mark_skill_context(content, _active_skill_name)
+            # Fold non-skill content under the active skill via parent_id (single mechanism)
+            _active_skill_content_id = _active_skill_content_id_stack[-1] if _active_skill_content_id_stack else None
+            if _active_skill_content_id and content and content.content_type != ContentType.SKILL:
+                content.parent_id = _active_skill_content_id
 
             # Collect main content
             if content and send_main_content_to_agent and content.is_main_content():
@@ -165,6 +174,7 @@ class FilmetoRoutingManager:
                 sender_id=event.sender_id,
                 sender_name=event.sender_name,
                 content=content,
+                message_id=message_id,
             )
 
             # Send via signals
@@ -289,19 +299,6 @@ class FilmetoRoutingManager:
                     )
 
         return None
-
-    def _mark_skill_context(
-        self, content: StructureContent, skill_name: str
-    ) -> None:
-        """Mark content with skill context if inside a skill execution."""
-        is_skill_event = content.content_type in (
-            ContentType.SKILL,
-        )
-
-        if not is_skill_event:
-            if content.metadata is None:
-                content.metadata = {}
-            content.metadata["_skill_name"] = skill_name
 
     async def _send_event_to_signals(
         self,

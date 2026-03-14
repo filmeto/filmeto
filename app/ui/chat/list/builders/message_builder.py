@@ -326,7 +326,9 @@ class MessageBuilder:
                 skills_by_name: Dict[str, List[Dict[str, Any]]] = {}
                 # Position of first occurrence of each skill in the content stream
                 skill_first_positions: Dict[str, int] = {}
-                # Child content collected via _skill_name metadata marking
+                # parent_id (skill content_id) -> skill_name for folding by parent_id
+                parent_id_to_skill_name: Dict[str, str] = {}
+                # Child content collected via parent_id or _skill_name metadata
                 skill_child_contents: Dict[str, List[Dict[str, Any]]] = {}
                 # Unassociated tool_call entries
                 tool_entries: List[Dict[str, Any]] = []
@@ -341,6 +343,14 @@ class MessageBuilder:
                         crew_read_by = self._resolve_crew_read_by(raw_crew_members)
                         break
 
+                # First pass: build content_id -> skill_name for all skill items (key is content_id, so multiple runs of same skill_name do not overwrite)
+                for content_item in content_list:
+                    if isinstance(content_item, dict) and content_item.get("content_type") == "skill":
+                        skill_name = content_item.get("data", {}).get("skill_name", "")
+                        content_id = content_item.get("content_id")
+                        if skill_name and content_id:
+                            parent_id_to_skill_name[content_id] = skill_name
+
                 position = 0
                 for content_item in content_list:
                     if isinstance(content_item, dict):
@@ -348,6 +358,7 @@ class MessageBuilder:
                         item_metadata = content_item.get("metadata")
                         skill_ref = (item_metadata.get("_skill_name")
                                      if isinstance(item_metadata, dict) else None)
+                        parent_id = content_item.get("parent_id")
 
                         # Special handling for typing content: only keep the last one
                         if content_type == "typing":
@@ -367,8 +378,14 @@ class MessageBuilder:
                                     position += 1
                                 except Exception as e:
                                     logger.debug(f"Failed to load structured content: {e}")
+                        elif parent_id and parent_id in parent_id_to_skill_name:
+                            # Content folded under skill via parent_id
+                            skill_name = parent_id_to_skill_name[parent_id]
+                            if skill_name not in skill_child_contents:
+                                skill_child_contents[skill_name] = []
+                            skill_child_contents[skill_name].append(content_item)
                         elif skill_ref:
-                            # Content belongs to a skill (marked via metadata)
+                            # Legacy: content marked with metadata _skill_name (pre-parent_id storage). Can be removed when no such history exists.
                             if skill_ref not in skill_child_contents:
                                 skill_child_contents[skill_ref] = []
                             skill_child_contents[skill_ref].append(content_item)
@@ -475,6 +492,8 @@ class MessageBuilder:
             # Shallow copy of list only; we replace/filter elements, do not mutate kept items
             merged_content = list(current_structured)
             new_content_list = combined_msg.get("content", [])
+            # Map skill content_id -> index; only invalidated when skill entries are added (merge_or_append_skill)
+            content_id_to_index = self._skill_content_id_to_index(merged_content)
 
             for content_item in new_content_list:
                 if not isinstance(content_item, dict):
@@ -484,9 +503,15 @@ class MessageBuilder:
                 item_metadata = content_item.get('metadata')
                 skill_ref = (item_metadata.get('_skill_name')
                              if isinstance(item_metadata, dict) else None)
+                parent_id = content_item.get('parent_id')
 
                 if content_type == 'skill':
                     self._merge_or_append_skill(merged_content, content_item)
+                    content_id_to_index = self._skill_content_id_to_index(merged_content)
+                elif parent_id:
+                    self._add_content_to_skill_by_parent_id(
+                        merged_content, content_item, parent_id, content_id_to_index
+                    )
                 elif skill_ref:
                     self._add_content_to_skill_child(merged_content, content_item, skill_ref)
                 elif content_type == 'text':
@@ -543,6 +568,61 @@ class MessageBuilder:
                 return
 
         merged_content.append(self._copy_content_item(new_skill))
+
+    def _skill_content_id_to_index(self, merged_content: List[Dict[str, Any]]) -> Dict[str, int]:
+        """Build content_id -> index map for skill items for O(1) parent lookup. Rebuild only when skill entries are added/removed; updating a skill's child_contents does not change indices."""
+        return {
+            c.get("content_id"): i
+            for i, c in enumerate(merged_content)
+            if isinstance(c, dict) and c.get("content_type") == "skill" and c.get("content_id")
+        }
+
+    def _add_content_to_skill_by_parent_id(
+        self,
+        merged_content: List[Dict[str, Any]],
+        child_item: Dict[str, Any],
+        parent_id: str,
+        content_id_to_index: Optional[Dict[str, int]] = None,
+    ) -> None:
+        """Add a content item as a child of the skill whose content_id is parent_id."""
+        if content_id_to_index is not None and parent_id in content_id_to_index:
+            i = content_id_to_index[parent_id]
+            existing = merged_content[i]
+            if existing.get("content_type") == "skill" and existing.get("content_id") == parent_id:
+                updated = dict(existing)
+                updated["data"] = dict(existing.get("data", {}))
+                children = list(updated["data"].get("child_contents", []))
+                cid = child_item.get("content_id")
+                if cid:
+                    existing_ids = {c.get("content_id") for c in children if isinstance(c, dict) and c.get("content_id")}
+                    if cid in existing_ids:
+                        return
+                children.append(self._copy_content_item(child_item))
+                updated["data"]["child_contents"] = children
+                merged_content[i] = updated
+                return
+        for i, existing in enumerate(merged_content):
+            if existing.get("content_type") != "skill":
+                continue
+            if existing.get("content_id") != parent_id:
+                continue
+            updated = dict(existing)
+            updated["data"] = dict(existing.get("data", {}))
+            children = list(updated["data"].get("child_contents", []))
+            content_id = child_item.get("content_id")
+            if content_id:
+                existing_ids = {c.get("content_id") for c in children if isinstance(c, dict) and c.get("content_id")}
+                if content_id in existing_ids:
+                    return
+            children.append(self._copy_content_item(child_item))
+            updated["data"]["child_contents"] = children
+            merged_content[i] = updated
+            return
+        logger.warning(
+            "Skill with content_id=%s not found, appending as standalone content",
+            parent_id,
+        )
+        merged_content.append(self._copy_content_item(child_item))
 
     def _add_content_to_skill_child(
         self,
