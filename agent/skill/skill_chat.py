@@ -104,8 +104,19 @@ class SkillChat:
         skill_sender_id = crew_member_name if crew_member_name else f"skill_{skill.name}"
         skill_sender_name = crew_member_name if crew_member_name else f"Skill: {skill.name}"
 
-        # Emit SKILL_START event
+        # Emit SKILL_START event and keep content_id for parent_id folding (crew member history saves before routing)
         from agent.chat.content import SkillContent, SkillExecutionState
+        from agent.chat.agent_chat_types import ContentType
+
+        skill_start_content = SkillContent(
+            skill_name=skill.name,
+            state=SkillExecutionState.IN_PROGRESS,
+            progress_text="Starting execution...",
+            title=f"Skill: {skill.name}",
+            description=skill.description,
+            message_id=message_id
+        )
+        skill_content_id = skill_start_content.content_id
         yield AgentEvent.create(
             event_type=AgentEventType.SKILL_START.value,
             project_name=project_name,
@@ -113,14 +124,7 @@ class SkillChat:
             step_id=step_id,
             sender_id=skill_sender_id,
             sender_name=skill_sender_name,
-            content=SkillContent(
-                skill_name=skill.name,
-                state=SkillExecutionState.IN_PROGRESS,
-                progress_text="Starting execution...",
-                title=f"Skill: {skill.name}",
-                description=skill.description,
-                message_id=message_id
-            ),
+            content=skill_start_content,
             message_id=message_id
         )
 
@@ -179,6 +183,9 @@ class SkillChat:
             tool_count = 0
             executed_tools = []  # Track names of executed tools
             async for event in react_instance.chat_stream(user_message or skill.description):
+                # Set parent_id so crew member history (saved before routing) gets correct folding
+                if event.content and getattr(event.content, "content_type", None) != ContentType.SKILL:
+                    event.content.parent_id = skill_content_id
                 yield event
                 # Emit SKILL_PROGRESS for each tool event
                 if event.event_type in (AgentEventType.TOOL_START.value, AgentEventType.TOOL_PROGRESS.value, AgentEventType.TOOL_END.value):
