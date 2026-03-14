@@ -239,6 +239,13 @@ class FilmetoAgent:
             mentioned_member = self._crew_manager.resolve_mentioned_crew_member(message)
 
             if mentioned_member and mentioned_member.config.name.lower() != PRODUCER_NAME:
+                await self._routing_manager._emit_crew_member_read(
+                    [mentioned_member.config.name],
+                    sender_id,
+                    sender_name,
+                    initial_prompt.message_id,
+                    session_id,
+                )
                 async for _ in self._routing_manager.stream_crew_member(
                     mentioned_member,
                     message,
