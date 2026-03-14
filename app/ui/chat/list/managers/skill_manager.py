@@ -63,8 +63,10 @@ class SkillManager:
         self._metadata_resolver = metadata_resolver
         self._scroll_manager = scroll_manager
 
-        # Active skills tracking: {message_id: {skill_name, sender_name, state, child_contents}}
+        # Active skills tracking: {message_id: {skill_name, sender_name, state, skill_content_id, child_contents}}
         self._active_skills: Dict[str, Dict[str, Any]] = {}
+        # Skill content_id -> message_id for folding content by parent_id
+        self._skill_content_id_to_message_id: Dict[str, str] = {}
         # Skill name to message_id mapping for combining skills: {skill_name: message_id}
         self._skill_name_to_message_id: Dict[str, str] = {}
         # Current agent cards: {agent_name: message_id}
@@ -154,13 +156,17 @@ class SkillManager:
             else:
                 self._skill_name_to_message_id[skill_name] = message_id
 
-            # Track the active skill by message_id
+            # Track the active skill by message_id and by content_id (for parent_id folding)
+            skill_content_id = getattr(skill_content, "content_id", None) or ""
             self._active_skills[message_id] = {
                 "skill_name": skill_name,
                 "sender_name": sender_name,
                 "state": SkillExecutionState.IN_PROGRESS,
+                "skill_content_id": skill_content_id,
                 "child_contents": [],
             }
+            if skill_content_id:
+                self._skill_content_id_to_message_id[skill_content_id] = message_id
             # Create or update the skill card
             self.get_or_create_agent_card(message_id, sender_name, sender_name)
             self._update_skill_content(message_id, skill_content, create_new=True)
@@ -177,16 +183,25 @@ class SkillManager:
                 else:
                     self._skill_name_to_message_id[skill_name] = message_id
 
+                skill_content_id = getattr(skill_content, "content_id", None) or ""
                 self._active_skills[message_id] = {
                     "skill_name": skill_name,
                     "sender_name": sender_name,
                     "state": SkillExecutionState.IN_PROGRESS,
+                    "skill_content_id": skill_content_id,
                     "child_contents": [],
                 }
+                if skill_content_id:
+                    self._skill_content_id_to_message_id[skill_content_id] = message_id
                 self.get_or_create_agent_card(message_id, sender_name, sender_name)
                 self._update_skill_content(message_id, skill_content, create_new=True)
 
         elif event.event_type == "skill_end":
+            # Only clear the mapping for this message's skill (by content_id), not by skill_name
+            if message_id in self._active_skills:
+                skill_content_id = self._active_skills[message_id].get("skill_content_id")
+                if skill_content_id:
+                    self._skill_content_id_to_message_id.pop(skill_content_id, None)
             self._finalize_skill(message_id, skill_name, sender_name, skill_content)
 
         elif event.event_type == "skill_error":
@@ -195,6 +210,9 @@ class SkillManager:
                 self._active_skills[message_id]["state"] = SkillExecutionState.ERROR
                 skill_content.child_contents = self._active_skills[message_id]["child_contents"]
                 self._update_skill_content(message_id, skill_content)
+                skill_content_id = self._active_skills[message_id].get("skill_content_id")
+                if skill_content_id:
+                    self._skill_content_id_to_message_id.pop(skill_content_id, None)
                 del self._active_skills[message_id]
                 self._cleanup_skill_name_mapping(skill_name)
             else:
@@ -677,15 +695,22 @@ class SkillManager:
 
     def add_child_to_skill(
         self,
-        message_id: str,
+        fallback_message_id: str,
         child_content: Dict[str, Any]
     ) -> None:
         """Add a child content to the skill's child_contents list.
 
+        Primary lookup: if child_content has parent_id, resolve message_id from
+        _skill_content_id_to_message_id (parent_id = skill's content_id).
+        Fallback: use fallback_message_id when parent_id is missing or not in the map.
+
         Args:
-            message_id: The message ID containing the skill
-            child_content: The child content dictionary to add
+            fallback_message_id: Message ID to use when parent_id is not set or not found (e.g. from event)
+            child_content: Child content dict; may contain parent_id for folding
         """
+        parent_id = child_content.get("parent_id") if isinstance(child_content, dict) else None
+        resolve_message_id = self._skill_content_id_to_message_id.get(parent_id) if parent_id else None
+        message_id = resolve_message_id if resolve_message_id is not None else fallback_message_id
         item = self._model.get_item(self._model.get_row_by_message_id(message_id) or 0)
         if not item:
             return
@@ -824,6 +849,7 @@ class SkillManager:
     def clear(self) -> None:
         """Clear all skill tracking state."""
         self._active_skills.clear()
+        self._skill_content_id_to_message_id.clear()
         self._skill_name_to_message_id.clear()
         self._agent_current_cards.clear()
         self._active_tools.clear()
