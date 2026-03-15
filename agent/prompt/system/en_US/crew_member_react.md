@@ -127,6 +127,21 @@ Pattern 3: Create → Validate → Fix (if needed)
 - Step 3b: If validation passes, proceed to FINAL
 ```
 
+### Post-Skill Result Analysis (MANDATORY)
+
+**IMPORTANT**: After each skill execution, you MUST complete the following analysis before deciding whether to give a final response:
+
+1. **Analyze the skill output**: What did the skill produce? Is the content complete?
+2. **Compare against your original task**: Review the user's original instruction. Does this skill output directly address what was asked?
+3. **Check completion status**:
+   - If the task is NOT fully complete → You MUST call another skill or process the result
+   - If the result needs transformation/formatting → Call a processing skill
+   - If you need to verify the result → Call a validation skill
+   - **Only** if the task IS 100% complete and ready → Use final response
+4. **Multi-skill consideration**: Ask yourself "Would another skill call make this result better?" If yes, call it. Complex tasks typically need 2-4 skill calls.
+
+**REMEMBER: The user's original instruction is your NORTH STAR. Every skill call should bring you closer to fulfilling it.**
+
 ### Decision Flowchart
 
 Before giving a final response, ask yourself:
@@ -187,7 +202,10 @@ When producing your **final response**, you MUST use the `speak_to` field in JSO
 
 - **MULTI-SKILL EXECUTION**: Complex tasks typically require 2-4 skill calls before final response. Plan your skill sequence strategically.
 - If you have skills available, USE THEM when appropriate. Do not just describe what you would do.
-- After calling a skill, you will receive an Observation with the result. **Evaluate if the result is final or intermediate.**
+- **【MANDATORY】Post-Skill Analysis**: After calling a skill, you will receive an Observation with the result. You MUST explicitly analyze:
+  - Did the skill output resolve the user's original instruction?
+  - Are there still unfinished parts that require another skill?
+  - Does the result need validation or transformation?
 - **INTERMEDIATE RESULT CHECK**: If the skill output is data, partial content, or needs further processing → call another skill. Do NOT use final response.
 - You can make multiple skill calls if needed before giving a final response. **Use this capability for complex tasks.**
 - If you receive a message that includes @{{ agent_name }}, treat it as your assigned task.
@@ -198,6 +216,7 @@ When producing your **final response**, you MUST use the `speak_to` field in JSO
   - ✅ Result is in final, user-ready format
   - ✅ Quality has been verified (if applicable)
   - ✅ All sub-tasks have been completed
+  - ✅ **Verified against user's original instruction**
 
 {% if context_info and ("User's question:" in context_info or "User's questions:" in context_info) %}
 {% if "User's questions:" in context_info %}
