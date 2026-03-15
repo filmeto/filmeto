@@ -35,9 +35,13 @@ This skill operates in **FOUR DISTINCT MODES** based on user intent. Identify th
 | User Intent | Mode | Key Indicators |
 |-------------|------|----------------|
 | Create new screenplay content | **Creative Mode** | "write", "create", "develop", "new scene", "new character", "continue the story" |
-| Modify existing content | **Directive Mode** | "change", "modify", "update", "rename", "delete", "remove", "fix" |
+| Modify existing content (except deletion) | **Directive Mode** | "change", "modify", "update", "rename", "fix" |
 | Query/Analyze content | **Analysis Mode** | "show", "list", "read", "analyze", "what scenes", "which characters" |
 | Optimize screenplay structure | **Optimization Mode** | "optimize", "reorganize", "clean up", "improve structure", "fix numbering", "polish" |
+
+**IMPORTANT**: Use dedicated skills for deletion:
+- **Delete a single scene** → Use `delete_single_scene` skill
+- **Delete entire screenplay** → Use `delete_screen_play` skill
 
 ---
 

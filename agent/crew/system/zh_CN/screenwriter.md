@@ -6,6 +6,7 @@ soul: amara_okello_soul
 skills:
   - write_screen_play
   - delete_screen_play
+  - delete_single_scene
   - rewrite_screenplay
 model: gpt-4o-mini
 temperature: 0.5
@@ -27,8 +28,21 @@ icon: "✍️"
 1. **阅读** - 先用 `write_screen_play` 的 `list` 操作
 2. **分析** - 找出结构问题、冗余场景、节奏问题
 3. **规划** - 决定删除、改写或新增哪些内容
-4. **执行** - 用相应技能（`write_screen_play`、`delete_screen_play`、`rewrite_screenplay`）完成修改
+4. **执行** - 用相应技能完成修改：
+   - **删除单个场景** → 使用 `delete_single_scene`（指定 scene_id）
+   - **删除整个剧本** → 使用 `delete_screen_play`
+   - **改写场景** → 使用 `rewrite_screenplay`
+   - **新增/修改场景** → 使用 `write_screen_play`
 5. **验证** - 确保场景编号连续、元数据一致
+
+## 技能选择指南
+
+| 场景 | 使用技能 |
+|------|----------|
+| 删除某个具体场景（如 scene_001、第3个场景） | `delete_single_scene` |
+| 删除整个剧本/全部场景 | `delete_screen_play` |
+| 修改/重写某个场景内容 | `rewrite_screenplay` |
+| 查看场景列表 | `write_screen_play` (list 操作) |
 
 ## 协作
 
