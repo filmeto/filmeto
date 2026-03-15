@@ -1,10 +1,10 @@
 ---
-name: delete_single_scene
+name: delete_scene
 description: |-
   Purpose: Delete individual scenes from the screenplay that are no longer needed.
   Capabilities: Remove scenes by scene_id, verify deletion status, handle non-existent scenes gracefully, delete scenes by position (first/last/next).
   Trigger: Explicit user commands like "delete scene", "remove scene", "delete scene_001", "remove scene 3", "删除场景", "delete the last scene", "delete the first scene", "删除最后一幕", etc.
-  Priority: For ANY deletion request, use this skill instead of write_screen_play.
+  Priority: For ANY deletion request, use this skill instead of write_scene.
 ---
 
 # Single Scene Deletion Skill
@@ -46,7 +46,7 @@ This skill should be invoked when the user explicitly requests scene deletion wi
 
 **IMPORTANT**: When using this skill to delete a scene, you do NOT need to:
 - Use `write_screen_play` to list scenes first
-- Use `read_screenplay_outline` to read the outline first
+- Use `read_screen_play` to read the outline first
 
 This skill will automatically:
 1. Determine the target scene based on your description (e.g., "last scene" → finds the final scene)
@@ -54,12 +54,12 @@ This skill will automatically:
 3. Update scene numbering if needed
 
 **Correct workflow for "delete the last scene":**
-1. Directly call `delete_single_scene` skill with the scene description
+1. Directly call `delete_scene` skill with the scene description
 2. The skill will handle finding the last scene and deleting it
 
 **Do NOT:**
 - ❌ Use `write_screen_play` list operation first
-- ❌ Use `read_screenplay_outline` first
+- ❌ Use `read_screen_play` first
 
 ## Capabilities
 
@@ -91,14 +91,14 @@ Call the skill script with the extracted parameters:
 
 **Using explicit scene_id:**
 ```python
-execute_skill_script("delete_single_scene", {"scene_id": "scene_001"})
+execute_skill_script("delete_scene", {"scene_id": "scene_001"})
 ```
 
 **Using scene description (NEW):**
 ```python
-execute_skill_script("delete_single_scene", {"scene_description": "last scene"})
+execute_skill_script("delete_scene", {"scene_description": "last scene"})
 # or
-execute_skill_script("delete_single_scene", {"scene_description": "最后一幕"})
+execute_skill_script("delete_scene", {"scene_description": "最后一幕"})
 ```
 
 ### Step 3: Report Result
@@ -112,7 +112,7 @@ Parse the response and inform the user:
 
 **When using `scene_description`, you do NOT need to:**
 - Use `write_screen_play` list operation first
-- Use `read_screenplay_outline` to read the outline first
+- Use `read_screen_play` to read the outline first
 
 The skill will automatically:
 1. List all scenes internally
@@ -121,12 +121,12 @@ The skill will automatically:
 4. Report the result
 
 **Correct workflow for "delete the last scene" / "删除最后一幕":**
-1. Directly call `delete_single_scene` skill with `scene_description="last scene"` or `scene_description="最后一幕"`
+1. Directly call `delete_scene` skill with `scene_description="last scene"` or `scene_description="最后一幕"`
 2. The skill handles finding and deleting the last scene automatically
 
 **Do NOT:**
 - ❌ Use `write_screen_play` list operation first (this is the root cause of the issue)
-- ❌ Use `read_screenplay_outline` first
+- ❌ Use `read_screen_play` first
 - ❌ Try to find the scene_id manually
 
 ## Constraints

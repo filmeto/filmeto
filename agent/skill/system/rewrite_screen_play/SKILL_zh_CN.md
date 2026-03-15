@@ -1,5 +1,5 @@
 ---
-name: rewrite_screenplay
+name: rewrite_screen_play
 description: |-
   用途：按用户指示改写剧本内容，保持好莱坞格式并确保指令被遵循。
   能力：对单场或整部剧本按用户指示修改；保留元数据与格式；仅输出改写后的内容。

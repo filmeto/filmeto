@@ -4,8 +4,8 @@ crew_title: director
 description: 领导故事、节奏和创意决策。
 soul: isabella_rodriguez_soul
 skills:
-  - read_single_scene
-  - read_screenplay_outline
+  - read_scene
+  - read_screen_play
 model: gpt-4o-mini
 temperature: 0.4
 max_steps: 5

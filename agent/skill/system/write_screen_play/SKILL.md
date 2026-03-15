@@ -4,7 +4,7 @@ description: |-
   Purpose: Create, develop, and manage complete screenplays for feature films or web series with Hollywood-standard formatting.
   Capabilities: Multi-mode operation (creative/directive/analysis/optimization), scene CRUD operations (create/read/update), character management, story structure guidance.
   Trigger: When user wants to "write screenplay", "create scene", "add scene", "update scene content", "analyze screenplay", "modify scene", "change dialogue", or any screenplay-related creative work.
-  EXCLUSIONS: Do NOT use for any deletion operations. For deletion, use delete_single_scene or delete_screen_play skills instead.
+  EXCLUSIONS: Do NOT use for any deletion operations. For deletion, use delete_scene or delete_screen_play skills instead.
 tools:
   - screen_play
 ---
@@ -41,7 +41,7 @@ This skill operates in **FOUR DISTINCT MODES** based on user intent. Identify th
 | Optimize screenplay structure | **Optimization Mode** | "optimize", "reorganize", "clean up", "improve structure", "fix numbering", "polish" |
 
 **IMPORTANT: Delegation for Deletion Operations**:
-- **Delete a single scene** → Delegate to `delete_single_scene` skill using `execute_skill` tool
+- **Delete a single scene** → Delegate to `delete_scene` skill using `execute_skill` tool
 - **Delete multiple/all scenes** → Delegate to `delete_screen_play` skill using `execute_skill` tool
 - **DO NOT handle deletion yourself** - these are dedicated skills for safety and clarity
 
@@ -49,8 +49,8 @@ This skill operates in **FOUR DISTINCT MODES** based on user intent. Identify th
 
 **This skill should NOT be used for:**
 
-1. **Deleting scenes** - Use `delete_single_scene` or `delete_screen_play` instead
-2. **Reading scene lists for deletion purposes** - If the goal is to delete a scene, use `delete_single_scene` directly with a scene description
+1. **Deleting scenes** - Use `delete_scene` or `delete_screen_play` instead
+2. **Reading scene lists for deletion purposes** - If the goal is to delete a scene, use `delete_scene` directly with a scene description
 
 **Common Misconception - Reading Scenes Before Deletion:**
 
@@ -58,10 +58,10 @@ The "READ ALL EXISTING SCENES FIRST" protocol in the Global Perspective Protocol
 
 **For deletion requests:**
 - ❌ Do NOT use `write_screen_play` with `list` operation to find scenes before deletion
-- ❌ Do NOT use `read_screenplay_outline` to find scenes before deletion  
-- ✅ DO use `delete_single_scene` directly with `scene_description` parameter (e.g., "last scene", "第一幕")
+- ❌ Do NOT use `read_screen_play` to find scenes before deletion  
+- ✅ DO use `delete_scene` directly with `scene_description` parameter (e.g., "last scene", "第一幕")
 
-The `delete_single_scene` skill has built-in scene resolution that handles:
+The `delete_scene` skill has built-in scene resolution that handles:
 - Position descriptions: "last scene", "first scene", "next scene"
 - Scene numbers: "scene 3", "第 3 个场景"
 - Explicit IDs: "scene_001"
@@ -81,7 +81,7 @@ The `delete_single_scene` skill has built-in scene resolution that handles:
 
 For deletion requests:
 - Do NOT use this skill to list scenes first
-- Directly delegate to `delete_single_scene` or `delete_screen_play` skills
+- Directly delegate to `delete_scene` or `delete_screen_play` skills
 - The deletion skills handle scene resolution internally
 
 **After ANY modification action, you MUST:**
@@ -285,15 +285,15 @@ Use this workflow for specific modification requests (NOT deletion).
 | Rewrite scene | `update` | "Make the scene more dramatic" |
 
 **IMPORTANT: For deletion operations, delegate to dedicated skills:**
-- "Delete scene X" → Use `execute_skill` tool to call `delete_single_scene`
-- "Remove scene X" → Use `execute_skill` tool to call `delete_single_scene`
+- "Delete scene X" → Use `execute_skill` tool to call `delete_scene`
+- "Remove scene X" → Use `execute_skill` tool to call `delete_scene`
 - "Delete all scenes" → Use `execute_skill` tool to call `delete_screen_play`
-- "Delete the last scene" / "删除最后一幕" → Use `execute_skill` tool to call `delete_single_scene` with `scene_description`
+- "Delete the last scene" / "删除最后一幕" → Use `execute_skill` tool to call `delete_scene` with `scene_description`
 
 **CRITICAL: Do NOT use screen_play tool's `delete` operation directly!**
 
 The `screen_play` tool's `delete` operation is a low-level operation. Always use the dedicated deletion skills:
-- `delete_single_scene` - For deleting individual scenes (supports natural language descriptions)
+- `delete_scene` - For deleting individual scenes (supports natural language descriptions)
 - `delete_screen_play` - For deleting multiple or all scenes
 
 This ensures:
@@ -317,17 +317,17 @@ First, locate the content to modify:
 
 ```python
 # For single scene deletion (preferred)
-execute_skill("delete_single_scene", {
+execute_skill("delete_scene", {
     "prompt": "Delete the last scene"
 })
 
 # Or with scene_description parameter
-execute_skill_script("delete_single_scene", {
+execute_skill_script("delete_scene", {
     "scene_description": "last scene"
 })
 
 # Or with explicit scene_id
-execute_skill_script("delete_single_scene", {
+execute_skill_script("delete_scene", {
     "scene_id": "scene_005"
 })
 ```

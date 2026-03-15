@@ -1,5 +1,5 @@
 ---
-name: delete_single_scene
+name: delete_scene
 description: |-
   用途：从剧本中删除不再需要的单个场景。
   能力：通过scene_id删除场景、验证删除状态、优雅处理不存在的场景。
@@ -40,7 +40,7 @@ description: |-
 
 **重要提示**：使用此技能删除场景时，**不需要**：
 - ❌ 先使用 `write_screen_play` 列出场景
-- ❌ 先使用 `read_screenplay_outline` 读取大纲
+- ❌ 先使用 `read_screen_play` 读取大纲
 
 此技能会自动处理：
 1. 根据您的描述确定目标场景（例如"最后一个场景" → 找到最后一个场景）
@@ -48,12 +48,12 @@ description: |-
 3. 如需要，更新场景编号
 
 **正确的"删除最后一幕"工作流程：**
-1. 直接调用 `delete_single_scene` 技能，传入场景描述（如"最后一个场景"）
+1. 直接调用 `delete_scene` 技能，传入场景描述（如"最后一个场景"）
 2. 技能会自动找到并删除最后一个场景
 
 **禁止：**
 - ❌ 先使用 `write_screen_play` 的 list 操作
-- ❌ 先使用 `read_screenplay_outline`
+- ❌ 先使用 `read_screen_play`
 
 ## 执行流程
 
@@ -74,7 +74,7 @@ description: |-
 ### 步骤 3：执行删除
 使用提取的 `scene_id` 参数调用技能脚本：
 ```python
-execute_skill_script("delete_single_scene", {"scene_id": "scene_001"})
+execute_skill_script("delete_scene", {"scene_id": "scene_001"})
 ```
 
 ### 步骤 4：报告结果

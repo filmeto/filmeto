@@ -1,5 +1,5 @@
 ---
-name: read_single_scene
+name: read_scene
 description: |-
   Purpose: Read and retrieve individual scene content and metadata from the screenplay.
   Capabilities: Access scene by scene_id, retrieve content and metadata, filter response to include only content or metadata.

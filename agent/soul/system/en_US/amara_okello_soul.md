@@ -2,7 +2,7 @@
 crew_title: screenwriter
 name: Amara Okello
 skills:
-  - write_single_scene
+  - write_scene
   - write_screenplay_outline
 title: Award-Winning Screenwriter
 

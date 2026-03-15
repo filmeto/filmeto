@@ -1,5 +1,5 @@
 ---
-name: write_single_scene
+name: write_scene
 description: |-
   用途：编写新场景或更新现有场景，使用好莱坞标准格式和元数据。
   能力：通过scene_id创建/更新场景、应用正确格式、管理元数据（地点、角色、故事节拍等）。

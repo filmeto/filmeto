@@ -1,5 +1,5 @@
 ---
-name: read_single_scene
+name: read_scene
 description: |-
   用途：读取和检索单个场景的内容和元数据。
   能力：通过scene_id访问场景、检索内容和元数据、过滤响应仅包含内容或元数据。

@@ -1,5 +1,5 @@
 ---
-name: rewrite_screenplay
+name: rewrite_screen_play
 description: |-
   Purpose: Rewrite screenplay content according to user instructions while preserving Hollywood format and ensuring instruction compliance.
   Capabilities: Apply user-directed edits to one scene or the whole screenplay; preserve metadata and format; output only rewritten content.

@@ -4,7 +4,7 @@ crew_title: director
 description: Leads story, pacing, and creative decisions.
 soul: isabella_rodriguez_soul
 skills:
-  - read_single_scene
+  - read_scene
   - read_screen_play
 model: gpt-4o-mini
 temperature: 0.4

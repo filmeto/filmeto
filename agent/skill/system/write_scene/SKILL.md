@@ -1,12 +1,12 @@
 ---
-name: write_single_scene
+name: write_scene
 description: |-
   Purpose: Write new scenes or update existing scenes with Hollywood-standard formatting and metadata.
   Capabilities: Create/update scenes by scene_id, apply proper formatting, manage metadata (location, characters, story beat, etc.).
   Trigger: When user wants to "write scene", "create scene", "update scene", "modify scene content", or work on a specific scene.
 ---
 
-# Single Scene Writing Skill
+# Scene Writing Skill
 
 This skill allows the agent to write and update individual scenes in the project's screenplay. It can create new scenes or modify existing ones with proper formatting and metadata following Hollywood standards.
 
