@@ -451,11 +451,15 @@ class React:
             logger.debug(f"Skill '{skill_name}' executed in {duration_ms:.2f}ms")
 
             # Add observation to message history for ReAct loop continuity
+            # Include guidance to encourage multi-skill coordination
             self.messages.append({"role": "assistant", "content": response_text})
             if has_error:
                 self.messages.append({"role": "user", "content": f"Error: {final_result}"})
             else:
-                self.messages.append({"role": "user", "content": f"Observation: {final_result or 'Skill execution completed'}"})
+                observation = final_result or 'Skill execution completed'
+                # Add guidance prompt to encourage LLM to continue with more skill calls if needed
+                observation += "\n\n[REMINDER: If the task is not fully complete or the result needs further processing, call another skill. Only use 'final' response when the task is 100% complete and ready for delivery.]"
+                self.messages.append({"role": "user", "content": f"Observation: {observation}"})
 
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
