@@ -2,8 +2,9 @@
 name: write_screen_play
 description: |-
   Purpose: Create, develop, and manage complete screenplays for feature films or web series with Hollywood-standard formatting.
-  Capabilities: Multi-mode operation (creative/directive/analysis/optimization), scene CRUD operations, character management, story structure guidance.
-  Trigger: When user wants to "write screenplay", "create scene", "modify scene", "analyze screenplay", or any screenplay-related creative work.
+  Capabilities: Multi-mode operation (creative/directive/analysis/optimization), scene CRUD operations (create/read/update), character management, story structure guidance.
+  Trigger: When user wants to "write screenplay", "create scene", "add scene", "update scene content", "analyze screenplay", "modify scene", "change dialogue", or any screenplay-related creative work.
+  EXCLUSIONS: Do NOT use for any deletion operations. For deletion, use delete_single_scene or delete_screen_play skills instead.
 tools:
   - screen_play
 ---
@@ -34,14 +35,15 @@ This skill operates in **FOUR DISTINCT MODES** based on user intent. Identify th
 
 | User Intent | Mode | Key Indicators |
 |-------------|------|----------------|
-| Create new screenplay content | **Creative Mode** | "write", "create", "develop", "new scene", "new character", "continue the story" |
-| Modify existing content (except deletion) | **Directive Mode** | "change", "modify", "update", "rename", "fix" |
+| Create new screenplay content | **Creative Mode** | "write", "create", "develop", "new scene", "new character", "continue the story", "add scene" |
+| Modify existing content (NOT deletion) | **Directive Mode** | "change", "modify", "update", "rename", "fix", "edit", "rewrite", "adjust" |
 | Query/Analyze content | **Analysis Mode** | "show", "list", "read", "analyze", "what scenes", "which characters" |
 | Optimize screenplay structure | **Optimization Mode** | "optimize", "reorganize", "clean up", "improve structure", "fix numbering", "polish" |
 
-**IMPORTANT**: Use dedicated skills for deletion:
-- **Delete a single scene** → Use `delete_single_scene` skill
-- **Delete entire screenplay** → Use `delete_screen_play` skill
+**IMPORTANT: Delegation for Deletion Operations**:
+- **Delete a single scene** → Delegate to `delete_single_scene` skill using `execute_skill` tool
+- **Delete multiple/all scenes** → Delegate to `delete_screen_play` skill using `execute_skill` tool
+- **DO NOT handle deletion yourself** - these are dedicated skills for safety and clarity
 
 ---
 
@@ -242,17 +244,22 @@ After creating new content, evaluate if the screenplay needs restructuring:
 
 ## MODE 2: DIRECTIVE WORKFLOW
 
-Use this workflow for specific modification requests.
+Use this workflow for specific modification requests (NOT deletion).
 
 ### Operation Types
 
 | Directive | Tool Operation | Example Request |
 |-----------|---------------|-----------------|
-| Delete scene | `delete` | "Remove scene 5" |
 | Update content | `update` | "Change the dialogue in scene 3" |
 | Rename character | `update` (multiple scenes) | "Change John to Jack" |
 | Modify location | `update` | "Move scene 2 to a restaurant" |
 | Fix formatting | `update` | "Format scene 4 properly" |
+| Rewrite scene | `update` | "Make the scene more dramatic" |
+
+**IMPORTANT: For deletion operations, delegate to dedicated skills:**
+- "Delete scene X" → Use `execute_skill` tool to call `delete_single_scene`
+- "Remove scene X" → Use `execute_skill` tool to call `delete_single_scene`
+- "Delete all scenes" → Use `execute_skill` tool to call `delete_screen_play`
 
 ### Step 1: Identify Target
 

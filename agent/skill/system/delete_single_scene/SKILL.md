@@ -2,8 +2,9 @@
 name: delete_single_scene
 description: |-
   Purpose: Delete individual scenes from the screenplay that are no longer needed.
-  Capabilities: Remove scenes by scene_id, verify deletion status, handle non-existent scenes gracefully.
-  Trigger: Explicit user commands like "delete scene", "remove scene", "delete scene_001", "remove scene 3", "删除场景", etc.
+  Capabilities: Remove scenes by scene_id, verify deletion status, handle non-existent scenes gracefully, delete scenes by position (first/last/next).
+  Trigger: Explicit user commands like "delete scene", "remove scene", "delete scene_001", "remove scene 3", "删除场景", "delete the last scene", "delete the first scene", "删除最后一幕", etc.
+  Priority: For ANY deletion request, use this skill instead of write_screen_play.
 ---
 
 # Single Scene Deletion Skill
@@ -20,17 +21,51 @@ This skill should be invoked when the user explicitly requests scene deletion wi
 - "delete scene number X"
 - "remove scene X from the screenplay"
 - "delete the [first/second/third...] scene"
+- **"delete the [last/final/ending] scene"** ← IMPORTANT: Matches "delete last scene", "delete final scene"
+- "remove the last scene"
+- "delete the next scene"
+- "delete the previous scene"
+- "delete the last act"
 
 **Trigger Patterns (Chinese):**
-- "删除场景 [场景ID/场景编号]"
-- "移除场景 [场景ID/场景编号]"
-- "删除第X个场景"
-- "把场景X删掉"
+- "删除场景 [场景 ID/场景编号]"
+- "移除场景 [场景 ID/场景编号]"
+- "删除第 X 个场景"
+- "把场景 X 删掉"
+- **"删除最后一个场景"** ← 重要：匹配"删除最后一幕"
+- **"删除最后一幕"**
+- **"删掉最后一场戏"**
+- "移除最后一个场景"
+
+**Priority Rule:**
+- When user mentions deletion of a specific scene (by ID, number, or position like "last"), **ALWAYS prefer this skill over write_screen_play**
+- This is a dedicated deletion skill - use it for ALL single-scene deletion requests
+- write_screen_play should NOT be used for deletion - it focuses on creation and modification only
+
+## NO NEED TO READ SCENES FIRST
+
+**IMPORTANT**: When using this skill to delete a scene, you do NOT need to:
+- Use `write_screen_play` to list scenes first
+- Use `read_screenplay_outline` to read the outline first
+
+This skill will automatically:
+1. Determine the target scene based on your description (e.g., "last scene" → finds the final scene)
+2. Delete the scene directly
+3. Update scene numbering if needed
+
+**Correct workflow for "delete the last scene":**
+1. Directly call `delete_single_scene` skill with the scene description
+2. The skill will handle finding the last scene and deleting it
+
+**Do NOT:**
+- ❌ Use `write_screen_play` list operation first
+- ❌ Use `read_screenplay_outline` first
 
 ## Capabilities
 
 - Delete individual scenes by their unique scene_id
 - Parse scene identifiers from natural language (e.g., "scene_001", "scene 1", "第一个场景")
+- Parse scene positions (e.g., "last scene", "first scene", "next scene")
 - Remove scene files from the screenplay directory
 - Verify deletion status
 - Handle cases where scene does not exist
@@ -42,8 +77,9 @@ When handling a scene deletion request, follow these steps:
 ### Step 1: Extract scene_id from User Input
 Parse the user's command to identify the scene identifier:
 - If user provides explicit scene_id (e.g., "scene_001", "scene_3"): Use it directly
-- If user refers to scene by number (e.g., "scene 1", "第1个场景"): Convert to scene_id format (scene_001)
+- If user refers to scene by number (e.g., "scene 1", "第 1 个场景"): Convert to scene_id format (scene_001)
 - If user says "first scene", "second scene": Map ordinal to actual scene_id from the screenplay
+- **If user says "last scene" or "final scene"**: List scenes first, then identify the last one
 - **If scene_id cannot be determined**: Ask user to specify which scene to delete
 
 ### Step 2: Confirm with User (Optional but Recommended)

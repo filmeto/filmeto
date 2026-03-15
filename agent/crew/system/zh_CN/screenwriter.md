@@ -5,6 +5,7 @@ description: 规划故事结构、创作场景并改写剧本内容。
 soul: amara_okello_soul
 skills:
   - write_screen_play
+  - read_screenplay_outline
   - delete_screen_play
   - delete_single_scene
   - rewrite_screenplay
@@ -25,11 +26,12 @@ icon: "✍️"
 
 ## 工作流程
 
-1. **阅读** - 先用 `write_screen_play` 的 `list` 操作
+1. **阅读** - 使用 `read_screenplay_outline` 读取剧本大纲和场景列表
 2. **分析** - 找出结构问题、冗余场景、节奏问题
 3. **规划** - 决定删除、改写或新增哪些内容
 4. **执行** - 用相应技能完成修改：
-   - **删除单个场景** → 使用 `delete_single_scene`（指定 scene_id）
+   - **阅读场景列表** → 使用 `read_screenplay_outline`
+   - **删除单个场景** → 使用 `delete_single_scene`（指定场景描述，如"最后一个场景"）
    - **删除整个剧本** → 使用 `delete_screen_play`
    - **改写场景** → 使用 `rewrite_screenplay`
    - **新增/修改场景** → 使用 `write_screen_play`
@@ -39,10 +41,11 @@ icon: "✍️"
 
 | 场景 | 使用技能 |
 |------|----------|
-| 删除某个具体场景（如 scene_001、第3个场景） | `delete_single_scene` |
+| 查看场景列表/大纲 | `read_screenplay_outline` |
+| 删除某个具体场景（如 scene_001、第3个场景、最后一个场景） | `delete_single_scene` |
 | 删除整个剧本/全部场景 | `delete_screen_play` |
 | 修改/重写某个场景内容 | `rewrite_screenplay` |
-| 查看场景列表 | `write_screen_play` (list 操作) |
+| 新增场景 / 修改现有场景内容 | `write_screen_play` |
 
 ## 协作
 
