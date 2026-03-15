@@ -451,32 +451,24 @@ class React:
             logger.debug(f"Skill '{skill_name}' executed in {duration_ms:.2f}ms")
 
             # Add observation to message history for ReAct loop continuity
-            # Include detailed guidance to force LLM to analyze skill results against user instruction
+            # Use prompt template for i18n support
             self.messages.append({"role": "assistant", "content": response_text})
             if has_error:
                 self.messages.append({"role": "user", "content": f"Error: {final_result}"})
             else:
                 observation = final_result or 'Skill execution completed'
-                # Add comprehensive guidance to force LLM to analyze the skill result
-                observation += """
-
-[S.KILL RESULT ANALYSIS REQUIRED]
-
-You have just received the result from a skill execution. BEFORE deciding to give a final response, you MUST complete the following analysis:
-
-1. **Analyze the skill output**: What did the skill produce? Is it complete?
-
-2. **Compare against your original task**: Review the user's instruction that you were trying to fulfill. Does this skill output directly address what was asked?
-
-3. **Check completion status**:
-   - If the task is NOT fully complete → You MUST call another skill or process the result
-   - If the result needs transformation/formatting → Call a processing skill
-   - If you need to verify the result → Call a validation skill
-   - Only if the task IS 100% complete and ready → Use final response
-
-4. **Multi-skill consideration**: Ask yourself "Would another skill call make this result better?" If yes, call it. Complex tasks typically need 2-4 skill calls.
-
-REMEMBER: The user's original instruction is your NORTH STAR. Every skill call should bring you closer to fulfilling it. Do not give a final response until you can confidently say the user's instruction has been addressed."""
+                # Get language from workspace for i18n
+                language = None
+                if self.workspace and hasattr(self.workspace, 'project') and self.workspace.project:
+                    if hasattr(self.workspace.project, 'get_language'):
+                        language = self.workspace.project.get_language()
+                # Render observation guidance from template (supports i18n)
+                from agent.prompt.prompt_service import prompt_service
+                observation_guidance = prompt_service.render_prompt(
+                    name="react_skill_observation",
+                    language=language
+                ) or ""
+                observation += f"\n\n{observation_guidance}"
                 self.messages.append({"role": "user", "content": f"Observation: {observation}"})
 
         except Exception as e:
