@@ -106,20 +106,18 @@ For every action, you MUST include a "thinking" field that explains:
 
 ```json
 {
-  "type": "tool",
+  "type": "final",
   "thinking": "Your reasoning here",
-  "tool_name": "execute_skill",
-  "tool_args": {
-    "skill_name": "name_from_available_skills_list",
-    "prompt": "your task description with required details"
-  }
+  "speak_to": "Target recipient name (e.g., 'You' for user, or crew member name like 'producer', 'screenwriter'). Must ALWAYS be present.",
+  "final": "Your response content here"
 }
 ```
 
 **REMEMBER**:
-- `"tool_name"` must be `execute_skill` (the available tool)
-- `"skill_name"` in tool_args must match a skill from the "Available Skills" list above
-- Do NOT invent or hallucinate skill names
+- `"type"` must be `final` for final response
+- `"speak_to"` is **REQUIRED** - you must always specify who this response is for
+- Use `"speak_to": "You"` to reply to the user
+- Use crew member name (e.g., `"speak_to": "producer"`) to route to another crew member
 
 ## Response Target Rules
 

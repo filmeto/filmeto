@@ -609,10 +609,21 @@ class React:
                         assert isinstance(action, FinalAction), f"Expected FinalAction, got {type(action)}"
                         self.status = ReactStatus.FINAL
                         final_payload = action.to_final_payload()
+
+                        # Build final text with @speak_to prefix if provided
+                        final_text = final_payload.get("final_response", "")
+                        speak_to = final_payload.get("speak_to")
+                        if speak_to:
+                            # Normalize speak_to: if "You", keep as is; otherwise use the name
+                            mention = "You" if speak_to.lower() == "you" else speak_to
+                            # Add @ prefix to the beginning of text if not already present
+                            if final_text and not final_text.strip().startswith("@"):
+                                final_text = f"@{mention} {final_text}"
+
                         yield self._create_event(
                             AgentEventType.FINAL,
                             content=TextContent(
-                                text=final_payload.get("final_response", ""),
+                                text=final_text,
                                 title="Final Response",
                                 description=final_payload.get("summary", "ReAct process completed")
                             )

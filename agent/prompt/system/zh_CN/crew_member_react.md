@@ -106,20 +106,18 @@ version: 2.1
 
 ```json
 {
-  "type": "tool",
+  "type": "final",
   "thinking": "您的推理说明",
-  "tool_name": "execute_skill",
-  "tool_args": {
-    "skill_name": "可用技能列表中的名称",
-    "prompt": "包含关键信息的任务描述"
-  }
+  "speak_to": "目标接收者名称（例如：'You' 表示用户，或团队成员名称如 'producer'、'screenwriter'）。此字段必须始终存在。",
+  "final": "您的响应内容"
 }
 ```
 
 **请记住**：
-- `"tool_name"` 必须是 `execute_skill`（可用的工具）
-- tool_args 中的 `"skill_name"` 必须与上方"可用技能"列表中的技能匹配
-- 请勿虚构或臆造技能名称
+- `"type"` 必须是 `final` 才能作为最终响应
+- `"speak_to"` 是**必需的** - 您必须始终指定此响应的目标对象
+- 使用 `"speak_to": "You"` 来回复用户
+- 使用团队成员名称（例如 `"speak_to": "producer"`）来路由到其他团队成员
 
 ## 响应目标规则
 

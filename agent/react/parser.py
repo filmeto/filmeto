@@ -139,6 +139,7 @@ class ReactActionParser:
         """Parse a final action from the payload."""
         final = cls._get_field(payload, cls.FINAL_ALIASES)
         thinking = cls._get_field(payload, cls.THINKING_ALIASES)
+        speak_to = cls._get_field(payload, ["speak_to"])
 
         if not final:
             final = response_text
@@ -147,6 +148,7 @@ class ReactActionParser:
             final=final,
             thinking=thinking,
             stop_reason=stop_reason,
+            speak_to=speak_to,
         )
 
     @classmethod

@@ -140,11 +140,13 @@ class FinalAction(ReactAction):
         final: The final response content
         thinking: The agent's thinking process
         stop_reason: Reason for stopping (final_action, max_steps_reached, etc.)
+        speak_to: Target recipient name for routing (e.g., 'You' for user, or crew member name)
     """
     type: str = ActionType.FINAL.value
     final: str = ""
     thinking: Optional[str] = None
     stop_reason: str = "final_action"
+    speak_to: Optional[str] = None
 
     def get_thinking(self) -> Optional[str]:
         return self.thinking
@@ -156,6 +158,8 @@ class FinalAction(ReactAction):
             "final_response": self.final,
             "stop_reason": self.stop_reason,
         })
+        if self.speak_to:
+            payload["speak_to"] = self.speak_to
         return payload
 
     def get_summary(self) -> str:
@@ -174,6 +178,8 @@ class FinalAction(ReactAction):
             "stop_reason": self.stop_reason,
             "summary": self.get_summary(),
         }
+        if self.speak_to:
+            payload["speak_to"] = self.speak_to
         return payload
 
 
