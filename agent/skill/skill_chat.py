@@ -101,8 +101,9 @@ class SkillChat:
 
         # Determine sender_id and sender_name from crew_member information
         # Use crew_member name for sender info to match crew member event style
-        skill_sender_id = crew_member_name if crew_member_name else f"skill_{skill.name}"
-        skill_sender_name = crew_member_name if crew_member_name else f"Skill: {skill.name}"
+        # If no crew_member_name is provided, use "system" as default sender
+        skill_sender_id = crew_member_name if crew_member_name else "system"
+        skill_sender_name = crew_member_name if crew_member_name else "system"
 
         # Emit SKILL_START event and keep content_id for parent_id folding (crew member history saves before routing)
         from agent.chat.content import SkillContent, SkillExecutionState
