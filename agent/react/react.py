@@ -616,9 +616,12 @@ class React:
                         if speak_to:
                             # Normalize speak_to: if "You", keep as is; otherwise use the name
                             mention = "You" if speak_to.lower() == "you" else speak_to
-                            # Add @ prefix to the beginning of text if not already present
-                            if final_text and not final_text.strip().startswith("@"):
-                                final_text = f"@{mention} {final_text}"
+                            # Only add @ prefix if text doesn't already contain @mention at the start
+                            if final_text:
+                                stripped = final_text.strip()
+                                # Check if text already starts with @mention - if so, don't add prefix
+                                if not stripped.startswith("@"):
+                                    final_text = f"@{mention} {final_text}"
 
                         yield self._create_event(
                             AgentEventType.FINAL,
@@ -634,14 +637,24 @@ class React:
                 if self.status != ReactStatus.FINAL:
                     max_steps_action = ReactActionParser.create_final_action(
                         final="Reached maximum steps without completion",
-                        stop_reason=ReactActionParser.get_max_steps_stop_reason()
+                        stop_reason=ReactActionParser.get_max_steps_stop_reason(),
+                        speak_to="system"
                     )
                     self.status = ReactStatus.FINAL
                     max_steps_payload = max_steps_action.to_final_payload()
+
+                    # Build final text with @speak_to prefix
+                    final_text = max_steps_payload.get("final_response", "")
+                    speak_to = max_steps_payload.get("speak_to")
+                    if speak_to:
+                        mention = "You" if speak_to.lower() == "you" else speak_to
+                        if final_text and not final_text.strip().startswith("@"):
+                            final_text = f"@{mention} {final_text}"
+
                     yield self._create_event(
                         AgentEventType.FINAL,
                         content=TextContent(
-                            text=max_steps_payload.get("final_response", ""),
+                            text=final_text,
                             title="Final Response",
                             description=max_steps_payload.get("summary", "ReAct process stopped")
                         )

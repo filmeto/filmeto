@@ -72,12 +72,14 @@ class ReactActionParser:
         final: str,
         thinking: Optional[str] = None,
         stop_reason: Optional[str] = None,
+        speak_to: Optional[str] = None,
     ) -> FinalAction:
         """Create a FinalAction with default values."""
         return FinalAction(
             final=final,
             thinking=thinking,
             stop_reason=stop_reason or StopReason.FINAL_ACTION.value,
+            speak_to=speak_to,
         )
 
     @classmethod
@@ -96,11 +98,13 @@ class ReactActionParser:
             payload = cls._extract_json_payload(response_text)
 
         if not payload:
-            # No valid JSON found, treat as final response
+            # No valid JSON found, try to extract @mention from response text
+            speak_to = cls._extract_speak_to_from_text(response_text)
             return cls.create_final_action(
                 final=response_text,
                 thinking=None,
-                stop_reason=StopReason.NO_JSON.value
+                stop_reason=StopReason.NO_JSON.value,
+                speak_to=speak_to
             )
 
         action_type = cls._get_field(payload, cls.TYPE_ALIASES)
@@ -158,6 +162,25 @@ class ReactActionParser:
             if alias in payload and payload[alias] is not None:
                 return payload[alias]
         return default
+
+    @classmethod
+    def _extract_speak_to_from_text(cls, text: str) -> Optional[str]:
+        """Extract speak_to target from text by finding @mention patterns."""
+        import re
+        if not text:
+            return None
+
+        # Match @mention at the start of text or after whitespace
+        # Captures: @You, @producer, @screenwriter, etc.
+        match = re.search(r'@(\w+)', text)
+        if match:
+            mention = match.group(1)
+            # Normalize: if it's "you" (case insensitive), return "You"
+            if mention.lower() == "you":
+                return "You"
+            return mention
+
+        return None
 
     @classmethod
     def _extract_json_payload(cls, text: str) -> Optional[Dict[str, Any]]:

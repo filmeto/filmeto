@@ -30,6 +30,7 @@ Your response **MUST** be a valid JSON object with one of the following structur
 {
   "type": "final",
   "thinking": "Task completed, ready to respond",
+  "speak_to": "Target recipient name (e.g., 'You' for user, or crew member name like 'producer', 'screenwriter'). This field is REQUIRED.",
   "final": "Your final response to the user"
 }
 ```
@@ -41,8 +42,11 @@ Your response **MUST** be a valid JSON object with one of the following structur
    - `"tool_name"` must match exactly one of the tools listed above
    - `"tool_args"` must be a JSON object with the tool's required parameters
 4. **For final actions:**
-   - `"final"` contains your actual response to the user
-   - Use this only when the task is complete
+   - `"speak_to"` is **REQUIRED** - You must always specify who this response is for using one of these values:
+     - `"You"` - When responding directly to the user
+     - A crew member name (e.g., `"producer"`, `"screenwriter"`, `"director"`) - To route to another agent
+   - `"final"` contains your actual response content
+   - The system will automatically prepend the appropriate @mention to your text based on `speak_to`
 5. **The `"thinking"` field** - Always include your reasoning process
 
 ## Common Errors to Avoid
