@@ -1,9 +1,9 @@
 ---
-name: read_screenplay_outline
+name: read_screen_play
 description: |-
   Purpose: Read and review the complete screenplay outline with all scene summaries.
   Capabilities: Retrieve scene metadata, sort by scene number/date/title, filter by status, optionally include full content.
-  Trigger: When user wants to "review outline", "see all scenes", "check story structure", or needs context before writing.
+  Trigger: When user wants to "review outline", "see all scenes", "check story structure", "read screenplay", or needs context before writing.
 ---
 
 # Screenplay Outline Reading Skill
