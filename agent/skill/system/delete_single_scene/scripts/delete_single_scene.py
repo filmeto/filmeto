@@ -4,16 +4,133 @@ Single Scene Deletion Skill Script
 
 This script deletes individual scenes from the project's screenplay manager.
 Supports both CLI execution and in-context execution via the SkillExecutor.
+
+Supports scene identification by:
+- Explicit scene_id (e.g., "scene_001")
+- Position descriptions (e.g., "last", "first", "next")
+- Scene numbers (e.g., "scene 3", "第 3 个场景")
 """
 import json
 import sys
 import logging
-from typing import Dict, Any
+import re
+from typing import Dict, Any, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
 if False:  # TYPE_CHECKING
     from agent.tool.tool_context import ToolContext
+
+
+def resolve_scene_id_from_description(
+    screenplay_manager: Any,
+    scene_description: str
+) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Resolve a scene description to a scene_id.
+
+    Args:
+        screenplay_manager: ScreenPlayManager instance
+        scene_description: Description like "scene_001", "last scene", "第一幕", etc.
+
+    Returns:
+        Tuple of (scene_id, error_message)
+        - If successful: (scene_id, None)
+        - If failed: (None, error_message)
+    """
+    try:
+        # Get all scenes
+        scenes = screenplay_manager.list_scenes()
+
+        if not scenes:
+            return None, "No scenes exist in the screenplay. Nothing to delete."
+
+        # Normalize the description
+        desc = scene_description.lower().strip()
+
+        # Handle "last scene", "final scene", "最后一幕", "最后一场戏"
+        if any(keyword in desc for keyword in ['last', 'final', 'ending', '最后', '末尾']):
+            # Get the last scene
+            last_scene = scenes[-1]
+            return last_scene.scene_id, None
+
+        # Handle "first scene", "第一幕", "第一个场景"
+        if any(keyword in desc for keyword in ['first', '第一', '开头', '开始']):
+            first_scene = scenes[0]
+            return first_scene.scene_id, None
+
+        # Handle "next scene", "下一幕"
+        if any(keyword in desc for keyword in ['next', '下一', '随后']):
+            # For now, treat "next" as the first scene (could be enhanced with context)
+            if len(scenes) > 1:
+                next_scene = scenes[1]
+            else:
+                next_scene = scenes[0]
+            return next_scene.scene_id, None
+
+        # Handle "previous scene", "上一幕"
+        if any(keyword in desc for keyword in ['previous', '上一', '前一个']):
+            # For now, treat "previous" as the second-to-last scene
+            if len(scenes) > 1:
+                prev_scene = scenes[-2]
+            else:
+                prev_scene = scenes[0]
+            return prev_scene.scene_id, None
+
+        # Handle explicit scene_id format (scene_001, scene_002, etc.)
+        match = re.match(r'scene[_\s]?(\d+)', desc)
+        if match:
+            scene_num = int(match.group(1))
+            scene_id = f"scene_{scene_num:03d}"
+            # Verify scene exists
+            scene = screenplay_manager.get_scene(scene_id)
+            if scene:
+                return scene_id, None
+            else:
+                return None, f"Scene '{scene_id}' does not exist."
+
+        # Handle Chinese ordinal format (第 X 个场景)
+        chinese_match = re.search(r'第 ([零一二三四五六七八九十百千\d]+) [个场]', desc)
+        if chinese_match:
+            num_str = chinese_match.group(1)
+            # Convert Chinese numerals to Arabic
+            chinese_numerals = {'零': 0, '一': 1, '二': 2, '三': 3, '四': 4,
+                               '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10}
+            if num_str.isdigit():
+                scene_num = int(num_str)
+            elif num_str in chinese_numerals:
+                scene_num = chinese_numerals[num_str]
+            else:
+                # Handle complex Chinese numerals (十一，十二，etc.)
+                if len(num_str) == 2 and num_str[0] == '十':
+                    scene_num = 10 + chinese_numerals.get(num_str[1], 0)
+                elif len(num_str) == 2 and num_str[1] == '十':
+                    scene_num = chinese_numerals.get(num_str[0], 1) * 10
+                else:
+                    scene_num = 1  # Default fallback
+
+            if 1 <= scene_num <= len(scenes):
+                target_scene = scenes[scene_num - 1]
+                return target_scene.scene_id, None
+            else:
+                return None, f"Scene number {scene_num} is out of range (1-{len(scenes)})."
+
+        # Handle simple number format (scene 3, 场景 3)
+        number_match = re.search(r'(\d+)', desc)
+        if number_match:
+            scene_num = int(number_match.group(1))
+            if 1 <= scene_num <= len(scenes):
+                target_scene = scenes[scene_num - 1]
+                return target_scene.scene_id, None
+            else:
+                return None, f"Scene number {scene_num} is out of range (1-{len(scenes)})."
+
+        # If we can't resolve, return error
+        return None, f"Could not resolve scene description: '{scene_description}'. Please provide a valid scene_id or position (e.g., 'last scene', 'scene_001', '第一幕')."
+
+    except Exception as e:
+        logger.error(f"Error resolving scene description: {e}", exc_info=True)
+        return None, f"Error resolving scene description: {str(e)}"
 
 
 def delete_scene_from_manager(
@@ -78,7 +195,9 @@ def execute(context: 'ToolContext', args: Dict[str, Any]) -> Dict[str, Any]:
 
     Args:
         context: ToolContext containing workspace and project
-        args: Dictionary of arguments for the skill
+        args: Dictionary of arguments for the skill. Supports:
+            - scene_id: Explicit scene identifier (e.g., "scene_001")
+            - scene_description: Natural language description (e.g., "last scene", "第一幕")
 
     Returns:
         Result dictionary with success status and deletion info
@@ -86,13 +205,7 @@ def execute(context: 'ToolContext', args: Dict[str, Any]) -> Dict[str, Any]:
     try:
         # Extract arguments
         scene_id = args.get('scene_id')
-
-        if not scene_id:
-            return {
-                "success": False,
-                "error": "missing_scene_id",
-                "message": "scene_id is required"
-            }
+        scene_description = args.get('scene_description')
 
         # Get screenplay_manager from context
         screenplay_manager = context.get_screenplay_manager()
@@ -103,6 +216,30 @@ def execute(context: 'ToolContext', args: Dict[str, Any]) -> Dict[str, Any]:
                 "error": "no_screenplay_manager",
                 "message": "No screenplay manager available in context. Cannot delete scene."
             }
+
+        # If scene_id is not provided, try to resolve from description
+        if not scene_id:
+            if not scene_description:
+                return {
+                    "success": False,
+                    "error": "missing_scene_identifier",
+                    "message": "Either scene_id or scene_description is required"
+                }
+
+            # Resolve scene_id from description
+            resolved_scene_id, error = resolve_scene_id_from_description(
+                screenplay_manager,
+                scene_description
+            )
+
+            if error:
+                return {
+                    "success": False,
+                    "error": "scene_resolution_failed",
+                    "message": error
+                }
+
+            scene_id = resolved_scene_id
 
         return delete_scene_from_manager(
             screenplay_manager=screenplay_manager,

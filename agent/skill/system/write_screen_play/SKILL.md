@@ -45,6 +45,27 @@ This skill operates in **FOUR DISTINCT MODES** based on user intent. Identify th
 - **Delete multiple/all scenes** → Delegate to `delete_screen_play` skill using `execute_skill` tool
 - **DO NOT handle deletion yourself** - these are dedicated skills for safety and clarity
 
+### CRITICAL: When NOT to Use This Skill
+
+**This skill should NOT be used for:**
+
+1. **Deleting scenes** - Use `delete_single_scene` or `delete_screen_play` instead
+2. **Reading scene lists for deletion purposes** - If the goal is to delete a scene, use `delete_single_scene` directly with a scene description
+
+**Common Misconception - Reading Scenes Before Deletion:**
+
+The "READ ALL EXISTING SCENES FIRST" protocol in the Global Perspective Protocol applies to **creative and modification actions only**. 
+
+**For deletion requests:**
+- ❌ Do NOT use `write_screen_play` with `list` operation to find scenes before deletion
+- ❌ Do NOT use `read_screenplay_outline` to find scenes before deletion  
+- ✅ DO use `delete_single_scene` directly with `scene_description` parameter (e.g., "last scene", "第一幕")
+
+The `delete_single_scene` skill has built-in scene resolution that handles:
+- Position descriptions: "last scene", "first scene", "next scene"
+- Scene numbers: "scene 3", "第 3 个场景"
+- Explicit IDs: "scene_001"
+
 ---
 
 ## MANDATORY: Global Perspective Protocol
@@ -55,6 +76,13 @@ This skill operates in **FOUR DISTINCT MODES** based on user intent. Identify th
 2. **ANALYZE THE FULL STORY** - Understand plot flow, character arcs, pacing, and structure
 3. **IDENTIFY ISSUES** - Look for redundant scenes, gaps, numbering inconsistencies, pacing problems
 4. **PLAN HOLISTICALLY** - Consider how changes affect the entire screenplay, not just individual scenes
+
+**EXCEPTION: This protocol does NOT apply to deletion requests.**
+
+For deletion requests:
+- Do NOT use this skill to list scenes first
+- Directly delegate to `delete_single_scene` or `delete_screen_play` skills
+- The deletion skills handle scene resolution internally
 
 **After ANY modification action, you MUST:**
 
@@ -260,6 +288,19 @@ Use this workflow for specific modification requests (NOT deletion).
 - "Delete scene X" → Use `execute_skill` tool to call `delete_single_scene`
 - "Remove scene X" → Use `execute_skill` tool to call `delete_single_scene`
 - "Delete all scenes" → Use `execute_skill` tool to call `delete_screen_play`
+- "Delete the last scene" / "删除最后一幕" → Use `execute_skill` tool to call `delete_single_scene` with `scene_description`
+
+**CRITICAL: Do NOT use screen_play tool's `delete` operation directly!**
+
+The `screen_play` tool's `delete` operation is a low-level operation. Always use the dedicated deletion skills:
+- `delete_single_scene` - For deleting individual scenes (supports natural language descriptions)
+- `delete_screen_play` - For deleting multiple or all scenes
+
+This ensures:
+- Proper scene resolution from natural language
+- Consistent error handling
+- Better user experience
+- Correct skill delegation tracking
 
 ### Step 1: Identify Target
 
@@ -268,14 +309,27 @@ First, locate the content to modify:
 - For character operations: Use `get_by_character`
 - For location operations: Use `get_by_location`
 
+**EXCEPTION: For deletion requests, skip this step and delegate directly!**
+
 ### Step 2: Execute Modification
 
-**Delete a scene:**
-```json
-{
-  "operation": "delete",
-  "scene_id": "scene_005"
-}
+**For deletion - Delegate to dedicated skills (DO NOT use screen_play tool directly):**
+
+```python
+# For single scene deletion (preferred)
+execute_skill("delete_single_scene", {
+    "prompt": "Delete the last scene"
+})
+
+# Or with scene_description parameter
+execute_skill_script("delete_single_scene", {
+    "scene_description": "last scene"
+})
+
+# Or with explicit scene_id
+execute_skill_script("delete_single_scene", {
+    "scene_id": "scene_005"
+})
 ```
 
 **Update scene content:**

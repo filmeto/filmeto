@@ -74,30 +74,60 @@ This skill will automatically:
 
 When handling a scene deletion request, follow these steps:
 
-### Step 1: Extract scene_id from User Input
+### Step 1: Extract Scene Identifier from User Input
+
 Parse the user's command to identify the scene identifier:
-- If user provides explicit scene_id (e.g., "scene_001", "scene_3"): Use it directly
-- If user refers to scene by number (e.g., "scene 1", "第 1 个场景"): Convert to scene_id format (scene_001)
-- If user says "first scene", "second scene": Map ordinal to actual scene_id from the screenplay
-- **If user says "last scene" or "final scene"**: List scenes first, then identify the last one
-- **If scene_id cannot be determined**: Ask user to specify which scene to delete
 
-### Step 2: Confirm with User (Optional but Recommended)
-Before executing deletion, confirm with user:
-- "Are you sure you want to delete scene [scene_id]? This action cannot be undone."
-- If user confirms, proceed to Step 3
+**Option A: Explicit scene_id**
+- If user provides explicit scene_id (e.g., "scene_001", "scene_3"): Use `scene_id` parameter directly
 
-### Step 3: Execute Deletion
-Call the skill script with the extracted `scene_id` parameter:
+**Option B: Scene description (NEW - Preferred for natural language)**
+- If user refers to scene by position (e.g., "last scene", "第一幕"): Use `scene_description` parameter
+- The skill will automatically resolve the description to a scene_id
+
+### Step 2: Execute Deletion
+
+Call the skill script with the extracted parameters:
+
+**Using explicit scene_id:**
 ```python
 execute_skill_script("delete_single_scene", {"scene_id": "scene_001"})
 ```
 
-### Step 4: Report Result
+**Using scene description (NEW):**
+```python
+execute_skill_script("delete_single_scene", {"scene_description": "last scene"})
+# or
+execute_skill_script("delete_single_scene", {"scene_description": "最后一幕"})
+```
+
+### Step 3: Report Result
+
 Parse the response and inform the user:
 - If success=true and deleted=true: "Scene 'scene_001' has been deleted successfully."
-- If success=true and deleted=false: "Scene 'scene_999' does not exist. Nothing to delete."
+- If success=true and deleted=false: "Scene 'scene_001' does not exist. Nothing to delete."
 - If success=false: Report the error message to user
+
+### IMPORTANT: Direct Execution (NO NEED TO READ SCENES FIRST)
+
+**When using `scene_description`, you do NOT need to:**
+- Use `write_screen_play` list operation first
+- Use `read_screenplay_outline` to read the outline first
+
+The skill will automatically:
+1. List all scenes internally
+2. Resolve the scene description to a scene_id
+3. Delete the scene
+4. Report the result
+
+**Correct workflow for "delete the last scene" / "删除最后一幕":**
+1. Directly call `delete_single_scene` skill with `scene_description="last scene"` or `scene_description="最后一幕"`
+2. The skill handles finding and deleting the last scene automatically
+
+**Do NOT:**
+- ❌ Use `write_screen_play` list operation first (this is the root cause of the issue)
+- ❌ Use `read_screenplay_outline` first
+- ❌ Try to find the scene_id manually
 
 ## Constraints
 - **Requires Screenplay Manager**: The project must have an initialized screenplay manager
@@ -108,9 +138,22 @@ Parse the response and inform the user:
 
 Provide these inputs when calling the script via `execute_skill_script`:
 
-- `scene_id` (string, required): Scene identifier (e.g., `scene_001`).
+- `scene_id` (string, optional): Explicit scene identifier (e.g., `scene_001`).
+- `scene_description` (string, optional): Natural language description of the scene to delete.
 
-If `scene_id` is missing, ask for it in the final response instead of calling the script.
+**At least one of `scene_id` or `scene_description` must be provided.**
+
+### Supported Scene Descriptions
+
+The skill can automatically resolve these descriptions to scene_ids:
+
+| Description Type | Examples (English) | Examples (Chinese) |
+|-----------------|-------------------|-------------------|
+| Position | "last scene", "first scene", "next scene", "previous scene" | "最后一幕", "第一幕", "下一幕", "上一幕" |
+| Scene number | "scene 3", "scene number 3" | "第 3 个场景", "场景 3" |
+| Chinese ordinal | - | "第一幕", "第二场", "第十个场景" |
+
+**If neither `scene_id` nor `scene_description` is provided, ask the user to specify which scene to delete.**
 
 **IMPORTANT**: Before deleting, consider:
 - Confirm with the user if this operation should proceed
@@ -133,9 +176,35 @@ The skill can be invoked when agents need to remove scenes that are:
 
 ## Example Arguments
 
+### Delete by explicit scene_id:
 ```json
 {
   "scene_id": "scene_001"
+}
+```
+
+### Delete by scene description (NEW - Preferred):
+```json
+{
+  "scene_description": "last scene"
+}
+```
+
+```json
+{
+  "scene_description": "最后一幕"
+}
+```
+
+```json
+{
+  "scene_description": "first scene"
+}
+```
+
+```json
+{
+  "scene_description": "第 3 个场景"
 }
 ```
 
