@@ -57,8 +57,10 @@ CUSTOM_MODEL_PRICES = {
 # Register custom model prices with LiteLLM
 for model_name, model_info in CUSTOM_MODEL_PRICES.items():
     litellm.model_cost[model_name] = model_info
-    # Also register with dashscope prefix
-    litellm.model_cost[f"dashscope/{model_name}"] = model_info
+    # Also register with dashscope prefix, but update provider to dashscope
+    dashscope_model_info = model_info.copy()
+    dashscope_model_info["litellm_provider"] = "dashscope"
+    litellm.model_cost[f"dashscope/{model_name}"] = dashscope_model_info
 
 
 class LlmService:
