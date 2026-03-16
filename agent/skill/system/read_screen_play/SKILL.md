@@ -31,10 +31,6 @@ This skill allows the agent to read the complete screenplay outline, which is a 
 
 ## Input Requirements
 
-This skill can be called in two ways:
-
-### Method 1: Via `screen_play` Tool (Recommended)
-
 Use the `screen_play` tool with `operation: "outline"`:
 
 ```json
@@ -46,26 +42,6 @@ Use the `screen_play` tool with `operation: "outline"`:
     "include_content": false,
     "sort_by": "scene_number",
     "filter_status": null
-  }
-}
-```
-
-### Method 2: Via `execute_skill_script`
-
-Execute the script directly:
-
-```json
-{
-  "type": "tool",
-  "tool_name": "execute_skill_script",
-  "tool_args": {
-    "skill_path": "agent/skill/system/read_screen_play",
-    "script_name": "read_screenplay_outline.py",
-    "args": {
-      "include_content": false,
-      "sort_by": "scene_number",
-      "filter_status": null
-    }
   }
 }
 ```
