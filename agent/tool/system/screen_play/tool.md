@@ -40,12 +40,12 @@ parameters:
     required: false
     default: false
   - name: sort_by
-    description: Sort order for outline. Used for outline operation. Values: scene_number, created_at, updated_at, title
+    description: "Sort order for outline. Used for outline operation. Values: scene_number, created_at, updated_at, title"
     type: string
     required: false
     default: scene_number
   - name: filter_status
-    description: Filter by status for outline. Used for outline operation. Values: draft, revised, final, approved
+    description: "Filter by status for outline. Used for outline operation. Values: draft, revised, final, approved"
     type: string
     required: false
 return_description: Returns operation result with success status, scene details, and summary message
