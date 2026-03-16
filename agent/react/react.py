@@ -457,19 +457,50 @@ class React:
                 self.messages.append({"role": "user", "content": f"Error: {final_result}"})
             else:
                 observation = final_result or 'Skill execution completed'
+
+                # Try to recover the latest original user question to keep the task target explicit
+                original_question = ""
+                try:
+                    for msg in reversed(self.messages):
+                        if msg.get("role") != "user":
+                            continue
+                        content = msg.get("content") or ""
+                        # Skip synthetic observations or error messages injected by the loop itself
+                        if isinstance(content, str) and (
+                            content.startswith("Observation:") or content.startswith("Error:")
+                        ):
+                            continue
+                        original_question = content
+                        break
+                except Exception:
+                    # If anything goes wrong while scanning history, fall back silently
+                    original_question = ""
+
                 # Get language from workspace for i18n
                 language = None
                 if self.workspace and hasattr(self.workspace, 'project') and self.workspace.project:
                     if hasattr(self.workspace.project, 'get_language'):
                         language = self.workspace.project.get_language()
-                # Render observation guidance from template (supports i18n)
+
+                # Render observation guidance from template (supports i18n) and inject original user question
                 from agent.prompt.prompt_service import prompt_service
                 observation_guidance = prompt_service.render_prompt(
                     name="react_skill_observation",
-                    language=language
+                    language=language,
+                    user_question=original_question or "",
                 ) or ""
-                observation += f"\n\n{observation_guidance}"
-                self.messages.append({"role": "user", "content": f"Observation: {observation}"})
+
+                # Build a richer observation that re-states the original task alongside the skill result
+                if original_question:
+                    observation_text = (
+                        f"Skill result:\n{observation}\n\n"
+                        f"Original task:\n{original_question}\n\n"
+                        f"{observation_guidance}"
+                    )
+                else:
+                    observation_text = f"Skill result:\n{observation}\n\n{observation_guidance}"
+
+                self.messages.append({"role": "user", "content": f"Observation: {observation_text}"})
 
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000

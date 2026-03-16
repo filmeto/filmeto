@@ -5,6 +5,16 @@ version: 1.0
 ---
 [SKILL RESULT ANALYSIS REQUIRED]
 
+{% if user_question %}
+## Original User Question (CRITICAL CONTEXT)
+
+The primary task you are working on comes from the following user instruction:
+
+"{{ user_question }}"
+
+All analysis and next actions MUST stay tightly aligned with this specific instruction.
+{% endif %}
+
 You have just received the result from a skill execution. BEFORE deciding to give a final response, you MUST complete the following analysis:
 
 1. **Analyze the skill output**: What did the skill produce? Is it complete?
