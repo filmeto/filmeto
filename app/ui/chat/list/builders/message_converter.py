@@ -7,18 +7,15 @@ PySide6 at import time.
 """
 import json
 import logging
-import re
 from typing import Any, Dict, List, Optional
 
 from agent.chat.agent_chat_message import AgentMessage
 from agent.chat.agent_chat_types import ContentType
 from agent.chat.content import StructureContent
+from agent.react.json_utils import JsonExtractor
 from app.ui.chat.list.agent_chat_list_items import ChatListItem
 
 logger = logging.getLogger(__name__)
-
-# Compiled once; used by _extract_content to unwrap ``json wrapped responses
-_JSON_BLOCK_RE = re.compile(r'```(?:json)?\s*\n([\s\S]*?)\n```')
 
 
 class MessageConverter:
@@ -252,20 +249,27 @@ class MessageConverter:
 
     @staticmethod
     def _unwrap_json_text(text_value: str) -> str:
-        """Try to unwrap a JSON-in-markdown-code-block response."""
+        """Try to unwrap a JSON-in-markdown-code-block response.
+
+        Uses JsonExtractor for consistent handling of code block formats.
+        """
         if not text_value or not isinstance(text_value, str):
             return text_value or ""
-        m = _JSON_BLOCK_RE.search(text_value)
-        if not m:
+
+        # Use JsonExtractor to get raw code block content
+        content = JsonExtractor.extract_code_block_content(text_value)
+        if not content:
             return text_value
+
         try:
-            parsed = json.loads(m.group(1).strip())
+            parsed = json.loads(content)
             if isinstance(parsed, dict) and 'final' in parsed:
                 return parsed['final']
             if isinstance(parsed, str):
                 return parsed
         except (json.JSONDecodeError, TypeError, ValueError) as e:
             logger.debug(f"Failed to parse JSON code block: {e}")
+
         return text_value
 
     @staticmethod

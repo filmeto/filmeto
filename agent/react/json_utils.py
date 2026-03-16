@@ -1,23 +1,32 @@
 """JSON utility functions for extracting JSON from LLM responses."""
 import json
-import re
 from typing import Any, Dict, Optional
 
 
 class JsonExtractor:
-    """Utility class for extracting JSON from LLM responses."""
+    """Utility class for extracting JSON from LLM responses.
 
-    # Regex pattern for JSON code blocks
-    JSON_BLOCK_PATTERN = r"```json\s*(\{.*?\})\s*```"
+    Handles various formats of JSON wrapped in markdown code blocks:
+    - ```json {...} ```
+    - ``` {...} ``` (without language identifier)
+    - Plain JSON objects
+
+    Uses fast string operations first, falls back to regex only when needed.
+    """
+
+    # Code block markers
+    _CODE_BLOCK_START = "```"
+    _CODE_BLOCK_END = "```"
+    _JSON_LANG = "json"
 
     @classmethod
     def extract_json(cls, text: str) -> Optional[Dict[str, Any]]:
         """
         Extract JSON payload from text using multiple strategies.
 
-        Tries extraction in order:
-        1. ```json ... ``` code blocks
-        2. Top-level JSON object (text wrapped in braces)
+        Strategies are ordered by performance (fastest first):
+        1. Direct parse: text wrapped in braces
+        2. Code block extraction via string search (```json or ```)
         3. First balanced JSON object in text
 
         Args:
@@ -26,29 +35,116 @@ class JsonExtractor:
         Returns:
             Parsed JSON dict, or None if no valid JSON found
         """
-        # Strategy 1: Try ```json ... ``` code block
-        json_block_match = re.search(cls.JSON_BLOCK_PATTERN, text, re.DOTALL)
-        if json_block_match:
-            candidate = json_block_match.group(1)
-            result = cls.safe_json_load(candidate)
+        if not text:
+            return None
+
+        # Strategy 1: Fast path - text starts and ends with braces
+        stripped = text.strip()
+        if stripped.startswith("{") and stripped.endswith("}"):
+            result = cls.safe_json_load(stripped)
             if result is not None:
                 return result
 
-        # Strategy 2: Try text that starts and ends with braces
-        candidate = text.strip()
-        if candidate.startswith("{") and candidate.endswith("}"):
-            result = cls.safe_json_load(candidate)
+        # Strategy 2: Extract from code blocks using string search (no regex)
+        result = cls._extract_from_code_block(text)
+        if result is not None:
+            return result
+
+        # Strategy 3: Find balanced JSON in text
+        json_str = cls.find_balanced_json(text)
+        if json_str:
+            result = cls.safe_json_load(json_str)
             if result is not None:
                 return result
-
-        # Strategy 3: Try to find balanced JSON in text
-        result = cls.find_balanced_json(text)
-        if result:
-            parsed = cls.safe_json_load(result)
-            if parsed is not None:
-                return parsed
 
         return None
+
+    @classmethod
+    def _extract_from_code_block(cls, text: str) -> Optional[Dict[str, Any]]:
+        """
+        Extract JSON from markdown code blocks using fast string operations.
+
+        Handles formats:
+        - ```json\n{...}\n```
+        - ```\n{...}\n```
+
+        Args:
+            text: Text possibly containing code blocks
+
+        Returns:
+            Parsed JSON dict or None
+        """
+        # Find opening code block
+        start_idx = text.find(cls._CODE_BLOCK_START)
+        if start_idx == -1:
+            return None
+
+        # Move past the opening ```
+        content_start = start_idx + len(cls._CODE_BLOCK_START)
+
+        # Check for optional language identifier (json or whitespace only)
+        remaining = text[content_start:]
+
+        # Skip 'json' identifier if present
+        if remaining.startswith(cls._JSON_LANG):
+            content_start += len(cls._JSON_LANG)
+            remaining = text[content_start:]
+
+        # Skip whitespace/newline after opening marker
+        while content_start < len(text) and text[content_start] in " \t\n":
+            content_start += 1
+
+        # Find closing code block
+        end_idx = text.find(cls._CODE_BLOCK_END, content_start)
+        if end_idx == -1:
+            return None
+
+        # Extract content, stripping trailing whitespace
+        content = text[content_start:end_idx].rstrip()
+
+        # Try to parse
+        return cls.safe_json_load(content)
+
+    @classmethod
+    def extract_code_block_content(cls, text: str, strict: bool = False) -> Optional[str]:
+        """
+        Extract content from markdown code blocks without JSON parsing.
+
+        Uses fast string search instead of regex.
+
+        Args:
+            text: The text containing code blocks
+            strict: If True, only match ```json blocks; otherwise match any code block
+
+        Returns:
+            The content inside the code block, or None if not found
+        """
+        # Find opening code block
+        start_idx = text.find(cls._CODE_BLOCK_START)
+        if start_idx == -1:
+            return None
+
+        # Move past the opening ```
+        content_start = start_idx + len(cls._CODE_BLOCK_START)
+        remaining = text[content_start:]
+
+        # Check for language identifier
+        if remaining.startswith(cls._JSON_LANG):
+            content_start += len(cls._JSON_LANG)
+        elif strict:
+            # In strict mode, must have 'json' identifier
+            return None
+
+        # Skip whitespace/newline after opening marker
+        while content_start < len(text) and text[content_start] in " \t\n":
+            content_start += 1
+
+        # Find closing code block
+        end_idx = text.find(cls._CODE_BLOCK_END, content_start)
+        if end_idx == -1:
+            return None
+
+        return text[content_start:end_idx].rstrip()
 
     @classmethod
     def safe_json_load(cls, candidate: str) -> Optional[Dict[str, Any]]:

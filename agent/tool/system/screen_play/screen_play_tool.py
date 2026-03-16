@@ -122,6 +122,9 @@ class ScreenPlayTool(BaseTool):
             elif operation == "list":
                 async for event in self._handle_list(manager, project_name, react_type, step_id):
                     yield event
+            elif operation == "outline":
+                async for event in self._handle_outline(manager, parameters, project_name, react_type, step_id):
+                    yield event
             elif operation == "get_by_title":
                 async for event in self._handle_get_by_title(manager, parameters, project_name, react_type, step_id):
                     yield event
@@ -761,5 +764,116 @@ class ScreenPlayTool(BaseTool):
                 "error",
                 project_name,
                 react_type,                step_id,
+                error=str(e)
+            )
+
+    async def _handle_outline(
+        self,
+        manager: 'ScreenPlayManager',
+        parameters: Dict[str, Any],
+        project_name: str,
+        react_type: str,
+        step_id: int
+    ) -> AsyncGenerator["AgentEvent", None]:
+        """Handle outline operation - retrieve complete screenplay outline with all details.
+
+        This operation provides a comprehensive view of all scenes, similar to the
+        read_screen_play skill, with support for sorting, filtering, and including content.
+        """
+        import re
+
+        try:
+            # Extract parameters
+            include_content = parameters.get("include_content", False)
+            sort_by = parameters.get("sort_by", "scene_number")
+            filter_status = parameters.get("filter_status")
+
+            # Get all scenes
+            scenes = manager.list_scenes()
+
+            if not scenes:
+                yield self._create_event(
+                    "tool_end",
+                    project_name,
+                    react_type,
+                    step_id,
+                    ok=True,
+                    result={
+                        "operation": "outline",
+                        "success": True,
+                        "total_scenes": 0,
+                        "outline": [],
+                        "message": "No scenes found in the screenplay. The outline is empty."
+                    }
+                )
+                return
+
+            # Apply status filter if specified
+            if filter_status:
+                scenes = [s for s in scenes if s.status == filter_status]
+
+            # Sort scenes
+            if sort_by == "scene_number":
+                def get_sort_key(scene):
+                    try:
+                        match = re.search(r'\d+', scene.scene_number)
+                        return int(match.group()) if match else 0
+                    except (ValueError, AttributeError):
+                        return 0
+                scenes.sort(key=get_sort_key)
+            elif sort_by == "created_at":
+                scenes.sort(key=lambda s: s.created_at or "")
+            elif sort_by == "updated_at":
+                scenes.sort(key=lambda s: s.updated_at or "")
+            elif sort_by == "title":
+                scenes.sort(key=lambda s: s.title or "")
+
+            # Build outline
+            outline = []
+            for scene in scenes:
+                scene_data = {
+                    "scene_id": scene.scene_id,
+                    "title": scene.title,
+                    "scene_number": scene.scene_number,
+                    "logline": scene.logline,
+                    "location": scene.location,
+                    "time_of_day": scene.time_of_day,
+                    "characters": scene.characters,
+                    "story_beat": scene.story_beat,
+                    "duration_minutes": scene.duration_minutes,
+                    "status": scene.status,
+                    "created_at": scene.created_at,
+                    "updated_at": scene.updated_at
+                }
+
+                if include_content:
+                    scene_data["content"] = scene.content
+
+                outline.append(scene_data)
+
+            yield self._create_event(
+                "tool_end",
+                project_name,
+                react_type,
+                step_id,
+                ok=True,
+                result={
+                    "operation": "outline",
+                    "success": True,
+                    "total_scenes": len(outline),
+                    "outline": outline,
+                    "filtered_by": filter_status,
+                    "sorted_by": sort_by,
+                    "message": f"Screenplay outline retrieved successfully with {len(outline)} scene(s)."
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error reading screenplay outline: {e}", exc_info=True)
+            yield self._create_event(
+                "error",
+                project_name,
+                react_type,
+                step_id,
                 error=str(e)
             )

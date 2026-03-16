@@ -4,6 +4,8 @@ description: |-
   Purpose: Read and review the complete screenplay outline with all scene summaries.
   Capabilities: Retrieve scene metadata, sort by scene number/date/title, filter by status, optionally include full content.
   Trigger: When user wants to "review outline", "see all scenes", "check story structure", "read screenplay", or needs context before writing.
+tools:
+  - screen_play (operation: outline)
 ---
 
 # Screenplay Outline Reading Skill
@@ -25,11 +27,50 @@ This skill allows the agent to read the complete screenplay outline, which is a 
 - **Requires Screenplay Manager**: The project must have an initialized screenplay manager with scenes stored
 - **Read-Only**: This skill only reads scenes and does not modify them
 - **Empty Outline**: If no scenes exist, returns an empty outline list
+- **Uses Tool**: This skill uses the `screen_play` tool internally with the `outline` operation
 
 ## Input Requirements
 
-Provide these inputs when calling the script via `execute_skill_script`:
+This skill can be called in two ways:
 
+### Method 1: Via `screen_play` Tool (Recommended)
+
+Use the `screen_play` tool with `operation: "outline"`:
+
+```json
+{
+  "type": "tool",
+  "tool_name": "screen_play",
+  "tool_args": {
+    "operation": "outline",
+    "include_content": false,
+    "sort_by": "scene_number",
+    "filter_status": null
+  }
+}
+```
+
+### Method 2: Via `execute_skill_script`
+
+Execute the script directly:
+
+```json
+{
+  "type": "tool",
+  "tool_name": "execute_skill_script",
+  "tool_args": {
+    "skill_path": "agent/skill/system/read_screen_play",
+    "script_name": "read_screenplay_outline.py",
+    "args": {
+      "include_content": false,
+      "sort_by": "scene_number",
+      "filter_status": null
+    }
+  }
+}
+```
+
+**Parameters:**
 - `include_content` (boolean, optional, default: false): Include full scene content (metadata only when false).
 - `sort_by` (string, optional, default: "scene_number"): Sort by "scene_number", "created_at", "updated_at", or "title".
 - `filter_status` (string, optional): Filter by status "draft", "revised", "final", or "approved".
@@ -43,22 +84,16 @@ The skill can be invoked when the screenwriter or director needs to:
 - Identify gaps in the narrative
 - Get context before writing specific scenes
 
+**How to Call This Skill:**
+
+This skill is called via the `screen_play` tool with `operation: "outline"`. The ReAct agent will automatically use the tool when the user requests to read or review the screenplay.
+
 **Best Practices:**
 - Use include_content=false for quick outline review (faster, less data)
 - Use include_content=true when detailed scene content is needed for analysis
 - Use sort_by="scene_number" to see the story in chronological order
 - Use filter_status to focus on specific workflow stages (e.g., only draft scenes)
 - The outline provides essential context for writing connected scenes
-
-## Example Arguments
-
-```json
-{
-  "include_content": false,
-  "sort_by": "scene_number",
-  "filter_status": null
-}
-```
 
 ## Output
 
