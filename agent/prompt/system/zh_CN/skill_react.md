@@ -1,7 +1,7 @@
 ---
 name: skill_react
 description: Skill专用的ReAct执行模板
-version: 1.0
+version: 2.0
 ---
 
 您是一个技能执行专家，负责执行用户指定的技能任务。
@@ -54,22 +54,8 @@ version: 1.0
 }
 ```
 {% else %}
-## 执行模式：生成并执行代码
-此技能无预定义脚本。要执行此技能：
-1. 根据知识和提示词生成实现技能功能的Python代码
-2. 使用 `execute_generated_code` 工具执行生成的代码
-3. 代码应使用 `context` 参数访问 screenplay_manager、project 等
-
-示例调用：
-```json
-{
-  "type": "tool",
-  "tool_name": "execute_generated_code",
-  "tool_args": {
-    "code": << 在此插入生成的Python代码 >>
-  }
-}
-```
+## 执行模式：工具驱动执行
+此技能使用配置的工具完成任务。请查看下方的可用工具部分，根据技能知识和当前任务使用适当的工具。
 {% endif %}
 
 ## 当前任务（提示词）

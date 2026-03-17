@@ -415,6 +415,7 @@ class React:
         has_error = False
 
         try:
+            logger.debug(f"Starting skill execution: {skill_name}")
             # Execute skill directly via SkillService
             # Note: SkillService.chat_stream will emit SKILL_START, SKILL_PROGRESS, SKILL_END
             async for event in skill_service.chat_stream(
@@ -444,11 +445,13 @@ class React:
                     elif event.payload:
                         final_result = event.payload.get("error", "Unknown error")
 
+            logger.debug(f"Skill iteration completed: {skill_name}, has_error={has_error}, final_result={final_result is not None}")
+
             # Track metrics
             duration_ms = (time.time() - start_time) * 1000
             self._total_tool_calls += 1  # Count skill execution as a tool call for metrics
             self._tool_duration_ms += duration_ms
-            logger.debug(f"Skill '{skill_name}' executed in {duration_ms:.2f}ms")
+            logger.info(f"Skill '{skill_name}' executed in {duration_ms:.2f}ms (try block completed)")
 
             # Add observation to message history for ReAct loop continuity
             # Use prompt template for i18n support

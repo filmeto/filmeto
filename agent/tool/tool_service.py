@@ -184,10 +184,18 @@ class ToolService:
 
     @contextmanager
     def _sys_argv_manager(self, new_argv: list):
-        """Context manager to temporarily modify sys.argv."""
+        """Context manager to temporarily modify sys.argv.
+
+        Ensures sys.argv always has at least one element (the script name),
+        as runpy.run_path internally accesses sys.argv[0].
+        """
         import sys
         original_argv = sys.argv[:]
-        sys.argv = new_argv if new_argv is not None else ['']
+        # Ensure sys.argv always has at least one element to prevent IndexError in runpy
+        if new_argv and len(new_argv) > 0:
+            sys.argv = new_argv
+        else:
+            sys.argv = ['']
         try:
             yield
         finally:

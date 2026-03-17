@@ -129,9 +129,12 @@ class StreamEventHandler:
                 error_dict = event.content.to_dict()
             else:
                 error_dict = ErrorContent(error_message=str(event.content)).to_dict()
+            error_message = event.content.error_message if hasattr(event.content, 'error_message') else str(event.content)
         else:
-            error_content = event.data.get("content", event.data.get("error", "Unknown error"))
-            error_dict = ErrorContent(error_message=error_content).to_dict()
+            # Fallback to payload (deprecated) for backward compatibility
+            payload = getattr(event, 'payload', {}) or {}
+            error_message = payload.get("content", payload.get("error", "Unknown error"))
+            error_dict = ErrorContent(error_message=error_message).to_dict()
 
         # If there's an active skill, add error to its child_contents
         if message_id and self._skill_manager._active_skills.get(message_id):
@@ -147,7 +150,7 @@ class StreamEventHandler:
             self._update_agent_card_callback(
                 message_id,
                 structured_content=error_dict,
-                error=event.data.get("content", event.data.get("error", "Unknown error")),
+                error=error_message,
             )
 
     def _handle_agent_response_event(self, event) -> None:
@@ -156,10 +159,15 @@ class StreamEventHandler:
         Args:
             event: Agent response event
         """
-        content = event.data.get("content", "")
-        sender_name = event.data.get("sender_name", "Unknown")
-        sender_id = event.data.get("sender_id", sender_name.lower())
-        session_id = event.data.get("session_id", "unknown")
+        # Extract content from event.content (TextContent) or fallback to payload
+        if hasattr(event, 'content') and event.content and hasattr(event.content, 'text'):
+            content = event.content.text
+        else:
+            payload = getattr(event, 'payload', {}) or {}
+            content = payload.get("content", "")
+
+        sender_name = getattr(event, 'sender_name', 'Unknown') or 'Unknown'
+        sender_id = getattr(event, 'sender_id', sender_name.lower()) or sender_name.lower()
         message_id = getattr(event, "message_id", "") or ""
 
         if sender_id == "user":
@@ -177,7 +185,7 @@ class StreamEventHandler:
 
         # No active skill - handle as standalone content
         if not message_id:
-            message_id = event.data.get("message_id") or f"response_{session_id}_{uuid.uuid4()}"
+            message_id = f"response_{sender_id}_{uuid.uuid4()}"
 
         self._skill_manager.get_or_create_agent_card(message_id, sender_name, sender_name)
         if self._update_agent_card_callback:

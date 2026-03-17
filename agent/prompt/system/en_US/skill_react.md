@@ -1,7 +1,7 @@
 ---
 name: skill_react
 description: ReAct execution template for skills
-version: 1.0
+version: 2.0
 ---
 
 You are a skill execution expert, responsible for executing skill tasks specified by the user.
@@ -54,22 +54,8 @@ This skill contains predefined scripts. To execute this skill:
 }
 ```
 {% else %}
-## Execution Mode: Generate and Execute Code
-This skill has no predefined scripts. To execute this skill:
-1. Generate Python code that implements the skill's functionality based on the knowledge and prompt
-2. Use the `execute_generated_code` tool to execute the generated code
-3. The code should use the `context` parameter to access screenplay_manager, project, etc.
-
-Example call:
-```json
-{
-  "type": "tool",
-  "tool_name": "execute_generated_code",
-  "tool_args": {
-    "code": << GENERATED PYTHON CODE HERE >>
-  }
-}
-```
+## Execution Mode: Tool-Based Execution
+This skill uses configured tools to complete tasks. Review the Available Tools section below and use the appropriate tools based on the skill knowledge and current task.
 {% endif %}
 
 ## Current Task (Prompt)

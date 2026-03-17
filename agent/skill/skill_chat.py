@@ -156,12 +156,11 @@ class SkillChat:
             #     available_tool_names.append("todo")
 
             # Add skill-specific tools based on whether skill has scripts
+            # Only add execute_skill_script if skill has predefined scripts
+            # Do NOT auto-add execute_generated_code - skills should rely on configured tools
             if skill.scripts:
                 if "execute_skill_script" not in available_tool_names:
                     available_tool_names.append("execute_skill_script")
-            else:
-                if "execute_generated_code" not in available_tool_names:
-                    available_tool_names.append("execute_generated_code")
 
             def build_prompt_function(user_question: str) -> str:
                 return self._build_skill_react_prompt(
@@ -183,6 +182,7 @@ class SkillChat:
             # Track tool events to emit skill progress
             tool_count = 0
             executed_tools = []  # Track names of executed tools
+            logger.debug(f"Starting react_instance iteration for skill: {skill.name}")
             async for event in react_instance.chat_stream(user_message or skill.description):
                 # Set parent_id so crew member history (saved before routing) gets correct folding
                 if event.content and getattr(event.content, "content_type", None) != ContentType.SKILL:
@@ -231,6 +231,7 @@ class SkillChat:
                         message_id=message_id
                     )
 
+            logger.debug(f"React iteration completed for skill: {skill.name}, executed_tools={executed_tools}")
             # Emit SKILL_END event on successful completion
             step_id += 1
 
@@ -284,6 +285,8 @@ class SkillChat:
                 ),
                 message_id=message_id
             )
+            # Re-raise exception to notify outer layer
+            raise
 
     def _build_skill_react_prompt(self, skill, user_question, available_tool_names, args) -> str:
         """Build the skill-specific ReAct prompt.
