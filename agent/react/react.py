@@ -429,21 +429,29 @@ class React:
                 conversation_id=self.run_id,
                 message_id=self.message_id,
             ):
-                # Forward all events from skill execution
-                yield event
-
-                # Track final result and errors for observation
+                # Track final result and errors for observation BEFORE yielding
+                # IMPORTANT: Do NOT yield FINAL/ERROR events from skill execution
+                # These would cause the outer React loop to terminate prematurely
                 if event.event_type == AgentEventType.FINAL:
                     if event.content and hasattr(event.content, 'text'):
                         final_result = event.content.text
                     elif event.payload:
                         final_result = event.payload.get("final_response")
+                    # Skip yielding FINAL event - skill's FINAL should not terminate crew member's loop
+                    logger.debug(f"Captured skill FINAL event, not forwarding to outer loop. result_len={len(final_result) if final_result else 0}")
+                    continue
                 elif event.event_type == AgentEventType.ERROR:
                     has_error = True
                     if event.content and hasattr(event.content, 'error_message'):
                         final_result = event.content.error_message
                     elif event.payload:
                         final_result = event.payload.get("error", "Unknown error")
+                    # Skip yielding ERROR event - convert to observation instead
+                    logger.debug(f"Captured skill ERROR event, not forwarding to outer loop. error={final_result}")
+                    continue
+
+                # Forward all other events (SKILL_START, SKILL_PROGRESS, SKILL_END, TOOL_*, LLM_*, etc.)
+                yield event
 
             logger.debug(f"Skill iteration completed: {skill_name}, has_error={has_error}, final_result={final_result is not None}")
 
@@ -555,10 +563,12 @@ class React:
 
         try:
             # Main ReAct loop - iteratively process all messages
+            logger.debug(f"Starting React main loop. max_steps={self.max_steps}, step_id={self.step_id}")
             while True:
                 # Process messages until we reach a terminal state
                 for step in range(self.step_id, self.max_steps):
                     self.step_id = step
+                    logger.debug(f"React step {step + 1}/{self.max_steps} starting")
 
                     # Check for new pending messages (added while we're processing)
                     new_pending = self._drain_pending_messages()
@@ -567,6 +577,7 @@ class React:
 
                     response_text = await self._call_llm(self.messages)
                     action = self._parse_action(response_text)
+                    logger.debug(f"React step {step + 1}: action type={action.type}, is_tool={action.is_tool()}, is_final={action.is_final()}")
                     thinking = ReactActionParser.get_thinking_message(action, step + 1, self.max_steps)
                     yield self._create_event(
                         AgentEventType.LLM_THINKING,
@@ -651,9 +662,11 @@ class React:
 
                         self.messages.append({"role": "assistant", "content": response_text})
                         self.messages.append({"role": "user", "content": f"Observation: {tool_result}"})
+                        logger.debug(f"Tool execution completed, continuing to next step. step_id={self.step_id}")
                         continue
 
                     if action.is_final():
+                        logger.debug(f"Final action received, breaking loop. final={action.final[:100] if hasattr(action, 'final') else 'N/A'}...")
                         assert isinstance(action, FinalAction), f"Expected FinalAction, got {type(action)}"
                         self.status = ReactStatus.FINAL
                         final_payload = action.to_final_payload()
@@ -680,6 +693,37 @@ class React:
                             )
                         )
                         break
+
+                    # Handle error action (parsed from LLM response)
+                    if action.is_error():
+                        from .actions import ErrorAction
+                        assert isinstance(action, ErrorAction), f"Expected ErrorAction, got {type(action)}"
+                        logger.warning(f"Error action received: {action.error}")
+                        self.status = ReactStatus.FAILED
+                        yield self._create_event(
+                            AgentEventType.ERROR,
+                            content=ErrorContent(
+                                error_message=action.error,
+                                error_type="ParseError",
+                                details=action.raw_response[:500] if hasattr(action, 'raw_response') else None,
+                                title="LLM Response Error",
+                                description="LLM returned an error response"
+                            )
+                        )
+                        break
+
+                    # If action is neither tool, final, nor error, log warning and treat as final
+                    logger.warning(f"Unknown action type: {action.type}, treating as final. response_text={response_text[:200]}...")
+                    self.status = ReactStatus.FINAL
+                    yield self._create_event(
+                        AgentEventType.FINAL,
+                        content=TextContent(
+                            text=response_text,
+                            title="Final Response",
+                            description="Processed as final response"
+                        )
+                    )
+                    break
 
                 # Check if we've reached max steps
                 if self.status != ReactStatus.FINAL:
@@ -711,9 +755,11 @@ class React:
                 # Check if there are more messages to process (iterative, not recursive!)
                 async with self._loop_lock:
                     if not self.pending_user_messages:
+                        logger.debug(f"React loop exiting: no pending messages. status={self.status}, steps={self.step_id}")
                         break
                     # Prepare for next iteration with new pending messages
                     pending_messages = self._drain_pending_messages()
+                    logger.debug(f"React loop continuing with {len(pending_messages)} new pending messages")
                     self._start_new_run(pending_messages)
                     self._in_react_loop = True
 
@@ -731,6 +777,7 @@ class React:
                 )
             )
         finally:
+            logger.debug(f"React chat_stream finally block: status={self.status}, in_react_loop={self._in_react_loop}")
             async with self._loop_lock:
                 self._in_react_loop = False
 
