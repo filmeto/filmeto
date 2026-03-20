@@ -78,6 +78,7 @@ class StartupWindowWorkspaceTopRightBar(BaseWidget):
             'members': ('app.ui.panels.members.members_panel', 'MembersPanel'),
             'screenplay': ('app.ui.panels.screen_play.screen_play_panel', 'ScreenPlayPanel'),
             'plan': ('app.ui.panels.plan.plan_panel', 'PlanPanel'),
+            'server_list': ('app.ui.panels.server_list.server_list_panel', 'ServerListPanel'),
         }
 
     @Slot(str)
