@@ -162,6 +162,35 @@ QSplitter::handle{
     border-left: none;
 }
 
+#LeftPanelDialogRightTitleBar {
+    background-color: #f0f0f0;
+    border-top-right-radius: 10px;
+    border: none;
+}
+
+#LeftPanelDialogRightTitleLabel {
+    color: #333333;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+#LeftPanelDialogSettingsButton {
+    background-color: transparent;
+    border: none;
+    border-radius: 6px;
+    color: #888888;
+    font-family: iconfont;
+    font-size: 18px;
+}
+#LeftPanelDialogSettingsButton:hover {
+    background-color: rgba(0, 0, 0, 0.1);
+    color: #333333;
+}
+
+#LeftPanelDialogRightWorkContainer {
+    background-color: transparent;
+}
+
 /* Skills Panel Styles */
 
 /* Skills Grid Container */

@@ -404,6 +404,39 @@ DIALOG_STYLE = """
     border: 1px solid #505254;
     border-left: none;
 }
+
+/* Left Panel Dialog - Right Title Bar */
+#LeftPanelDialogRightTitleBar {
+    background-color: #3d3f4e;
+    border-top-right-radius: 10px;
+    border: none;
+}
+
+/* Left Panel Dialog - Right Title Label */
+#LeftPanelDialogRightTitleLabel {
+    color: #E1E1E1;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+/* Left Panel Dialog - Settings Button */
+#LeftPanelDialogSettingsButton {
+    background-color: transparent;
+    border: none;
+    border-radius: 6px;
+    color: #888888;
+    font-family: iconfont;
+    font-size: 18px;
+}
+#LeftPanelDialogSettingsButton:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #E1E1E1;
+}
+
+/* Left Panel Dialog - Right Work Container */
+#LeftPanelDialogRightWorkContainer {
+    background-color: transparent;
+}
 """
 
 # Navigation Button Style (for dialog title bars)

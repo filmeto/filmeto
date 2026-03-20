@@ -7,7 +7,7 @@ Independent window for startup/home mode with its own size management.
 import json
 import os
 import logging
-from PySide6.QtWidgets import QWidget, QVBoxLayout
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QDialog
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QKeyEvent
 
@@ -125,7 +125,7 @@ class StartupWindow(LeftPanelDialog):
         # - Scrollable project list (middle, stretches)
         # - Toolbar (bottom, fixed)
         self.project_list = ProjectListWidget(self.workspace)
-        
+
         # Clear the default left content layout and set up proper layout
         # Remove the default margins and spacing to let ProjectListWidget control its own layout
         while self.left_content_layout.count():
@@ -134,14 +134,17 @@ class StartupWindow(LeftPanelDialog):
                 item.widget().deleteLater()
             elif item.layout():
                 item.layout().deleteLater()
-        
+
         # Set margins to 0 so ProjectListWidget fills the entire left panel
         self.left_content_layout.setContentsMargins(0, 0, 0, 0)
         self.left_content_layout.setSpacing(0)
-        
+
         # Add project list widget, it will stretch vertically
         self.left_content_layout.addWidget(self.project_list, 1)
-        
+
+        # Set right title bar text
+        self.set_right_title("Filmeto")
+
         # Right work area: Using ProjectStartupWidget which contains the tab functionality
         from app.ui.window.startup.project_startup_widget import ProjectStartupWidget
         # Initialize with the selected project from the project list
@@ -153,12 +156,12 @@ class StartupWindow(LeftPanelDialog):
 
         # Set the right work widget and adjust margins to 0 on the right
         self.set_right_work_widget(self.startup_widget)
-        # Adjust the right work layout margins to have 0 on the right side
-        self.right_work_layout.setContentsMargins(20, 20, 0, 20)  # Left, Top, Right, Bottom
-        
+        # Adjust the right work layout margins to have no margins
+        self.right_work_layout.setContentsMargins(0, 0, 0, 0)  # Left, Top, Right, Bottom
+
         # Connect signals
         self._connect_signals()
-        
+
         # Apply styles
         self._apply_styles()
     
@@ -172,6 +175,9 @@ class StartupWindow(LeftPanelDialog):
 
         # New project created - update the ProjectStartupWidget
         self.project_list.project_created.connect(self._on_project_created_in_list)
+
+        # Settings button click
+        self.settings_clicked.connect(self._on_settings_clicked)
     
     def _apply_styles(self):
         """Apply styles to the widget."""
@@ -205,6 +211,27 @@ class StartupWindow(LeftPanelDialog):
         # Switch to the project and enter edit mode
         self.workspace.switch_project(project_name)
         self.enter_edit_mode.emit(project_name)
+
+    def _on_settings_clicked(self):
+        """Handle settings button click."""
+        from app.ui.settings import SettingsWidget
+
+        # Create settings dialog
+        settings_dialog = QDialog(self)
+        settings_dialog.setWindowTitle("Settings")
+        settings_dialog.setMinimumSize(900, 700)
+        settings_dialog.setWindowFlags(Qt.Dialog | Qt.WindowCloseButtonHint)
+
+        # Create layout
+        layout = QVBoxLayout(settings_dialog)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        # Create settings widget
+        settings_widget = SettingsWidget(self.workspace)
+        layout.addWidget(settings_widget)
+
+        # Show dialog
+        settings_dialog.exec()
     
     def refresh_projects(self):
         """Refresh the project list."""
