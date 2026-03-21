@@ -327,7 +327,11 @@ async def get_task_status(task_id: str):
     """
     try:
         status = await filmeto_api.get_task_status(task_id)
+        if status.get("status") == "not_found":
+            raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
         return status
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
