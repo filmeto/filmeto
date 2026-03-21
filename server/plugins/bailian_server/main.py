@@ -26,6 +26,9 @@ from server.plugins.bailian_server.models_config import models_config, CODING_PL
 
 logger = logging.getLogger(__name__)
 
+# Default endpoints (can be overridden by models.yml)
+DASHSCOPE_IMAGE_ENDPOINT = models_config.get_dashscope_image_endpoint()
+
 # Try to import SDKs
 try:
     import dashscope

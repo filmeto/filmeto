@@ -1,43 +1,248 @@
 # Bailian Server Supported Models Configuration
 # This file defines all models supported by the Bailian server plugin.
+# Documentation: https://help.aliyun.com/zh/model-studio/getting-started/models
 
 # ============================================================
 # DashScope LLM Models (Standard)
 # ============================================================
 # These models use the standard DashScope API endpoint and API key.
 # Endpoint: https://dashscope.aliyuncs.com/compatible-mode/v1
+
 dashscope_models:
+  # --------------------------------------------------------
+  # Flagship Models (Qwen3 Series)
+  # --------------------------------------------------------
+  - name: qwen3-max
+    description: Qwen3 flagship model, most capable for complex tasks
+    supports_vision: false
+    context_length: 128000
+
+  - name: qwen3-235b-a22b
+    description: Qwen3 hybrid expert model (235B total, 22B active)
+    supports_vision: false
+    context_length: 128000
+
+  - name: qwen3-32b
+    description: Qwen3 32B parameter model
+    supports_vision: false
+    context_length: 128000
+
+  # --------------------------------------------------------
+  # Qwen Max Series (Most Capable)
+  # --------------------------------------------------------
   - name: qwen-max
     description: Most capable model for complex tasks
     supports_vision: false
+    context_length: 32768
 
-  - name: qwen-plus
-    description: Balance of speed and quality
+  - name: qwen-max-latest
+    description: Latest version of qwen-max
     supports_vision: false
+    context_length: 128000
 
+  # --------------------------------------------------------
+  # Qwen Plus Series (Balanced)
+  # --------------------------------------------------------
+  - name: qwen-plus
+    description: Balance of capability and speed
+    supports_vision: false
+    context_length: 131072
+
+  - name: qwen-plus-latest
+    description: Latest version of qwen-plus
+    supports_vision: false
+    context_length: 131072
+
+  # --------------------------------------------------------
+  # Qwen Flash Series (Fast)
+  # --------------------------------------------------------
+  - name: qwen-flash
+    description: Ultra-fast model for simple tasks
+    supports_vision: false
+    context_length: 128000
+
+  # --------------------------------------------------------
+  # Qwen Turbo Series (Efficient)
+  # --------------------------------------------------------
   - name: qwen-turbo
     description: Fast and efficient model
     supports_vision: false
+    context_length: 131072
 
+  - name: qwen-turbo-latest
+    description: Latest version of qwen-turbo
+    supports_vision: false
+    context_length: 131072
+
+  # --------------------------------------------------------
+  # Qwen Long (Extended Context)
+  # --------------------------------------------------------
   - name: qwen-long
-    description: Long context support (up to 10K tokens)
+    description: Long context support (up to 10K tokens input)
     supports_vision: false
+    context_length: 10000
 
-  - name: qwen2.5-72b-instruct
-    description: Latest Qwen 2.5 generation (72B parameters)
+  # --------------------------------------------------------
+  # QwQ (Reasoning Model)
+  # --------------------------------------------------------
+  - name: qwq-plus
+    description: QwQ reasoning model for complex reasoning tasks
     supports_vision: false
+    context_length: 131072
 
-  - name: qwen2.5-32b-instruct
-    description: Latest Qwen 2.5 generation (32B parameters)
+  - name: qwq-32b
+    description: QwQ 32B reasoning model
     supports_vision: false
+    context_length: 131072
 
+  # --------------------------------------------------------
+  # QVQ (Visual Reasoning)
+  # --------------------------------------------------------
+  - name: qvq-max
+    description: Visual reasoning model for image understanding
+    supports_vision: true
+    context_length: 32768
+
+  - name: qvq-max-latest
+    description: Latest version of qvq-max
+    supports_vision: true
+    context_length: 32768
+
+  # --------------------------------------------------------
+  # Qwen VL (Vision-Language)
+  # --------------------------------------------------------
   - name: qwen-vl-max
     description: Vision-language model (most capable)
     supports_vision: true
+    context_length: 32768
+
+  - name: qwen-vl-max-latest
+    description: Latest version of qwen-vl-max
+    supports_vision: true
+    context_length: 32768
 
   - name: qwen-vl-plus
     description: Vision-language model (balanced)
     supports_vision: true
+    context_length: 32768
+
+  # --------------------------------------------------------
+  # Qwen VL OCR
+  # --------------------------------------------------------
+  - name: qwen-vl-ocr
+    description: OCR-optimized vision model for text extraction
+    supports_vision: true
+    context_length: 8192
+
+  # --------------------------------------------------------
+  # Qwen Omni (Multimodal)
+  # --------------------------------------------------------
+  - name: qwen-omni
+    description: Multimodal model supporting text, image, audio
+    supports_vision: true
+    supports_audio: true
+    context_length: 32768
+
+  # --------------------------------------------------------
+  # Qwen Audio
+  # --------------------------------------------------------
+  - name: qwen-audio
+    description: Audio understanding model
+    supports_vision: false
+    supports_audio: true
+    context_length: 8192
+
+  # --------------------------------------------------------
+  # Qwen Coder
+  # --------------------------------------------------------
+  - name: qwen-coder
+    description: Code-specialized model for programming tasks
+    supports_vision: false
+    context_length: 131072
+
+  - name: qwen-coder-plus
+    description: Enhanced code-specialized model
+    supports_vision: false
+    context_length: 131072
+
+  # --------------------------------------------------------
+  # Qwen MT (Translation)
+  # --------------------------------------------------------
+  - name: qwen-mt
+    description: Machine translation model
+    supports_vision: false
+    context_length: 8192
+
+  # --------------------------------------------------------
+  # Qwen2.5 Series (Open Source)
+  # --------------------------------------------------------
+  - name: qwen2.5-72b-instruct
+    description: Qwen 2.5 72B open source model
+    supports_vision: false
+    context_length: 131072
+
+  - name: qwen2.5-32b-instruct
+    description: Qwen 2.5 32B open source model
+    supports_vision: false
+    context_length: 32768
+
+  - name: qwen2.5-14b-instruct
+    description: Qwen 2.5 14B open source model
+    supports_vision: false
+    context_length: 32768
+
+  - name: qwen2.5-7b-instruct
+    description: Qwen 2.5 7B open source model
+    supports_vision: false
+    context_length: 32768
+
+# ============================================================
+# Third-Party Models (via DashScope)
+# ============================================================
+# These are third-party models available through DashScope API.
+
+third_party_models:
+  # --------------------------------------------------------
+  # DeepSeek Series
+  # --------------------------------------------------------
+  - name: deepseek-r1
+    description: DeepSeek R1 reasoning model
+    supports_vision: false
+    context_length: 64000
+
+  - name: deepseek-v3
+    description: DeepSeek V3 general model
+    supports_vision: false
+    context_length: 64000
+
+  # --------------------------------------------------------
+  # Kimi Series (Moonshot)
+  # --------------------------------------------------------
+  - name: kimi-k2.5
+    description: Kimi K2.5 model with image understanding
+    supports_vision: true
+    context_length: 128000
+
+  # --------------------------------------------------------
+  # GLM Series (Zhipu AI)
+  # --------------------------------------------------------
+  - name: glm-4-plus
+    description: GLM-4 Plus model
+    supports_vision: false
+    context_length: 128000
+
+  - name: glm-4
+    description: GLM-4 general model
+    supports_vision: false
+    context_length: 128000
+
+  # --------------------------------------------------------
+  # MiniMax Series
+  # --------------------------------------------------------
+  - name: MiniMax-Text-01
+    description: MiniMax Text-01 model
+    supports_vision: false
+    context_length: 245000
 
 # ============================================================
 # Coding Plan Models
@@ -50,46 +255,223 @@ dashscope_models:
 # Note: In the UI, these models are prefixed with "code_plan:"
 # to distinguish them from standard models. The prefix is stripped
 # before making API calls.
+
 coding_plan_models:
   - name: qwen3.5-plus
     description: Advanced coding model with image understanding
     supports_vision: true
+    context_length: 128000
 
   - name: kimi-k2.5
     description: Kimi model with image understanding
     supports_vision: true
+    context_length: 128000
 
   - name: glm-5
     description: GLM-5 general language model
     supports_vision: false
+    context_length: 128000
 
   - name: MiniMax-M2.5
     description: MiniMax M2.5 model
     supports_vision: false
+    context_length: 128000
 
 # ============================================================
 # Image Generation Models (Wanx)
 # ============================================================
 # These models use the DashScope image synthesis API.
+# API: https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis
+
 image_models:
+  # --------------------------------------------------------
+  # Qwen Image (AI Drawing)
+  # --------------------------------------------------------
+  qwen_image:
+    - name: qwen-image
+      description: Qwen image generation model
+      default: false
+
+  # --------------------------------------------------------
+  # Wanx 2.6 Series (Latest)
+  # --------------------------------------------------------
   text_to_image:
+    - name: wanx2.6-t2i-turbo
+      description: Wanx 2.6 fast text-to-image
+      default: false
+
+    - name: wanx2.6-t2i-plus
+      description: Wanx 2.6 high quality text-to-image
+      default: false
+
+  # --------------------------------------------------------
+  # Wanx 2.5 Series
+  # --------------------------------------------------------
+    - name: wanx2.5-t2i-turbo
+      description: Wanx 2.5 fast text-to-image
+      default: false
+
+    - name: wanx2.5-t2i-plus
+      description: Wanx 2.5 high quality text-to-image
+      default: false
+
+  # --------------------------------------------------------
+  # Wanx 2.2 Series
+  # --------------------------------------------------------
+    - name: wanx2.2-t2i-turbo
+      description: Wanx 2.2 fast text-to-image
+      default: false
+
+    - name: wanx2.2-t2i-plus
+      description: Wanx 2.2 high quality text-to-image
+      default: false
+
+  # --------------------------------------------------------
+  # Wanx 2.1 Series
+  # --------------------------------------------------------
     - name: wanx2.1-t2i-turbo
-      description: Fast text-to-image generation
+      description: Wanx 2.1 fast text-to-image
       default: true
 
     - name: wanx2.1-t2i-plus
-      description: High quality text-to-image generation
+      description: Wanx 2.1 high quality text-to-image
       default: false
 
+  # --------------------------------------------------------
+  # Image-to-Image
+  # --------------------------------------------------------
   image_to_image:
     - name: wanx2.1-i2i-turbo
       description: Fast image-to-image transformation
+      default: true
+
+    - name: wanx2.1-i2i-plus
+      description: High quality image-to-image transformation
+      default: false
+
+  # --------------------------------------------------------
+  # Image Editing
+  # --------------------------------------------------------
+  image_editing:
+    - name: wanx2.1-imgedit-turbo
+      description: Fast image editing
+      default: true
+
+    - name: wanx2.1-imgedit-plus
+      description: High quality image editing
+      default: false
+
+# ============================================================
+# Video Generation Models (Wanx)
+# ============================================================
+# These models use the DashScope video synthesis API.
+
+video_models:
+  # --------------------------------------------------------
+  # Text-to-Video
+  # --------------------------------------------------------
+  text_to_video:
+    - name: wanx2.1-t2v-turbo
+      description: Fast text-to-video generation
+      default: true
+
+    - name: wanx2.1-t2v-plus
+      description: High quality text-to-video generation
+      default: false
+
+  # --------------------------------------------------------
+  # Image-to-Video
+  # --------------------------------------------------------
+  image_to_video:
+    - name: wanx2.1-i2v-turbo
+      description: Fast image-to-video generation
+      default: true
+
+    - name: wanx2.1-i2v-plus
+      description: High quality image-to-video generation
+      default: false
+
+# ============================================================
+# Speech Models
+# ============================================================
+# Text-to-Speech (TTS) and Automatic Speech Recognition (ASR)
+
+speech_models:
+  # --------------------------------------------------------
+  # Text-to-Speech (TTS)
+  # --------------------------------------------------------
+  tts:
+    - name: qwen-tts
+      description: Qwen text-to-speech model
+      default: true
+
+    - name: cosyvoice-v1
+      description: CosyVoice TTS model
+      default: false
+
+    - name: sambert
+      description: Sambert TTS model
+      default: false
+
+  # --------------------------------------------------------
+  # Automatic Speech Recognition (ASR)
+  # --------------------------------------------------------
+  asr:
+    - name: qwen-asr
+      description: Qwen automatic speech recognition
+      default: true
+
+    - name: paraformer-v2
+      description: Paraformer ASR model
+      default: false
+
+# ============================================================
+# Embedding Models
+# ============================================================
+# Text and multimodal embedding models for vector representations
+
+embedding_models:
+  # --------------------------------------------------------
+  # Text Embedding
+  # --------------------------------------------------------
+  text:
+    - name: text-embedding-v3
+      description: Latest text embedding model
+      dimensions: [1024, 768]
+      default: true
+
+    - name: text-embedding-v2
+      description: Text embedding model v2
+      dimensions: [1536]
+      default: false
+
+  # --------------------------------------------------------
+  # Multimodal Embedding
+  # --------------------------------------------------------
+  multimodal:
+    - name: multimodal-embedding-v1
+      description: Multimodal embedding for text and images
+      dimensions: [1024]
       default: true
 
 # ============================================================
 # API Endpoints
 # ============================================================
 endpoints:
+  # DashScope OpenAI-compatible chat endpoint
   dashscope_chat: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+  # DashScope image synthesis endpoint
   dashscope_image: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis"
+
+  # DashScope video synthesis endpoint
+  dashscope_video: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2video/video-synthesis"
+
+  # Coding Plan endpoint (requires separate subscription)
   coding_plan: "https://coding.dashscope.aliyuncs.com/v1"
+
+  # DashScope speech endpoint
+  dashscope_speech: "https://dashscope.aliyuncs.com/api/v1/services/audio"
+
+  # DashScope embedding endpoint
+  dashscope_embedding: "https://dashscope.aliyuncs.com/api/v1/services/embeddings"
