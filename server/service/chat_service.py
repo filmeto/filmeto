@@ -53,6 +53,18 @@ logger = logging.getLogger(__name__)
 CHAT_SERVER_TYPES = frozenset({"chat", "openai", "llm"})
 
 
+def _is_chat_capable(cfg: ServerConfig) -> bool:
+    """Check whether a ServerConfig supports chat completions.
+
+    A server is chat-capable if:
+      - its server_type is one of "openai", "chat", "llm", OR
+      - it explicitly sets ``parameters.chat_enabled: true``
+    """
+    if cfg.server_type in CHAT_SERVER_TYPES:
+        return True
+    return bool(cfg.parameters.get("chat_enabled"))
+
+
 class ChatService:
     """Routes chat completion requests to LLM backends configured as Servers."""
 
@@ -136,7 +148,7 @@ class ChatService:
 
         for server in self._server_manager.list_servers():
             cfg = server.config
-            if cfg.server_type not in CHAT_SERVER_TYPES or not cfg.enabled:
+            if not cfg.enabled or not _is_chat_capable(cfg):
                 continue
 
             owner = cfg.name
@@ -176,7 +188,7 @@ class ChatService:
         # Try to match by model name
         for server in self._server_manager.list_servers():
             cfg = server.config
-            if cfg.server_type not in CHAT_SERVER_TYPES or not cfg.enabled:
+            if not cfg.enabled or not _is_chat_capable(cfg):
                 continue
             advertised = set(cfg.parameters.get("models", []))
             default_m = cfg.parameters.get("default_model")
@@ -188,7 +200,7 @@ class ChatService:
         # Fallback: first chat-capable server
         for server in self._server_manager.list_servers():
             cfg = server.config
-            if cfg.server_type in CHAT_SERVER_TYPES and cfg.enabled:
+            if cfg.enabled and _is_chat_capable(cfg):
                 return cfg
 
         raise ValueError(
@@ -204,15 +216,23 @@ class ChatService:
         stream: bool = False,
     ) -> dict:
         """Translate ServerConfig + request into litellm.acompletion kwargs."""
+        sp = server_cfg.parameters
         params: dict = {"model": request.model, "stream": stream}
 
-        if server_cfg.api_key:
-            params["api_key"] = server_cfg.api_key
-        if server_cfg.endpoint:
-            params["base_url"] = server_cfg.endpoint
-            params["api_base"] = server_cfg.endpoint
+        # API key: prefer plugin-specific key (e.g. dashscope_api_key),
+        # fall back to server-level api_key.
+        api_key = sp.get("dashscope_api_key") or server_cfg.api_key
+        if api_key:
+            params["api_key"] = api_key
 
-        provider = server_cfg.parameters.get("provider")
+        # Endpoint: prefer plugin-specific chat endpoint,
+        # fall back to server-level endpoint.
+        endpoint = sp.get("dashscope_endpoint") or server_cfg.endpoint
+        if endpoint:
+            params["base_url"] = endpoint
+            params["api_base"] = endpoint
+
+        provider = sp.get("provider")
         if provider and provider != "openai":
             model = request.model
             if not model.startswith(f"{provider}/"):
@@ -220,8 +240,8 @@ class ChatService:
 
         if request.temperature is not None:
             params["temperature"] = request.temperature
-        elif "temperature" in server_cfg.parameters:
-            params["temperature"] = server_cfg.parameters["temperature"]
+        elif "temperature" in sp:
+            params["temperature"] = sp["temperature"]
 
         if request.top_p is not None:
             params["top_p"] = request.top_p
@@ -243,7 +263,7 @@ class ChatService:
         if request.tool_choice is not None:
             params["tool_choice"] = request.tool_choice
 
-        extra = server_cfg.parameters.get("litellm_params")
+        extra = sp.get("litellm_params")
         if isinstance(extra, dict):
             params.update(extra)
 
