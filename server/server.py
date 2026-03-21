@@ -7,6 +7,8 @@ that can generate images, videos, audio, and other storyboard materials.
 """
 
 import os
+import time
+import threading
 import yaml
 import asyncio
 import logging
@@ -15,11 +17,86 @@ from typing import Dict, List, Optional, Any, Union
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from server.api.types import FilmetoTask, TaskProgress, TaskResult
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler, FileModifiedEvent, FileCreatedEvent, FileDeletedEvent
+
+from server.api.types import FilmetoTask, TaskProgress, TaskResult, RetryPolicy
 from server.plugins.plugin_manager import PluginManager, PluginInfo
 from server.plugins.plugin_ui_loader import PluginUILoader
 
 logger = logging.getLogger(__name__)
+
+_RELOAD_DEBOUNCE_SECONDS = 1.0
+
+
+class _ConfigWatcher(FileSystemEventHandler):
+    """Watches the servers directory for config changes and triggers reloads."""
+
+    def __init__(self, server_manager: 'ServerManager'):
+        super().__init__()
+        self._server_manager = server_manager
+        self._pending: Dict[str, float] = {}
+        self._lock = threading.Lock()
+        self._timer: Optional[threading.Timer] = None
+
+    # -- watchdog callbacks (called on observer thread) ---------------------
+
+    def on_modified(self, event):
+        if not isinstance(event, FileModifiedEvent) or event.is_directory:
+            return
+        self._schedule_reload(event.src_path)
+
+    def on_created(self, event):
+        if not isinstance(event, FileCreatedEvent) or event.is_directory:
+            return
+        self._schedule_reload(event.src_path)
+
+    def on_deleted(self, event):
+        if not isinstance(event, FileDeletedEvent) or event.is_directory:
+            return
+        self._schedule_reload(event.src_path)
+
+    # -- internal ----------------------------------------------------------
+
+    def _schedule_reload(self, path: str):
+        """Debounce rapid file-system events into a single reload."""
+        p = Path(path)
+        if p.name not in ("server.yml", "server_router.yml"):
+            return
+
+        with self._lock:
+            self._pending[path] = time.time()
+            if self._timer is not None:
+                self._timer.cancel()
+            self._timer = threading.Timer(
+                _RELOAD_DEBOUNCE_SECONDS, self._flush
+            )
+            self._timer.daemon = True
+            self._timer.start()
+
+    def _flush(self):
+        with self._lock:
+            paths = dict(self._pending)
+            self._pending.clear()
+            self._timer = None
+
+        for path_str in paths:
+            p = Path(path_str)
+            if p.name == "server_router.yml":
+                self._server_manager.reload_routing_rules()
+            elif p.name == "server.yml":
+                server_name = p.parent.name
+                if p.exists():
+                    self._server_manager.reload_server(server_name)
+                else:
+                    self._server_manager._handle_server_config_deleted(server_name)
+
+    def cancel(self):
+        """Cancel any pending timer."""
+        with self._lock:
+            if self._timer is not None:
+                self._timer.cancel()
+                self._timer = None
 
 
 @dataclass
@@ -224,7 +301,25 @@ class Server:
         if self._plugin_info is None:
             self._plugin_info = self.plugin_manager.get_plugin_info(self.config.plugin_name)
         return self._plugin_info
-    
+
+    def get_retry_policy(self) -> RetryPolicy:
+        """Build a RetryPolicy from the plugin's ``execution`` config section.
+
+        Falls back to server-level ``parameters.retry`` if present, otherwise
+        uses the plugin.yml ``execution`` block, otherwise defaults.
+        """
+        server_retry = self.config.parameters.get("retry")
+        if isinstance(server_retry, dict):
+            return RetryPolicy.from_dict(server_retry)
+
+        plugin_info = self.get_plugin_info()
+        if plugin_info is not None:
+            exec_cfg = plugin_info.config.get("execution", {})
+            if exec_cfg:
+                return RetryPolicy.from_dict(exec_cfg)
+
+        return RetryPolicy()
+
     async def execute_task(
         self,
         task: FilmetoTask
@@ -351,6 +446,10 @@ class ServerManager:
 
         # Store flag for deferred discovery
         self._plugin_discovery_deferred = defer_plugin_discovery
+
+        # Config watcher (started lazily via start_config_watcher)
+        self._config_observer: Optional[Observer] = None
+        self._config_watcher: Optional[_ConfigWatcher] = None
 
         # Mark as initialized
         self._initialized = True
@@ -706,8 +805,12 @@ class ServerManager:
         use_fallback: bool = True
     ):
         """
-        Execute task with automatic routing and fallback.
-        
+        Execute task with automatic routing, per-server retry, and fallback.
+
+        Each server is retried according to its own ``RetryPolicy`` (derived
+        from the plugin's ``execution`` config) before falling through to the
+        next fallback server.
+
         Args:
             task: Task to execute
             use_fallback: Whether to try fallback servers on failure
@@ -730,35 +833,146 @@ class ServerManager:
             )
             return
         
-        last_error = None
+        last_error: Optional[Exception] = None
         
-        # Try each server in order
         for server in servers:
-            try:
-                print(f"🎯 Routing task {task.task_id} to server: {server.name}")
-                
-                async for message in server.execute_task(task):
-                    yield message
-                    
-                    # If we got a result, we're done
-                    if isinstance(message, dict) and "result" in message:
-                        return
-                
-                # Task completed successfully
-                return
-                
-            except Exception as e:
-                last_error = e
-                print(f"❌ Server {server.name} failed: {e}")
-                continue
+            policy = server.get_retry_policy()
+            max_attempts = 1 + policy.max_retries
+
+            for attempt in range(max_attempts):
+                try:
+                    if attempt > 0:
+                        delay = policy.compute_delay(attempt - 1)
+                        logger.info(
+                            f"Retrying task {task.task_id} on {server.name} "
+                            f"(attempt {attempt + 1}/{max_attempts}) "
+                            f"after {delay:.1f}s"
+                        )
+                        yield TaskProgress(
+                            task_id=task.task_id,
+                            type="progress",
+                            percent=0,
+                            message=(
+                                f"Retrying on {server.name} "
+                                f"(attempt {attempt + 1}/{max_attempts})..."
+                            ),
+                        )
+                        await asyncio.sleep(delay)
+                    else:
+                        logger.info(
+                            f"Routing task {task.task_id} to server: "
+                            f"{server.name}"
+                        )
+
+                    async for message in server.execute_task(task):
+                        yield message
+
+                        if isinstance(message, dict) and "result" in message:
+                            return
+
+                    # Generator exhausted without error — success.
+                    return
+
+                except Exception as e:
+                    last_error = e
+                    is_last_attempt = attempt >= max_attempts - 1
+                    if is_last_attempt or not policy.is_retryable(e):
+                        logger.warning(
+                            f"Server {server.name} failed "
+                            f"(attempt {attempt + 1}/{max_attempts}): {e}"
+                        )
+                        break
+                    logger.warning(
+                        f"Server {server.name} failed "
+                        f"(attempt {attempt + 1}/{max_attempts}, "
+                        f"will retry): {e}"
+                    )
         
-        # All servers failed
+        # All servers (and their retries) exhausted.
         yield TaskResult(
             task_id=task.task_id,
             status="error",
             error_message=f"All servers failed. Last error: {str(last_error)}"
         )
     
+    # --- Hot-reload support ------------------------------------------------
+
+    def reload_server(self, name: str):
+        """
+        Reload a single server's configuration from disk.
+
+        If the server already exists in memory it is replaced; otherwise a new
+        server is added.  Called automatically by the config watcher when a
+        ``server.yml`` file is modified or created.
+        """
+        config_path = self.servers_dir / name / "server.yml"
+        if not config_path.exists():
+            logger.warning(f"Cannot reload server '{name}': config file missing")
+            return
+
+        try:
+            config = ServerConfig.load_from_file(str(config_path))
+            server = Server(config, self.plugin_manager, self.workspace_path)
+            self.servers[config.name] = server
+            logger.info(f"Reloaded server config: {name}")
+        except Exception as e:
+            logger.error(f"Failed to reload server '{name}': {e}")
+
+    def reload_routing_rules(self):
+        """Reload routing rules from disk."""
+        self._load_routing_rules()
+        logger.info("Routing rules reloaded from disk")
+
+    def _handle_server_config_deleted(self, name: str):
+        """Handle deletion of a server.yml file (called by config watcher)."""
+        if name in ("local", "filmeto"):
+            logger.warning(
+                f"Default server config '{name}' was deleted; "
+                "it will be recreated on next restart"
+            )
+            return
+        if name in self.servers:
+            del self.servers[name]
+            logger.info(f"Server '{name}' removed (config deleted)")
+
+    def start_config_watcher(self):
+        """
+        Start watching the servers directory for config changes.
+
+        Safe to call multiple times; only the first call starts the observer.
+        """
+        if self._config_observer is not None:
+            return
+
+        if not self.servers_dir.exists():
+            logger.warning("Servers dir does not exist; config watcher not started")
+            return
+
+        self._config_watcher = _ConfigWatcher(self)
+        self._config_observer = Observer()
+        self._config_observer.schedule(
+            self._config_watcher,
+            str(self.servers_dir),
+            recursive=True,
+        )
+        self._config_observer.daemon = True
+        self._config_observer.start()
+        logger.info(f"Config watcher started on {self.servers_dir}")
+
+    def stop_config_watcher(self):
+        """Stop the config file watcher if running."""
+        if self._config_watcher is not None:
+            self._config_watcher.cancel()
+            self._config_watcher = None
+
+        if self._config_observer is not None:
+            self._config_observer.stop()
+            self._config_observer.join(timeout=5)
+            self._config_observer = None
+            logger.info("Config watcher stopped")
+
+    # --- Query helpers ----------------------------------------------------
+
     def list_available_server_types(self) -> List[str]:
         """
         List available server types based on available plugins.
@@ -797,6 +1011,7 @@ class ServerManager:
 
     async def cleanup(self):
         """Cleanup resources"""
+        self.stop_config_watcher()
         await self.plugin_manager.stop_all_plugins()
 
 
