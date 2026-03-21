@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import sys
 import json
+import time
 import yaml
 import asyncio
 import subprocess
@@ -17,6 +18,10 @@ from typing import Dict, Optional, Any, AsyncIterator, List
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_HEALTH_CHECK_INTERVAL = 30   # seconds between checks
+_DEFAULT_HEARTBEAT_TIMEOUT = 90       # seconds before declaring unhealthy
+_DEFAULT_MAX_RESTARTS = 3
 
 from server.api.types import FilmetoTask, TaskProgress, TaskResult, ProgressType
 from server.api.types import PluginNotFoundError, PluginExecutionError
@@ -52,17 +57,49 @@ class PluginProcess:
     """
     
     def __init__(self, plugin_info: PluginInfo):
-        """
-        Initialize plugin process manager.
-        
-        Args:
-            plugin_info: Plugin metadata
-        """
         self.plugin_info = plugin_info
         self.process: Optional[asyncio.subprocess.Process] = None
         self.is_ready = False
-        self.heartbeat_task: Optional[asyncio.Task] = None
+
+        # Health check state
+        startup_cfg = plugin_info.config.get("startup", {})
+        self._health_check_interval: int = startup_cfg.get(
+            "health_check_interval", _DEFAULT_HEALTH_CHECK_INTERVAL
+        )
+        self._heartbeat_timeout: int = startup_cfg.get(
+            "heartbeat_timeout", _DEFAULT_HEARTBEAT_TIMEOUT
+        )
+        self._max_restarts: int = startup_cfg.get(
+            "max_restarts", _DEFAULT_MAX_RESTARTS
+        )
+
+        self._last_heartbeat: float = 0.0
+        self._restart_count: int = 0
+        self._is_executing: bool = False
+        self._health_check_task: Optional[asyncio.Task] = None
+        self._on_restart_callback = None
     
+    @property
+    def is_alive(self) -> bool:
+        """True if the process is running."""
+        return (
+            self.process is not None
+            and self.process.returncode is None
+        )
+
+    @property
+    def is_healthy(self) -> bool:
+        """True if alive and heartbeat is recent enough."""
+        if not self.is_alive or not self.is_ready:
+            return False
+        if self._last_heartbeat == 0.0:
+            return True
+        return (time.time() - self._last_heartbeat) < self._heartbeat_timeout
+
+    def record_heartbeat(self):
+        """Record that a heartbeat was received from the plugin."""
+        self._last_heartbeat = time.time()
+
     async def start(self):
         """
         Start the plugin process.
@@ -70,17 +107,15 @@ class PluginProcess:
         Raises:
             PluginExecutionError: If plugin fails to start
         """
-        if self.process and self.process.returncode is None:
+        if self.is_alive:
             logger.warning(f"Plugin {self.plugin_info.name} is already running")
             return
         
         logger.info(f"Starting plugin: {self.plugin_info.name}")
         
         try:
-            # Determine Python executable
             python_exe = sys.executable
             
-            # Start process
             self.process = await asyncio.create_subprocess_exec(
                 python_exe,
                 str(self.plugin_info.main_script),
@@ -90,7 +125,6 @@ class PluginProcess:
                 cwd=str(self.plugin_info.plugin_path)
             )
             
-            # Wait for ready message
             ready_timeout = self.plugin_info.config.get("startup", {}).get("timeout", 60)
             try:
                 ready_msg = await asyncio.wait_for(
@@ -100,6 +134,7 @@ class PluginProcess:
                 
                 if ready_msg and ready_msg.get("method") == "ready":
                     self.is_ready = True
+                    self.record_heartbeat()
                     logger.info(f"Plugin {self.plugin_info.name} is ready")
                 else:
                     raise PluginExecutionError(
@@ -113,7 +148,18 @@ class PluginProcess:
                     f"Plugin {self.plugin_info.name} startup timeout",
                     {"plugin": self.plugin_info.name, "timeout": ready_timeout}
                 )
+
+            # Launch the background health check
+            health_check_enabled = self.plugin_info.config.get(
+                "startup", {}
+            ).get("health_check", False)
+            if health_check_enabled:
+                self._health_check_task = asyncio.create_task(
+                    self._health_check_loop()
+                )
             
+        except PluginExecutionError:
+            raise
         except Exception as e:
             await self.stop()
             raise PluginExecutionError(
@@ -134,6 +180,8 @@ class PluginProcess:
                 {"plugin": self.plugin_info.name}
             )
         
+        self._is_executing = True
+
         request = {
             "jsonrpc": "2.0",
             "method": "execute_task",
@@ -150,22 +198,26 @@ class PluginProcess:
         Yields:
             Message dictionaries (progress, result, heartbeat)
         """
-        while True:
-            try:
-                message = await self._read_message()
-                if message is None:
-                    # Process ended or error
-                    break
-                
-                yield message
-                
-                # Check if this is the final result
-                if message.get("result") and "status" in message.get("result", {}):
-                    break
+        try:
+            while True:
+                try:
+                    message = await self._read_message()
+                    if message is None:
+                        break
+
+                    if message.get("method") == "heartbeat":
+                        self.record_heartbeat()
+
+                    yield message
                     
-            except Exception as e:
-                logger.error(f"Error receiving message from plugin: {e}")
-                break
+                    if message.get("result") and "status" in message.get("result", {}):
+                        break
+                        
+                except Exception as e:
+                    logger.error(f"Error receiving message from plugin: {e}")
+                    break
+        finally:
+            self._is_executing = False
     
     async def ping(self) -> bool:
         """
@@ -190,13 +242,81 @@ class PluginProcess:
             # Wait for response with timeout
             response = await asyncio.wait_for(self._read_message(), timeout=5.0)
             
-            return response and response.get("result", {}).get("status") == "pong"
+            alive = response and response.get("result", {}).get("status") == "pong"
+            if alive:
+                self.record_heartbeat()
+            return alive
             
-        except:
+        except Exception:
             return False
     
+    async def _health_check_loop(self):
+        """Periodically verify the plugin is alive. Only pings when idle."""
+        name = self.plugin_info.name
+        try:
+            while self.is_alive:
+                await asyncio.sleep(self._health_check_interval)
+
+                if not self.is_alive:
+                    break
+
+                # During task execution, rely on heartbeat messages from the
+                # plugin instead of sending a ping (which would conflict with
+                # the task message stream on stdout).
+                if self._is_executing:
+                    if self._last_heartbeat and (
+                        time.time() - self._last_heartbeat > self._heartbeat_timeout
+                    ):
+                        logger.warning(
+                            f"Plugin {name} heartbeat timeout during execution"
+                        )
+                        await self._restart()
+                    continue
+
+                # Idle: actively ping.
+                if not await self.ping():
+                    logger.warning(f"Plugin {name} failed ping check")
+                    await self._restart()
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error(f"Health check loop error for {name}: {e}")
+
+    async def _restart(self):
+        """Stop and restart the plugin process with a restart budget."""
+        name = self.plugin_info.name
+        if self._restart_count >= self._max_restarts:
+            logger.error(
+                f"Plugin {name} exceeded max restarts ({self._max_restarts}), "
+                "giving up"
+            )
+            await self.stop()
+            return
+
+        self._restart_count += 1
+        logger.info(
+            f"Restarting plugin {name} "
+            f"(attempt {self._restart_count}/{self._max_restarts})"
+        )
+
+        await self.stop()
+        try:
+            await self.start()
+            if self._on_restart_callback:
+                self._on_restart_callback(self)
+        except PluginExecutionError as e:
+            logger.error(f"Failed to restart plugin {name}: {e}")
+
     async def stop(self):
-        """Stop the plugin process"""
+        """Stop the plugin process and cancel health check."""
+        if self._health_check_task and not self._health_check_task.done():
+            self._health_check_task.cancel()
+            try:
+                await self._health_check_task
+            except asyncio.CancelledError:
+                pass
+            self._health_check_task = None
+
         if self.process:
             try:
                 if self.process.returncode is None:
@@ -211,6 +331,7 @@ class PluginProcess:
             self.process = None
         
         self.is_ready = False
+        self._is_executing = False
     
     async def _write_message(self, message: Dict[str, Any]):
         """Write JSON message to plugin stdin"""
@@ -384,6 +505,9 @@ class PluginManager:
     async def get_plugin(self, plugin_name: str) -> PluginProcess:
         """
         Get or start a plugin process.
+
+        If the cached process has died or is unhealthy it is recycled
+        transparently before being returned.
         
         Args:
             plugin_name: Name of the plugin
@@ -395,23 +519,24 @@ class PluginManager:
             PluginNotFoundError: If plugin not found
             PluginExecutionError: If plugin fails to start
         """
-        # Check if plugin is already running
         if plugin_name in self.plugins:
             plugin = self.plugins[plugin_name]
-            # Check if still alive
-            if plugin.process and plugin.process.returncode is None:
+            if plugin.is_alive and plugin.is_healthy:
                 return plugin
-            else:
-                # Process died, remove it
-                del self.plugins[plugin_name]
+            # Process died or is unhealthy — clean up and re-create.
+            logger.warning(
+                f"Plugin {plugin_name} is not healthy "
+                f"(alive={plugin.is_alive}, healthy={plugin.is_healthy}), "
+                "recycling"
+            )
+            await plugin.stop()
+            del self.plugins[plugin_name]
         
-        # Get plugin info
         if plugin_name not in self.plugin_infos:
             raise PluginNotFoundError(plugin_name)
         
         plugin_info = self.plugin_infos[plugin_name]
         
-        # Create and start plugin process
         plugin = PluginProcess(plugin_info)
         await plugin.start()
         
