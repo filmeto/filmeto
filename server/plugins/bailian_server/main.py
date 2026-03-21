@@ -2,7 +2,7 @@
 Bailian Server Plugin
 
 Integrates Alibaba Cloud Bailian (DashScope) AI services.
-Supports text-to-image, image-to-image, and Bailian App tools.
+Supports text-to-image, image-to-image, Bailian App, and LLM chat completion tools.
 """
 
 import os
@@ -10,6 +10,7 @@ import sys
 import time
 import asyncio
 import json
+import logging
 import uuid
 import requests
 from pathlib import Path
@@ -20,18 +21,26 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from server.plugins.base_plugin import BaseServerPlugin, ToolConfig
 
+logger = logging.getLogger(__name__)
+
 # Try to import SDKs
 try:
     import dashscope
     from dashscope import ImageSynthesis
 except ImportError:
-    print("Warning: dashscope SDK not found")
+    logger.warning("dashscope SDK not found")
 
 try:
     import broadscope_bailian
     from broadscope_bailian import Completions, AccessTokenClient
 except ImportError:
-    print("Warning: broadscope-bailian SDK not found")
+    logger.warning("broadscope-bailian SDK not found")
+
+try:
+    import litellm
+except ImportError:
+    litellm = None
+    logger.warning("litellm not found, chat_completion tool unavailable")
 
 class BailianServerPlugin(BaseServerPlugin):
     """
@@ -47,8 +56,8 @@ class BailianServerPlugin(BaseServerPlugin):
         """Get plugin metadata"""
         return {
             "name": "Bailian Server",
-            "version": "1.2.0",
-            "description": "Alibaba Cloud Bailian (DashScope & Broadscope) integration",
+            "version": "1.3.0",
+            "description": "Alibaba Cloud Bailian (DashScope) integration with LLM chat and AIGC tools",
             "author": "Filmeto Team",
             "engine": "bailian"
         }
@@ -84,10 +93,19 @@ class BailianServerPlugin(BaseServerPlugin):
             {"name": "app_id", "type": "string", "required": False, "description": "Bailian App ID (overrides default config)"}
         ]
 
+        chat_completion_params = [
+            {"name": "model", "type": "string", "required": False, "default": "qwen-max", "description": "Model name (e.g. qwen-max, qwen-plus, qwen-turbo)"},
+            {"name": "messages", "type": "array", "required": True, "description": "Chat messages in OpenAI format"},
+            {"name": "temperature", "type": "float", "required": False, "default": 0.7, "description": "Sampling temperature"},
+            {"name": "max_tokens", "type": "integer", "required": False, "default": 4096, "description": "Maximum tokens in response"},
+            {"name": "stream", "type": "boolean", "required": False, "default": False, "description": "Enable streaming response"},
+        ]
+
         return [
             ToolConfig(name="text2image", description="Generate image from text prompt using DashScope/Wanx", parameters=text2image_params),
             ToolConfig(name="image2image", description="Transform image using DashScope/Wanx", parameters=image2image_params),
             ToolConfig(name="bailian_app", description="Execute a Bailian Application task", parameters=bailian_app_params),
+            ToolConfig(name="chat_completion", description="LLM chat completion via DashScope OpenAI-compatible API", parameters=chat_completion_params),
         ]
 
     async def execute_task(
@@ -110,18 +128,30 @@ class BailianServerPlugin(BaseServerPlugin):
         endpoint = server_config.get("endpoint", "https://bailian.aliyuncs.com")
         agent_key = server_config.get("agent_key")
 
-        if not sk:
+        if not sk and tool_name not in ("chat_completion",):
             return {"task_id": task_id, "status": "error", "error_message": "AccessKey Secret (API Key) is missing"}
+
+        # DashScope chat settings (may differ from Bailian App credentials)
+        dashscope_api_key = server_config.get("dashscope_api_key") or sk
+        dashscope_endpoint = server_config.get(
+            "dashscope_endpoint",
+            "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        )
 
         try:
             if tool_name == "text2image":
-                dashscope.api_key = sk
+                dashscope.api_key = dashscope_api_key or sk
                 return await self._execute_text2image(task_id, parameters, progress_callback)
             elif tool_name == "image2image":
-                dashscope.api_key = sk
+                dashscope.api_key = dashscope_api_key or sk
                 return await self._execute_image2image(task_id, parameters, task_data.get("resources", []), progress_callback)
             elif tool_name == "bailian_app":
                 return await self._execute_bailian_app(task_id, ak, sk, endpoint, agent_key, parameters, progress_callback)
+            elif tool_name == "chat_completion":
+                return await self._execute_chat_completion(
+                    task_id, dashscope_api_key, dashscope_endpoint,
+                    server_config, parameters, progress_callback,
+                )
             else:
                 return {
                     "task_id": task_id,
@@ -247,6 +277,91 @@ class BailianServerPlugin(BaseServerPlugin):
             }
         else:
             raise Exception(f"Bailian SDK error: {resp.get('error_code')} - {resp.get('error_message')}")
+
+    async def _execute_chat_completion(
+        self, task_id, api_key, endpoint, server_config, parameters, progress_callback
+    ):
+        """Execute a chat completion via DashScope OpenAI-compatible API using litellm."""
+        if litellm is None:
+            raise RuntimeError("litellm is required for chat_completion but is not installed")
+
+        if not api_key:
+            api_key = server_config.get("access_key_secret")
+        if not api_key:
+            raise ValueError("DashScope API key is required for chat_completion")
+
+        model = parameters.get("model", server_config.get("default_model", "qwen-max"))
+        messages = parameters.get("messages", [])
+        temperature = parameters.get("temperature", 0.7)
+        max_tokens = parameters.get("max_tokens", 4096)
+        stream = parameters.get("stream", False)
+
+        if not messages:
+            raise ValueError("messages parameter is required")
+
+        progress_callback(10, f"Calling DashScope LLM ({model})...", {})
+
+        provider = server_config.get("provider", "dashscope")
+        litellm_model = model
+        if provider and provider != "openai" and not model.startswith(f"{provider}/"):
+            litellm_model = f"{provider}/{model}"
+
+        params = {
+            "model": litellm_model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": stream,
+            "api_key": api_key,
+            "base_url": endpoint,
+            "api_base": endpoint,
+        }
+
+        if stream:
+            response = await litellm.acompletion(**params)
+            full_content = []
+            async for chunk in response:
+                if hasattr(chunk, "choices") and chunk.choices:
+                    delta = getattr(chunk.choices[0], "delta", None)
+                    if delta and getattr(delta, "content", None):
+                        full_content.append(delta.content)
+                        progress_callback(
+                            50, f"Generating... ({len(full_content)} chunks)",
+                            {"partial_content": delta.content}
+                        )
+
+            result_text = "".join(full_content)
+        else:
+            response = await litellm.acompletion(**params)
+            choice = response.choices[0]
+            result_text = getattr(choice.message, "content", "") or ""
+
+        progress_callback(90, "Chat completion done", {})
+
+        local_path = self.output_dir / f"{task_id}_chat.txt"
+        with open(local_path, "w", encoding="utf-8") as f:
+            f.write(result_text)
+
+        usage_obj = getattr(response, "usage", None) if not stream else None
+        usage = {}
+        if usage_obj:
+            usage = {
+                "prompt_tokens": getattr(usage_obj, "prompt_tokens", 0),
+                "completion_tokens": getattr(usage_obj, "completion_tokens", 0),
+                "total_tokens": getattr(usage_obj, "total_tokens", 0),
+            }
+
+        return {
+            "task_id": task_id,
+            "status": "success",
+            "output_files": [str(local_path)],
+            "metadata": {
+                "text": result_text,
+                "model": model,
+                "usage": usage,
+            }
+        }
+
 
 if __name__ == "__main__":
     plugin = BailianServerPlugin()

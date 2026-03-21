@@ -1,6 +1,6 @@
 name: Bailian Server
-version: 1.0.0
-description: Bailian Server supporting multiple tools
+version: 1.3.0
+description: Alibaba Cloud Bailian (DashScope) integration with LLM chat and AIGC tools
 author: Filmeto Team
 engine: bailian
 
@@ -8,6 +8,7 @@ requirements:
   python: ">=3.9"
   packages:
     - pillow>=9.0.0
+    - litellm>=1.0.0
 
 # Define multiple tools supported by this plugin
 tools:
@@ -72,11 +73,59 @@ tools:
         type: string
         required: true
         description: Input prompt for the Bailian App
-      
+
       - name: app_id
         type: string
         required: false
         description: Bailian App ID (overrides default config)
+
+  - name: chat_completion
+    description: LLM chat completion via DashScope OpenAI-compatible API
+    parameters:
+      - name: model
+        type: string
+        required: false
+        default: qwen-max
+        description: Model name (e.g. qwen-max, qwen-plus, qwen-turbo)
+
+      - name: messages
+        type: array
+        required: true
+        description: Chat messages in OpenAI format
+
+      - name: temperature
+        type: float
+        required: false
+        default: 0.7
+        min: 0.0
+        max: 2.0
+        description: Sampling temperature
+
+      - name: max_tokens
+        type: integer
+        required: false
+        default: 4096
+        description: Maximum tokens in response
+
+      - name: stream
+        type: boolean
+        required: false
+        default: false
+        description: Enable streaming response
+
+# Chat / LLM capability declaration
+# When chat_enabled is true in the server parameters, this plugin's server
+# is recognized by ChatService for OpenAI-compatible /v1/chat/completions.
+chat:
+  provider: dashscope
+  default_endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  default_models:
+    - qwen-max
+    - qwen-plus
+    - qwen-turbo
+    - qwen-long
+    - qwen-vl-max
+    - qwen-vl-plus
 
 startup:
   timeout: 30
@@ -92,15 +141,46 @@ config_schema:
     - name: agent_key
       label: Agent Key / App ID
       type: string
-      required: true
+      required: false
       default: ""
-      description: Bailian Agent Key or App ID
+      description: Bailian Agent Key or App ID (for Bailian App tool)
       placeholder: "Enter Agent Key or App ID"
 
     - name: endpoint
-      label: API Endpoint
+      label: Bailian API Endpoint
       type: url
       required: false
       default: "https://bailian.aliyuncs.com"
-      description: Bailian API endpoint
+      description: Bailian API endpoint (for Bailian App tool)
       placeholder: "https://bailian.aliyuncs.com"
+
+    - name: chat_enabled
+      label: Enable LLM Chat
+      type: boolean
+      required: false
+      default: true
+      description: Enable OpenAI-compatible chat completion via DashScope
+
+    - name: dashscope_api_key
+      label: DashScope API Key
+      type: password
+      required: false
+      default: ""
+      description: DashScope API key for LLM chat and image generation
+      placeholder: "sk-xxxxxxxxxxxxxxxx"
+
+    - name: dashscope_endpoint
+      label: DashScope Chat Endpoint
+      type: url
+      required: false
+      default: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+      description: DashScope OpenAI-compatible endpoint
+      placeholder: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+    - name: default_model
+      label: Default Chat Model
+      type: string
+      required: false
+      default: "qwen-max"
+      description: Default model for chat completions
+      placeholder: "qwen-max"
