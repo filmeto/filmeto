@@ -177,6 +177,8 @@ class BailianConfigWidget(QWidget):
         # Show/hide Coding Plan API Key field
         self.label_widgets["coding_plan_api_key"].setVisible(enabled)
         self.field_widgets["coding_plan_api_key"].setVisible(enabled)
+        # Force layout update to adjust frame height
+        self.api_group.adjustSize()
         self.config_changed.emit()
 
     def _create_form_group(self, title: str, fields: list) -> QFrame:
@@ -249,6 +251,9 @@ class BailianConfigWidget(QWidget):
             enabled = coding_plan_enabled.isChecked()
             self.label_widgets["coding_plan_api_key"].setVisible(enabled)
             self.field_widgets["coding_plan_api_key"].setVisible(enabled)
+            # Adjust frame height if Coding Plan is enabled
+            if enabled:
+                self.api_group.adjustSize()
 
     def get_config(self) -> Dict[str, Any]:
         result = {}
