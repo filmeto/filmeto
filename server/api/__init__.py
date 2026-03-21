@@ -23,6 +23,15 @@ from server.api.types import (
 
 from server.api.filmeto_api import FilmetoApi
 
+from server.api.chat_types import (
+    ChatMessage,
+    ChatCompletionRequest,
+    ChatCompletionResponse,
+    ChatCompletionChunk,
+    ModelInfo,
+    ModelListResponse,
+)
+
 __all__ = [
     'FilmetoApi',
     'ToolType',
@@ -39,4 +48,10 @@ __all__ = [
     'PluginExecutionError',
     'ResourceProcessingError',
     'TimeoutError',
+    'ChatMessage',
+    'ChatCompletionRequest',
+    'ChatCompletionResponse',
+    'ChatCompletionChunk',
+    'ModelInfo',
+    'ModelListResponse',
 ]
