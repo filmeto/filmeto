@@ -10,13 +10,44 @@ Handles processing of different resource input types:
 import os
 import base64
 import hashlib
+import logging
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 import aiohttp
 import asyncio
 
 from server.api.types import ResourceInput, ResourceType, ResourceProcessingError
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_MAX_FILE_SIZES: Dict[str, int] = {
+    'image': 50 * 1024 * 1024,   # 50MB
+    'video': 500 * 1024 * 1024,  # 500MB
+    'audio': 100 * 1024 * 1024,  # 100MB
+}
+
+DEFAULT_MIME_MAP: Dict[str, str] = {
+    # Images
+    'image/png': '.png',
+    'image/jpeg': '.jpg',
+    'image/jpg': '.jpg',
+    'image/webp': '.webp',
+    'image/gif': '.gif',
+    'image/bmp': '.bmp',
+    # Videos
+    'video/mp4': '.mp4',
+    'video/quicktime': '.mov',
+    'video/x-msvideo': '.avi',
+    'video/x-matroska': '.mkv',
+    'video/webm': '.webm',
+    # Audio
+    'audio/mpeg': '.mp3',
+    'audio/wav': '.wav',
+    'audio/ogg': '.ogg',
+    'audio/mp4': '.m4a',
+    'audio/x-m4a': '.m4a',
+}
 
 
 class ResourceProcessor:
@@ -24,12 +55,16 @@ class ResourceProcessor:
     Processor for handling different types of resource inputs.
     """
     
-    def __init__(self, cache_dir: Optional[str] = None):
+    def __init__(self, cache_dir: Optional[str] = None, config: Optional[Dict] = None):
         """
         Initialize resource processor.
         
         Args:
             cache_dir: Directory for caching downloaded/decoded resources
+            config: Optional configuration dict. Supported keys:
+                - max_file_sizes: dict mapping media category ('image', 'video', 'audio')
+                  to max bytes
+                - mime_type_map: dict mapping MIME type strings to file extensions
         """
         if cache_dir:
             self.cache_dir = Path(cache_dir)
@@ -38,10 +73,15 @@ class ResourceProcessor:
         
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         
-        # Max file sizes (in bytes)
-        self.max_image_size = 50 * 1024 * 1024  # 50MB
-        self.max_video_size = 500 * 1024 * 1024  # 500MB
-        self.max_audio_size = 100 * 1024 * 1024  # 100MB
+        config = config or {}
+        self.max_file_sizes: Dict[str, int] = {
+            **DEFAULT_MAX_FILE_SIZES,
+            **config.get('max_file_sizes', {}),
+        }
+        self.mime_type_map: Dict[str, str] = {
+            **DEFAULT_MIME_MAP,
+            **config.get('mime_type_map', {}),
+        }
     
     async def process_resource(self, resource: ResourceInput) -> str:
         """
@@ -114,11 +154,11 @@ class ResourceProcessor:
         
         # Return cached file if exists
         if cache_file.exists():
-            print(f"Using cached file for URL: {url}")
+            logger.debug(f"Using cached file for URL: {url}")
             return str(cache_file)
         
         # Download file
-        print(f"Downloading from URL: {url}")
+        logger.info(f"Downloading from URL: {url}")
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, timeout=aiohttp.ClientTimeout(total=300)) as response:
@@ -143,7 +183,7 @@ class ResourceProcessor:
                             # Check size during download
                             self._validate_file_size(total_size, resource.mime_type)
             
-            print(f"Downloaded {total_size} bytes to {cache_file}")
+            logger.info(f"Downloaded {total_size} bytes to {cache_file}")
             return str(cache_file)
             
         except asyncio.TimeoutError:
@@ -194,7 +234,7 @@ class ResourceProcessor:
         
         # Return cached file if exists
         if cache_file.exists():
-            print(f"Using cached base64 data")
+            logger.debug("Using cached base64 data")
             return str(cache_file)
         
         # Save to file
@@ -202,7 +242,7 @@ class ResourceProcessor:
             with open(cache_file, 'wb') as f:
                 f.write(decoded_data)
             
-            print(f"Decoded {len(decoded_data)} bytes to {cache_file}")
+            logger.info(f"Decoded {len(decoded_data)} bytes to {cache_file}")
             return str(cache_file)
             
         except Exception as e:
@@ -218,14 +258,8 @@ class ResourceProcessor:
         Raises:
             ResourceProcessingError: If file size exceeds limits
         """
-        max_size = None
-        
-        if mime_type.startswith('image/'):
-            max_size = self.max_image_size
-        elif mime_type.startswith('video/'):
-            max_size = self.max_video_size
-        elif mime_type.startswith('audio/'):
-            max_size = self.max_audio_size
+        category = mime_type.split('/')[0] if '/' in mime_type else None
+        max_size = self.max_file_sizes.get(category) if category else None
         
         if max_size and size > max_size:
             raise ResourceProcessingError(
@@ -237,29 +271,7 @@ class ResourceProcessor:
         """
         Get file extension from MIME type.
         """
-        mime_to_ext = {
-            # Images
-            'image/png': '.png',
-            'image/jpeg': '.jpg',
-            'image/jpg': '.jpg',
-            'image/webp': '.webp',
-            'image/gif': '.gif',
-            'image/bmp': '.bmp',
-            # Videos
-            'video/mp4': '.mp4',
-            'video/quicktime': '.mov',
-            'video/x-msvideo': '.avi',
-            'video/x-matroska': '.mkv',
-            'video/webm': '.webm',
-            # Audio
-            'audio/mpeg': '.mp3',
-            'audio/wav': '.wav',
-            'audio/ogg': '.ogg',
-            'audio/mp4': '.m4a',
-            'audio/x-m4a': '.m4a',
-        }
-        
-        return mime_to_ext.get(mime_type.lower(), '')
+        return self.mime_type_map.get(mime_type.lower(), '')
     
     def cleanup_cache(self, max_age_hours: int = 24):
         """
@@ -282,9 +294,9 @@ class ResourceProcessor:
                         cache_file.unlink()
                         deleted_count += 1
                     except Exception as e:
-                        print(f"Failed to delete cache file {cache_file}: {e}")
+                        logger.warning(f"Failed to delete cache file {cache_file}: {e}")
         
-        print(f"Cleaned up {deleted_count} cached files")
+        logger.info(f"Cleaned up {deleted_count} cached files")
     
     def get_cache_size(self) -> int:
         """

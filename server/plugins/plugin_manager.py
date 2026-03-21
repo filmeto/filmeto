@@ -287,63 +287,72 @@ class PluginManager:
             if not plugin_dir.is_dir() or plugin_dir.name.startswith('_'):
                 continue
 
-            # Look for plugin.yml
             config_file = plugin_dir / "plugin.yml"
             if not config_file.exists():
+                logger.warning(f"Plugin directory missing plugin.yml: {plugin_dir.name}")
                 continue
 
             try:
                 with open(config_file, 'r', encoding='utf-8') as f:
                     config = yaml.safe_load(f)
 
-                # Validate required fields - changed from single tool_type to tools
-                required_fields = ['name', 'version', 'description']
-
-                # Either tool_type (old way) or tools (new way) must be present
-                if not all(field in config for field in ['name', 'version', 'description']):
-                    logger.error(f"⚠️ Plugin config missing required fields: {plugin_dir.name}")
+                if not isinstance(config, dict):
+                    logger.error(f"Invalid plugin config (not a mapping): {plugin_dir.name}")
                     continue
 
-                # Find main script
+                required_fields = ['name', 'version', 'description', 'engine']
+                missing = [f for f in required_fields if f not in config]
+                if missing:
+                    logger.error(f"Plugin {plugin_dir.name} missing required fields: {missing}")
+                    continue
+
+                if not self._is_version_compatible(config['version']):
+                    logger.warning(
+                        f"Plugin {config['name']} version {config['version']} may be incompatible"
+                    )
+
                 main_script = plugin_dir / "main.py"
                 if not main_script.exists():
-                    logger.error(f"⚠️ Plugin main.py not found: {plugin_dir.name}")
+                    logger.error(f"Plugin main.py not found: {plugin_dir.name}")
                     continue
 
-                # Check for requirements.txt
                 requirements_file = plugin_dir / "requirements.txt"
                 if not requirements_file.exists():
                     requirements_file = None
 
-                # Handle both old and new plugin configurations
-                if 'tool_type' in config:  # Old format - single tool
-                    # Convert to new format for backward compatibility
+                if 'tool_type' in config:
                     tools = [ToolInfo(
                         name=config['tool_type'],
                         description=config.get('description', ''),
                         parameters=config.get('parameters', [])
                     )]
-                elif 'tools' in config:  # New format - multiple tools
+                elif 'tools' in config:
                     tools = []
                     for tool_config in config['tools']:
-                        tool_info = ToolInfo(
+                        if not isinstance(tool_config, dict) or 'name' not in tool_config:
+                            logger.warning(
+                                f"Skipping invalid tool entry in plugin {plugin_dir.name}"
+                            )
+                            continue
+                        tools.append(ToolInfo(
                             name=tool_config['name'],
                             description=tool_config.get('description', ''),
                             parameters=tool_config.get('parameters', [])
-                        )
-                        tools.append(tool_info)
+                        ))
+                    if not tools:
+                        logger.error(f"Plugin {plugin_dir.name} has no valid tools defined")
+                        continue
                 else:
-                    logger.error(f"⚠️ Plugin config missing 'tool_type' or 'tools': {plugin_dir.name}")
+                    logger.error(f"Plugin config missing 'tool_type' or 'tools': {plugin_dir.name}")
                     continue
 
-                # Create plugin info
                 plugin_info = PluginInfo(
                     name=config['name'],
-                    version=config.get('version', '1.0.0'),
-                    description=config.get('description', ''),
+                    version=config['version'],
+                    description=config['description'],
                     author=config.get('author', ''),
-                    tools=tools,  # Updated to use tools list
-                    engine=config.get('engine', ''),
+                    tools=tools,
+                    engine=config['engine'],
                     plugin_path=plugin_dir,
                     main_script=main_script,
                     requirements_file=requirements_file,
@@ -352,12 +361,25 @@ class PluginManager:
 
                 self.plugin_infos[plugin_info.name] = plugin_info
 
-                # Print discovered tools
                 tool_names = [t.name for t in tools]
-                logger.info(f"✅ Discovered plugin: {plugin_info.name} (supports: {', '.join(tool_names)})")
+                logger.info(f"Discovered plugin: {plugin_info.name} (supports: {', '.join(tool_names)})")
 
+            except yaml.YAMLError as e:
+                logger.error(f"Invalid YAML in plugin {plugin_dir.name}: {e}")
             except Exception as e:
-                logger.error(f"❌ Failed to load plugin config {plugin_dir.name}: {e}")
+                logger.error(f"Failed to load plugin config {plugin_dir.name}: {e}")
+
+    @staticmethod
+    def _is_version_compatible(version: str) -> bool:
+        """Check if a plugin version string is a recognized semver format."""
+        try:
+            parts = version.split('.')
+            if len(parts) != 3:
+                return False
+            int(parts[0]), int(parts[1]), int(parts[2])
+            return True
+        except (ValueError, AttributeError):
+            return False
     
     async def get_plugin(self, plugin_name: str) -> PluginProcess:
         """

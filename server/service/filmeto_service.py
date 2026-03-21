@@ -5,8 +5,11 @@ Core service layer that manages task execution through plugins.
 """
 
 import asyncio
+import logging
 import os
-from typing import AsyncIterator, Union
+import time
+from collections import OrderedDict
+from typing import AsyncIterator, Dict, Optional, Union
 from datetime import datetime
 from pathlib import Path
 
@@ -17,13 +20,89 @@ from server.api.types import (
 from server.api.resource_processor import ResourceProcessor
 from server.plugins.plugin_manager import PluginManager
 
+logger = logging.getLogger(__name__)
+
+
+class TaskStatusStore:
+    """In-memory store for task status with LRU eviction and TTL expiry."""
+
+    def __init__(self, max_size: int = 1000, ttl: int = 3600):
+        self._store: OrderedDict[str, dict] = OrderedDict()
+        self._max_size = max_size
+        self._ttl = ttl
+
+    def set(self, task_id: str, status: str, **kwargs):
+        if task_id in self._store:
+            self._store.move_to_end(task_id)
+            entry = self._store[task_id]
+        else:
+            if len(self._store) >= self._max_size:
+                self._store.popitem(last=False)
+            entry = {"task_id": task_id, "created_at": time.time()}
+            self._store[task_id] = entry
+
+        entry["status"] = status
+        entry["updated_at"] = time.time()
+        entry.update(kwargs)
+
+    def get(self, task_id: str) -> Optional[dict]:
+        entry = self._store.get(task_id)
+        if entry is None:
+            return None
+        if time.time() - entry["updated_at"] > self._ttl:
+            del self._store[task_id]
+            return None
+        self._store.move_to_end(task_id)
+        return dict(entry)
+
+
+class TaskQueue:
+    """Semaphore-based concurrency limiter with observability."""
+
+    def __init__(self, max_concurrent: int = 5):
+        self._semaphore = asyncio.Semaphore(max_concurrent)
+        self._max_concurrent = max_concurrent
+        self._active_tasks: Dict[str, float] = {}
+        self._queued_count = 0
+        self._lock = asyncio.Lock()
+
+    async def acquire(self, task_id: str):
+        """Acquire a concurrency slot. Blocks if at capacity."""
+        async with self._lock:
+            self._queued_count += 1
+        try:
+            await self._semaphore.acquire()
+        finally:
+            async with self._lock:
+                self._queued_count -= 1
+                self._active_tasks[task_id] = time.time()
+
+    def release(self, task_id: str):
+        """Release a concurrency slot."""
+        self._active_tasks.pop(task_id, None)
+        self._semaphore.release()
+
+    @property
+    def info(self) -> dict:
+        return {
+            "max_concurrent": self._max_concurrent,
+            "active_count": len(self._active_tasks),
+            "queued_count": self._queued_count,
+            "active_task_ids": list(self._active_tasks.keys()),
+        }
+
+    @property
+    def is_at_capacity(self) -> bool:
+        return len(self._active_tasks) >= self._max_concurrent
+
 
 class FilmetoService:
     """
     Service layer managing plugin lifecycle and task execution.
     """
     
-    def __init__(self, plugins_dir: str = None, cache_dir: str = None, workspace_path: str = None):
+    def __init__(self, plugins_dir: str = None, cache_dir: str = None,
+                 workspace_path: str = None, max_concurrent_tasks: int = 5):
         """
         Initialize Filmeto service.
         
@@ -31,13 +110,12 @@ class FilmetoService:
             plugins_dir: Directory containing plugins
             cache_dir: Directory for resource caching
             workspace_path: Path to workspace directory
+            max_concurrent_tasks: Maximum number of tasks executing concurrently
         """
         # Determine workspace path
         if workspace_path:
             self.workspace_path = Path(workspace_path)
         else:
-            # Try to find a default workspace path
-            # For now, use a 'workspace' directory in the project root
             project_root = Path(__file__).parent.parent.parent
             self.workspace_path = project_root / "workspace"
         
@@ -49,6 +127,9 @@ class FilmetoService:
         self.server_manager = ServerManager(str(self.workspace_path), self.plugin_manager)
         self.resource_processor = ResourceProcessor(cache_dir)
         self.heartbeat_interval = 5  # seconds
+        self._task_store = TaskStatusStore()
+        self._task_queue = TaskQueue(max_concurrent=max_concurrent_tasks)
+        self._background_tasks: Dict[str, asyncio.Task] = {}
         
         # Discover plugins on initialization
         self.plugin_manager.discover_plugins()
@@ -78,7 +159,22 @@ class FilmetoService:
         # Validate task
         is_valid, error_msg = task.validate()
         if not is_valid:
+            self._task_store.set(task.task_id, "error", error_message=error_msg)
             raise ValidationError(error_msg, {"task_id": task.task_id})
+        
+        # Wait for a concurrency slot
+        if self._task_queue.is_at_capacity:
+            self._task_store.set(task.task_id, "queued", message="Waiting for available slot...")
+            yield TaskProgress(
+                task_id=task.task_id,
+                type=ProgressType.STARTED,
+                percent=0,
+                message="Queued, waiting for available slot..."
+            )
+
+        await self._task_queue.acquire(task.task_id)
+        
+        self._task_store.set(task.task_id, "running", percent=0, message="Starting...")
         
         try:
             # Process resources
@@ -125,9 +221,19 @@ class FilmetoService:
                     # Scale progress: 10-95% for server execution
                     scaled_percent = 10 + (update.percent * 0.85)
                     update.percent = scaled_percent
+                    self._task_store.set(
+                        task.task_id, "running",
+                        percent=scaled_percent, message=update.message,
+                    )
                     yield update
                 elif isinstance(update, TaskResult):
-                    # Final result
+                    self._task_store.set(
+                        task.task_id, update.status,
+                        percent=100,
+                        output_files=update.output_files,
+                        error_message=update.error_message,
+                        execution_time=update.execution_time,
+                    )
                     yield update
                 elif isinstance(update, dict):
                     # Handle JSON-RPC style messages from plugin via ServerManager
@@ -165,13 +271,23 @@ class FilmetoService:
                             execution_time=execution_time,
                             metadata=result.get("metadata", {})
                         )
+                        self._task_store.set(
+                            task.task_id, task_result.status,
+                            percent=100,
+                            output_files=task_result.output_files,
+                            error_message=task_result.error_message,
+                            execution_time=execution_time,
+                        )
                         yield task_result
         
         except asyncio.TimeoutError:
+            self._task_store.set(
+                task.task_id, "timeout",
+                error_message=f"Task exceeded {task.timeout}s timeout",
+            )
             raise TaskTimeoutError(task.task_id, task.timeout)
         
         except Exception as e:
-            # Return error result
             execution_time = (datetime.now() - start_time).total_seconds()
             
             error_result = TaskResult(
@@ -179,6 +295,11 @@ class FilmetoService:
                 status="error",
                 error_message=str(e),
                 execution_time=execution_time
+            )
+            self._task_store.set(
+                task.task_id, "error",
+                error_message=str(e),
+                execution_time=execution_time,
             )
             
             yield error_result
@@ -209,11 +330,10 @@ class FilmetoService:
         Returns:
             Task status dictionary
         """
-        # TODO: Implement task status tracking
-        return {
-            "task_id": task_id,
-            "status": "unknown"
-        }
+        entry = self._task_store.get(task_id)
+        if entry is None:
+            return {"task_id": task_id, "status": "not_found"}
+        return entry
     
     def list_plugins(self) -> list:
         """
