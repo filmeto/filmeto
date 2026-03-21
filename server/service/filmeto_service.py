@@ -13,14 +13,17 @@ from typing import AsyncIterator, Dict, Optional, Union
 from datetime import datetime
 from pathlib import Path
 
+import structlog
+
 from server.api.types import (
     FilmetoTask, TaskProgress, TaskResult, ProgressType,
     ValidationError, PluginNotFoundError, PluginExecutionError, TimeoutError as TaskTimeoutError
 )
 from server.api.resource_processor import ResourceProcessor
 from server.plugins.plugin_manager import PluginManager
+from utils.logging_utils import TaskMetrics
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class TaskStatusStore:
@@ -155,16 +158,25 @@ class FilmetoService:
             TaskTimeoutError: If task exceeds timeout
         """
         start_time = datetime.now()
+        log = logger.bind(task_id=task.task_id, tool=task.tool_name.value,
+                          plugin=task.plugin_name)
+        metrics = TaskMetrics(task_id=task.task_id,
+                              tool=task.tool_name.value,
+                              plugin=task.plugin_name)
         
         # Validate task
         is_valid, error_msg = task.validate()
         if not is_valid:
             self._task_store.set(task.task_id, "error", error_message=error_msg)
+            log.warning("task_validation_failed", error=error_msg)
             raise ValidationError(error_msg, {"task_id": task.task_id})
         
+        log.info("task_accepted")
+
         # Wait for a concurrency slot
         if self._task_queue.is_at_capacity:
             self._task_store.set(task.task_id, "queued", message="Waiting for available slot...")
+            log.info("task_queued")
             yield TaskProgress(
                 task_id=task.task_id,
                 type=ProgressType.STARTED,
@@ -173,8 +185,10 @@ class FilmetoService:
             )
 
         await self._task_queue.acquire(task.task_id)
+        metrics.mark("queue_wait")
         
         self._task_store.set(task.task_id, "running", percent=0, message="Starting...")
+        log.info("task_started")
         
         try:
             # Process resources
@@ -191,8 +205,7 @@ class FilmetoService:
                     local_path = await self.resource_processor.process_resource(resource)
                     processed_resources.append(local_path)
                     
-                    # Update progress
-                    percent = (i + 1) / len(task.resources) * 10  # First 10% for resources
+                    percent = (i + 1) / len(task.resources) * 10
                     yield TaskProgress(
                         task_id=task.task_id,
                         type=ProgressType.PROGRESS,
@@ -204,6 +217,8 @@ class FilmetoService:
                         f"Failed to process resource {i}: {str(e)}",
                         {"task_id": task.task_id, "resource_index": i}
                     )
+
+            metrics.mark("resource_processing")
             
             # Update task with processed resource paths
             task.metadata['processed_resources'] = processed_resources
@@ -218,7 +233,6 @@ class FilmetoService:
             
             async for update in self.server_manager.execute_task_with_routing(task):
                 if isinstance(update, TaskProgress):
-                    # Scale progress: 10-95% for server execution
                     scaled_percent = 10 + (update.percent * 0.85)
                     update.percent = scaled_percent
                     self._task_store.set(
@@ -234,9 +248,11 @@ class FilmetoService:
                         error_message=update.error_message,
                         execution_time=update.execution_time,
                     )
+                    metrics.mark("plugin_execution")
+                    metrics.finish(status=update.status)
+                    log.info("task_completed", **metrics.to_dict())
                     yield update
                 elif isinstance(update, dict):
-                    # Handle JSON-RPC style messages from plugin via ServerManager
                     method = update.get("method")
                     result = update.get("result")
                     
@@ -278,6 +294,9 @@ class FilmetoService:
                             error_message=task_result.error_message,
                             execution_time=execution_time,
                         )
+                        metrics.mark("plugin_execution")
+                        metrics.finish(status=task_result.status)
+                        log.info("task_completed", **metrics.to_dict())
                         yield task_result
         
         except asyncio.TimeoutError:
@@ -285,6 +304,8 @@ class FilmetoService:
                 task.task_id, "timeout",
                 error_message=f"Task exceeded {task.timeout}s timeout",
             )
+            metrics.finish(status="timeout")
+            log.error("task_timeout", **metrics.to_dict())
             raise TaskTimeoutError(task.task_id, task.timeout)
         
         except Exception as e:
@@ -301,6 +322,9 @@ class FilmetoService:
                 error_message=str(e),
                 execution_time=execution_time,
             )
+            metrics.finish(status="error")
+            log.error("task_failed", error=str(e), **metrics.to_dict(),
+                       exc_info=True)
             
             yield error_result
         

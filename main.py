@@ -37,54 +37,31 @@ from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import QApplication
 
 from app.app import App
-from utils.logging_utils import AutoTracebackFormatter
+from utils.logging_utils import AutoTracebackFormatter, configure_structured_logging
 
 
 def setup_crash_logging():
-    """Setup logging to capture crash information with automatic exception traceback"""
-    # Create logs directory
+    """Setup logging to capture crash information with automatic exception traceback.
+
+    Set the environment variable ``FILMETO_LOG_JSON=1`` to switch to
+    structured JSON output (useful for production / log aggregation).
+    """
     log_dir = os.path.join(os.path.dirname(__file__), "logs")
     os.makedirs(log_dir, exist_ok=True)
 
-    # Create log file with timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_file = os.path.join(log_dir, f"filmeto_{timestamp}.log")
 
-    # Create handlers with explicit levels to ensure ERROR logs are captured
-    file_handler = logging.FileHandler(log_file, encoding='utf-8')
-    file_handler.setLevel(logging.DEBUG)  # Capture all levels including ERROR
+    json_output = os.environ.get("FILMETO_LOG_JSON", "").strip() in ("1", "true", "yes")
 
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.DEBUG)  # Capture all levels including ERROR
-
-    # Create custom formatter with automatic exception traceback
-    # This formatter will automatically include exception traceback for ERROR/CRITICAL logs
-    # even when exc_info=True is not explicitly passed
-    formatter = AutoTracebackFormatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s'
+    configure_structured_logging(
+        json_output=json_output,
+        level=logging.DEBUG,
+        log_file=log_file,
     )
-    file_handler.setFormatter(formatter)
-    console_handler.setFormatter(formatter)
-
-    # Configure root logger explicitly to ensure ERROR logs are captured
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.DEBUG)  # Set root logger to DEBUG to capture ERROR
-
-    # Clear any existing handlers to avoid duplicates
-    root_logger.handlers.clear()
-
-    # Add handlers to root logger
-    root_logger.addHandler(file_handler)
-    root_logger.addHandler(console_handler)
 
     logger = logging.getLogger(__name__)
-    logger.info("=" * 80)
-    logger.info(f"Filmeto Application Started - Log file: {log_file}")
-    logger.info(f"Root logger level: {logging.getLevelName(root_logger.level)}")
-    logger.info(f"File handler level: {logging.getLevelName(file_handler.level)}")
-    logger.info(f"Console handler level: {logging.getLevelName(console_handler.level)}")
-    logger.info("Exception traceback: AUTOMATIC for ERROR/CRITICAL logs")
-    logger.info("=" * 80)
+    logger.info("Filmeto Application Started", extra={"log_file": log_file})
 
     return logger, log_file
 
