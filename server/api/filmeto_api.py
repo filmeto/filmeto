@@ -96,6 +96,23 @@ class FilmetoApi:
         """
         return task.validate()
     
+    async def enqueue_task(self, task: FilmetoTask, priority: int = 0) -> str:
+        """
+        Enqueue a task for background execution.
+
+        Args:
+            task: Task to execute
+            priority: Lower values run first
+
+        Returns:
+            task_id for status polling
+        """
+        return await self.service.enqueue_task(task, priority)
+
+    def get_queue_info(self) -> dict:
+        """Return current queue and concurrency status."""
+        return self.service.get_queue_info()
+
     async def get_task_status(self, task_id: str) -> dict:
         """
         Get current status of a task.
