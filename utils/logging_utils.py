@@ -1,14 +1,22 @@
 """
-Utility functions for enhanced logging with automatic exception traceback.
+Utility functions for enhanced logging with automatic exception traceback
+and optional structured (JSON) output via *structlog*.
 
-This module provides a custom logging formatter that automatically includes
-exception traceback information when logging ERROR or CRITICAL level messages,
-even without explicitly passing exc_info=True.
+This module provides:
+- ``AutoTracebackFormatter`` — stdlib formatter with automatic exc_info.
+- ``configure_structured_logging()`` — one-call setup that wires structlog
+  on top of stdlib so that *both* ``logging.getLogger()`` **and**
+  ``structlog.get_logger()`` emit through the same handlers with structured
+  processors.
+- ``TaskMetrics`` — lightweight per-task performance tracker.
 """
 import logging
 import sys
+import time
 import traceback
-from typing import Optional
+from typing import Any, Dict, Optional
+
+import structlog
 
 
 class AutoTracebackFormatter(logging.Formatter):
@@ -237,3 +245,125 @@ def get_exception_capture_logger(name: str) -> logging.Logger:
     """
     base_logger = logging.getLogger(name)
     return ExceptionCaptureAdapter(base_logger)
+
+
+# ---------------------------------------------------------------------------
+# Structured logging via structlog
+# ---------------------------------------------------------------------------
+
+def configure_structured_logging(
+    json_output: bool = False,
+    level: int = logging.DEBUG,
+    log_file: Optional[str] = None,
+):
+    """Configure *structlog* on top of stdlib logging.
+
+    After calling this function:
+    - ``structlog.get_logger()`` returns a bound logger that emits through
+      the standard ``logging`` infrastructure.
+    - ``logging.getLogger()`` still works — its output passes through the
+      same handlers/formatters.
+    - When *json_output* is True every log line is a single JSON object
+      (ideal for log aggregation in production).  Otherwise a coloured,
+      human-readable format is used.
+
+    Args:
+        json_output: Emit JSON lines instead of human-readable output.
+        level: Root log level.
+        log_file: Optional path for a file handler.
+    """
+    shared_processors: list = [
+        structlog.contextvars.merge_contextvars,
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.ExtraAdder(),
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.UnicodeDecoder(),
+    ]
+
+    if json_output:
+        renderer = structlog.processors.JSONRenderer()
+    else:
+        renderer = structlog.dev.ConsoleRenderer()
+
+    structlog.configure(
+        processors=[
+            *shared_processors,
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+        ],
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+        cache_logger_on_first_use=True,
+    )
+
+    formatter = structlog.stdlib.ProcessorFormatter(
+        processors=[
+            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            renderer,
+        ],
+        foreign_pre_chain=shared_processors,
+    )
+
+    root = logging.getLogger()
+    root.setLevel(level)
+    root.handlers.clear()
+
+    console = logging.StreamHandler(sys.stdout)
+    console.setFormatter(formatter)
+    root.addHandler(console)
+
+    if log_file:
+        fh = logging.FileHandler(log_file, encoding="utf-8")
+        fh.setFormatter(formatter)
+        root.addHandler(fh)
+
+
+def get_struct_logger(name: str) -> structlog.stdlib.BoundLogger:
+    """Convenience wrapper: returns a *structlog* bound logger for *name*."""
+    return structlog.get_logger(name)
+
+
+# ---------------------------------------------------------------------------
+# Task-level performance metrics
+# ---------------------------------------------------------------------------
+
+class TaskMetrics:
+    """Collects timing and counters for a single task execution.
+
+    Usage::
+
+        m = TaskMetrics(task_id="abc", tool="text2image")
+        m.mark("resource_processing")
+        ...
+        m.mark("plugin_execution")
+        ...
+        m.finish(status="success")
+        log.info("task_done", **m.to_dict())
+    """
+
+    def __init__(self, task_id: str, **context: Any):
+        self.task_id = task_id
+        self.context: Dict[str, Any] = context
+        self._start = time.perf_counter()
+        self._marks: Dict[str, float] = {}
+        self._last_mark = self._start
+        self.status: Optional[str] = None
+
+    def mark(self, phase: str):
+        """Record the *elapsed* seconds from the previous mark (or start)."""
+        now = time.perf_counter()
+        self._marks[phase] = round(now - self._last_mark, 4)
+        self._last_mark = now
+
+    def finish(self, status: str = "success"):
+        self.status = status
+        self._marks["total"] = round(time.perf_counter() - self._start, 4)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "task_id": self.task_id,
+            "status": self.status,
+            "timings": dict(self._marks),
+            **self.context,
+        }
