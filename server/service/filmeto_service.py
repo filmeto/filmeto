@@ -303,6 +303,9 @@ class FilmetoService:
             )
             
             yield error_result
+        
+        finally:
+            self._task_queue.release(task.task_id)
     
     async def _send_heartbeats(self, task_id: str, plugin):
         """
@@ -320,6 +323,46 @@ class FilmetoService:
         except asyncio.CancelledError:
             pass
     
+    async def enqueue_task(self, task: FilmetoTask, priority: int = 0) -> str:
+        """
+        Enqueue a task for background execution (non-streaming).
+
+        The task is validated immediately, then executed asynchronously.
+        Use get_task_status() to poll for progress and results.
+
+        Args:
+            task: Task to execute
+            priority: Lower values run first (unused for now, reserved for future priority queue)
+
+        Returns:
+            task_id for status polling
+        """
+        is_valid, error_msg = task.validate()
+        if not is_valid:
+            self._task_store.set(task.task_id, "error", error_message=error_msg)
+            raise ValidationError(error_msg, {"task_id": task.task_id})
+
+        self._task_store.set(task.task_id, "queued", message="Enqueued for background execution")
+
+        async def _run_background():
+            try:
+                async for _ in self.execute_task_stream(task):
+                    pass
+            except Exception as e:
+                logger.error(f"Background task {task.task_id} failed: {e}")
+            finally:
+                self._background_tasks.pop(task.task_id, None)
+
+        bg_task = asyncio.create_task(_run_background())
+        self._background_tasks[task.task_id] = bg_task
+        return task.task_id
+
+    def get_queue_info(self) -> dict:
+        """Return current queue and concurrency status."""
+        info = self._task_queue.info
+        info["background_task_count"] = len(self._background_tasks)
+        return info
+
     async def get_task_status(self, task_id: str) -> dict:
         """
         Get current status of a task.
@@ -416,8 +459,13 @@ class FilmetoService:
     
     async def cleanup(self):
         """
-        Cleanup resources and stop all plugins.
+        Cleanup resources, cancel background tasks, and stop all plugins.
         """
+        for task_id, bg_task in list(self._background_tasks.items()):
+            bg_task.cancel()
+            logger.info(f"Cancelled background task: {task_id}")
+        self._background_tasks.clear()
+
         await self.plugin_manager.stop_all_plugins()
         self.resource_processor.cleanup_cache()
 

@@ -8,7 +8,7 @@ Provides REST endpoints and Server-Sent Events for streaming.
 import json
 import asyncio
 from typing import Optional
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -162,18 +162,20 @@ async def get_plugins_by_tool(tool_name: str):
 
 
 @app.post("/api/v1/tasks", response_model=TaskResponse)
-async def create_task(task_request: TaskRequest, background_tasks: BackgroundTasks):
+async def create_task(task_request: TaskRequest):
     """
-    Create and start a new task.
-    
+    Create and enqueue a task for background execution.
+
+    The task is validated and enqueued immediately. Use
+    GET /api/v1/tasks/{task_id} to poll for progress and results.
+
     Args:
         task_request: Task creation request
-    
+
     Returns:
         Task response with task_id
     """
     try:
-        # Convert request to FilmetoTask
         task = FilmetoTask(
             tool_name=ToolType(task_request.tool_name),
             plugin_name=task_request.plugin_name,
@@ -182,21 +184,15 @@ async def create_task(task_request: TaskRequest, background_tasks: BackgroundTas
             timeout=task_request.timeout,
             metadata=task_request.metadata
         )
-        
-        # Validate task
-        is_valid, error_msg = filmeto_api.validate_task(task)
-        if not is_valid:
-            raise HTTPException(status_code=400, detail=error_msg)
-        
-        # Note: Task execution should be done via streaming endpoint
-        # This endpoint just validates and returns task_id
-        
+
+        task_id = await filmeto_api.enqueue_task(task)
+
         return TaskResponse(
-            task_id=task.task_id,
-            status="created",
-            message="Task created successfully. Use /api/v1/tasks/{task_id}/stream to execute."
+            task_id=task_id,
+            status="queued",
+            message="Task enqueued. Poll GET /api/v1/tasks/{task_id} for status."
         )
-        
+
     except ValidationError as e:
         raise HTTPException(status_code=400, detail=e.message)
     except Exception as e:
@@ -312,6 +308,17 @@ async def execute_task_stream(task_request: TaskRequest):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/queue/status")
+async def queue_status():
+    """
+    Get current task queue and concurrency status.
+
+    Returns:
+        Queue info including active/queued counts and capacity
+    """
+    return filmeto_api.get_queue_info()
 
 
 @app.get("/api/v1/tasks/{task_id}")
