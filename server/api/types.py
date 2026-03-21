@@ -5,6 +5,7 @@ Defines all data structures used in the Filmeto API system.
 """
 
 from __future__ import annotations
+import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -329,6 +330,74 @@ class TaskResult:
             if file_path.endswith(('.mp3', '.wav', '.ogg', '.m4a')):
                 return file_path
         return None
+
+
+# --- Retry policy ---------------------------------------------------------
+
+class RetryStrategy(str, Enum):
+    """Backoff strategy between retry attempts."""
+    NONE = "none"
+    FIXED = "fixed"
+    EXPONENTIAL = "exponential"
+
+
+@dataclass
+class RetryPolicy:
+    """
+    Controls how a failed server execution is retried.
+
+    Attributes:
+        max_retries: Maximum number of retry attempts (0 = no retry).
+        strategy: Backoff strategy between attempts.
+        base_delay: Base delay in seconds for the first retry.
+        max_delay: Upper-bound delay in seconds.
+        jitter: If True, add random jitter (0–50 % of delay) to avoid
+                thundering-herd on shared backends.
+        retryable_codes: Set of TaskError.code values that are eligible for
+                         retry.  Errors whose code is not listed here will
+                         propagate immediately.
+    """
+    max_retries: int = 3
+    strategy: RetryStrategy = RetryStrategy.EXPONENTIAL
+    base_delay: float = 1.0
+    max_delay: float = 60.0
+    jitter: bool = True
+    retryable_codes: frozenset = field(default_factory=lambda: frozenset({
+        "PLUGIN_EXECUTION_ERROR",
+        "TIMEOUT_ERROR",
+        "RESOURCE_PROCESSING_ERROR",
+    }))
+
+    def compute_delay(self, attempt: int) -> float:
+        """Return the delay in seconds before *attempt* (0-indexed)."""
+        import random as _random
+        if self.strategy == RetryStrategy.NONE:
+            return 0.0
+        if self.strategy == RetryStrategy.FIXED:
+            delay = self.base_delay
+        else:
+            delay = self.base_delay * (2 ** attempt)
+        delay = min(delay, self.max_delay)
+        if self.jitter:
+            delay += _random.uniform(0, delay * 0.5)
+        return delay
+
+    def is_retryable(self, error: Exception) -> bool:
+        """Check whether *error* should trigger a retry."""
+        if isinstance(error, TaskError):
+            return error.code in self.retryable_codes
+        return isinstance(error, (OSError, asyncio.TimeoutError))
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'RetryPolicy':
+        strategy_val = data.get("strategy", "exponential")
+        return cls(
+            max_retries=data.get("max_retries", 3),
+            strategy=RetryStrategy(strategy_val),
+            base_delay=data.get("base_delay", 1.0),
+            max_delay=data.get("max_delay", 60.0),
+            jitter=data.get("jitter", True),
+        )
 
 
 # Error types for API
