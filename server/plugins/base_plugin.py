@@ -8,9 +8,15 @@ Handles JSON-RPC communication via stdin/stdout.
 import sys
 import json
 import asyncio
+import logging
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Callable, Optional, List
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
+
+# Default heartbeat interval in seconds
+DEFAULT_HEARTBEAT_INTERVAL = 30
 
 
 class ToolConfig:
@@ -30,9 +36,22 @@ class BaseServerPlugin(ABC):
     Plugins communicate with the service layer via JSON-RPC over stdin/stdout.
     """
 
-    def __init__(self):
-        """Initialize the plugin"""
+    def __init__(self, heartbeat_interval: int = DEFAULT_HEARTBEAT_INTERVAL):
+        """
+        Initialize the plugin.
+
+        Args:
+            heartbeat_interval: Interval in seconds between heartbeat messages.
+                               Set to 0 to disable automatic heartbeats.
+        """
         self.current_task_id: Optional[str] = None
+        self.heartbeat_interval = heartbeat_interval
+
+        # Async I/O components (initialized in run())
+        self._stdin_reader: Optional[asyncio.StreamReader] = None
+        self._stdout_writer: Optional[asyncio.StreamWriter] = None
+        self._running = False
+        self._active_tasks: Dict[str, asyncio.Task] = {}
 
     @abstractmethod
     async def execute_task(
@@ -187,8 +206,11 @@ class BaseServerPlugin(ABC):
     
     def _write_message(self, message: Dict[str, Any]):
         """
-        Write JSON message to stdout.
-        
+        Write JSON message to stdout (synchronous, for backward compatibility).
+
+        This method is kept for synchronous contexts like progress callbacks.
+        For async contexts, prefer _async_write_message.
+
         Args:
             message: Message dictionary
         """
@@ -199,11 +221,32 @@ class BaseServerPlugin(ABC):
         except Exception as e:
             sys.stderr.write(f"Error writing message: {e}\n")
             sys.stderr.flush()
-    
+
+    async def _async_write_message(self, message: Dict[str, Any]):
+        """
+        Write JSON message to stdout (asynchronous).
+
+        Args:
+            message: Message dictionary
+        """
+        try:
+            json_str = json.dumps(message)
+            if self._stdout_writer:
+                self._stdout_writer.write((json_str + '\n').encode())
+                await self._stdout_writer.drain()
+            else:
+                # Fallback to sync write if writer not initialized
+                self._write_message(message)
+        except Exception as e:
+            sys.stderr.write(f"Error writing message: {e}\n")
+            sys.stderr.flush()
+
     def _read_message(self) -> Optional[Dict[str, Any]]:
         """
-        Read JSON message from stdin.
-        
+        Read JSON message from stdin (synchronous, for backward compatibility).
+
+        Note: This method blocks. For async contexts, use _async_read_message.
+
         Returns:
             Message dictionary or None if EOF
         """
@@ -212,6 +255,31 @@ class BaseServerPlugin(ABC):
             if not line:
                 return None
             return json.loads(line.strip())
+        except json.JSONDecodeError as e:
+            sys.stderr.write(f"Error parsing JSON: {e}\n")
+            sys.stderr.flush()
+            return None
+        except Exception as e:
+            sys.stderr.write(f"Error reading message: {e}\n")
+            sys.stderr.flush()
+            return None
+
+    async def _async_read_message(self) -> Optional[Dict[str, Any]]:
+        """
+        Read JSON message from stdin (asynchronous, non-blocking).
+
+        Returns:
+            Message dictionary or None if EOF
+        """
+        try:
+            if self._stdin_reader:
+                line = await self._stdin_reader.readline()
+                if not line:
+                    return None
+                return json.loads(line.decode().strip())
+            else:
+                # Fallback to sync read if reader not initialized
+                return self._read_message()
         except json.JSONDecodeError as e:
             sys.stderr.write(f"Error parsing JSON: {e}\n")
             sys.stderr.flush()
@@ -318,16 +386,16 @@ class BaseServerPlugin(ABC):
     async def _handle_request(self, request: Dict[str, Any]):
         """
         Handle JSON-RPC request.
-        
+
         Args:
             request: JSON-RPC request
         """
         method = request.get("method")
         params = request.get("params", {})
         request_id = request.get("id")
-        
+
         response = None
-        
+
         if method == "execute_task":
             response = await self._handle_execute_task(request_id, params)
         elif method == "get_info":
@@ -344,39 +412,174 @@ class BaseServerPlugin(ABC):
                 },
                 "id": request_id
             }
-        
+
         if response:
-            self._write_message(response)
+            await self._async_write_message(response)
     
     def run(self):
         """
-        Main loop: read from stdin, process requests, write to stdout.
-        
-        This is the entry point for the plugin process.
+        Main loop with async I/O: read from stdin, process requests, write to stdout.
+
+        This is the entry point for the plugin process. Uses asyncio for:
+        - Non-blocking stdin/stdout I/O
+        - Concurrent request handling
+        - Periodic heartbeat messages
         """
-        async def main_loop():
-            # Send initial ready message
+        async def setup_async_io():
+            """Setup async stdin/stdout streams."""
+            loop = asyncio.get_event_loop()
+
+            # Setup stdin reader
+            self._stdin_reader = asyncio.StreamReader()
+            stdin_protocol = asyncio.StreamReaderProtocol(self._stdin_reader)
+            await loop.connect_read_pipe(lambda: stdin_protocol, sys.stdin)
+
+            # Setup stdout writer
+            writer_transport, writer_protocol = await loop.connect_write_pipe(
+                asyncio.streams.FlowControlMixin,
+                sys.stdout
+            )
+            self._stdout_writer = asyncio.StreamWriter(
+                writer_transport, writer_protocol, None, loop
+            )
+
+        async def send_ready_message():
+            """Send initial ready message."""
             ready_message = {
                 "jsonrpc": "2.0",
                 "method": "ready",
                 "params": self.get_plugin_info()
             }
-            self._write_message(ready_message)
-            
-            # Process requests
-            while True:
-                request = self._read_message()
-                if request is None:
-                    # EOF or error, exit
+            await self._async_write_message(ready_message)
+            logger.info(f"Plugin {self.__class__.__name__} ready")
+
+        async def read_loop():
+            """Read and process requests from stdin."""
+            while self._running:
+                try:
+                    request = await self._async_read_message()
+                    if request is None:
+                        # EOF, exit gracefully
+                        logger.info("stdin EOF received, exiting")
+                        break
+
+                    # Handle request concurrently (don't block reading next request)
+                    task = asyncio.create_task(self._handle_request(request))
+
+                    # Track task if it has a task_id
+                    if isinstance(request.get("params"), dict):
+                        task_id = request["params"].get("task_id")
+                        if task_id:
+                            self._active_tasks[task_id] = task
+                            # Clean up task when done
+                            def cleanup_task(t, tid=task_id):
+                                self._active_tasks.pop(tid, None)
+                            task.add_done_callback(cleanup_task)
+
+                except asyncio.CancelledError:
+                    logger.debug("Read loop cancelled")
                     break
-                
-                await self._handle_request(request)
-        
+                except Exception as e:
+                    logger.error(f"Error in read loop: {e}", exc_info=True)
+                    # Continue reading after error
+                    continue
+
+        async def heartbeat_loop():
+            """Send periodic heartbeat messages when idle."""
+            if self.heartbeat_interval <= 0:
+                logger.debug("Heartbeat disabled (interval <= 0)")
+                return
+
+            logger.debug(f"Heartbeat loop started (interval: {self.heartbeat_interval}s)")
+
+            while self._running:
+                try:
+                    await asyncio.sleep(self.heartbeat_interval)
+
+                    # Only send heartbeat when not executing a task
+                    # (task execution sends its own progress/heartbeats)
+                    if self.current_task_id is None:
+                        heartbeat_message = {
+                            "jsonrpc": "2.0",
+                            "method": "heartbeat",
+                            "params": {
+                                "type": "idle",
+                                "timestamp": datetime.now().isoformat()
+                            }
+                        }
+                        await self._async_write_message(heartbeat_message)
+                        logger.debug("Idle heartbeat sent")
+
+                except asyncio.CancelledError:
+                    logger.debug("Heartbeat loop cancelled")
+                    break
+                except Exception as e:
+                    logger.error(f"Error in heartbeat loop: {e}", exc_info=True)
+                    continue
+
+        async def main():
+            """Main async entry point."""
+            try:
+                # Setup async I/O
+                await setup_async_io()
+                self._running = True
+
+                # Send ready message
+                await send_ready_message()
+
+                # Run read and heartbeat loops concurrently
+                tasks = [asyncio.create_task(read_loop())]
+
+                if self.heartbeat_interval > 0:
+                    tasks.append(asyncio.create_task(heartbeat_loop()))
+
+                # Wait for read_loop to finish (on EOF)
+                # heartbeat_loop runs until cancelled
+                done, pending = await asyncio.wait(
+                    tasks,
+                    return_when=asyncio.FIRST_COMPLETED
+                )
+
+                # Cancel pending tasks (heartbeat_loop)
+                for task in pending:
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+
+            except Exception as e:
+                logger.error(f"Plugin error: {e}", exc_info=True)
+            finally:
+                self._running = False
+
+                # Wait for any active tasks to complete (with timeout)
+                if self._active_tasks:
+                    logger.info(f"Waiting for {len(self._active_tasks)} active tasks to complete...")
+                    try:
+                        await asyncio.wait_for(
+                            asyncio.gather(*self._active_tasks.values(), return_exceptions=True),
+                            timeout=5.0
+                        )
+                    except asyncio.TimeoutError:
+                        logger.warning("Timeout waiting for active tasks, forcing exit")
+
+                # Cleanup
+                if self._stdout_writer:
+                    self._stdout_writer.close()
+                    try:
+                        await self._stdout_writer.wait_closed()
+                    except Exception:
+                        pass
+
+                logger.info("Plugin shutdown complete")
+
         # Run event loop
         try:
-            asyncio.run(main_loop())
+            asyncio.run(main())
         except KeyboardInterrupt:
-            sys.stderr.write("Plugin interrupted\n")
+            logger.info("Plugin interrupted by user")
         except Exception as e:
             logger.error(f"Plugin error: {e}", exc_info=True)
+            sys.exit(1)
 
