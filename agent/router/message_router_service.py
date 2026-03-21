@@ -222,6 +222,7 @@ class MessageRouterService:
         crew_info_str = json.dumps(crew_info_list, ensure_ascii=False, indent=2)
 
         return f"""You are a message router for a multi-agent group chat system.
+Your job is to analyze messages and select the **single most appropriate** crew member to respond.
 
 ## Current Sender
 - ID: {sender_id}
@@ -236,19 +237,30 @@ class MessageRouterService:
 ## Recent Conversation History
 {history_str if history_str else 'No recent history'}
 
-## Routing Rules
-1. Analyze the message and determine which crew members should respond
-2. Consider each member's role, description, and skills
-3. Multiple members can be selected if the message requires collaboration
-4. Don't route to the sender
-5. If no specific member is needed, route to "producer" if available
+## Core Routing Rules
 
-Respond ONLY with JSONL format (one JSON object per line, no markdown code blocks):
-{{"crew_member": "member_name", "message": "customized message for this member"}}
+1. **SINGLE RESPONDER PRIORITY**: By default, select only ONE most appropriate member
+2. Match the message to member's role, description, and skills
+3. If a member name is directly mentioned, route to that member
+4. Never route to the sender ({sender_id})
+5. If no specific match, route to "producer" if available
 
-Example for routing to two members:
-{{"crew_member": "translator", "message": "Please translate this..."}}
-{{"crew_member": "editor", "message": "Please edit this..."}}
+## Multi-Member Routing (ONLY when explicitly needed)
+Select multiple members ONLY if:
+- Message explicitly requests collaboration across multiple areas
+- User clearly requests multiple perspectives
+- If uncertain, select just ONE member
+
+## Response Format
+Respond ONLY with JSONL format (one JSON object per line):
+{{"crew_member": "member_name", "message": "customized message"}}
+
+Single member example:
+{{"crew_member": "translator", "message": "User needs translation..."}}
+
+Multi-member example (only when explicitly needed):
+{{"crew_member": "translator", "message": "Please translate first..."}}
+{{"crew_member": "editor", "message": "Then review the grammar..."}}
 
 Respond ONLY with the JSONL lines, no other text."""
 
