@@ -1,5 +1,5 @@
 name: Bailian Server
-version: 1.3.0
+version: 1.4.0
 description: Alibaba Cloud Bailian (DashScope) integration with LLM chat and AIGC tools
 author: Filmeto Team
 engine: bailian
@@ -13,42 +13,34 @@ requirements:
 # Define multiple tools supported by this plugin
 tools:
   - name: text2image
-    description: Generate image from text prompt
+    description: Generate image from text prompt using Wanx model
     parameters:
       - name: prompt
         type: string
         required: true
         description: Text prompt for generation
 
-      - name: negative_prompt
+      - name: model
         type: string
         required: false
-        default: ""
-        description: Negative prompt
+        default: "wanx2.1-t2i-turbo"
+        description: Model to use (e.g., wanx2.1-t2i-turbo, wanx2.1-t2i-plus)
 
       - name: width
         type: integer
         required: false
-        default: 512
-        min: 256
+        default: 1024
+        min: 512
         max: 2048
         description: Image width
 
       - name: height
         type: integer
         required: false
-        default: 512
-        min: 256
+        default: 1024
+        min: 512
         max: 2048
         description: Image height
-
-      - name: steps
-        type: integer
-        required: false
-        default: 20
-        min: 1
-        max: 100
-        description: Number of generation steps
 
   - name: image2image
     description: Transform image based on text prompt
@@ -58,26 +50,11 @@ tools:
         required: true
         description: Text prompt for transformation
 
-      - name: strength
-        type: float
-        required: false
-        default: 0.7
-        min: 0.0
-        max: 1.0
-        description: Strength of transformation
-
-  - name: bailian_app
-    description: Execute a Bailian Application task
-    parameters:
-      - name: prompt
-        type: string
-        required: true
-        description: Input prompt for the Bailian App
-
-      - name: app_id
+      - name: model
         type: string
         required: false
-        description: Bailian App ID (overrides default config)
+        default: "wanx2.1-i2i-turbo"
+        description: Model to use for image-to-image
 
   - name: chat_completion
     description: LLM chat completion via DashScope OpenAI-compatible API
@@ -86,7 +63,7 @@ tools:
         type: string
         required: false
         default: qwen-max
-        description: Model name (e.g. qwen-max, qwen-plus, qwen-turbo)
+        description: Model name (e.g. qwen-max, qwen-plus, qwen-turbo, qwen2.5-72b-instruct)
 
       - name: messages
         type: array
@@ -114,8 +91,6 @@ tools:
         description: Enable streaming response
 
 # Chat / LLM capability declaration
-# When chat_enabled is true in the server parameters, this plugin's server
-# is recognized by ChatService for OpenAI-compatible /v1/chat/completions.
 chat:
   provider: dashscope
   default_endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1"
@@ -123,6 +98,8 @@ chat:
     - qwen-max
     - qwen-plus
     - qwen-turbo
+    - qwen2.5-72b-instruct
+    - qwen2.5-32b-instruct
     - qwen-long
     - qwen-vl-max
     - qwen-vl-plus
@@ -135,47 +112,16 @@ execution:
   timeout: 300
   max_retries: 3
 
-# Configuration schema for creating server instances
+# Configuration schema - Simplified to only require API Key
 config_schema:
   fields:
-    - name: agent_key
-      label: Agent Key / App ID
-      type: string
-      required: false
-      default: ""
-      description: Bailian Agent Key or App ID (for Bailian App tool)
-      placeholder: "Enter Agent Key or App ID"
-
-    - name: endpoint
-      label: Bailian API Endpoint
-      type: url
-      required: false
-      default: "https://bailian.aliyuncs.com"
-      description: Bailian API endpoint (for Bailian App tool)
-      placeholder: "https://bailian.aliyuncs.com"
-
-    - name: chat_enabled
-      label: Enable LLM Chat
-      type: boolean
-      required: false
-      default: true
-      description: Enable OpenAI-compatible chat completion via DashScope
-
-    - name: dashscope_api_key
-      label: DashScope API Key
+    - name: api_key
+      label: API Key
       type: password
-      required: false
+      required: true
       default: ""
-      description: DashScope API key for LLM chat and image generation
-      placeholder: "sk-xxxxxxxxxxxxxxxx"
-
-    - name: dashscope_endpoint
-      label: DashScope Chat Endpoint
-      type: url
-      required: false
-      default: "https://dashscope.aliyuncs.com/compatible-mode/v1"
-      description: DashScope OpenAI-compatible endpoint
-      placeholder: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+      description: "DashScope API Key (获取方式: 阿里云控制台 -> DashScope -> API-KEY管理)"
+      placeholder: "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 
     - name: default_model
       label: Default Chat Model
@@ -184,3 +130,11 @@ config_schema:
       default: "qwen-max"
       description: Default model for chat completions
       placeholder: "qwen-max"
+
+    - name: default_image_model
+      label: Default Image Model
+      type: string
+      required: false
+      default: "wanx2.1-t2i-turbo"
+      description: Default model for text-to-image generation
+      placeholder: "wanx2.1-t2i-turbo"

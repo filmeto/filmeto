@@ -1,8 +1,8 @@
 """
 Bailian Server Configuration Widget
 
-Custom configuration UI for Alibaba Cloud Bailian server.
-Supports both Bailian App and DashScope LLM chat configuration.
+Simplified configuration UI for Alibaba Cloud DashScope (Bailian) server.
+Only requires a single API Key for authentication.
 """
 
 from typing import Dict, Any, Optional
@@ -46,7 +46,7 @@ _CHECKBOX_STYLE = """
 
 
 class BailianConfigWidget(QWidget):
-    """Custom configuration widget for Bailian server"""
+    """Simplified configuration widget for Bailian server - Only API Key needed."""
 
     config_changed = Signal()
 
@@ -73,29 +73,30 @@ class BailianConfigWidget(QWidget):
         container.setStyleSheet("background-color: #1e1e1e;")
         container_layout = QVBoxLayout(container)
 
-        # DashScope LLM Settings
-        llm_group = self._create_form_group("DashScope LLM Settings", [
-            ("chat_enabled", "Enable LLM Chat", "checkbox", True, False,
-             "Enable OpenAI-compatible chat completion via DashScope"),
-            ("dashscope_api_key", "DashScope API Key", "password", "", False,
-             "DashScope API key for LLM and image generation"),
-            ("dashscope_endpoint", "Chat Endpoint", "text",
-             "https://dashscope.aliyuncs.com/compatible-mode/v1", False,
-             "DashScope OpenAI-compatible endpoint"),
-            ("default_model", "Default Chat Model", "text", "qwen-max", False,
-             "Default model for chat completions (e.g. qwen-max, qwen-plus, qwen-turbo)"),
-        ])
-        container_layout.addWidget(llm_group)
+        # Help text
+        help_label = QLabel(
+            "获取 API Key: 阿里云控制台 → DashScope → API-KEY管理\n"
+            "文档: https://help.aliyun.com/zh/model-studio/developer-reference/api-key-management"
+        )
+        help_label.setStyleSheet("color: #888888; padding: 10px; background-color: #252525; border-radius: 4px;")
+        help_label.setWordWrap(True)
+        container_layout.addWidget(help_label)
 
-        # Bailian App Settings
-        bailian_group = self._create_form_group("Bailian App Settings", [
-            ("agent_key", "Agent Key / App ID", "text", "", False,
-             "Bailian Agent Key or App ID (required only for Bailian App tool)"),
-            ("endpoint", "Bailian API Endpoint", "text",
-             "https://bailian.aliyuncs.com", False,
-             "Bailian API endpoint (for Bailian App tool)"),
+        # API Key Settings - Only one field required
+        api_group = self._create_form_group("API Key Settings", [
+            ("api_key", "API Key *", "password", "", True,
+             "DashScope API Key (required)"),
         ])
-        container_layout.addWidget(bailian_group)
+        container_layout.addWidget(api_group)
+
+        # Model Settings (Optional)
+        model_group = self._create_form_group("Model Settings (Optional)", [
+            ("default_model", "Default Chat Model", "text", "qwen-max", False,
+             "Default model for chat (e.g., qwen-max, qwen-plus, qwen-turbo)"),
+            ("default_image_model", "Default Image Model", "text", "wanx2.1-t2i-turbo", False,
+             "Default model for text-to-image"),
+        ])
+        container_layout.addWidget(model_group)
 
         container_layout.addStretch()
         scroll_area.setWidget(container)
@@ -164,9 +165,10 @@ class BailianConfigWidget(QWidget):
                 else:
                     widget.setText(str(val))
 
-    # Default DashScope models advertised when chat is enabled
+    # Default DashScope models advertised for chat
     _DASHSCOPE_MODELS = [
         "qwen-max", "qwen-plus", "qwen-turbo", "qwen-long",
+        "qwen2.5-72b-instruct", "qwen2.5-32b-instruct",
         "qwen-vl-max", "qwen-vl-plus",
     ]
 
@@ -178,23 +180,24 @@ class BailianConfigWidget(QWidget):
             else:
                 result[name] = widget.text()
 
-        if result.get("chat_enabled"):
-            result.setdefault("provider", "dashscope")
-            default_model = result.get("default_model", "qwen-max")
-            models = list(self._DASHSCOPE_MODELS)
-            if default_model and default_model not in models:
-                models.insert(0, default_model)
-            result["models"] = models
+        # Always enable chat provider
+        result["provider"] = "dashscope"
+        default_model = result.get("default_model", "qwen-max")
+        models = list(self._DASHSCOPE_MODELS)
+        if default_model and default_model not in models:
+            models.insert(0, default_model)
+        result["models"] = models
 
         return result
 
     def validate_config(self) -> bool:
         config = self.get_config()
-        if config.get("chat_enabled"):
-            if not config.get("dashscope_api_key"):
-                QMessageBox.warning(
-                    self, "Validation Error",
-                    "DashScope API Key is required when LLM Chat is enabled."
-                )
-                return False
+        if not config.get("api_key"):
+            QMessageBox.warning(
+                self, "Validation Error",
+                "API Key is required.\n\n"
+                "Get your API Key from:\n"
+                "阿里云控制台 → DashScope → API-KEY管理"
+            )
+            return False
         return True

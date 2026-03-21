@@ -1,8 +1,11 @@
 """
 Bailian Server Plugin
 
-Integrates Alibaba Cloud Bailian (DashScope) AI services.
-Supports text-to-image, image-to-image, Bailian App, and LLM chat completion tools.
+Integrates Alibaba Cloud DashScope (Bailian) AI services.
+Supports text-to-image, image-to-image, and LLM chat completion tools.
+
+Configuration: Only requires a single DashScope API Key.
+Get your API Key from: https://bailian.console.aliyun.com/ -> API-KEY管理
 """
 
 import os
@@ -11,7 +14,6 @@ import time
 import asyncio
 import json
 import logging
-import uuid
 import requests
 from pathlib import Path
 from typing import Dict, Any, Callable, List, Optional
@@ -23,28 +25,32 @@ from server.plugins.base_plugin import BaseServerPlugin, ToolConfig
 
 logger = logging.getLogger(__name__)
 
+# Default DashScope endpoints
+DASHSCOPE_CHAT_ENDPOINT = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+DASHSCOPE_IMAGE_ENDPOINT = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis"
+
 # Try to import SDKs
 try:
     import dashscope
     from dashscope import ImageSynthesis
+    DASHSCOPE_SDK_AVAILABLE = True
 except ImportError:
-    logger.warning("dashscope SDK not found")
-
-try:
-    import broadscope_bailian
-    from broadscope_bailian import Completions, AccessTokenClient
-except ImportError:
-    logger.warning("broadscope-bailian SDK not found")
+    DASHSCOPE_SDK_AVAILABLE = False
+    logger.warning("dashscope SDK not found, using HTTP API")
 
 try:
     import litellm
+    LITELLM_AVAILABLE = True
 except ImportError:
-    litellm = None
+    LITELLM_AVAILABLE = False
     logger.warning("litellm not found, chat_completion tool unavailable")
+
 
 class BailianServerPlugin(BaseServerPlugin):
     """
-    Plugin for Alibaba Cloud Bailian integration.
+    Plugin for Alibaba Cloud DashScope (Bailian) integration.
+
+    Simplified configuration: Only requires a single API Key.
     """
 
     def __init__(self):
@@ -56,16 +62,14 @@ class BailianServerPlugin(BaseServerPlugin):
         """Get plugin metadata"""
         return {
             "name": "Bailian Server",
-            "version": "1.3.0",
-            "description": "Alibaba Cloud Bailian (DashScope) integration with LLM chat and AIGC tools",
+            "version": "1.4.0",
+            "description": "Alibaba Cloud DashScope integration - Only API Key needed",
             "author": "Filmeto Team",
             "engine": "bailian"
         }
 
     def init_ui(self, workspace_path: str, server_config: Optional[Dict[str, Any]] = None):
-        """
-        Initialize custom UI widget for server configuration.
-        """
+        """Initialize custom UI widget for server configuration."""
         try:
             from server.plugins.bailian_server.config.bailian_config_widget import BailianConfigWidget
             return BailianConfigWidget(workspace_path, server_config)
@@ -74,38 +78,51 @@ class BailianServerPlugin(BaseServerPlugin):
             return None
 
     def get_supported_tools(self) -> List[ToolConfig]:
-        """Get list of tools supported by this plugin with their configs"""
+        """Get list of tools supported by this plugin"""
         text2image_params = [
-            {"name": "prompt", "type": "string", "required": True, "description": "Text prompt for generation"},
-            {"name": "model", "type": "string", "required": False, "default": "wanx-v1", "description": "Model to use (e.g., wanx-v1)"},
-            {"name": "width", "type": "integer", "required": False, "default": 1024, "description": "Image width"},
-            {"name": "height", "type": "integer", "required": False, "default": 1024, "description": "Image height"}
-        ]
-        
-        image2image_params = [
-            {"name": "prompt", "type": "string", "required": True, "description": "Text prompt for transformation"},
-            {"name": "input_image_path", "type": "string", "required": True, "description": "Path to input image"},
-            {"name": "model", "type": "string", "required": False, "default": "wanx-v1", "description": "Model to use"}
+            {"name": "prompt", "type": "string", "required": True,
+             "description": "Text prompt for image generation"},
+            {"name": "model", "type": "string", "required": False,
+             "default": "wanx2.1-t2i-turbo",
+             "description": "Model: wanx2.1-t2i-turbo, wanx2.1-t2i-plus"},
+            {"name": "width", "type": "integer", "required": False,
+             "default": 1024, "description": "Image width (512-2048)"},
+            {"name": "height", "type": "integer", "required": False,
+             "default": 1024, "description": "Image height (512-2048)"}
         ]
 
-        bailian_app_params = [
-            {"name": "prompt", "type": "string", "required": True, "description": "Input prompt for the Bailian App"},
-            {"name": "app_id", "type": "string", "required": False, "description": "Bailian App ID (overrides default config)"}
+        image2image_params = [
+            {"name": "prompt", "type": "string", "required": True,
+             "description": "Text prompt for transformation"},
+            {"name": "model", "type": "string", "required": False,
+             "default": "wanx2.1-i2i-turbo",
+             "description": "Model for image-to-image"}
         ]
 
         chat_completion_params = [
-            {"name": "model", "type": "string", "required": False, "default": "qwen-max", "description": "Model name (e.g. qwen-max, qwen-plus, qwen-turbo)"},
-            {"name": "messages", "type": "array", "required": True, "description": "Chat messages in OpenAI format"},
-            {"name": "temperature", "type": "float", "required": False, "default": 0.7, "description": "Sampling temperature"},
-            {"name": "max_tokens", "type": "integer", "required": False, "default": 4096, "description": "Maximum tokens in response"},
-            {"name": "stream", "type": "boolean", "required": False, "default": False, "description": "Enable streaming response"},
+            {"name": "model", "type": "string", "required": False,
+             "default": "qwen-max",
+             "description": "Model: qwen-max, qwen-plus, qwen-turbo, qwen2.5-72b-instruct"},
+            {"name": "messages", "type": "array", "required": True,
+             "description": "Chat messages in OpenAI format"},
+            {"name": "temperature", "type": "float", "required": False,
+             "default": 0.7, "description": "Sampling temperature (0-2)"},
+            {"name": "max_tokens", "type": "integer", "required": False,
+             "default": 4096, "description": "Maximum tokens in response"},
+            {"name": "stream", "type": "boolean", "required": False,
+             "default": False, "description": "Enable streaming response"},
         ]
 
         return [
-            ToolConfig(name="text2image", description="Generate image from text prompt using DashScope/Wanx", parameters=text2image_params),
-            ToolConfig(name="image2image", description="Transform image using DashScope/Wanx", parameters=image2image_params),
-            ToolConfig(name="bailian_app", description="Execute a Bailian Application task", parameters=bailian_app_params),
-            ToolConfig(name="chat_completion", description="LLM chat completion via DashScope OpenAI-compatible API", parameters=chat_completion_params),
+            ToolConfig(name="text2image",
+                      description="Generate image from text using Wanx model",
+                      parameters=text2image_params),
+            ToolConfig(name="image2image",
+                      description="Transform image using Wanx model",
+                      parameters=image2image_params),
+            ToolConfig(name="chat_completion",
+                      description="LLM chat via DashScope OpenAI-compatible API",
+                      parameters=chat_completion_params),
         ]
 
     async def execute_task(
@@ -113,44 +130,40 @@ class BailianServerPlugin(BaseServerPlugin):
         task_data: Dict[str, Any],
         progress_callback: Callable[[float, str, Dict[str, Any]], None]
     ) -> Dict[str, Any]:
-        """
-        Execute a task based on its tool type.
-        """
+        """Execute a task based on its tool type."""
         task_id = task_data.get("task_id", "unknown")
         tool_name = task_data.get("tool_name", "")
         parameters = task_data.get("parameters", {})
         metadata = task_data.get("metadata", {})
         server_config = metadata.get("server_config", {})
 
-        # Configuration
-        ak = server_config.get("access_key_id")
-        sk = server_config.get("access_key_secret")
-        endpoint = server_config.get("endpoint", "https://bailian.aliyuncs.com")
-        agent_key = server_config.get("agent_key")
+        # Get API Key - single credential needed
+        api_key = server_config.get("api_key")
 
-        if not sk and tool_name not in ("chat_completion",):
-            return {"task_id": task_id, "status": "error", "error_message": "AccessKey Secret (API Key) is missing"}
+        if not api_key:
+            return {
+                "task_id": task_id,
+                "status": "error",
+                "error_message": "API Key is required. Get it from: 阿里云控制台 -> DashScope -> API-KEY管理"
+            }
 
-        # DashScope chat settings (may differ from Bailian App credentials)
-        dashscope_api_key = server_config.get("dashscope_api_key") or sk
-        dashscope_endpoint = server_config.get(
-            "dashscope_endpoint",
-            "https://dashscope.aliyuncs.com/compatible-mode/v1"
-        )
+        # Get optional settings
+        default_model = server_config.get("default_model", "qwen-max")
+        default_image_model = server_config.get("default_image_model", "wanx2.1-t2i-turbo")
 
         try:
             if tool_name == "text2image":
-                dashscope.api_key = dashscope_api_key or sk
-                return await self._execute_text2image(task_id, parameters, progress_callback)
+                return await self._execute_text2image(
+                    task_id, api_key, parameters, default_image_model, progress_callback
+                )
             elif tool_name == "image2image":
-                dashscope.api_key = dashscope_api_key or sk
-                return await self._execute_image2image(task_id, parameters, task_data.get("resources", []), progress_callback)
-            elif tool_name == "bailian_app":
-                return await self._execute_bailian_app(task_id, ak, sk, endpoint, agent_key, parameters, progress_callback)
+                return await self._execute_image2image(
+                    task_id, api_key, parameters, task_data.get("resources", []),
+                    default_image_model, progress_callback
+                )
             elif tool_name == "chat_completion":
                 return await self._execute_chat_completion(
-                    task_id, dashscope_api_key, dashscope_endpoint,
-                    server_config, parameters, progress_callback,
+                    task_id, api_key, parameters, default_model, progress_callback
                 )
             else:
                 return {
@@ -169,128 +182,202 @@ class BailianServerPlugin(BaseServerPlugin):
                 "output_files": []
             }
 
-    async def _execute_text2image(self, task_id, parameters, progress_callback):
+    async def _execute_text2image(
+        self, task_id, api_key, parameters, default_model, progress_callback
+    ):
+        """Execute text-to-image generation using DashScope API."""
         prompt = parameters.get("prompt", "")
-        model = parameters.get("model", "wanx-v1")
+        model = parameters.get("model", default_model)
         width = parameters.get("width", 1024)
         height = parameters.get("height", 1024)
 
-        progress_callback(10, f"Submitting DashScope task ({model})...", {})
+        progress_callback(10, f"Submitting image generation task ({model})...", {})
 
-        def call_dashscope():
-            return ImageSynthesis.call(
-                model=model,
-                prompt=prompt,
-                size=f"{width}*{height}"
+        # Use SDK if available
+        if DASHSCOPE_SDK_AVAILABLE:
+            dashscope.api_key = api_key
+
+            def call_dashscope():
+                return ImageSynthesis.call(
+                    model=model,
+                    prompt=prompt,
+                    size=f"{width}*{height}"
+                )
+
+            loop = asyncio.get_event_loop()
+            rsp = await loop.run_in_executor(None, call_dashscope)
+
+            if rsp.status_code == 200:
+                return await self._download_images(task_id, rsp.output.results, progress_callback)
+            else:
+                raise Exception(f"DashScope error: {rsp.code} - {rsp.message}")
+        else:
+            # Use HTTP API directly
+            return await self._text2image_via_http(
+                task_id, api_key, model, prompt, width, height, progress_callback
             )
 
-        loop = asyncio.get_event_loop()
-        rsp = await loop.run_in_executor(None, call_dashscope)
+    async def _text2image_via_http(
+        self, task_id, api_key, model, prompt, width, height, progress_callback
+    ):
+        """Text-to-image using HTTP API directly."""
+        import aiohttp
 
-        if rsp.status_code == 200:
-            progress_callback(80, "Generation complete, downloading images...", {})
-            output_files = []
-            for i, img in enumerate(rsp.output.results):
-                url = img.url
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "X-DashScope-Async": "enable"
+        }
+
+        payload = {
+            "model": model,
+            "input": {
+                "prompt": prompt
+            },
+            "parameters": {
+                "size": f"{width}*{height}",
+                "n": 1
+            }
+        }
+
+        progress_callback(20, "Sending request to DashScope...", {})
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                DASHSCOPE_IMAGE_ENDPOINT,
+                headers=headers,
+                json=payload
+            ) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    raise Exception(f"DashScope API error: {response.status} - {error_text}")
+
+                result = await response.json()
+
+                # Check if async task
+                output = result.get("output", {})
+                task_status = output.get("task_status")
+
+                if task_status == "PENDING":
+                    # Poll for result
+                    task_status_url = output.get("task_status_url") or f"{DASHSCOPE_IMAGE_ENDPOINT}/{result.get('output', {}).get('task_id')}"
+                    progress_callback(30, "Waiting for image generation...", {})
+
+                    for _ in range(60):  # Max 60 seconds wait
+                        await asyncio.sleep(2)
+                        async with session.get(
+                            task_status_url,
+                            headers={"Authorization": f"Bearer {api_key}"}
+                        ) as status_response:
+                            status_result = await status_response.json()
+                            status = status_result.get("output", {}).get("task_status")
+
+                            if status == "SUCCEEDED":
+                                results = status_result.get("output", {}).get("results", [])
+                                return await self._download_images_from_urls(
+                                    task_id, results, progress_callback
+                                )
+                            elif status == "FAILED":
+                                error_msg = status_result.get("output", {}).get("message", "Unknown error")
+                                raise Exception(f"Image generation failed: {error_msg}")
+
+                            progress_callback(40, f"Generating... ({status})", {})
+
+                    raise Exception("Image generation timeout")
+
+                # Direct result
+                results = output.get("results", [])
+                if results:
+                    return await self._download_images_from_urls(task_id, results, progress_callback)
+
+                raise Exception("No results from DashScope API")
+
+    async def _download_images(self, task_id, results, progress_callback):
+        """Download images from DashScope SDK results."""
+        progress_callback(80, "Downloading generated images...", {})
+        output_files = []
+
+        for i, img in enumerate(results):
+            url = img.url
+            local_path = self.output_dir / f"{task_id}_{i}.png"
+            img_data = requests.get(url).content
+            with open(local_path, "wb") as f:
+                f.write(img_data)
+            output_files.append(str(local_path))
+
+        return {"task_id": task_id, "status": "success", "output_files": output_files}
+
+    async def _download_images_from_urls(self, task_id, results, progress_callback):
+        """Download images from URL list."""
+        import aiohttp
+
+        progress_callback(80, "Downloading generated images...", {})
+        output_files = []
+
+        async with aiohttp.ClientSession() as session:
+            for i, result in enumerate(results):
+                url = result.get("url")
+                if not url:
+                    continue
+
                 local_path = self.output_dir / f"{task_id}_{i}.png"
-                img_data = requests.get(url).content
-                with open(local_path, "wb") as f:
-                    f.write(img_data)
-                output_files.append(str(local_path))
-            
-            return {"task_id": task_id, "status": "success", "output_files": output_files}
-        else:
-            raise Exception(f"DashScope error: {rsp.code} - {rsp.message}")
+                async with session.get(url) as response:
+                    if response.status == 200:
+                        content = await response.read()
+                        with open(local_path, "wb") as f:
+                            f.write(content)
+                        output_files.append(str(local_path))
 
-    async def _execute_image2image(self, task_id, parameters, resources, progress_callback):
+        return {"task_id": task_id, "status": "success", "output_files": output_files}
+
+    async def _execute_image2image(
+        self, task_id, api_key, parameters, resources, default_model, progress_callback
+    ):
+        """Execute image-to-image transformation."""
         prompt = parameters.get("prompt", "")
-        model = parameters.get("model", "wanx-v1")
+        model = parameters.get("model", default_model.replace("-t2i-", "-i2i-"))
+
+        # Get input image path
         input_image_path = parameters.get("input_image_path")
-        
-        # Check resources
         processed_resources = parameters.get("processed_resources")
+
         if processed_resources:
             input_image_path = processed_resources[0]
 
         if not input_image_path or not os.path.exists(input_image_path):
             raise FileNotFoundError(f"Input image not found: {input_image_path}")
 
-        progress_callback(10, f"Submitting DashScope i2i task ({model})...", {})
+        progress_callback(10, f"Submitting image-to-image task ({model})...", {})
 
-        def call_dashscope_i2i():
-            # For Wanx i2i, image_url can be a local file path with file:// prefix
-            return ImageSynthesis.call(
-                model=model,
-                prompt=prompt,
-                image_url=f"file://{input_image_path}",
-                n=1
-            )
+        if DASHSCOPE_SDK_AVAILABLE:
+            dashscope.api_key = api_key
 
-        loop = asyncio.get_event_loop()
-        rsp = await loop.run_in_executor(None, call_dashscope_i2i)
+            def call_dashscope_i2i():
+                return ImageSynthesis.call(
+                    model=model,
+                    prompt=prompt,
+                    image_url=f"file://{input_image_path}",
+                    n=1
+                )
 
-        if rsp.status_code == 200:
-            progress_callback(80, "Generation complete, downloading result...", {})
-            output_files = []
-            for i, img in enumerate(rsp.output.results):
-                url = img.url
-                local_path = self.output_dir / f"{task_id}_i2i_{i}.png"
-                img_data = requests.get(url).content
-                with open(local_path, "wb") as f:
-                    f.write(img_data)
-                output_files.append(str(local_path))
-            
-            return {"task_id": task_id, "status": "success", "output_files": output_files}
+            loop = asyncio.get_event_loop()
+            rsp = await loop.run_in_executor(None, call_dashscope_i2i)
+
+            if rsp.status_code == 200:
+                return await self._download_images(task_id, rsp.output.results, progress_callback)
+            else:
+                raise Exception(f"DashScope error: {rsp.code} - {rsp.message}")
         else:
-            raise Exception(f"DashScope error: {rsp.code} - {rsp.message}")
-
-    async def _execute_bailian_app(self, task_id, ak, sk, endpoint, default_app_id, parameters, progress_callback):
-        prompt = parameters.get("prompt", "")
-        app_id = parameters.get("app_id") or default_app_id
-
-        if not ak or not sk or not app_id:
-            raise Exception("Bailian App execution requires AK, SK and App ID")
-
-        progress_callback(10, f"Connecting to Bailian App ({app_id})...", {})
-
-        def call_bailian_sdk():
-            client = AccessTokenClient(access_key_id=ak, access_key_secret=sk)
-            token = client.get_token()
-            completions = Completions(token=token, endpoint=endpoint)
-            return completions.call(app_id=app_id, prompt=prompt)
-
-        loop = asyncio.get_event_loop()
-        resp = await loop.run_in_executor(None, call_bailian_sdk)
-
-        if resp.get("success"):
-            text_result = resp.get("data", {}).get("text", "")
-            # Save result to a text file
-            local_path = self.output_dir / f"{task_id}_result.txt"
-            with open(local_path, "w", encoding="utf-8") as f:
-                f.write(text_result)
-            
-            return {
-                "task_id": task_id,
-                "status": "success",
-                "output_files": [str(local_path)],
-                "metadata": {"text": text_result}
-            }
-        else:
-            raise Exception(f"Bailian SDK error: {resp.get('error_code')} - {resp.get('error_message')}")
+            raise Exception("Image-to-image requires dashscope SDK. Install with: pip install dashscope")
 
     async def _execute_chat_completion(
-        self, task_id, api_key, endpoint, server_config, parameters, progress_callback
+        self, task_id, api_key, parameters, default_model, progress_callback
     ):
-        """Execute a chat completion via DashScope OpenAI-compatible API using litellm."""
-        if litellm is None:
-            raise RuntimeError("litellm is required for chat_completion but is not installed")
+        """Execute chat completion via DashScope OpenAI-compatible API."""
+        if not LITELLM_AVAILABLE:
+            raise RuntimeError("litellm is required for chat_completion. Install with: pip install litellm")
 
-        if not api_key:
-            api_key = server_config.get("access_key_secret")
-        if not api_key:
-            raise ValueError("DashScope API key is required for chat_completion")
-
-        model = parameters.get("model", server_config.get("default_model", "qwen-max"))
+        model = parameters.get("model", default_model)
         messages = parameters.get("messages", [])
         temperature = parameters.get("temperature", 0.7)
         max_tokens = parameters.get("max_tokens", 4096)
@@ -301,10 +388,8 @@ class BailianServerPlugin(BaseServerPlugin):
 
         progress_callback(10, f"Calling DashScope LLM ({model})...", {})
 
-        provider = server_config.get("provider", "dashscope")
-        litellm_model = model
-        if provider and provider != "openai" and not model.startswith(f"{provider}/"):
-            litellm_model = f"{provider}/{model}"
+        # Use dashscope provider with litellm
+        litellm_model = f"dashscope/{model}" if not model.startswith("dashscope/") else model
 
         params = {
             "model": litellm_model,
@@ -313,8 +398,7 @@ class BailianServerPlugin(BaseServerPlugin):
             "max_tokens": max_tokens,
             "stream": stream,
             "api_key": api_key,
-            "base_url": endpoint,
-            "api_base": endpoint,
+            "base_url": DASHSCOPE_CHAT_ENDPOINT,
         }
 
         if stream:
@@ -338,10 +422,12 @@ class BailianServerPlugin(BaseServerPlugin):
 
         progress_callback(90, "Chat completion done", {})
 
+        # Save result
         local_path = self.output_dir / f"{task_id}_chat.txt"
         with open(local_path, "w", encoding="utf-8") as f:
             f.write(result_text)
 
+        # Extract usage info
         usage_obj = getattr(response, "usage", None) if not stream else None
         usage = {}
         if usage_obj:

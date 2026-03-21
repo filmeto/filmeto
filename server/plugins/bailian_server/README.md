@@ -1,115 +1,81 @@
-# Text2Image Demo Plugin
+# Bailian Server Plugin
 
-A simple demonstration plugin for the Filmeto API that generates placeholder images with text.
-
-## Description
-
-This plugin demonstrates how to create a server-side plugin for Filmeto. It generates colored gradient images with the prompt text rendered on them, simulating the behavior of a real text-to-image AI model.
+Alibaba Cloud DashScope (Bailian) integration for Filmeto. Supports LLM chat and AIGC image generation.
 
 ## Features
 
-- Generates colorful gradient images
-- Renders prompt text on the image
-- Simulates multi-step generation process
-- Reports progress during execution
-- Supports custom width, height, and steps
+- **LLM Chat**: OpenAI-compatible chat completion via DashScope API
+- **Text-to-Image**: Generate images using Wanx models
+- **Image-to-Image**: Transform images with text prompts
+
+## Quick Start
+
+### 1. Get API Key
+
+1. Go to [阿里云百炼控制台](https://bailian.console.aliyun.com/)
+2. Navigate to **DashScope** → **API-KEY管理**
+3. Create a new API Key
+
+### 2. Configure Server
+
+Only **one field** is required:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| API Key | ✅ Yes | DashScope API Key |
+
+Optional settings:
+- **Default Chat Model**: qwen-max (default), qwen-plus, qwen-turbo, qwen2.5-72b-instruct
+- **Default Image Model**: wanx2.1-t2i-turbo (default), wanx2.1-t2i-plus
+
+## Supported Models
+
+### LLM Models (Chat)
+
+| Model | Description |
+|-------|-------------|
+| qwen-max | Most capable model |
+| qwen-plus | Balance of speed and quality |
+| qwen-turbo | Fast and efficient |
+| qwen2.5-72b-instruct | Latest generation |
+| qwen-long | Long context support |
+| qwen-vl-max | Vision-language model |
+
+### Image Models
+
+| Model | Description |
+|-------|-------------|
+| wanx2.1-t2i-turbo | Fast text-to-image |
+| wanx2.1-t2i-plus | High quality generation |
+| wanx2.1-i2i-turbo | Image-to-image transformation |
 
 ## Requirements
 
 - Python >= 3.9
-- Pillow >= 9.0.0
+- litellm >= 1.0.0 (for chat completion)
+- dashscope (optional, for image generation with SDK)
 
 ## Installation
 
-The plugin dependencies are automatically installed when the plugin is first used.
-
-Alternatively, you can manually install:
-
 ```bash
-cd server/plugins/text2image_demo
-pip install -r requirements.txt
+pip install litellm pillow
+# Optional: for SDK-based image generation
+pip install dashscope
 ```
 
-## Parameters
+## Configuration Schema
 
-- `prompt` (string, required): Text prompt for generation
-- `negative_prompt` (string, optional): Negative prompt (not used in demo)
-- `width` (integer, optional): Image width (default: 512, range: 256-2048)
-- `height` (integer, optional): Image height (default: 512, range: 256-2048)
-- `steps` (integer, optional): Number of generation steps (default: 20, range: 1-100)
+```yaml
+# Minimal configuration - only API Key needed
+api_key: "sk-xxxxxxxx"  # Required
 
-## Usage
-
-### Via Python API
-
-```python
-from server.api.filmeto_api import FilmetoApi
-from server.api.types import FilmetoTask, ToolType
-
-api = FilmetoApi()
-
-task = FilmetoTask(
-    tool_name=ToolType.TEXT2IMAGE,
-    plugin_name="text2image_demo",
-    parameters={
-        "prompt": "A beautiful sunset over mountains",
-        "width": 768,
-        "height": 512,
-        "steps": 20
-    }
-)
-
-async for update in api.execute_task_stream(task):
-    if isinstance(update, TaskProgress):
-        print(f"Progress: {update.percent}% - {update.message}")
-    elif isinstance(update, TaskResult):
-        print(f"Generated: {update.output_files}")
+# Optional
+default_model: "qwen-max"
+default_image_model: "wanx2.1-t2i-turbo"
 ```
 
-### Via Web API
+## Documentation
 
-```bash
-curl -X POST http://localhost:8000/api/v1/tasks/execute \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tool_name": "text2image",
-    "plugin_name": "text2image_demo",
-    "parameters": {
-      "prompt": "A beautiful sunset",
-      "width": 512,
-      "height": 512
-    }
-  }'
-```
-
-## Output
-
-Generated images are saved to the `outputs/` directory within the plugin folder.
-
-## Testing
-
-You can test the plugin directly:
-
-```bash
-cd server/plugins/text2image_demo
-python main.py
-```
-
-Then send a test request via stdin:
-
-```json
-{"jsonrpc": "2.0", "method": "execute_task", "params": {"task_id": "test123", "tool_name": "text2image", "parameters": {"prompt": "test", "width": 512, "height": 512}}, "id": 1}
-```
-
-## Creating Your Own Plugin
-
-This demo plugin serves as a template for creating your own plugins:
-
-1. Copy the plugin directory structure
-2. Update `plugin.yml` with your plugin metadata
-3. Implement the `execute_task` method in your main plugin class
-4. Use `progress_callback` to report progress
-5. Return results in the standard format
-
-See the base plugin class in `server/plugins/base_plugin.py` for more details.
-
+- [DashScope API Documentation](https://help.aliyun.com/zh/model-studio/)
+- [API Key Management](https://help.aliyun.com/zh/model-studio/developer-reference/api-key-management)
+- [Model Documentation](https://help.aliyun.com/zh/model-studio/getting-started/models)
