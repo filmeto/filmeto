@@ -6,9 +6,15 @@ Supports both web-based access and local in-app calls with streaming.
 """
 
 from __future__ import annotations
-from typing import AsyncIterator, Union, Optional
+from typing import AsyncIterator, List, Union, Optional
 
 from server.api.types import FilmetoTask, TaskProgress, TaskResult, ValidationError
+from server.api.chat_types import (
+    ChatCompletionRequest,
+    ChatCompletionResponse,
+    ChatCompletionChunk,
+    ModelInfo,
+)
 
 
 class FilmetoApi:
@@ -28,9 +34,11 @@ class FilmetoApi:
             cache_dir: Directory for resource caching
             workspace_path: Path to workspace directory
         """
-        # Import here to avoid circular import
         from server.service.filmeto_service import FilmetoService
+        from server.service.chat_service import ChatService
+
         self.service = FilmetoService(plugins_dir, cache_dir, workspace_path)
+        self.chat_service = ChatService(self.service.server_manager)
     
     async def execute_task_stream(
         self, 
@@ -224,17 +232,52 @@ class FilmetoApi:
             for p in plugin_infos
         ]
     
+    # ------------------------------------------------------------------
+    # Chat Completion API (OpenAI-compatible)
+    # ------------------------------------------------------------------
+
+    async def chat_completion(
+        self, request: ChatCompletionRequest
+    ) -> ChatCompletionResponse:
+        """
+        Execute a non-streaming chat completion.
+
+        Args:
+            request: OpenAI-compatible chat completion request
+
+        Returns:
+            ChatCompletionResponse
+        """
+        return await self.chat_service.chat_completion(request)
+
+    async def chat_completion_stream(
+        self, request: ChatCompletionRequest
+    ) -> AsyncIterator[ChatCompletionChunk]:
+        """
+        Execute a streaming chat completion.
+
+        Args:
+            request: OpenAI-compatible chat completion request
+
+        Yields:
+            ChatCompletionChunk for each token/fragment
+        """
+        async for chunk in self.chat_service.chat_completion_stream(request):
+            yield chunk
+
+    def list_chat_models(self) -> List[ModelInfo]:
+        """
+        List all models advertised by chat-capable servers.
+
+        Returns:
+            List of ModelInfo
+        """
+        return self.chat_service.list_models()
+
     async def cleanup(self):
         """
         Cleanup resources and stop all plugins.
         
         Should be called when shutting down the API.
-        
-        Example:
-            ```python
-            api = FilmetoApi()
-            # ... use api ...
-            await api.cleanup()
-            ```
         """
         await self.service.cleanup()

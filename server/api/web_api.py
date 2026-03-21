@@ -18,6 +18,11 @@ from server.api.types import (
     FilmetoTask, TaskProgress, TaskResult, ToolType, ResourceInput,
     ValidationError, PluginNotFoundError, PluginExecutionError, TimeoutError as TaskTimeoutError
 )
+from server.api.chat_types import (
+    ChatCompletionRequest,
+    ChatCompletionResponse,
+    ModelListResponse,
+)
 
 
 # Pydantic models for API
@@ -339,6 +344,76 @@ async def get_task_status(task_id: str):
         return status
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# OpenAI-compatible Chat Completion endpoints
+# ---------------------------------------------------------------------------
+
+@app.post("/v1/chat/completions")
+async def chat_completions(request: ChatCompletionRequest):
+    """
+    OpenAI-compatible chat completions endpoint.
+
+    Supports both streaming (``stream: true``) and non-streaming modes.
+    Requests are routed to the appropriate LLM backend based on the model
+    name and server configuration.
+
+    Server resolution order:
+      1. Explicit ``server`` field in the request
+      2. Server whose ``models`` list contains the requested model
+      3. First chat-capable server (fallback)
+    """
+    try:
+        if request.stream:
+            async def stream_generator():
+                try:
+                    async for chunk in filmeto_api.chat_completion_stream(request):
+                        yield f"data: {chunk.model_dump_json()}\n\n"
+                    yield "data: [DONE]\n\n"
+                except ValueError as e:
+                    error_data = json.dumps({
+                        "error": {"message": str(e), "type": "invalid_request_error"}
+                    })
+                    yield f"data: {error_data}\n\n"
+                except Exception as e:
+                    error_data = json.dumps({
+                        "error": {"message": str(e), "type": "server_error"}
+                    })
+                    yield f"data: {error_data}\n\n"
+
+            return StreamingResponse(
+                stream_generator(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            )
+        else:
+            response = await filmeto_api.chat_completion(request)
+            return response.model_dump()
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/v1/models", response_model=ModelListResponse)
+async def list_chat_models():
+    """
+    OpenAI-compatible model listing endpoint.
+
+    Returns all models advertised by chat-capable servers
+    (server_type: openai / chat / llm).
+    """
+    try:
+        models = filmeto_api.list_chat_models()
+        return ModelListResponse(data=models)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
