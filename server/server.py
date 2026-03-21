@@ -368,18 +368,20 @@ class ServerManager:
     servers based on routing rules.
     """
     _instance = None
-    _initialized = False  # Flag to track if the instance has been initialized
+    _initialized = False
     _workspace_path = None
-    _defer_plugin_discovery = False  # Temporary storage for defer flag
+    _defer_plugin_discovery = False
+    _lock = threading.Lock()
 
     def __new__(cls, workspace_path: str, plugin_manager: Optional[PluginManager] = None, defer_plugin_discovery: bool = False):
         """
-        Create or return the singleton instance of ServerManager.
+        Create or return the singleton instance of ServerManager (thread-safe).
         """
-        # Store defer flag as class variable for __init__ to use
         cls._defer_plugin_discovery = defer_plugin_discovery
         if cls._instance is None:
-            cls._instance = super(ServerManager, cls).__new__(cls)
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super(ServerManager, cls).__new__(cls)
         return cls._instance
 
     def __init__(
