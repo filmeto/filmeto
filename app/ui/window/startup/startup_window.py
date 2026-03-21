@@ -23,15 +23,15 @@ logger = logging.getLogger(__name__)
 class StartupWindow(LeftPanelDialog):
     """
     Independent window for startup/home mode.
-    
+
     This window displays the project list and project info,
     allowing users to browse and manage projects.
     """
-    
+
     enter_edit_mode = Signal(str)  # Emits project name when entering edit mode
-    
+
     def __init__(self, workspace: Workspace):
-        super(StartupWindow, self).__init__(parent=None, left_panel_width=250)
+        super(StartupWindow, self).__init__(parent=None, left_panel_width=250, workspace=workspace)
         self.workspace = workspace
         
         # Store pending prompt to be set in agent panel after entering edit mode
@@ -178,6 +178,9 @@ class StartupWindow(LeftPanelDialog):
 
         # Settings button click
         self.settings_clicked.connect(self._on_settings_clicked)
+
+        # Server status button click
+        self.server_status_clicked.connect(self._on_server_status_clicked)
     
     def _apply_styles(self):
         """Apply styles to the widget."""
@@ -232,6 +235,17 @@ class StartupWindow(LeftPanelDialog):
 
         # Show dialog
         settings_dialog.exec()
+
+    def _on_server_status_clicked(self):
+        """Handle server status button click."""
+        from app.ui.server_status import ServerListDialog
+
+        # Create and show server management dialog
+        server_dialog = ServerListDialog(self.workspace, self)
+        # Connect to refresh server status widget when servers are modified
+        if self.server_status_widget:
+            server_dialog.servers_modified.connect(self.server_status_widget.force_refresh)
+        server_dialog.exec()
     
     def refresh_projects(self):
         """Refresh the project list."""

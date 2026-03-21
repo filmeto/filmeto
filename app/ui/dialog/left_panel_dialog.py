@@ -10,11 +10,16 @@ class LeftPanelDialog(QDialog):
 
     # 设置按钮点击信号
     settings_clicked = Signal()
+    # 服务器状态按钮点击信号
+    server_status_clicked = Signal()
 
-    def __init__(self, parent=None, left_panel_width=200, show_right_title_bar=True):
+    def __init__(self, parent=None, left_panel_width=200, show_right_title_bar=True, workspace=None):
         super().__init__(parent)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
         self.setAttribute(Qt.WA_TranslucentBackground)
+
+        # Store workspace for server status widget
+        self._workspace = workspace
 
         # 应用全局对话框样式
         self.setStyleSheet(DIALOG_STYLE)
@@ -81,6 +86,14 @@ class LeftPanelDialog(QDialog):
             title_bar_layout.addWidget(self.right_title_label)
             title_bar_layout.addStretch()
 
+            # Server status button (if workspace is provided)
+            self.server_status_widget = None
+            if self._workspace:
+                from app.ui.server_status import ServerStatusWidget
+                self.server_status_widget = ServerStatusWidget(self._workspace)
+                self.server_status_widget.show_status_dialog.connect(self._on_server_status_clicked)
+                title_bar_layout.addWidget(self.server_status_widget.status_button)
+
             # 设置按钮
             self.settings_button = QPushButton("\ue60f")  # settings icon
             self.settings_button.setObjectName("LeftPanelDialogSettingsButton")
@@ -94,6 +107,7 @@ class LeftPanelDialog(QDialog):
             self.right_title_bar = None
             self.right_title_label = None
             self.settings_button = None
+            self.server_status_widget = None
 
         # 右边工作区内容容器
         self.right_work_container = QWidget()
@@ -114,6 +128,10 @@ class LeftPanelDialog(QDialog):
     def _on_settings_clicked(self):
         """设置按钮点击处理"""
         self.settings_clicked.emit()
+
+    def _on_server_status_clicked(self):
+        """服务器状态按钮点击处理"""
+        self.server_status_clicked.emit()
     
     def mousePressEvent(self, event: QMouseEvent):
         """处理鼠标按下事件，用于窗口拖拽"""

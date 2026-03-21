@@ -51,6 +51,9 @@ class ProjectStartupWidget(BaseWidget):
         from PySide6.QtWidgets import QSplitter, QFrame
         from PySide6.QtCore import Qt
 
+        # Track if member double-click signal is connected
+        self._member_double_clicked_connected = False
+
         # Main layout
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -147,11 +150,17 @@ class ProjectStartupWidget(BaseWidget):
             members_panel = self.right_panel_switcher.get_panel('members')
             if members_panel and hasattr(members_panel, 'agent_chat_members_component'):
                 comp = members_panel.agent_chat_members_component
-                try:
-                    comp.member_double_clicked.disconnect(self._on_member_double_clicked)
-                except RuntimeError:
-                    pass
+                # Only disconnect if we previously connected
+                if self._member_double_clicked_connected:
+                    try:
+                        comp.member_double_clicked.disconnect(self._on_member_double_clicked)
+                    except RuntimeError:
+                        pass  # Signal may have been disconnected elsewhere
+                    self._member_double_clicked_connected = False
+
+                # Connect the signal
                 comp.member_double_clicked.connect(self._on_member_double_clicked)
+                self._member_double_clicked_connected = True
 
     def _on_member_double_clicked(self, crew_member):
         """Handle double-click on a crew member to open private chat."""

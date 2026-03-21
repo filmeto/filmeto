@@ -56,15 +56,6 @@ class StartupWindowRightSideBar(BaseWidget):
         self.layout.addWidget(self.plan_button, alignment=Qt.AlignCenter)
         self.button_map['plan'] = self.plan_button
 
-        # Server List button
-        self.server_list_button = QPushButton("\ue66e", self)  # Server icon
-        self.server_list_button.setFixedSize(30, 30)
-        self.server_list_button.setCheckable(True)
-        self.server_list_button.setToolTip("Servers")
-        self.server_list_button.clicked.connect(lambda: self._on_button_clicked('server_list'))
-        self.layout.addWidget(self.server_list_button, alignment=Qt.AlignCenter)
-        self.button_map['server_list'] = self.server_list_button
-
         self.layout.addStretch(0)
 
         # Track current selected button

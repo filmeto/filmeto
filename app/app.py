@@ -344,28 +344,43 @@ class App():
             import gc
             # qasync._QThreadWorker has a different wait() signature than QThread
             from qasync import _QThreadWorker
+
+            running_threads = []
             for obj in gc.get_objects():
-                if isinstance(obj, QThread) and obj.isRunning():
-                    logger.warning(f"Found running QThread {obj}, attempting to stop it...")
+                try:
+                    # Use type() check first to avoid triggering __class__ on proxy objects
+                    obj_type = type(obj)
+                    if obj_type is QThread or issubclass(obj_type, QThread):
+                        if obj.isRunning():
+                            running_threads.append(obj)
+                except (TypeError, AttributeError):
+                    # Skip objects that don't support type checking or isRunning
+                    continue
+                except Exception:
+                    # Skip any other errors during type checking
+                    continue
+
+            for obj in running_threads:
+                logger.warning(f"Found running QThread {obj}, attempting to stop it...")
+                try:
+                    obj.quit()
+                    # _QThreadWorker.wait() takes no arguments, QThread.wait() accepts timeout
+                    if isinstance(obj, _QThreadWorker):
+                        obj.wait()  # No timeout argument for _QThreadWorker
+                    else:
+                        obj.wait(5000)  # Wait up to 5 seconds for standard QThread
+                except Exception as e:
+                    logger.error(f"Error stopping QThread {obj}: {e}")
                     try:
-                        obj.quit()
-                        # _QThreadWorker.wait() takes no arguments, QThread.wait() accepts timeout
-                        if isinstance(obj, _QThreadWorker):
-                            obj.wait()  # No timeout argument for _QThreadWorker
-                        else:
-                            obj.wait(5000)  # Wait up to 5 seconds for standard QThread
-                    except Exception as e:
-                        logger.error(f"Error stopping QThread {obj}: {e}")
-                        try:
-                            # Fallback: try to terminate if quit didn't work
-                            if obj.isRunning():
-                                obj.terminate()
-                                if isinstance(obj, _QThreadWorker):
-                                    obj.wait()  # No timeout argument for _QThreadWorker
-                                else:
-                                    obj.wait(1000)  # Wait 1 more second after terminate
-                        except Exception as term_e:
-                            logger.error(f"Error terminating QThread {obj}: {term_e}")
+                        # Fallback: try to terminate if quit didn't work
+                        if obj.isRunning():
+                            obj.terminate()
+                            if isinstance(obj, _QThreadWorker):
+                                obj.wait()  # No timeout argument for _QThreadWorker
+                            else:
+                                obj.wait(1000)  # Wait 1 more second after terminate
+                    except Exception as term_e:
+                        logger.error(f"Error terminating QThread {obj}: {term_e}")
         except Exception as e:
             logger.error(f"Error during QThread cleanup: {e}")
             logger.error("Full stack trace:", exc_info=True)
