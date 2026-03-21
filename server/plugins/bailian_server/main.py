@@ -22,12 +22,9 @@ from typing import Dict, Any, Callable, List, Optional
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from server.plugins.base_plugin import BaseServerPlugin, ToolConfig
+from server.plugins.bailian_server.models_config import models_config, CODING_PLAN_PREFIX
 
 logger = logging.getLogger(__name__)
-
-# Default DashScope endpoints
-DASHSCOPE_CHAT_ENDPOINT = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-DASHSCOPE_IMAGE_ENDPOINT = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis"
 
 # Try to import SDKs
 try:
@@ -151,6 +148,10 @@ class BailianServerPlugin(BaseServerPlugin):
         default_model = server_config.get("default_model", "qwen-max")
         default_image_model = server_config.get("default_image_model", "wanx2.1-t2i-turbo")
 
+        # Coding Plan settings
+        coding_plan_enabled = server_config.get("coding_plan_enabled", False)
+        coding_plan_api_key = server_config.get("coding_plan_api_key", "")
+
         try:
             if tool_name == "text2image":
                 return await self._execute_text2image(
@@ -163,7 +164,8 @@ class BailianServerPlugin(BaseServerPlugin):
                 )
             elif tool_name == "chat_completion":
                 return await self._execute_chat_completion(
-                    task_id, api_key, parameters, default_model, progress_callback
+                    task_id, api_key, parameters, default_model,
+                    coding_plan_enabled, coding_plan_api_key, progress_callback
                 )
             else:
                 return {
@@ -371,7 +373,8 @@ class BailianServerPlugin(BaseServerPlugin):
             raise Exception("Image-to-image requires dashscope SDK. Install with: pip install dashscope")
 
     async def _execute_chat_completion(
-        self, task_id, api_key, parameters, default_model, progress_callback
+        self, task_id, api_key, parameters, default_model,
+        coding_plan_enabled, coding_plan_api_key, progress_callback
     ):
         """Execute chat completion via DashScope OpenAI-compatible API."""
         if not LITELLM_AVAILABLE:
@@ -386,10 +389,38 @@ class BailianServerPlugin(BaseServerPlugin):
         if not messages:
             raise ValueError("messages parameter is required")
 
-        progress_callback(10, f"Calling DashScope LLM ({model})...", {})
+        # Determine if this is a Coding Plan model (check with prefix)
+        is_coding_plan_model = models_config.is_coding_plan_model(model)
 
-        # Use dashscope provider with litellm
-        litellm_model = f"dashscope/{model}" if not model.startswith("dashscope/") else model
+        # Strip prefix for actual API call
+        actual_model = models_config.strip_coding_plan_prefix(model)
+
+        if is_coding_plan_model:
+            # Check if Coding Plan is enabled and configured
+            if not coding_plan_enabled or not coding_plan_api_key:
+                return {
+                    "task_id": task_id,
+                    "status": "error",
+                    "error_message": f"Model '{actual_model}' requires Coding Plan to be enabled. "
+                                      f"Please enable Coding Plan and configure the API Key.",
+                    "output_files": []
+                }
+            # Use Coding Plan endpoint and API key
+            endpoint = models_config.get_coding_plan_endpoint()
+            use_api_key = coding_plan_api_key
+            progress_callback(10, f"Calling Coding Plan ({actual_model})...", {})
+        else:
+            # Use standard DashScope endpoint and API key
+            endpoint = models_config.get_dashscope_chat_endpoint()
+            use_api_key = api_key
+            progress_callback(10, f"Calling DashScope LLM ({actual_model})...", {})
+
+        # For Coding Plan, use openai provider with custom base_url
+        if is_coding_plan_model:
+            litellm_model = f"openai/{actual_model}"
+        else:
+            # Use dashscope provider with litellm
+            litellm_model = f"dashscope/{actual_model}" if not actual_model.startswith("dashscope/") else actual_model
 
         params = {
             "model": litellm_model,
@@ -397,8 +428,8 @@ class BailianServerPlugin(BaseServerPlugin):
             "temperature": temperature,
             "max_tokens": max_tokens,
             "stream": stream,
-            "api_key": api_key,
-            "base_url": DASHSCOPE_CHAT_ENDPOINT,
+            "api_key": use_api_key,
+            "base_url": endpoint,
         }
 
         if stream:

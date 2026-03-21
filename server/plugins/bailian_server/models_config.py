@@ -1,0 +1,218 @@
+"""
+Bailian Models Configuration Loader
+
+Loads model definitions from models.yml and provides utilities for model management.
+"""
+
+import yaml
+from pathlib import Path
+from typing import Dict, List, Any, Optional
+
+
+# Coding Plan model prefix for UI display
+CODING_PLAN_PREFIX = "code_plan:"
+
+
+class ModelsConfig:
+    """Manages Bailian model configuration loaded from models.yml."""
+
+    _instance = None
+    _config = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._load_config()
+        return cls._instance
+
+    def _load_config(self):
+        """Load configuration from models.yml."""
+        config_path = Path(__file__).parent / "models.yml"
+        if config_path.exists():
+            with open(config_path, "r", encoding="utf-8") as f:
+                self._config = yaml.safe_load(f)
+        else:
+            # Fallback to defaults if file not found
+            self._config = self._get_defaults()
+
+    def _get_defaults(self) -> Dict[str, Any]:
+        """Return default configuration if models.yml is not available."""
+        return {
+            "dashscope_models": [
+                {"name": "qwen-max", "description": "Most capable model", "supports_vision": False},
+                {"name": "qwen-plus", "description": "Balanced model", "supports_vision": False},
+                {"name": "qwen-turbo", "description": "Fast model", "supports_vision": False},
+                {"name": "qwen-long", "description": "Long context", "supports_vision": False},
+                {"name": "qwen2.5-72b-instruct", "description": "Qwen 2.5 72B", "supports_vision": False},
+                {"name": "qwen2.5-32b-instruct", "description": "Qwen 2.5 32B", "supports_vision": False},
+                {"name": "qwen-vl-max", "description": "Vision model", "supports_vision": True},
+                {"name": "qwen-vl-plus", "description": "Vision model", "supports_vision": True},
+            ],
+            "coding_plan_models": [
+                {"name": "qwen3.5-plus", "description": "Coding model with vision", "supports_vision": True},
+                {"name": "kimi-k2.5", "description": "Kimi with vision", "supports_vision": True},
+                {"name": "glm-5", "description": "GLM-5", "supports_vision": False},
+                {"name": "MiniMax-M2.5", "description": "MiniMax", "supports_vision": False},
+            ],
+            "image_models": {
+                "text_to_image": [
+                    {"name": "wanx2.1-t2i-turbo", "description": "Fast T2I", "default": True},
+                    {"name": "wanx2.1-t2i-plus", "description": "Quality T2I", "default": False},
+                ],
+                "image_to_image": [
+                    {"name": "wanx2.1-i2i-turbo", "description": "Fast I2I", "default": True},
+                ],
+            },
+            "endpoints": {
+                "dashscope_chat": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                "dashscope_image": "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
+                "coding_plan": "https://coding.dashscope.aliyuncs.com/v1",
+            },
+        }
+
+    def reload(self):
+        """Reload configuration from file."""
+        self._load_config()
+
+    # ============================================================
+    # DashScope Models
+    # ============================================================
+
+    def get_dashscope_models(self) -> List[str]:
+        """Get list of DashScope model names."""
+        models = self._config.get("dashscope_models", [])
+        return [m["name"] for m in models]
+
+    def get_dashscope_model_info(self, model_name: str) -> Optional[Dict[str, Any]]:
+        """Get detailed info for a DashScope model."""
+        models = self._config.get("dashscope_models", [])
+        for m in models:
+            if m["name"] == model_name:
+                return m
+        return None
+
+    # ============================================================
+    # Coding Plan Models
+    # ============================================================
+
+    def get_coding_plan_models(self, with_prefix: bool = False) -> List[str]:
+        """
+        Get list of Coding Plan model names.
+
+        Args:
+            with_prefix: If True, return names with 'code_plan:' prefix for UI display
+        """
+        models = self._config.get("coding_plan_models", [])
+        names = [m["name"] for m in models]
+        if with_prefix:
+            names = [f"{CODING_PLAN_PREFIX}{name}" for name in names]
+        return names
+
+    def get_coding_plan_model_info(self, model_name: str) -> Optional[Dict[str, Any]]:
+        """Get detailed info for a Coding Plan model (strip prefix if present)."""
+        # Strip prefix if present
+        if model_name.startswith(CODING_PLAN_PREFIX):
+            model_name = model_name[len(CODING_PLAN_PREFIX):]
+
+        models = self._config.get("coding_plan_models", [])
+        for m in models:
+            if m["name"] == model_name:
+                return m
+        return None
+
+    def is_coding_plan_model(self, model_name: str) -> bool:
+        """Check if a model name (with or without prefix) is a Coding Plan model."""
+        # Strip prefix if present
+        if model_name.startswith(CODING_PLAN_PREFIX):
+            model_name = model_name[len(CODING_PLAN_PREFIX):]
+
+        models = self.get_coding_plan_models(with_prefix=False)
+        return model_name in models
+
+    def strip_coding_plan_prefix(self, model_name: str) -> str:
+        """Remove the Coding Plan prefix from a model name if present."""
+        if model_name.startswith(CODING_PLAN_PREFIX):
+            return model_name[len(CODING_PLAN_PREFIX):]
+        return model_name
+
+    def add_coding_plan_prefix(self, model_name: str) -> str:
+        """Add the Coding Plan prefix to a model name."""
+        if not model_name.startswith(CODING_PLAN_PREFIX):
+            return f"{CODING_PLAN_PREFIX}{model_name}"
+        return model_name
+
+    # ============================================================
+    # Image Models
+    # ============================================================
+
+    def get_text_to_image_models(self) -> List[str]:
+        """Get list of text-to-image model names."""
+        models = self._config.get("image_models", {}).get("text_to_image", [])
+        return [m["name"] for m in models]
+
+    def get_default_text_to_image_model(self) -> str:
+        """Get the default text-to-image model name."""
+        models = self._config.get("image_models", {}).get("text_to_image", [])
+        for m in models:
+            if m.get("default"):
+                return m["name"]
+        return models[0]["name"] if models else "wanx2.1-t2i-turbo"
+
+    def get_image_to_image_models(self) -> List[str]:
+        """Get list of image-to-image model names."""
+        models = self._config.get("image_models", {}).get("image_to_image", [])
+        return [m["name"] for m in models]
+
+    def get_default_image_to_image_model(self) -> str:
+        """Get the default image-to-image model name."""
+        models = self._config.get("image_models", {}).get("image_to_image", [])
+        for m in models:
+            if m.get("default"):
+                return m["name"]
+        return models[0]["name"] if models else "wanx2.1-i2i-turbo"
+
+    # ============================================================
+    # Endpoints
+    # ============================================================
+
+    def get_dashscope_chat_endpoint(self) -> str:
+        """Get DashScope chat endpoint."""
+        return self._config.get("endpoints", {}).get(
+            "dashscope_chat",
+            "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        )
+
+    def get_dashscope_image_endpoint(self) -> str:
+        """Get DashScope image endpoint."""
+        return self._config.get("endpoints", {}).get(
+            "dashscope_image",
+            "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis"
+        )
+
+    def get_coding_plan_endpoint(self) -> str:
+        """Get Coding Plan endpoint."""
+        return self._config.get("endpoints", {}).get(
+            "coding_plan",
+            "https://coding.dashscope.aliyuncs.com/v1"
+        )
+
+    # ============================================================
+    # All Chat Models (for UI)
+    # ============================================================
+
+    def get_all_chat_models(self, coding_plan_enabled: bool = False) -> List[str]:
+        """
+        Get all chat model names for UI display.
+
+        Args:
+            coding_plan_enabled: If True, include Coding Plan models with prefix
+        """
+        models = self.get_dashscope_models()
+        if coding_plan_enabled:
+            coding_plan_models = self.get_coding_plan_models(with_prefix=True)
+            models.extend(coding_plan_models)
+        return models
+
+
+# Global instance
+models_config = ModelsConfig()

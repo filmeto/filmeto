@@ -14,6 +14,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 
+from server.plugins.bailian_server.models_config import models_config, CODING_PLAN_PREFIX
+
 
 _LINE_EDIT_STYLE = """
     QLineEdit {
@@ -56,6 +58,8 @@ class BailianConfigWidget(QWidget):
         self.workspace_path = workspace_path
         self.server_config = server_config or {}
         self.field_widgets: Dict[str, QWidget] = {}
+        # Store label widgets for show/hide
+        self.label_widgets: Dict[str, QLabel] = {}
 
         self._init_ui()
         self._load_config()
@@ -82,12 +86,9 @@ class BailianConfigWidget(QWidget):
         help_label.setWordWrap(True)
         container_layout.addWidget(help_label)
 
-        # API Key Settings - Only one field required
-        api_group = self._create_form_group("API Key Settings", [
-            ("api_key", "API Key *", "password", "", True,
-             "DashScope API Key (required)"),
-        ])
-        container_layout.addWidget(api_group)
+        # API Key Settings group (includes Coding Plan)
+        self.api_group = self._create_api_group()
+        container_layout.addWidget(self.api_group)
 
         # Model Settings (Optional)
         model_group = self._create_form_group("Model Settings (Optional)", [
@@ -101,6 +102,82 @@ class BailianConfigWidget(QWidget):
         container_layout.addStretch()
         scroll_area.setWidget(container)
         layout.addWidget(scroll_area)
+
+    def _create_api_group(self) -> QFrame:
+        """Create API Key settings group with dynamic Coding Plan API key field."""
+        frame = QFrame()
+        frame.setStyleSheet("""
+            QFrame {
+                background-color: #2d2d2d;
+                border: 1px solid #3a3a3a;
+                border-radius: 4px;
+                margin-bottom: 10px;
+            }
+        """)
+
+        layout = QVBoxLayout(frame)
+        label = QLabel("API Key Settings")
+        label.setFont(QFont("Arial", 11, QFont.Bold))
+        label.setStyleSheet("color: #ffffff; border: none; margin-bottom: 5px;")
+        layout.addWidget(label)
+
+        form = QFormLayout()
+        form.setSpacing(10)
+
+        # DashScope API Key
+        api_key_label = QLabel("API Key *")
+        api_key_label.setStyleSheet("color: #cccccc; border: none;")
+        api_key_widget = QLineEdit()
+        api_key_widget.setEchoMode(QLineEdit.Password)
+        api_key_widget.setText("")
+        api_key_widget.setToolTip("DashScope API Key (required)")
+        api_key_widget.setStyleSheet(_LINE_EDIT_STYLE)
+        api_key_widget.textChanged.connect(lambda: self.config_changed.emit())
+        self.field_widgets["api_key"] = api_key_widget
+        self.label_widgets["api_key"] = api_key_label
+        form.addRow(api_key_label, api_key_widget)
+
+        # Coding Plan enable checkbox
+        coding_plan_enabled_label = QLabel("Enable Coding Plan")
+        coding_plan_enabled_label.setStyleSheet("color: #cccccc; border: none;")
+        coding_plan_enabled_widget = QCheckBox()
+        coding_plan_enabled_widget.setChecked(False)
+        coding_plan_enabled_widget.setToolTip(
+            "Enable Coding Plan for AI coding assistant (requires separate subscription)"
+        )
+        coding_plan_enabled_widget.setStyleSheet(_CHECKBOX_STYLE)
+        coding_plan_enabled_widget.stateChanged.connect(self._on_coding_plan_enabled_changed)
+        self.field_widgets["coding_plan_enabled"] = coding_plan_enabled_widget
+        self.label_widgets["coding_plan_enabled"] = coding_plan_enabled_label
+        form.addRow(coding_plan_enabled_label, coding_plan_enabled_widget)
+
+        # Coding Plan API Key (hidden by default)
+        coding_plan_api_key_label = QLabel("Coding Plan API Key")
+        coding_plan_api_key_label.setStyleSheet("color: #cccccc; border: none;")
+        coding_plan_api_key_widget = QLineEdit()
+        coding_plan_api_key_widget.setEchoMode(QLineEdit.Password)
+        coding_plan_api_key_widget.setText("")
+        coding_plan_api_key_widget.setToolTip("Coding Plan API Key (format: sk-sp-xxxxx)")
+        coding_plan_api_key_widget.setStyleSheet(_LINE_EDIT_STYLE)
+        coding_plan_api_key_widget.textChanged.connect(lambda: self.config_changed.emit())
+        self.field_widgets["coding_plan_api_key"] = coding_plan_api_key_widget
+        self.label_widgets["coding_plan_api_key"] = coding_plan_api_key_label
+        form.addRow(coding_plan_api_key_label, coding_plan_api_key_widget)
+
+        # Hide Coding Plan API Key by default
+        coding_plan_api_key_label.setVisible(False)
+        coding_plan_api_key_widget.setVisible(False)
+
+        layout.addLayout(form)
+        return frame
+
+    def _on_coding_plan_enabled_changed(self, state):
+        """Handle Coding Plan enabled checkbox state change."""
+        enabled = state == Qt.Checked
+        # Show/hide Coding Plan API Key field
+        self.label_widgets["coding_plan_api_key"].setVisible(enabled)
+        self.field_widgets["coding_plan_api_key"].setVisible(enabled)
+        self.config_changed.emit()
 
     def _create_form_group(self, title: str, fields: list) -> QFrame:
         frame = QFrame()
@@ -147,6 +224,7 @@ class BailianConfigWidget(QWidget):
                 widget.textChanged.connect(lambda: self.config_changed.emit())
 
             self.field_widgets[field_name] = widget
+            self.label_widgets[field_name] = label_widget
             form.addRow(label_widget, widget)
 
         layout.addLayout(form)
@@ -165,12 +243,12 @@ class BailianConfigWidget(QWidget):
                 else:
                     widget.setText(str(val))
 
-    # Default DashScope models advertised for chat
-    _DASHSCOPE_MODELS = [
-        "qwen-max", "qwen-plus", "qwen-turbo", "qwen-long",
-        "qwen2.5-72b-instruct", "qwen2.5-32b-instruct",
-        "qwen-vl-max", "qwen-vl-plus",
-    ]
+        # Update Coding Plan API Key visibility based on loaded config
+        coding_plan_enabled = self.field_widgets.get("coding_plan_enabled")
+        if coding_plan_enabled:
+            enabled = coding_plan_enabled.isChecked()
+            self.label_widgets["coding_plan_api_key"].setVisible(enabled)
+            self.field_widgets["coding_plan_api_key"].setVisible(enabled)
 
     def get_config(self) -> Dict[str, Any]:
         result = {}
@@ -183,10 +261,18 @@ class BailianConfigWidget(QWidget):
         # Always enable chat provider
         result["provider"] = "dashscope"
         default_model = result.get("default_model", "qwen-max")
-        models = list(self._DASHSCOPE_MODELS)
+
+        # Get DashScope models from config
+        models = models_config.get_dashscope_models()
         if default_model and default_model not in models:
             models.insert(0, default_model)
         result["models"] = models
+
+        # Add Coding Plan models if enabled (with prefix for UI)
+        if result.get("coding_plan_enabled") and result.get("coding_plan_api_key"):
+            result["coding_plan_endpoint"] = models_config.get_coding_plan_endpoint()
+            # Models with prefix for UI display
+            result["coding_plan_models"] = models_config.get_coding_plan_models(with_prefix=True)
 
         return result
 

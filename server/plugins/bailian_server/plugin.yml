@@ -91,18 +91,13 @@ tools:
         description: Enable streaming response
 
 # Chat / LLM capability declaration
+# Models are loaded dynamically from models.yml
 chat:
   provider: dashscope
   default_endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1"
-  default_models:
-    - qwen-max
-    - qwen-plus
-    - qwen-turbo
-    - qwen2.5-72b-instruct
-    - qwen2.5-32b-instruct
-    - qwen-long
-    - qwen-vl-max
-    - qwen-vl-plus
+  # See models.yml for full model list
+  # DashScope models: qwen-max, qwen-plus, qwen-turbo, etc.
+  # Coding Plan models (prefix: code_plan:): qwen3.5-plus, kimi-k2.5, glm-5, MiniMax-M2.5
 
 startup:
   timeout: 30
@@ -122,6 +117,21 @@ config_schema:
       default: ""
       description: "DashScope API Key (获取方式: 阿里云控制台 -> DashScope -> API-KEY管理)"
       placeholder: "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+    - name: coding_plan_enabled
+      label: Enable Coding Plan
+      type: boolean
+      required: false
+      default: false
+      description: "Enable Coding Plan for AI coding assistant (requires separate subscription)"
+
+    - name: coding_plan_api_key
+      label: Coding Plan API Key
+      type: password
+      required: false
+      default: ""
+      description: "Coding Plan API Key (format: sk-sp-xxxxx, get from Coding Plan page)"
+      placeholder: "sk-sp-xxxxxxxx"
 
     - name: default_model
       label: Default Chat Model

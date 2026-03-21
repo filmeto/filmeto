@@ -1,0 +1,95 @@
+# Bailian Server Supported Models Configuration
+# This file defines all models supported by the Bailian server plugin.
+
+# ============================================================
+# DashScope LLM Models (Standard)
+# ============================================================
+# These models use the standard DashScope API endpoint and API key.
+# Endpoint: https://dashscope.aliyuncs.com/compatible-mode/v1
+dashscope_models:
+  - name: qwen-max
+    description: Most capable model for complex tasks
+    supports_vision: false
+
+  - name: qwen-plus
+    description: Balance of speed and quality
+    supports_vision: false
+
+  - name: qwen-turbo
+    description: Fast and efficient model
+    supports_vision: false
+
+  - name: qwen-long
+    description: Long context support (up to 10K tokens)
+    supports_vision: false
+
+  - name: qwen2.5-72b-instruct
+    description: Latest Qwen 2.5 generation (72B parameters)
+    supports_vision: false
+
+  - name: qwen2.5-32b-instruct
+    description: Latest Qwen 2.5 generation (32B parameters)
+    supports_vision: false
+
+  - name: qwen-vl-max
+    description: Vision-language model (most capable)
+    supports_vision: true
+
+  - name: qwen-vl-plus
+    description: Vision-language model (balanced)
+    supports_vision: true
+
+# ============================================================
+# Coding Plan Models
+# ============================================================
+# These models require Coding Plan subscription.
+# They use the Coding Plan endpoint and API key.
+# Endpoint: https://coding.dashscope.aliyuncs.com/v1
+# API Key format: sk-sp-xxxxx
+#
+# Note: In the UI, these models are prefixed with "code_plan:"
+# to distinguish them from standard models. The prefix is stripped
+# before making API calls.
+coding_plan_models:
+  - name: qwen3.5-plus
+    description: Advanced coding model with image understanding
+    supports_vision: true
+
+  - name: kimi-k2.5
+    description: Kimi model with image understanding
+    supports_vision: true
+
+  - name: glm-5
+    description: GLM-5 general language model
+    supports_vision: false
+
+  - name: MiniMax-M2.5
+    description: MiniMax M2.5 model
+    supports_vision: false
+
+# ============================================================
+# Image Generation Models (Wanx)
+# ============================================================
+# These models use the DashScope image synthesis API.
+image_models:
+  text_to_image:
+    - name: wanx2.1-t2i-turbo
+      description: Fast text-to-image generation
+      default: true
+
+    - name: wanx2.1-t2i-plus
+      description: High quality text-to-image generation
+      default: false
+
+  image_to_image:
+    - name: wanx2.1-i2i-turbo
+      description: Fast image-to-image transformation
+      default: true
+
+# ============================================================
+# API Endpoints
+# ============================================================
+endpoints:
+  dashscope_chat: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  dashscope_image: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis"
+  coding_plan: "https://coding.dashscope.aliyuncs.com/v1"
