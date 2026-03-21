@@ -125,12 +125,12 @@ class BailianConfigWidget(QWidget):
         form.setSpacing(10)
 
         # DashScope API Key
-        api_key_label = QLabel("API Key *")
+        api_key_label = QLabel("API Key")
         api_key_label.setStyleSheet("color: #cccccc; border: none;")
         api_key_widget = QLineEdit()
         api_key_widget.setEchoMode(QLineEdit.Password)
         api_key_widget.setText("")
-        api_key_widget.setToolTip("DashScope API Key (required)")
+        api_key_widget.setToolTip("DashScope API Key (optional, required for standard models)")
         api_key_widget.setStyleSheet(_LINE_EDIT_STYLE)
         api_key_widget.textChanged.connect(lambda: self.config_changed.emit())
         self.field_widgets["api_key"] = api_key_widget
@@ -178,7 +178,13 @@ class BailianConfigWidget(QWidget):
         self.label_widgets["coding_plan_api_key"].setVisible(enabled)
         self.field_widgets["coding_plan_api_key"].setVisible(enabled)
         # Force layout update to adjust frame height
+        self.api_group.updateGeometry()
         self.api_group.adjustSize()
+        # Update parent layouts
+        parent = self.api_group.parent()
+        if parent:
+            parent.updateGeometry()
+            parent.adjustSize()
         self.config_changed.emit()
 
     def _create_form_group(self, title: str, fields: list) -> QFrame:
@@ -253,7 +259,12 @@ class BailianConfigWidget(QWidget):
             self.field_widgets["coding_plan_api_key"].setVisible(enabled)
             # Adjust frame height if Coding Plan is enabled
             if enabled:
+                self.api_group.updateGeometry()
                 self.api_group.adjustSize()
+                parent = self.api_group.parent()
+                if parent:
+                    parent.updateGeometry()
+                    parent.adjustSize()
 
     def get_config(self) -> Dict[str, Any]:
         result = {}
@@ -283,12 +294,14 @@ class BailianConfigWidget(QWidget):
 
     def validate_config(self) -> bool:
         config = self.get_config()
-        if not config.get("api_key"):
+        # API Key is optional - only validate if user wants to use standard models
+        # Coding Plan API Key is required only if Coding Plan is enabled
+        if config.get("coding_plan_enabled") and not config.get("coding_plan_api_key"):
             QMessageBox.warning(
                 self, "Validation Error",
-                "API Key is required.\n\n"
-                "Get your API Key from:\n"
-                "阿里云控制台 → DashScope → API-KEY管理"
+                "Coding Plan API Key is required when Coding Plan is enabled.\n\n"
+                "Get your Coding Plan API Key from:\n"
+                "阿里云控制台 → Coding Plan → API-KEY管理"
             )
             return False
         return True
