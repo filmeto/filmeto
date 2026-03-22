@@ -22,6 +22,7 @@ class Capability(str, Enum):
     SPEAK2VIDEO = "speak2video"    # Speech to video (avatar)
     TEXT2SPEAK = "text2speak"      # Text to speech synthesis
     TEXT2MUSIC = "text2music"      # Text to music generation
+    CHAT_COMPLETION = "chat_completion"  # LLM chat completion
 
 
 class ResourceType(str, Enum):
@@ -459,6 +460,187 @@ class TimeoutError(TaskError):
 # --- Capability Discovery Types ---------------------------------------------
 
 @dataclass
+class ModelPricing:
+    """
+    Pricing information for a model.
+
+    Supports different pricing models:
+    - Per-call: Fixed cost per API call
+    - Per-token: Cost per input/output token (for LLMs)
+    - Per-second: Cost per second of processing (for video/audio)
+    - Per-image: Cost per image generated
+
+    All prices are in USD.
+    """
+    # Per-call pricing
+    per_call: Optional[float] = None  # Fixed cost per call
+
+    # Token-based pricing (for LLMs)
+    per_input_token: Optional[float] = None  # Cost per 1K input tokens
+    per_output_token: Optional[float] = None  # Cost per 1K output tokens
+
+    # Duration-based pricing (for video/audio)
+    per_second: Optional[float] = None  # Cost per second of output
+
+    # Image-based pricing
+    per_image: Optional[float] = None  # Cost per image generated
+
+    # Custom unit pricing
+    custom_unit: Optional[str] = None  # Unit name (e.g., "per_1k_characters")
+    custom_rate: Optional[float] = None  # Rate per custom unit
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary"""
+        result = {}
+        if self.per_call is not None:
+            result["per_call"] = self.per_call
+        if self.per_input_token is not None:
+            result["per_input_token"] = self.per_input_token
+        if self.per_output_token is not None:
+            result["per_output_token"] = self.per_output_token
+        if self.per_second is not None:
+            result["per_second"] = self.per_second
+        if self.per_image is not None:
+            result["per_image"] = self.per_image
+        if self.custom_unit is not None:
+            result["custom_unit"] = self.custom_unit
+        if self.custom_rate is not None:
+            result["custom_rate"] = self.custom_rate
+        return result
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ModelPricing':
+        """Create from dictionary"""
+        return cls(
+            per_call=data.get("per_call"),
+            per_input_token=data.get("per_input_token"),
+            per_output_token=data.get("per_output_token"),
+            per_second=data.get("per_second"),
+            per_image=data.get("per_image"),
+            custom_unit=data.get("custom_unit"),
+            custom_rate=data.get("custom_rate"),
+        )
+
+    def estimate_cost(self, **kwargs) -> Optional[float]:
+        """
+        Estimate cost for a given usage.
+
+        Args:
+            **kwargs: Usage parameters based on pricing type
+                - num_calls: Number of API calls
+                - input_tokens: Number of input tokens
+                - output_tokens: Number of output tokens
+                - seconds: Duration in seconds
+                - num_images: Number of images
+
+        Returns:
+            Estimated cost in USD, or None if cannot estimate
+        """
+        total = 0.0
+
+        if self.per_call is not None and "num_calls" in kwargs:
+            total += self.per_call * kwargs["num_calls"]
+
+        if self.per_input_token is not None and "input_tokens" in kwargs:
+            total += self.per_input_token * (kwargs["input_tokens"] / 1000)
+
+        if self.per_output_token is not None and "output_tokens" in kwargs:
+            total += self.per_output_token * (kwargs["output_tokens"] / 1000)
+
+        if self.per_second is not None and "seconds" in kwargs:
+            total += self.per_second * kwargs["seconds"]
+
+        if self.per_image is not None and "num_images" in kwargs:
+            total += self.per_image * kwargs["num_images"]
+
+        return total if total > 0 else None
+
+
+@dataclass
+class ModelInfo:
+    """
+    Information about a specific model.
+
+    Models are the specific implementations within a capability.
+    Each server/plugin can support multiple models for a capability.
+
+    Attributes:
+        name: Model identifier (e.g., "wanx2.1-t2i-turbo", "qwen-max")
+        display_name: Human-readable name for UI display
+        description: Short description of the model
+        detailed_description: Detailed description with features and use cases
+        capability: Which capability this model belongs to
+        provider: Provider name (e.g., "Alibaba", "OpenAI")
+        version: Model version string
+        tags: Tags for filtering (e.g., ["fast", "high-quality"])
+        specs: Technical specifications
+            - max_resolution: Maximum output resolution (for image models)
+            - max_duration: Maximum output duration in seconds (for video/audio)
+            - context_length: Maximum context length (for LLMs)
+            - supports_vision: Whether the model supports image input
+            - supports_audio: Whether the model supports audio input
+        pricing: Pricing information
+        is_default: Whether this is the default model for the capability
+        is_available: Whether this model is currently available
+        metadata: Additional metadata
+    """
+    name: str
+    display_name: str
+    description: str
+    capability: 'Capability'
+    provider: str = ""
+    version: str = ""
+    detailed_description: str = ""
+    tags: List[str] = field(default_factory=list)
+    specs: Dict[str, Any] = field(default_factory=dict)
+    pricing: Optional[ModelPricing] = None
+    is_default: bool = False
+    is_available: bool = True
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for API response"""
+        return {
+            "name": self.name,
+            "display_name": self.display_name,
+            "description": self.description,
+            "capability": self.capability.value,
+            "provider": self.provider,
+            "version": self.version,
+            "detailed_description": self.detailed_description,
+            "tags": self.tags,
+            "specs": self.specs,
+            "pricing": self.pricing.to_dict() if self.pricing else None,
+            "is_default": self.is_default,
+            "is_available": self.is_available,
+            "metadata": self.metadata,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ModelInfo':
+        """Create from dictionary"""
+        pricing = None
+        if data.get("pricing"):
+            pricing = ModelPricing.from_dict(data["pricing"])
+
+        return cls(
+            name=data["name"],
+            display_name=data.get("display_name", data["name"]),
+            description=data["description"],
+            capability=Capability(data["capability"]),
+            provider=data.get("provider", ""),
+            version=data.get("version", ""),
+            detailed_description=data.get("detailed_description", ""),
+            tags=data.get("tags", []),
+            specs=data.get("specs", {}),
+            pricing=pricing,
+            is_default=data.get("is_default", False),
+            is_available=data.get("is_available", True),
+            metadata=data.get("metadata", {}),
+        )
+
+
+@dataclass
 class CapabilityInstance:
     """
     Represents a specific capability instance (server:model combination).
@@ -476,6 +658,7 @@ class CapabilityInstance:
         detailed_description: Detailed description with features, use cases, etc.
         tags: Tags for filtering (e.g., ["fast", "high-quality", "chinese-optimized"])
         specs: Technical specifications dict
+        pricing: Pricing information (copied from model info)
         priority: Priority for recommendation (higher = more recommended)
         is_available: Whether this instance is currently available
         metadata: Additional metadata
@@ -488,6 +671,7 @@ class CapabilityInstance:
     detailed_description: str = ""
     tags: List[str] = field(default_factory=list)
     specs: Dict[str, Any] = field(default_factory=dict)
+    pricing: Optional[ModelPricing] = None
     priority: int = 0
     is_available: bool = True
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -503,6 +687,7 @@ class CapabilityInstance:
             "detailed_description": self.detailed_description,
             "tags": self.tags,
             "specs": self.specs,
+            "pricing": self.pricing.to_dict() if self.pricing else None,
             "priority": self.priority,
             "is_available": self.is_available,
             "metadata": self.metadata,
@@ -511,6 +696,10 @@ class CapabilityInstance:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'CapabilityInstance':
         """Create from dictionary"""
+        pricing = None
+        if data.get("pricing"):
+            pricing = ModelPricing.from_dict(data["pricing"])
+
         return cls(
             key=data["key"],
             server_name=data["server_name"],
@@ -520,9 +709,37 @@ class CapabilityInstance:
             detailed_description=data.get("detailed_description", ""),
             tags=data.get("tags", []),
             specs=data.get("specs", {}),
+            pricing=pricing,
             priority=data.get("priority", 0),
             is_available=data.get("is_available", True),
             metadata=data.get("metadata", {}),
+        )
+
+    @classmethod
+    def from_model_info(cls, server_name: str, model_info: ModelInfo) -> 'CapabilityInstance':
+        """
+        Create CapabilityInstance from ModelInfo.
+
+        Args:
+            server_name: Server instance name
+            model_info: Model information
+
+        Returns:
+            CapabilityInstance with key format "server_name:model_name"
+        """
+        return cls(
+            key=f"{server_name}:{model_info.name}",
+            server_name=server_name,
+            model_name=model_info.name,
+            capability_type=model_info.capability,
+            description=model_info.description,
+            detailed_description=model_info.detailed_description,
+            tags=model_info.tags,
+            specs=model_info.specs,
+            pricing=model_info.pricing,
+            priority=10 if model_info.is_default else 0,
+            is_available=model_info.is_available,
+            metadata=model_info.metadata,
         )
 
 
@@ -532,11 +749,19 @@ class CapabilityGroup:
     Group of capability instances by capability type.
 
     Used to display all available options for a specific capability.
+
+    Attributes:
+        capability_type: Capability type enum
+        capability_name: Human-readable capability name
+        description: Description of this capability type
+        instances: List of available capability instances (server:model combinations)
+        models: List of unique models available for this capability
     """
     capability_type: 'Capability'
     capability_name: str
     description: str
     instances: List[CapabilityInstance] = field(default_factory=list)
+    models: List[ModelInfo] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for API response"""
@@ -545,5 +770,7 @@ class CapabilityGroup:
             "capability_name": self.capability_name,
             "description": self.description,
             "instances": [inst.to_dict() for inst in self.instances],
+            "models": [model.to_dict() for model in self.models],
             "total_instances": len(self.instances),
+            "total_models": len(self.models),
         }

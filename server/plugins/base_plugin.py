@@ -23,10 +23,45 @@ class CapabilityConfig:
     """
     Configuration for a specific capability supported by a plugin.
     """
-    def __init__(self, name: str, description: str, parameters: List[Dict[str, Any]]):
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        parameters: List[Dict[str, Any]],
+        models: List[Dict[str, Any]] = None
+    ):
+        """
+        Initialize capability configuration.
+
+        Args:
+            name: Capability name (e.g., "text2image")
+            description: Description of this capability
+            parameters: List of parameter definitions
+            models: List of model configurations with the following structure:
+                [
+                    {
+                        "name": "model-name",
+                        "display_name": "Model Display Name",
+                        "description": "Short description",
+                        "detailed_description": "Detailed description",
+                        "tags": ["tag1", "tag2"],
+                        "specs": {"max_resolution": "2048x2048"},
+                        "pricing": {
+                            "per_call": 0.01,
+                            "per_image": 0.02,
+                            "per_input_token": 0.0001,
+                            "per_output_token": 0.0002,
+                            "per_second": 0.05
+                        },
+                        "is_default": True,
+                        "is_available": True
+                    }
+                ]
+        """
         self.name = name
         self.description = description
-        self.parameters = parameters  # List of parameter definitions
+        self.parameters = parameters
+        self.models = models or []
 
 
 class BaseServerPlugin(ABC):
@@ -88,10 +123,42 @@ class BaseServerPlugin(ABC):
         Get list of capabilities supported by this plugin with their configs.
 
         Returns:
-            List of CapabilityConfig objects
+            List of CapabilityConfig objects, each containing:
+            - name: Capability name
+            - description: Description
+            - parameters: Parameter definitions
+            - models: List of supported models with their configs
         """
         pass
-    
+
+    def get_models_for_capability(self, capability_name: str) -> List[Dict[str, Any]]:
+        """
+        Get list of models available for a specific capability.
+
+        Args:
+            capability_name: Name of the capability (e.g., "text2image")
+
+        Returns:
+            List of model configurations for the specified capability
+        """
+        for cap_config in self.get_supported_capabilities():
+            if cap_config.name == capability_name:
+                return cap_config.models
+        return []
+
+    def get_all_models(self) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Get all models organized by capability.
+
+        Returns:
+            Dictionary mapping capability names to lists of model configurations
+        """
+        result = {}
+        for cap_config in self.get_supported_capabilities():
+            if cap_config.models:
+                result[cap_config.name] = cap_config.models
+        return result
+
     def get_config_schema(self) -> Dict[str, Any]:
         """
         Get configuration schema for this plugin.
@@ -357,10 +424,13 @@ class BaseServerPlugin(ABC):
             capabilities.append({
                 "name": cap_config.name,
                 "description": cap_config.description,
-                "parameters": cap_config.parameters
+                "parameters": cap_config.parameters,
+                "models": cap_config.models
             })
 
         info["capabilities"] = capabilities
+        # Also add models summary at the top level for convenience
+        info["models"] = self.get_all_models()
         return {
             "jsonrpc": "2.0",
             "result": info,

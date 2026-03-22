@@ -21,7 +21,7 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler, FileModifiedEvent, FileCreatedEvent, FileDeletedEvent
 
 from server.api.types import FilmetoTask, TaskProgress, TaskResult, RetryPolicy
-from server.plugins.plugin_manager import PluginManager, PluginInfo
+from server.plugins.plugin_manager import PluginManager, ServerInfo
 from server.plugins.plugin_ui_loader import PluginUILoader
 
 logger = logging.getLogger(__name__)
@@ -279,7 +279,7 @@ class Server:
         self.config = config
         self.plugin_manager = plugin_manager
         self.workspace_path = workspace_path
-        self._plugin_info: Optional[PluginInfo] = None
+        self._plugin_info: Optional[ServerInfo] = None
     
     @property
     def name(self) -> str:
@@ -296,7 +296,7 @@ class Server:
         """Check if server is enabled"""
         return self.config.enabled
     
-    def get_plugin_info(self) -> Optional[PluginInfo]:
+    def get_plugin_info(self) -> Optional[ServerInfo]:
         """Get associated plugin information"""
         if self._plugin_info is None:
             self._plugin_info = self.plugin_manager.get_plugin_info(self.config.plugin_name)
@@ -985,12 +985,12 @@ class ServerManager:
         plugins = self.plugin_manager.list_plugins()
         return list(set(plugin.engine for plugin in plugins if plugin.engine))
     
-    def list_available_plugins(self) -> List['PluginInfo']:
+    def list_available_plugins(self) -> List['ServerInfo']:
         """
         List all available plugins that can be used to create servers.
 
         Returns:
-            List of PluginInfo objects
+            List of ServerInfo objects
         """
         return self.plugin_manager.list_plugins()
 

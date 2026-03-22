@@ -28,9 +28,9 @@ async def main():
     try:
         # 1. List available capabilities
         print("\n📋 Available Capabilities:")
-        capabilities = api.list_tools()
+        capabilities = api.list_capabilities()
         for cap in capabilities:
-            print(f"   • {cap['display_name']}")
+            print(f"   • {cap['description']}")
 
         # 2. List available servers
         print("\n🔌 Available Servers:")

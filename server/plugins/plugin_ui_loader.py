@@ -13,7 +13,7 @@ from typing import Optional, Dict, Any, Type
 
 from PySide6.QtWidgets import QWidget
 
-from server.plugins.plugin_manager import PluginInfo
+from server.plugins.plugin_manager import ServerInfo
 
 
 class PluginUILoader:

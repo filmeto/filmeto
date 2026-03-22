@@ -78,13 +78,233 @@ class BailianServerPlugin(BaseServerPlugin):
             return None
 
     def get_supported_capabilities(self) -> List[CapabilityConfig]:
-        """Get list of capabilities supported by this plugin"""
+        """Get list of capabilities supported by this plugin with model definitions"""
+        # Text-to-Image models with pricing
+        text2image_models = [
+            {
+                "name": "wanx2.1-t2i-turbo",
+                "display_name": "Wanx 2.1 Turbo",
+                "description": "Fast text-to-image generation, suitable for quick iterations",
+                "detailed_description": "Wanx 2.1 Turbo is optimized for speed while maintaining good quality. Best for rapid prototyping and iterative design.",
+                "tags": ["fast", "turbo", "cost-effective"],
+                "specs": {
+                    "max_resolution": "2048x2048",
+                    "supported_sizes": ["512x512", "720x1280", "1024x1024", "1280x720", "2048x2048"]
+                },
+                "pricing": {
+                    "per_image": 0.008  # ~0.5 cents per image
+                },
+                "is_default": True
+            },
+            {
+                "name": "wanx2.1-t2i-plus",
+                "display_name": "Wanx 2.1 Plus",
+                "description": "High quality text-to-image generation",
+                "detailed_description": "Wanx 2.1 Plus delivers higher quality images with more detail. Best for final production outputs.",
+                "tags": ["high-quality", "plus", "detailed"],
+                "specs": {
+                    "max_resolution": "2048x2048",
+                    "supported_sizes": ["512x512", "720x1280", "1024x1024", "1280x720", "2048x2048"]
+                },
+                "pricing": {
+                    "per_image": 0.016  # ~1.6 cents per image
+                },
+                "is_default": False
+            },
+            {
+                "name": "wanx2.6-t2i-turbo",
+                "display_name": "Wanx 2.6 Turbo",
+                "description": "Latest fast text-to-image generation model",
+                "tags": ["latest", "fast", "turbo"],
+                "specs": {
+                    "max_resolution": "2048x2048"
+                },
+                "pricing": {
+                    "per_image": 0.01
+                },
+                "is_default": False
+            },
+            {
+                "name": "wanx2.6-t2i-plus",
+                "display_name": "Wanx 2.6 Plus",
+                "description": "Latest high quality text-to-image generation model",
+                "tags": ["latest", "high-quality", "plus"],
+                "specs": {
+                    "max_resolution": "2048x2048"
+                },
+                "pricing": {
+                    "per_image": 0.02
+                },
+                "is_default": False
+            },
+        ]
+
+        # Image-to-Image models with pricing
+        image2image_models = [
+            {
+                "name": "wanx2.1-i2i-turbo",
+                "display_name": "Wanx 2.1 I2I Turbo",
+                "description": "Fast image-to-image transformation",
+                "tags": ["fast", "turbo"],
+                "specs": {
+                    "max_resolution": "2048x2048"
+                },
+                "pricing": {
+                    "per_image": 0.012
+                },
+                "is_default": True
+            },
+            {
+                "name": "wanx2.1-i2i-plus",
+                "display_name": "Wanx 2.1 I2I Plus",
+                "description": "High quality image-to-image transformation",
+                "tags": ["high-quality", "plus"],
+                "specs": {
+                    "max_resolution": "2048x2048"
+                },
+                "pricing": {
+                    "per_image": 0.02
+                },
+                "is_default": False
+            },
+        ]
+
+        # Chat completion models with pricing (LLMs)
+        chat_models = [
+            # Flagship models
+            {
+                "name": "qwen-max",
+                "display_name": "Qwen Max",
+                "description": "Most capable model for complex tasks",
+                "detailed_description": "Qwen Max is the flagship model with best overall performance for complex reasoning, analysis, and creative tasks.",
+                "tags": ["flagship", "complex-tasks", "reasoning"],
+                "specs": {
+                    "context_length": 32768,
+                    "supports_vision": False
+                },
+                "pricing": {
+                    "per_input_token": 0.002,   # $0.002 per 1K input tokens
+                    "per_output_token": 0.006   # $0.006 per 1K output tokens
+                },
+                "is_default": True
+            },
+            {
+                "name": "qwen-plus",
+                "display_name": "Qwen Plus",
+                "description": "Balanced model with good capability and speed",
+                "tags": ["balanced", "efficient"],
+                "specs": {
+                    "context_length": 131072,
+                    "supports_vision": False
+                },
+                "pricing": {
+                    "per_input_token": 0.0004,
+                    "per_output_token": 0.0012
+                },
+                "is_default": False
+            },
+            {
+                "name": "qwen-turbo",
+                "display_name": "Qwen Turbo",
+                "description": "Fast and efficient model",
+                "tags": ["fast", "efficient"],
+                "specs": {
+                    "context_length": 131072,
+                    "supports_vision": False
+                },
+                "pricing": {
+                    "per_input_token": 0.0003,
+                    "per_output_token": 0.0006
+                },
+                "is_default": False
+            },
+            {
+                "name": "qwen-flash",
+                "display_name": "Qwen Flash",
+                "description": "Ultra-fast model for simple tasks",
+                "tags": ["ultra-fast", "simple-tasks"],
+                "specs": {
+                    "context_length": 128000,
+                    "supports_vision": False
+                },
+                "pricing": {
+                    "per_input_token": 0.0001,
+                    "per_output_token": 0.0003
+                },
+                "is_default": False
+            },
+            # Vision models
+            {
+                "name": "qwen-vl-max",
+                "display_name": "Qwen VL Max",
+                "description": "Vision-language model (most capable)",
+                "tags": ["vision", "multimodal", "flagship"],
+                "specs": {
+                    "context_length": 32768,
+                    "supports_vision": True
+                },
+                "pricing": {
+                    "per_input_token": 0.002,
+                    "per_output_token": 0.006
+                },
+                "is_default": False
+            },
+            {
+                "name": "qwen-vl-plus",
+                "display_name": "Qwen VL Plus",
+                "description": "Vision-language model (balanced)",
+                "tags": ["vision", "multimodal", "balanced"],
+                "specs": {
+                    "context_length": 32768,
+                    "supports_vision": True
+                },
+                "pricing": {
+                    "per_input_token": 0.0008,
+                    "per_output_token": 0.002
+                },
+                "is_default": False
+            },
+            # Reasoning model
+            {
+                "name": "qwq-plus",
+                "display_name": "QwQ Plus",
+                "description": "Reasoning model for complex reasoning tasks",
+                "tags": ["reasoning", "complex"],
+                "specs": {
+                    "context_length": 131072,
+                    "supports_vision": False
+                },
+                "pricing": {
+                    "per_input_token": 0.001,
+                    "per_output_token": 0.003
+                },
+                "is_default": False
+            },
+            # Coder model
+            {
+                "name": "qwen-coder",
+                "display_name": "Qwen Coder",
+                "description": "Code-specialized model for programming tasks",
+                "tags": ["code", "programming", "specialized"],
+                "specs": {
+                    "context_length": 131072,
+                    "supports_vision": False
+                },
+                "pricing": {
+                    "per_input_token": 0.0005,
+                    "per_output_token": 0.001
+                },
+                "is_default": False
+            },
+        ]
+
+        # Parameter definitions
         text2image_params = [
             {"name": "prompt", "type": "string", "required": True,
              "description": "Text prompt for image generation"},
             {"name": "model", "type": "string", "required": False,
              "default": "wanx2.1-t2i-turbo",
-             "description": "Model: wanx2.1-t2i-turbo, wanx2.1-t2i-plus"},
+             "description": "Model: wanx2.1-t2i-turbo, wanx2.1-t2i-plus, wanx2.6-t2i-turbo, wanx2.6-t2i-plus"},
             {"name": "width", "type": "integer", "required": False,
              "default": 1024, "description": "Image width (512-2048)"},
             {"name": "height", "type": "integer", "required": False,
@@ -102,7 +322,7 @@ class BailianServerPlugin(BaseServerPlugin):
         chat_completion_params = [
             {"name": "model", "type": "string", "required": False,
              "default": "qwen-max",
-             "description": "Model: qwen-max, qwen-plus, qwen-turbo, qwen2.5-72b-instruct"},
+             "description": "Model: qwen-max, qwen-plus, qwen-turbo, qwen-vl-max, qwq-plus"},
             {"name": "messages", "type": "array", "required": True,
              "description": "Chat messages in OpenAI format"},
             {"name": "temperature", "type": "float", "required": False,
@@ -114,15 +334,24 @@ class BailianServerPlugin(BaseServerPlugin):
         ]
 
         return [
-            CapabilityConfig(name="text2image",
-                      description="Generate image from text using Wanx model",
-                      parameters=text2image_params),
-            CapabilityConfig(name="image2image",
-                      description="Transform image using Wanx model",
-                      parameters=image2image_params),
-            CapabilityConfig(name="chat_completion",
-                      description="LLM chat via DashScope OpenAI-compatible API",
-                      parameters=chat_completion_params),
+            CapabilityConfig(
+                name="text2image",
+                description="Generate image from text using Wanx model",
+                parameters=text2image_params,
+                models=text2image_models
+            ),
+            CapabilityConfig(
+                name="image2image",
+                description="Transform image using Wanx model",
+                parameters=image2image_params,
+                models=image2image_models
+            ),
+            CapabilityConfig(
+                name="chat_completion",
+                description="LLM chat via DashScope OpenAI-compatible API",
+                parameters=chat_completion_params,
+                models=chat_models
+            ),
         ]
 
     async def execute_task(
