@@ -335,12 +335,30 @@ class ServerConfigView(BaseWidget):
         if self.custom_config_widget:
             # Clear focus from the custom widget
             self.custom_config_widget.clearFocus()
+
+            # Disconnect config_changed signal if connected
+            if hasattr(self.custom_config_widget, 'config_changed'):
+                try:
+                    self.custom_config_widget.config_changed.disconnect(self._on_custom_config_changed)
+                except Exception as e:
+                    logger.debug(f"Error disconnecting config_changed signal: {e}")
+
             # Call cleanup if available
             if hasattr(self.custom_config_widget, 'cleanup'):
                 try:
                     self.custom_config_widget.cleanup()
                 except Exception as e:
                     logger.debug(f"Error cleaning up custom config widget: {e}")
+
+            # Hide the widget first
+            self.custom_config_widget.hide()
+
+            # Remove from layout
+            self.main_layout.removeWidget(self.custom_config_widget)
+
+            # Delete the widget
+            self.custom_config_widget.deleteLater()
+
             # Release mouse grab if any
             self.custom_config_widget.releaseMouse()
             self.custom_config_widget = None

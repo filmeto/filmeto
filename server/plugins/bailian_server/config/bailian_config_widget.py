@@ -132,7 +132,7 @@ class BailianConfigWidget(QWidget):
         api_key_widget.setText("")
         api_key_widget.setToolTip("DashScope API Key (optional, required for standard models)")
         api_key_widget.setStyleSheet(_LINE_EDIT_STYLE)
-        api_key_widget.textChanged.connect(lambda: self.config_changed.emit())
+        api_key_widget.textChanged.connect(self._on_config_changed)
         self.field_widgets["api_key"] = api_key_widget
         self.label_widgets["api_key"] = api_key_label
         form.addRow(api_key_label, api_key_widget)
@@ -159,7 +159,7 @@ class BailianConfigWidget(QWidget):
         coding_plan_api_key_widget.setText("")
         coding_plan_api_key_widget.setToolTip("Coding Plan API Key (format: sk-sp-xxxxx)")
         coding_plan_api_key_widget.setStyleSheet(_LINE_EDIT_STYLE)
-        coding_plan_api_key_widget.textChanged.connect(lambda: self.config_changed.emit())
+        coding_plan_api_key_widget.textChanged.connect(self._on_config_changed)
         self.field_widgets["coding_plan_api_key"] = coding_plan_api_key_widget
         self.label_widgets["coding_plan_api_key"] = coding_plan_api_key_label
         form.addRow(coding_plan_api_key_label, coding_plan_api_key_widget)
@@ -185,6 +185,10 @@ class BailianConfigWidget(QWidget):
         if parent:
             parent.updateGeometry()
             parent.adjustSize()
+        self.config_changed.emit()
+
+    def _on_config_changed(self):
+        """Emit config changed signal."""
         self.config_changed.emit()
 
     def _create_form_group(self, title: str, fields: list) -> QFrame:
@@ -216,20 +220,20 @@ class BailianConfigWidget(QWidget):
                 widget.setChecked(bool(default))
                 widget.setToolTip(desc)
                 widget.setStyleSheet(_CHECKBOX_STYLE)
-                widget.stateChanged.connect(lambda _: self.config_changed.emit())
+                widget.stateChanged.connect(self._on_config_changed)
             elif field_type == "password":
                 widget = QLineEdit()
                 widget.setEchoMode(QLineEdit.Password)
                 widget.setText(str(default) if default else "")
                 widget.setToolTip(desc)
                 widget.setStyleSheet(_LINE_EDIT_STYLE)
-                widget.textChanged.connect(lambda: self.config_changed.emit())
+                widget.textChanged.connect(self._on_config_changed)
             else:
                 widget = QLineEdit()
                 widget.setText(str(default) if default else "")
                 widget.setToolTip(desc)
                 widget.setStyleSheet(_LINE_EDIT_STYLE)
-                widget.textChanged.connect(lambda: self.config_changed.emit())
+                widget.textChanged.connect(self._on_config_changed)
 
             self.field_widgets[field_name] = widget
             self.label_widgets[field_name] = label_widget
@@ -308,9 +312,32 @@ class BailianConfigWidget(QWidget):
 
     def cleanup(self):
         """Clean up resources and release focus when closing."""
-        # Clear focus from all field widgets
-        for widget in self.field_widgets.values():
+        # Disconnect all signals from field widgets
+        for name, widget in self.field_widgets.items():
             if hasattr(widget, 'clearFocus'):
                 widget.clearFocus()
+            # Disconnect textChanged signals
+            if hasattr(widget, 'textChanged'):
+                try:
+                    widget.textChanged.disconnect()
+                except Exception:
+                    pass
+            # Disconnect stateChanged signals
+            if hasattr(widget, 'stateChanged'):
+                try:
+                    widget.stateChanged.disconnect()
+                except Exception:
+                    pass
+
+        # Disconnect Coding Plan checkbox
+        coding_plan_enabled = self.field_widgets.get("coding_plan_enabled")
+        if coding_plan_enabled and hasattr(coding_plan_enabled, 'stateChanged'):
+            try:
+                coding_plan_enabled.stateChanged.disconnect()
+            except Exception:
+                pass
+
         # Clear focus from the widget itself
         self.clearFocus()
+        # Hide the widget
+        self.hide()
