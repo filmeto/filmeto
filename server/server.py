@@ -212,27 +212,27 @@ class RoutingRule:
         """Check if this rule matches the given task"""
         if not self.enabled:
             return False
-        
-        # Check tool_name condition
-        if "tool_name" in self.conditions:
-            expected_tool = self.conditions["tool_name"]
-            if isinstance(expected_tool, list):
-                if task.tool_name.value not in expected_tool:
+
+        # Check capability condition
+        if "capability" in self.conditions:
+            expected_cap = self.conditions["capability"]
+            if isinstance(expected_cap, list):
+                if task.capability.value not in expected_cap:
                     return False
-            elif task.tool_name.value != expected_tool:
+            elif task.capability.value != expected_cap:
                 return False
-        
-        # Check plugin_name condition
-        if "plugin_name" in self.conditions:
-            if task.plugin_name != self.conditions["plugin_name"]:
+
+        # Check server_name condition
+        if "server_name" in self.conditions:
+            if task.server_name != self.conditions["server_name"]:
                 return False
-        
+
         # Check custom parameters
         if "parameters" in self.conditions:
             for key, value in self.conditions["parameters"].items():
                 if task.parameters.get(key) != value:
                     return False
-        
+
         return True
     
     def to_dict(self) -> Dict[str, Any]:

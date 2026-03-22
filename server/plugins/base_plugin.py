@@ -19,9 +19,9 @@ logger = logging.getLogger(__name__)
 DEFAULT_HEARTBEAT_INTERVAL = 30
 
 
-class ToolConfig:
+class CapabilityConfig:
     """
-    Configuration for a specific tool supported by a plugin.
+    Configuration for a specific capability supported by a plugin.
     """
     def __init__(self, name: str, description: str, parameters: List[Dict[str, Any]]):
         self.name = name
@@ -63,7 +63,7 @@ class BaseServerPlugin(ABC):
         Execute a task and return the result.
 
         Args:
-            task_data: Task data including tool_name, parameters, resources
+            task_data: Task data including capability, parameters, resources
             progress_callback: Callback to report progress
                                progress_callback(percent, message, data)
 
@@ -78,17 +78,17 @@ class BaseServerPlugin(ABC):
         Get plugin metadata.
 
         Returns:
-            Dictionary with name, version, description, supported_tools
+            Dictionary with name, version, description, capabilities
         """
         pass
 
     @abstractmethod
-    def get_supported_tools(self) -> List[ToolConfig]:
+    def get_supported_capabilities(self) -> List[CapabilityConfig]:
         """
-        Get list of tools supported by this plugin with their configs.
+        Get list of capabilities supported by this plugin with their configs.
 
         Returns:
-            List of ToolConfig objects
+            List of CapabilityConfig objects
         """
         pass
     
@@ -351,16 +351,16 @@ class BaseServerPlugin(ABC):
             JSON-RPC response with plugin info
         """
         info = self.get_plugin_info()
-        # Add supported tools to the info
-        tools = []
-        for tool_config in self.get_supported_tools():
-            tools.append({
-                "name": tool_config.name,
-                "description": tool_config.description,
-                "parameters": tool_config.parameters
+        # Add supported capabilities to the info
+        capabilities = []
+        for cap_config in self.get_supported_capabilities():
+            capabilities.append({
+                "name": cap_config.name,
+                "description": cap_config.description,
+                "parameters": cap_config.parameters
             })
 
-        info["supported_tools"] = tools
+        info["capabilities"] = capabilities
         return {
             "jsonrpc": "2.0",
             "result": info,

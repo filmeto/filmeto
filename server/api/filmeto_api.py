@@ -6,9 +6,9 @@ Supports both web-based access and local in-app calls with streaming.
 """
 
 from __future__ import annotations
-from typing import AsyncIterator, List, Union, Optional
+from typing import AsyncIterator, List, Union, Optional, Dict, Any
 
-from server.api.types import FilmetoTask, TaskProgress, TaskResult, ValidationError
+from server.api.types import FilmetoTask, TaskProgress, TaskResult, ValidationError, Capability
 from server.api.chat_types import (
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -20,11 +20,11 @@ from server.api.chat_types import (
 class FilmetoApi:
     """
     Unified API interface for Filmeto AI services.
-    
+
     This class provides a clean interface for both web and local clients
     to execute tasks and receive streaming progress updates.
     """
-    
+
     def __init__(self, plugins_dir: Optional[str] = None, cache_dir: Optional[str] = None, workspace_path: Optional[str] = None):
         """
         Initialize Filmeto API.
@@ -36,43 +36,45 @@ class FilmetoApi:
         """
         from server.service.filmeto_service import FilmetoService
         from server.service.chat_service import ChatService
+        from server.service.capability_service import CapabilityService
 
         self.service = FilmetoService(plugins_dir, cache_dir, workspace_path)
         self.chat_service = ChatService(self.service.server_manager)
-    
+        self.capability_service = CapabilityService(self.service.server_manager)
+
     async def execute_task_stream(
-        self, 
+        self,
         task: FilmetoTask
     ) -> AsyncIterator[Union[TaskProgress, TaskResult]]:
         """
         Execute a task and stream progress updates.
-        
+
         This is the main entry point for task execution. It validates the task,
-        processes resources, routes to the appropriate plugin, and streams
+        processes resources, routes to the appropriate server, and streams
         progress updates and the final result.
-        
+
         Args:
             task: Task to execute
-            
+
         Yields:
             TaskProgress: Progress updates during execution
             TaskResult: Final result (last item yielded)
-            
+
         Raises:
             ValidationError: If task validation fails
-            PluginNotFoundError: If specified plugin not found
-            PluginExecutionError: If plugin execution fails
+            ServerNotFoundError: If specified server not found
+            ServerExecutionError: If server execution fails
             TimeoutError: If task exceeds timeout
-            
+
         Example:
             ```python
             api = FilmetoApi()
             task = FilmetoTask(
-                tool_name=ToolType.TEXT2IMAGE,
-                plugin_name="text2image_comfyui",
+                capability=Capability.TEXT2IMAGE,
+                server_name="bailian",
                 parameters={"prompt": "a beautiful sunset"}
             )
-            
+
             async for update in api.execute_task_stream(task):
                 if isinstance(update, TaskProgress):
                     print(f"Progress: {update.percent}% - {update.message}")
@@ -82,28 +84,19 @@ class FilmetoApi:
         """
         async for update in self.service.execute_task_stream(task):
             yield update
-    
+
     def validate_task(self, task: FilmetoTask) -> tuple[bool, Optional[str]]:
         """
         Validate task structure and parameters.
-        
+
         Args:
             task: Task to validate
-            
+
         Returns:
             Tuple of (is_valid, error_message)
-            
-        Example:
-            ```python
-            api = FilmetoApi()
-            task = FilmetoTask(...)
-            is_valid, error = api.validate_task(task)
-            if not is_valid:
-                print(f"Validation error: {error}")
-            ```
         """
         return task.validate()
-    
+
     async def enqueue_task(self, task: FilmetoTask, priority: int = 0) -> str:
         """
         Enqueue a task for background execution.
@@ -124,114 +117,121 @@ class FilmetoApi:
     async def get_task_status(self, task_id: str) -> dict:
         """
         Get current status of a task.
-        
+
         Args:
             task_id: Task identifier
-            
+
         Returns:
             Task status dictionary
-            
-        Example:
-            ```python
-            api = FilmetoApi()
-            status = await api.get_task_status("task-123")
-            print(f"Task status: {status}")
-            ```
         """
         return await self.service.get_task_status(task_id)
-    
-    def list_tools(self) -> list[dict]:
-        """
-        List all available tools.
-        
-        Returns:
-            List of tool information dictionaries
-            
-        Example:
-            ```python
-            api = FilmetoApi()
-            tools = api.list_tools()
-            for tool in tools:
-                print(f"{tool['name']}: {tool['display_name']}")
-            ```
-        """
-        return self.service.list_tools()
-    
-    def list_plugins(self) -> list[dict]:
-        """
-        List all available plugins.
 
-        Returns:
-            List of plugin information dictionaries
-
-        Example:
-            ```python
-            api = FilmetoApi()
-            plugins = api.list_plugins()
-            for plugin in plugins:
-                print(f"{plugin['name']} v{plugin['version']} - {plugin['tool_type']}")
-            ```
+    def list_capabilities(self, capability_type: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        all_plugins_data = []
-        plugins = self.service.list_plugins()
-
-        for plugin in plugins:
-            # If plugin has multiple tools, create a separate entry for each tool
-            if 'tools' in plugin and len(plugin['tools']) > 0:
-                for tool in plugin['tools']:
-                    plugin_entry = {
-                        "name": plugin["name"],
-                        "version": plugin["version"],
-                        "description": plugin["description"],
-                        "tool_type": tool["name"],  # Use the specific tool name
-                        "engine": plugin["engine"],
-                        "author": plugin["author"]
-                    }
-                    all_plugins_data.append(plugin_entry)
-            else:
-                # If plugin has no tools, still include it with a general tool_type
-                plugin_entry = {
-                    "name": plugin["name"],
-                    "version": plugin["version"],
-                    "description": plugin["description"],
-                    "tool_type": "general",  # Generic placeholder if no specific tools
-                    "engine": plugin["engine"],
-                    "author": plugin["author"]
-                }
-                all_plugins_data.append(plugin_entry)
-
-        return all_plugins_data
-    
-    def get_plugins_by_tool(self, tool_name: str) -> list[dict]:
-        """
-        Get all plugins supporting a specific tool type.
+        List all capability instances, optionally filtered by type.
 
         Args:
-            tool_name: Tool type (e.g., "text2image")
+            capability_type: Optional capability type filter (e.g., "text2image")
 
         Returns:
-            List of plugin information dictionaries
+            List of capability instance dictionaries
 
         Example:
             ```python
             api = FilmetoApi()
-            plugins = api.get_plugins_by_tool("text2image")
-            print(f"Found {len(plugins)} plugins for text2image")
+            # Get all capabilities
+            all_caps = api.list_capabilities()
+            # Get only text2image capabilities
+            t2i_caps = api.list_capabilities("text2image")
             ```
         """
-        plugin_infos = self.service.plugin_manager.get_plugins_by_tool(tool_name)
-        return [
-            {
-                "name": p.name,
-                "version": p.version,
-                "description": p.description,
-                "tool_type": tool_name,  # Using the tool_name parameter as the tool_type
-                "engine": p.engine,
-                "author": p.author
+        if capability_type:
+            try:
+                cap = Capability(capability_type)
+                instances = self.capability_service.get_capabilities_by_type(cap)
+            except ValueError:
+                return []
+        else:
+            instances = self.capability_service.get_all_capabilities()
+
+        return [inst.to_dict() for inst in instances]
+
+    def get_capability(self, key: str) -> Optional[Dict[str, Any]]:
+        """
+        Get a specific capability instance by key.
+
+        Args:
+            key: Capability key in "server:model" format
+
+        Returns:
+            Capability instance dictionary or None if not found
+
+        Example:
+            ```python
+            api = FilmetoApi()
+            cap = api.get_capability("bailian-prod:wanx2.1-t2i-turbo")
+            if cap:
+                print(f"Description: {cap['description']}")
+            ```
+        """
+        instance = self.capability_service.get_capability(key)
+        return instance.to_dict() if instance else None
+
+    def get_capability_groups(self) -> List[Dict[str, Any]]:
+        """
+        Get all capabilities grouped by capability type.
+
+        Returns:
+            List of capability group dictionaries
+
+        Example:
+            ```python
+            api = FilmetoApi()
+            groups = api.get_capability_groups()
+            for group in groups:
+                print(f"{group['capability_name']}: {group['total_instances']} options")
+            ```
+        """
+        groups = self.capability_service.get_capability_groups()
+        return [g.to_dict() for g in groups]
+
+    def get_capability_selection_context(
+        self,
+        capability_type: str,
+        user_requirement: str = ""
+    ) -> Dict[str, Any]:
+        """
+        Get context for LLM to select appropriate capability.
+
+        This method returns structured information that can be used
+        by an LLM to select the most appropriate capability instance
+        based on user requirements.
+
+        Args:
+            capability_type: Capability type needed (e.g., "text2image")
+            user_requirement: User's requirement description
+
+        Returns:
+            Dict with capability info for LLM selection
+        """
+        try:
+            cap = Capability(capability_type)
+            return self.capability_service.get_llm_selection_context(cap, user_requirement)
+        except ValueError:
+            return {
+                "capability_type": capability_type,
+                "available": False,
+                "message": f"Unknown capability type: {capability_type}"
             }
-            for p in plugin_infos
-        ]
-    
+
+    def refresh_capabilities(self) -> None:
+        """
+        Refresh the capability cache.
+
+        Call this method when server configurations change.
+        """
+        self.capability_service.refresh_capabilities()
+
     # ------------------------------------------------------------------
     # Chat Completion API (OpenAI-compatible)
     # ------------------------------------------------------------------
@@ -276,8 +276,8 @@ class FilmetoApi:
 
     async def cleanup(self):
         """
-        Cleanup resources and stop all plugins.
-        
+        Cleanup resources and stop all servers.
+
         Should be called when shutting down the API.
         """
         await self.service.cleanup()

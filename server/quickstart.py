@@ -12,7 +12,7 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from server.api import FilmetoApi, FilmetoTask, TaskProgress, TaskResult, ToolType
+from server.api import FilmetoApi, FilmetoTask, TaskProgress, TaskResult, Capability
 
 
 async def main():
@@ -20,36 +20,36 @@ async def main():
     print(" Filmeto API - Quick Start Demonstration")
     print("=" * 70)
     print()
-    
+
     # Initialize API
     print("🚀 Initializing Filmeto API...")
     api = FilmetoApi()
-    
+
     try:
-        # 1. List available tools
-        print("\n📋 Available Tools:")
-        tools = api.list_tools()
-        for tool in tools:
-            print(f"   • {tool['display_name']}")
-        
-        # 2. List available plugins
-        print("\n🔌 Available Plugins:")
+        # 1. List available capabilities
+        print("\n📋 Available Capabilities:")
+        capabilities = api.list_tools()
+        for cap in capabilities:
+            print(f"   • {cap['display_name']}")
+
+        # 2. List available servers
+        print("\n🔌 Available Servers:")
         plugins = api.list_plugins()
         if plugins:
             for plugin in plugins:
                 print(f"   • {plugin['name']} v{plugin['version']} - {plugin['description']}")
         else:
-            print("   ⚠️  No plugins found. Make sure the demo plugin is in server/plugins/")
-        
+            print("   ⚠️  No servers found. Make sure the demo server is in server/plugins/")
+
         # 3. Create and execute a demo task
         print("\n🎨 Generating Demo Image...")
-        print("   Plugin: text2image_demo")
+        print("   Server: text2image_demo")
         print("   Prompt: 'Quick Start Demo - Filmeto API'")
         print()
-        
+
         task = FilmetoTask(
-            tool_name=ToolType.TEXT2IMAGE,
-            plugin_name="text2image_demo",
+            capability=Capability.TEXT2IMAGE,
+            server_name="text2image_demo",
             parameters={
                 "prompt": "Quick Start Demo - Filmeto API",
                 "width": 512,

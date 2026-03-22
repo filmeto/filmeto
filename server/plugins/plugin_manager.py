@@ -24,26 +24,26 @@ _DEFAULT_HEARTBEAT_TIMEOUT = 90       # seconds before declaring unhealthy
 _DEFAULT_MAX_RESTARTS = 3
 
 from server.api.types import FilmetoTask, TaskProgress, TaskResult, ProgressType
-from server.api.types import PluginNotFoundError, PluginExecutionError
+from server.api.types import ServerNotFoundError, ServerExecutionError
 
 
 @dataclass
-class ToolInfo:
-    """Information about a specific tool supported by a plugin."""
+class CapabilityInfo:
+    """Information about a specific capability supported by a server."""
     name: str
     description: str
     parameters: List[Dict[str, Any]]
 
 
 @dataclass
-class PluginInfo:
-    """Plugin metadata from plugin.yml"""
+class ServerInfo:
+    """Server metadata from plugin.yml"""
     name: str
     version: str
     description: str
     author: str
-    # Changed from single tool_type to list of tools
-    tools: List[ToolInfo]  # List of supported tools with their configurations
+    # List of supported capabilities with their configurations
+    capabilities: List[CapabilityInfo]
     engine: str
     plugin_path: Path
     main_script: Path
@@ -56,7 +56,7 @@ class PluginProcess:
     Manages a single plugin process and communication.
     """
     
-    def __init__(self, plugin_info: PluginInfo):
+    def __init__(self, plugin_info: ServerInfo):
         self.plugin_info = plugin_info
         self.process: Optional[asyncio.subprocess.Process] = None
         self.is_ready = False
@@ -392,7 +392,7 @@ class PluginManager:
             self.plugins_dir = Path(__file__).parent
         
         self.plugins: Dict[str, PluginProcess] = {}
-        self.plugin_infos: Dict[str, PluginInfo] = {}
+        self.plugin_infos: Dict[str, ServerInfo] = {}
     
     def discover_plugins(self):
         """
@@ -442,37 +442,37 @@ class PluginManager:
                     requirements_file = None
 
                 if 'tool_type' in config:
-                    tools = [ToolInfo(
+                    capabilities = [CapabilityInfo(
                         name=config['tool_type'],
                         description=config.get('description', ''),
                         parameters=config.get('parameters', [])
                     )]
                 elif 'tools' in config:
-                    tools = []
-                    for tool_config in config['tools']:
-                        if not isinstance(tool_config, dict) or 'name' not in tool_config:
+                    capabilities = []
+                    for cap_config in config['tools']:
+                        if not isinstance(cap_config, dict) or 'name' not in cap_config:
                             logger.warning(
-                                f"Skipping invalid tool entry in plugin {plugin_dir.name}"
+                                f"Skipping invalid capability entry in server {plugin_dir.name}"
                             )
                             continue
-                        tools.append(ToolInfo(
-                            name=tool_config['name'],
-                            description=tool_config.get('description', ''),
-                            parameters=tool_config.get('parameters', [])
+                        capabilities.append(CapabilityInfo(
+                            name=cap_config['name'],
+                            description=cap_config.get('description', ''),
+                            parameters=cap_config.get('parameters', [])
                         ))
-                    if not tools:
-                        logger.error(f"Plugin {plugin_dir.name} has no valid tools defined")
+                    if not capabilities:
+                        logger.error(f"Server {plugin_dir.name} has no valid capabilities defined")
                         continue
                 else:
-                    logger.error(f"Plugin config missing 'tool_type' or 'tools': {plugin_dir.name}")
+                    logger.error(f"Server config missing 'tool_type' or 'tools': {plugin_dir.name}")
                     continue
 
-                plugin_info = PluginInfo(
+                server_info = ServerInfo(
                     name=config['name'],
                     version=config['version'],
                     description=config['description'],
                     author=config.get('author', ''),
-                    tools=tools,
+                    capabilities=capabilities,
                     engine=config['engine'],
                     plugin_path=plugin_dir,
                     main_script=main_script,
@@ -480,10 +480,10 @@ class PluginManager:
                     config=config
                 )
 
-                self.plugin_infos[plugin_info.name] = plugin_info
+                self.plugin_infos[server_info.name] = server_info
 
-                tool_names = [t.name for t in tools]
-                logger.info(f"Discovered plugin: {plugin_info.name} (supports: {', '.join(tool_names)})")
+                cap_names = [c.name for c in capabilities]
+                logger.info(f"Discovered server: {server_info.name} (capabilities: {', '.join(cap_names)})")
 
             except yaml.YAMLError as e:
                 logger.error(f"Invalid YAML in plugin {plugin_dir.name}: {e}")
@@ -560,16 +560,16 @@ class PluginManager:
         for plugin_name in list(self.plugins.keys()):
             await self.stop_plugin(plugin_name)
     
-    def list_plugins(self) -> list[PluginInfo]:
+    def list_plugins(self) -> list[ServerInfo]:
         """
         List all discovered plugins.
         
         Returns:
-            List of PluginInfo objects
+            List of ServerInfo objects
         """
         return list(self.plugin_infos.values())
     
-    def get_plugin_info(self, plugin_name: str) -> Optional[PluginInfo]:
+    def get_plugin_info(self, plugin_name: str) -> Optional[ServerInfo]:
         """
         Get plugin info by name.
         
@@ -577,21 +577,21 @@ class PluginManager:
             plugin_name: Name of the plugin
         
         Returns:
-            PluginInfo or None if not found
+            ServerInfo or None if not found
         """
         return self.plugin_infos.get(plugin_name)
     
-    def get_plugins_by_tool(self, tool_name: str) -> list[PluginInfo]:
+    def get_servers_by_capability(self, capability_name: str) -> list[ServerInfo]:
         """
-        Get all plugins supporting a specific tool by name.
+        Get all servers supporting a specific capability by name.
 
         Args:
-            tool_name: Tool name (e.g., "text2image")
+            capability_name: Capability name (e.g., "text2image")
 
         Returns:
-            List of PluginInfo objects
+            List of ServerInfo objects
         """
         return [
             info for info in self.plugin_infos.values()
-            if any(tool.name == tool_name for tool in info.tools)
+            if any(cap.name == capability_name for cap in info.capabilities)
         ]

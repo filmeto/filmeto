@@ -17,7 +17,7 @@ import structlog
 
 from server.api.types import (
     FilmetoTask, TaskProgress, TaskResult, ProgressType,
-    ValidationError, PluginNotFoundError, PluginExecutionError, TimeoutError as TaskTimeoutError
+    ValidationError, ServerNotFoundError, ServerExecutionError, TimeoutError as TaskTimeoutError
 )
 from server.api.resource_processor import ResourceProcessor
 from server.plugins.plugin_manager import PluginManager
@@ -153,16 +153,16 @@ class FilmetoService:
             
         Raises:
             ValidationError: If task validation fails
-            PluginNotFoundError: If plugin not found
-            PluginExecutionError: If plugin execution fails
+            ServerNotFoundError: If server not found
+            ServerExecutionError: If server execution fails
             TaskTimeoutError: If task exceeds timeout
         """
         start_time = datetime.now()
-        log = logger.bind(task_id=task.task_id, tool=task.tool_name.value,
-                          plugin=task.plugin_name)
+        log = logger.bind(task_id=task.task_id, capability=task.capability.value,
+                          server=task.server_name)
         metrics = TaskMetrics(task_id=task.task_id,
-                              tool=task.tool_name.value,
-                              plugin=task.plugin_name)
+                              capability=task.capability.value,
+                              server=task.server_name)
         
         # Validate task
         is_valid, error_msg = task.validate()
@@ -434,51 +434,51 @@ class FilmetoService:
         List all available tools across plugins.
 
         Returns:
-            List of tool info dictionaries
+            List of capability info dictionaries
         """
-        # Get unique tools from all plugins
-        all_tools = set()
+        # Get unique capabilities from all servers
+        all_capabilities = set()
         plugins = self.plugin_manager.list_plugins()
 
         for plugin in plugins:
-            for tool in plugin.tools:
-                all_tools.add(tool.name)
+            for capability in plugin.capabilities:
+                all_capabilities.add(capability.name)
 
         return [
             {
-                "name": tool_name,
-                "display_name": tool_name.replace('2', ' to ').title()
+                "name": cap_name,
+                "display_name": cap_name.replace('2', ' to ').title()
             }
-            for tool_name in sorted(list(all_tools))
+            for cap_name in sorted(list(all_capabilities))
         ]
 
-    def get_tool_details(self, tool_name: str) -> dict:
+    def get_capability_details(self, capability_name: str) -> dict:
         """
-        Get detailed information about a specific tool.
+        Get detailed information about a specific capability.
 
         Args:
-            tool_name: Name of the tool to query
+            capability_name: Name of the capability to query
 
         Returns:
-            Tool details including parameters and supporting plugins
+            Capability details including parameters and supporting servers
         """
         plugins = self.plugin_manager.list_plugins()
-        supporting_plugins = []
+        supporting_servers = []
 
         for plugin in plugins:
-            for tool in plugin.tools:
-                if tool.name == tool_name:
-                    supporting_plugins.append({
-                        "plugin_name": plugin.name,
-                        "plugin_version": plugin.version,
-                        "plugin_description": plugin.description,
-                        "parameters": tool.parameters
+            for capability in plugin.capabilities:
+                if capability.name == capability_name:
+                    supporting_servers.append({
+                        "server_name": plugin.name,
+                        "server_version": plugin.version,
+                        "server_description": plugin.description,
+                        "parameters": capability.parameters
                     })
 
         return {
-            "name": tool_name,
-            "display_name": tool_name.replace('2', ' to ').title(),
-            "supporting_plugins": supporting_plugins
+            "name": capability_name,
+            "display_name": capability_name.replace('2', ' to ').title(),
+            "supporting_servers": supporting_servers
         }
     
     async def cleanup(self):

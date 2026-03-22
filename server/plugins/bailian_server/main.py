@@ -21,7 +21,7 @@ from typing import Dict, Any, Callable, List, Optional
 # Add parent directory to path to import base_plugin
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from server.plugins.base_plugin import BaseServerPlugin, ToolConfig
+from server.plugins.base_plugin import BaseServerPlugin, CapabilityConfig
 from server.plugins.bailian_server.models_config import models_config, CODING_PLAN_PREFIX
 
 logger = logging.getLogger(__name__)
@@ -77,8 +77,8 @@ class BailianServerPlugin(BaseServerPlugin):
             print(f"Failed to create Bailian config widget: {e}")
             return None
 
-    def get_supported_tools(self) -> List[ToolConfig]:
-        """Get list of tools supported by this plugin"""
+    def get_supported_capabilities(self) -> List[CapabilityConfig]:
+        """Get list of capabilities supported by this plugin"""
         text2image_params = [
             {"name": "prompt", "type": "string", "required": True,
              "description": "Text prompt for image generation"},
@@ -114,13 +114,13 @@ class BailianServerPlugin(BaseServerPlugin):
         ]
 
         return [
-            ToolConfig(name="text2image",
+            CapabilityConfig(name="text2image",
                       description="Generate image from text using Wanx model",
                       parameters=text2image_params),
-            ToolConfig(name="image2image",
+            CapabilityConfig(name="image2image",
                       description="Transform image using Wanx model",
                       parameters=image2image_params),
-            ToolConfig(name="chat_completion",
+            CapabilityConfig(name="chat_completion",
                       description="LLM chat via DashScope OpenAI-compatible API",
                       parameters=chat_completion_params),
         ]
@@ -130,9 +130,9 @@ class BailianServerPlugin(BaseServerPlugin):
         task_data: Dict[str, Any],
         progress_callback: Callable[[float, str, Dict[str, Any]], None]
     ) -> Dict[str, Any]:
-        """Execute a task based on its tool type."""
+        """Execute a task based on its capability type."""
         task_id = task_data.get("task_id", "unknown")
-        tool_name = task_data.get("tool_name", "")
+        capability = task_data.get("capability", "")
         parameters = task_data.get("parameters", {})
         metadata = task_data.get("metadata", {})
         server_config = metadata.get("server_config", {})
@@ -156,16 +156,16 @@ class BailianServerPlugin(BaseServerPlugin):
         coding_plan_api_key = server_config.get("coding_plan_api_key", "")
 
         try:
-            if tool_name == "text2image":
+            if capability == "text2image":
                 return await self._execute_text2image(
                     task_id, api_key, parameters, default_image_model, progress_callback
                 )
-            elif tool_name == "image2image":
+            elif capability == "image2image":
                 return await self._execute_image2image(
                     task_id, api_key, parameters, task_data.get("resources", []),
                     default_image_model, progress_callback
                 )
-            elif tool_name == "chat_completion":
+            elif capability == "chat_completion":
                 return await self._execute_chat_completion(
                     task_id, api_key, parameters, default_model,
                     coding_plan_enabled, coding_plan_api_key, progress_callback
@@ -174,12 +174,12 @@ class BailianServerPlugin(BaseServerPlugin):
                 return {
                     "task_id": task_id,
                     "status": "error",
-                    "error_message": f"Unsupported tool: {tool_name}",
+                    "error_message": f"Unsupported capability: {capability}",
                     "output_files": []
                 }
 
         except Exception as e:
-            logger.error(f"Error executing task with tool {tool_name}: {e}", exc_info=True)
+            logger.error(f"Error executing task with capability {capability}: {e}", exc_info=True)
             return {
                 "task_id": task_id,
                 "status": "error",

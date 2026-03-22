@@ -30,7 +30,7 @@ spec.loader.exec_module(base_plugin_module)
 
 # Import the required classes
 BaseServerPlugin = base_plugin_module.BaseServerPlugin
-ToolConfig = base_plugin_module.ToolConfig
+CapabilityConfig = base_plugin_module.CapabilityConfig
 
 # Import the ComfyUI client using relative import
 import sys
@@ -61,28 +61,28 @@ class ComfyUiServerPlugin(BaseServerPlugin):
             "engine": "comfyui"
         }
 
-    def get_supported_tools(self) -> List[ToolConfig]:
-        """Get list of tools supported by this plugin with their configs"""
+    def get_supported_capabilities(self) -> List[CapabilityConfig]:
+        """Get list of capabilities supported by this plugin with their configs"""
         text2image_params = [
             {"name": "prompt", "type": "string", "required": True, "description": "Text prompt for generation"},
             {"name": "width", "type": "integer", "required": False, "default": 720, "description": "Image width"},
             {"name": "height", "type": "integer", "required": False, "default": 1280, "description": "Image height"}
         ]
-        
+
         image2image_params = [
             {"name": "prompt", "type": "string", "required": True, "description": "Text prompt for transformation"},
             {"name": "input_image_path", "type": "string", "required": True, "description": "Path to input image"}
         ]
-        
+
         image2video_params = [
             {"name": "prompt", "type": "string", "required": True, "description": "Text prompt for animation"},
             {"name": "input_image_path", "type": "string", "required": True, "description": "Path to input image"}
         ]
 
         return [
-            ToolConfig(name="text2image", description="Generate image from text prompt using ComfyUI", parameters=text2image_params),
-            ToolConfig(name="image2image", description="Transform image using ComfyUI", parameters=image2image_params),
-            ToolConfig(name="image2video", description="Animate image using ComfyUI", parameters=image2video_params),
+            CapabilityConfig(name="text2image", description="Generate image from text prompt using ComfyUI", parameters=text2image_params),
+            CapabilityConfig(name="image2image", description="Transform image using ComfyUI", parameters=image2image_params),
+            CapabilityConfig(name="image2video", description="Animate image using ComfyUI", parameters=image2video_params),
         ]
 
     def init_ui(self, workspace_path: str, server_config: Optional[Dict[str, Any]] = None):
@@ -113,10 +113,10 @@ class ComfyUiServerPlugin(BaseServerPlugin):
         progress_callback: Callable[[float, str, Dict[str, Any]], None]
     ) -> Dict[str, Any]:
         """
-        Execute a task based on its tool type.
+        Execute a task based on its capability type.
         """
         task_id = task_data.get("task_id", "unknown")
-        tool_name = task_data.get("tool_name", "")
+        capability = task_data.get("capability", "")
         parameters = task_data.get("parameters", {})
         metadata = task_data.get("metadata", {})
         server_config = metadata.get("server_config", {})
@@ -143,22 +143,22 @@ class ComfyUiServerPlugin(BaseServerPlugin):
         }
 
         try:
-            if tool_name == "text2image":
+            if capability == "text2image":
                 return await self._execute_text2image(client, task_id, parameters, progress_callback, workflow_server_config)
-            elif tool_name == "image2image":
+            elif capability == "image2image":
                 return await self._execute_image2image(client, task_id, parameters, progress_callback, workflow_server_config)
-            elif tool_name == "image2video":
+            elif capability == "image2video":
                 return await self._execute_image2video(client, task_id, parameters, progress_callback, workflow_server_config)
             else:
                 return {
                     "task_id": task_id,
                     "status": "error",
-                    "error_message": f"Unsupported tool: {tool_name}",
+                    "error_message": f"Unsupported capability: {capability}",
                     "output_files": []
                 }
 
         except Exception as e:
-            logger.error(f"Error executing task with tool {tool_name}: {e}", exc_info=True)
+            logger.error(f"Error executing task with capability {capability}: {e}", exc_info=True)
             return {
                 "task_id": task_id,
                 "status": "error",

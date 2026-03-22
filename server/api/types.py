@@ -13,8 +13,8 @@ from typing import Any, Dict, List, Optional
 import uuid
 
 
-class ToolType(str, Enum):
-    """Enumeration of supported tool types"""
+class Capability(str, Enum):
+    """Enumeration of AI capabilities"""
     TEXT2IMAGE = "text2image"      # Text to image generation
     IMAGE2IMAGE = "image2image"    # Image to image transformation
     IMAGE2VIDEO = "image2video"    # Image to video animation
@@ -44,7 +44,7 @@ class ProgressType(str, Enum):
 class ResourceInput:
     """
     Resource input supporting multiple formats.
-    
+
     Attributes:
         type: Type of resource (local_path, remote_url, base64)
         data: The actual data (path, URL, or base64 string)
@@ -55,7 +55,7 @@ class ResourceInput:
     data: str
     mime_type: str
     metadata: Dict[str, Any] = field(default_factory=dict)
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
         return {
@@ -64,7 +64,7 @@ class ResourceInput:
             "mime_type": self.mime_type,
             "metadata": self.metadata
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'ResourceInput':
         """Create from dictionary"""
@@ -80,7 +80,7 @@ class ResourceInput:
 class ResourceOutput:
     """
     Output resource with metadata.
-    
+
     Attributes:
         type: Type of resource (image, video, audio)
         path: Local path to the file
@@ -95,7 +95,7 @@ class ResourceOutput:
     size: int
     url: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
         return {
@@ -106,7 +106,7 @@ class ResourceOutput:
             "size": self.size,
             "metadata": self.metadata
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'ResourceOutput':
         """Create from dictionary"""
@@ -124,98 +124,98 @@ class ResourceOutput:
 class FilmetoTask:
     """
     Task definition for Filmeto API.
-    
+
     Attributes:
         task_id: Unique task identifier
-        tool_name: Tool to execute
-        plugin_name: Server plugin name to use
-        parameters: Tool-specific parameters
+        capability: AI capability to execute
+        server_name: Server instance name to use
+        parameters: Capability-specific parameters
         resources: Input resources (images, videos, etc.)
         created_at: Task creation timestamp
         timeout: Timeout in seconds
         metadata: Additional metadata
     """
-    tool_name: ToolType
-    plugin_name: str
+    capability: Capability
+    server_name: str
     parameters: Dict[str, Any]
     task_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     resources: List[ResourceInput] = field(default_factory=list)
     created_at: datetime = field(default_factory=datetime.now)
     timeout: int = 300
     metadata: Dict[str, Any] = field(default_factory=dict)
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
         return {
             "task_id": self.task_id,
-            "tool_name": self.tool_name.value,
-            "plugin_name": self.plugin_name,
+            "capability": self.capability.value,
+            "server_name": self.server_name,
             "parameters": self.parameters,
             "resources": [r.to_dict() for r in self.resources],
             "created_at": self.created_at.isoformat(),
             "timeout": self.timeout,
             "metadata": self.metadata
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'FilmetoTask':
         """Create from dictionary"""
         return cls(
             task_id=data.get("task_id", str(uuid.uuid4())),
-            tool_name=ToolType(data["tool_name"]),
-            plugin_name=data["plugin_name"],
+            capability=Capability(data["capability"]),
+            server_name=data["server_name"],
             parameters=data["parameters"],
             resources=[ResourceInput.from_dict(r) for r in data.get("resources", [])],
             created_at=datetime.fromisoformat(data["created_at"]) if "created_at" in data else datetime.now(),
             timeout=data.get("timeout", 300),
             metadata=data.get("metadata", {})
         )
-    
+
     def validate(self) -> tuple[bool, Optional[str]]:
         """
         Validate task structure.
-        
+
         Returns:
             Tuple of (is_valid, error_message)
         """
-        if not self.plugin_name:
-            return False, "Plugin name is required"
-        
+        if not self.server_name:
+            return False, "Server name is required"
+
         if not self.parameters:
             return False, "Parameters are required"
-        
+
         # Validate resources
         for resource in self.resources:
             if not resource.data:
                 return False, "Resource data cannot be empty"
             if not resource.mime_type:
                 return False, "Resource mime_type is required"
-        
-        # Tool-specific validation
-        if self.tool_name == ToolType.TEXT2IMAGE:
+
+        # Capability-specific validation
+        if self.capability == Capability.TEXT2IMAGE:
             if "prompt" not in self.parameters:
                 return False, "TEXT2IMAGE requires 'prompt' parameter"
-        elif self.tool_name == ToolType.IMAGE2IMAGE:
+        elif self.capability == Capability.IMAGE2IMAGE:
             if "prompt" not in self.parameters:
                 return False, "IMAGE2IMAGE requires 'prompt' parameter"
             if not self.resources:
                 return False, "IMAGE2IMAGE requires at least one input image"
-        elif self.tool_name == ToolType.IMAGE2VIDEO:
+        elif self.capability == Capability.IMAGE2VIDEO:
             if not self.resources:
                 return False, "IMAGE2VIDEO requires at least one input image"
-        elif self.tool_name == ToolType.TEXT2VIDEO:
+        elif self.capability == Capability.TEXT2VIDEO:
             if "prompt" not in self.parameters:
                 return False, "TEXT2VIDEO requires 'prompt' parameter"
-        elif self.tool_name == ToolType.SPEAK2VIDEO:
+        elif self.capability == Capability.SPEAK2VIDEO:
             if not self.resources:
                 return False, "SPEAK2VIDEO requires audio input"
-        elif self.tool_name == ToolType.TEXT2SPEAK:
+        elif self.capability == Capability.TEXT2SPEAK:
             if "text" not in self.parameters:
                 return False, "TEXT2SPEAK requires 'text' parameter"
-        elif self.tool_name == ToolType.TEXT2MUSIC:
+        elif self.capability == Capability.TEXT2MUSIC:
             if "prompt" not in self.parameters:
                 return False, "TEXT2MUSIC requires 'prompt' parameter"
-        
+
         return True, None
 
 
@@ -223,7 +223,7 @@ class FilmetoTask:
 class TaskProgress:
     """
     Progress update during task execution.
-    
+
     Attributes:
         task_id: Task identifier
         type: Type of progress update
@@ -238,7 +238,7 @@ class TaskProgress:
     message: str
     timestamp: datetime = field(default_factory=datetime.now)
     data: Dict[str, Any] = field(default_factory=dict)
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
         return {
@@ -249,7 +249,7 @@ class TaskProgress:
             "timestamp": self.timestamp.isoformat(),
             "data": self.data
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'TaskProgress':
         """Create from dictionary"""
@@ -267,7 +267,7 @@ class TaskProgress:
 class TaskResult:
     """
     Final result of task execution.
-    
+
     Attributes:
         task_id: Task identifier
         status: Execution status (success or error)
@@ -284,7 +284,7 @@ class TaskResult:
     error_message: str = ""
     execution_time: float = 0.0
     metadata: Dict[str, Any] = field(default_factory=dict)
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
         return {
@@ -296,7 +296,7 @@ class TaskResult:
             "execution_time": self.execution_time,
             "metadata": self.metadata
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'TaskResult':
         """Create from dictionary"""
@@ -309,21 +309,21 @@ class TaskResult:
             execution_time=data.get("execution_time", 0.0),
             metadata=data.get("metadata", {})
         )
-    
+
     def get_image_path(self) -> Optional[str]:
         """Get the first image file from output files"""
         for file_path in self.output_files:
             if file_path.endswith(('.png', '.jpg', '.jpeg', '.webp')):
                 return file_path
         return None
-    
+
     def get_video_path(self) -> Optional[str]:
         """Get the first video file from output files"""
         for file_path in self.output_files:
             if file_path.endswith(('.mp4', '.mov', '.avi')):
                 return file_path
         return None
-    
+
     def get_audio_path(self) -> Optional[str]:
         """Get the first audio file from output files"""
         for file_path in self.output_files:
@@ -408,7 +408,7 @@ class TaskError(Exception):
         self.message = message
         self.details = details or {}
         super().__init__(message)
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
         return {
@@ -424,20 +424,20 @@ class ValidationError(TaskError):
         super().__init__("VALIDATION_ERROR", message, details)
 
 
-class PluginNotFoundError(TaskError):
-    """Plugin not found error"""
-    def __init__(self, plugin_name: str):
+class ServerNotFoundError(TaskError):
+    """Server not found error"""
+    def __init__(self, server_name: str):
         super().__init__(
-            "PLUGIN_NOT_FOUND",
-            f"Plugin '{plugin_name}' not found",
-            {"plugin_name": plugin_name}
+            "SERVER_NOT_FOUND",
+            f"Server '{server_name}' not found",
+            {"server_name": server_name}
         )
 
 
-class PluginExecutionError(TaskError):
-    """Plugin execution error"""
+class ServerExecutionError(TaskError):
+    """Server execution error"""
     def __init__(self, message: str, details: Dict[str, Any] = None):
-        super().__init__("PLUGIN_EXECUTION_ERROR", message, details)
+        super().__init__("SERVER_EXECUTION_ERROR", message, details)
 
 
 class ResourceProcessingError(TaskError):
@@ -454,3 +454,96 @@ class TimeoutError(TaskError):
             f"Task '{task_id}' exceeded timeout of {timeout} seconds",
             {"task_id": task_id, "timeout": timeout}
         )
+
+
+# --- Capability Discovery Types ---------------------------------------------
+
+@dataclass
+class CapabilityInstance:
+    """
+    Represents a specific capability instance (server:model combination).
+
+    This is the basic unit for LLM service selection, containing complete
+    description information for the LLM to understand the characteristics
+    and use cases of this capability instance.
+
+    Attributes:
+        key: Unique identifier in "server:model" format
+        server_name: Server instance name (e.g., "bailian-prod", "comfyui-local")
+        model_name: Model name (e.g., "wanx2.1-t2i-turbo", "sd-xl")
+        capability_type: Capability type (Capability enum)
+        description: Short description (1-2 sentences)
+        detailed_description: Detailed description with features, use cases, etc.
+        tags: Tags for filtering (e.g., ["fast", "high-quality", "chinese-optimized"])
+        specs: Technical specifications dict
+        priority: Priority for recommendation (higher = more recommended)
+        is_available: Whether this instance is currently available
+        metadata: Additional metadata
+    """
+    key: str
+    server_name: str
+    model_name: str
+    capability_type: 'Capability'
+    description: str
+    detailed_description: str = ""
+    tags: List[str] = field(default_factory=list)
+    specs: Dict[str, Any] = field(default_factory=dict)
+    priority: int = 0
+    is_available: bool = True
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for API response"""
+        return {
+            "key": self.key,
+            "server_name": self.server_name,
+            "model_name": self.model_name,
+            "capability_type": self.capability_type.value,
+            "description": self.description,
+            "detailed_description": self.detailed_description,
+            "tags": self.tags,
+            "specs": self.specs,
+            "priority": self.priority,
+            "is_available": self.is_available,
+            "metadata": self.metadata,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'CapabilityInstance':
+        """Create from dictionary"""
+        return cls(
+            key=data["key"],
+            server_name=data["server_name"],
+            model_name=data["model_name"],
+            capability_type=Capability(data["capability_type"]),
+            description=data["description"],
+            detailed_description=data.get("detailed_description", ""),
+            tags=data.get("tags", []),
+            specs=data.get("specs", {}),
+            priority=data.get("priority", 0),
+            is_available=data.get("is_available", True),
+            metadata=data.get("metadata", {}),
+        )
+
+
+@dataclass
+class CapabilityGroup:
+    """
+    Group of capability instances by capability type.
+
+    Used to display all available options for a specific capability.
+    """
+    capability_type: 'Capability'
+    capability_name: str
+    description: str
+    instances: List[CapabilityInstance] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for API response"""
+        return {
+            "capability_type": self.capability_type.value,
+            "capability_name": self.capability_name,
+            "description": self.description,
+            "instances": [inst.to_dict() for inst in self.instances],
+            "total_instances": len(self.instances),
+        }

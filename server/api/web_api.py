@@ -7,7 +7,7 @@ Provides REST endpoints and Server-Sent Events for streaming.
 
 import json
 import asyncio
-from typing import Optional
+from typing import Optional, List
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,8 +15,8 @@ from pydantic import BaseModel, Field
 
 from server.api.filmeto_api import FilmetoApi
 from server.api.types import (
-    FilmetoTask, TaskProgress, TaskResult, ToolType, ResourceInput,
-    ValidationError, PluginNotFoundError, PluginExecutionError, TimeoutError as TaskTimeoutError
+    FilmetoTask, TaskProgress, TaskResult, Capability, ResourceInput,
+    ValidationError, ServerNotFoundError, ServerExecutionError, TimeoutError as TaskTimeoutError
 )
 from server.api.chat_types import (
     ChatCompletionRequest,
@@ -28,9 +28,9 @@ from server.api.chat_types import (
 # Pydantic models for API
 class TaskRequest(BaseModel):
     """Request model for creating a task"""
-    tool_name: str = Field(..., description="Tool to use (e.g., 'text2image')")
-    plugin_name: str = Field(..., description="Plugin name to execute")
-    parameters: dict = Field(..., description="Tool-specific parameters")
+    capability: str = Field(..., description="Capability to use (e.g., 'text2image')")
+    server_name: str = Field(..., description="Server name to execute")
+    parameters: dict = Field(..., description="Capability-specific parameters")
     resources: list = Field(default_factory=list, description="Input resources")
     timeout: int = Field(default=300, description="Timeout in seconds")
     metadata: dict = Field(default_factory=dict, description="Additional metadata")
@@ -43,18 +43,18 @@ class TaskResponse(BaseModel):
     message: str
 
 
-class ToolInfo(BaseModel):
-    """Tool information"""
+class CapabilityInfo(BaseModel):
+    """Capability information"""
     name: str
     display_name: str
 
 
-class PluginInfo(BaseModel):
-    """Plugin information"""
+class ServerInfo(BaseModel):
+    """Server information"""
     name: str
     version: str
     description: str
-    tool_type: str
+    capability_type: str
     engine: str
     author: str
 
@@ -70,7 +70,7 @@ class ErrorResponse(BaseModel):
 app = FastAPI(
     title="Filmeto API",
     description="Unified API for AI model services",
-    version="1.0.0"
+    version="2.0.0"
 )
 
 # Add CORS middleware
@@ -107,7 +107,7 @@ async def root():
     """Root endpoint"""
     return {
         "name": "Filmeto API",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "status": "running"
     }
 
@@ -118,50 +118,106 @@ async def health_check():
     return {"status": "healthy"}
 
 
-@app.get("/api/v1/tools", response_model=list[ToolInfo])
-async def list_tools():
+@app.get("/api/v1/capabilities")
+async def list_capabilities(capability_type: Optional[str] = None):
     """
-    List all available tools.
-    
-    Returns:
-        List of available tools with their information
-    """
-    try:
-        tools = filmeto_api.list_tools()
-        return tools
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    List all capability instances.
 
+    Capabilities represent server:model combinations that provide specific
+    AI services. Each capability has a unique key in "server:model" format.
 
-@app.get("/api/v1/plugins", response_model=list[PluginInfo])
-async def list_plugins():
-    """
-    List all available plugins.
-    
-    Returns:
-        List of available plugins with their information
-    """
-    try:
-        plugins = filmeto_api.list_plugins()
-        return plugins
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/v1/plugins/by-tool/{tool_name}", response_model=list[PluginInfo])
-async def get_plugins_by_tool(tool_name: str):
-    """
-    Get all plugins supporting a specific tool type.
-    
     Args:
-        tool_name: Tool type (e.g., "text2image")
-    
+        capability_type: Optional filter by capability type (e.g., "text2image")
+
     Returns:
-        List of plugins supporting the tool
+        List of capability instances with descriptions for LLM selection
+
+    Example:
+        GET /api/v1/capabilities?capability_type=text2image
     """
     try:
-        plugins = filmeto_api.get_plugins_by_tool(tool_name)
-        return plugins
+        capabilities = filmeto_api.list_capabilities(capability_type)
+        return {
+            "capabilities": capabilities,
+            "total": len(capabilities),
+            "capability_type_filter": capability_type
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/capabilities/groups")
+async def list_capability_groups():
+    """
+    List capabilities grouped by capability type.
+
+    Returns all capabilities organized by their type (text2image, image2video, etc.)
+    with each group containing available server:model options.
+
+    Returns:
+        List of capability groups with their instances
+    """
+    try:
+        groups = filmeto_api.get_capability_groups()
+        return {
+            "groups": groups,
+            "total_groups": len(groups)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/capabilities/{key}")
+async def get_capability(key: str):
+    """
+    Get a specific capability instance by key.
+
+    Args:
+        key: Capability key in "server:model" format
+             (e.g., "bailian-prod:wanx2.1-t2i-turbo")
+
+    Returns:
+        Capability instance details including description for LLM selection
+    """
+    try:
+        capability = filmeto_api.get_capability(key)
+        if not capability:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Capability '{key}' not found"
+            )
+        return capability
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/capabilities/select/{capability_type}")
+async def get_capability_selection_context(
+    capability_type: str,
+    user_requirement: Optional[str] = None
+):
+    """
+    Get context for LLM to select appropriate capability.
+
+    This endpoint returns structured information that can be used
+    by an LLM to select the most appropriate capability instance
+    based on user requirements.
+
+    Args:
+        capability_type: Capability type needed (e.g., "text2image")
+        user_requirement: Optional user requirement description
+
+    Returns:
+        Structured context for LLM-based capability selection
+    """
+    try:
+        context = filmeto_api.get_capability_selection_context(
+            capability_type,
+            user_requirement or ""
+        )
+        return context
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -182,8 +238,8 @@ async def create_task(task_request: TaskRequest):
     """
     try:
         task = FilmetoTask(
-            tool_name=ToolType(task_request.tool_name),
-            plugin_name=task_request.plugin_name,
+            capability=Capability(task_request.capability),
+            server_name=task_request.server_name,
             parameters=task_request.parameters,
             resources=[ResourceInput.from_dict(r) for r in task_request.resources],
             timeout=task_request.timeout,
@@ -208,44 +264,27 @@ async def create_task(task_request: TaskRequest):
 async def execute_task_stream(task_request: TaskRequest):
     """
     Execute a task with Server-Sent Events streaming.
-    
+
     This endpoint creates and executes a task, streaming progress updates
     and the final result using Server-Sent Events (SSE).
-    
+
     Args:
         task_request: Task execution request
-    
+
     Returns:
         StreamingResponse with SSE data
-        
-    Example:
-        ```javascript
-        const eventSource = new EventSource('/api/v1/tasks/execute', {
-            method: 'POST',
-            body: JSON.stringify({...})
-        });
-        
-        eventSource.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            if (data.type === 'progress') {
-                console.log('Progress:', data.percent);
-            } else if (data.type === 'result') {
-                console.log('Result:', data);
-            }
-        };
-        ```
     """
     try:
         # Convert request to FilmetoTask
         task = FilmetoTask(
-            tool_name=ToolType(task_request.tool_name),
-            plugin_name=task_request.plugin_name,
+            capability=Capability(task_request.capability),
+            server_name=task_request.server_name,
             parameters=task_request.parameters,
             resources=[ResourceInput.from_dict(r) for r in task_request.resources],
             timeout=task_request.timeout,
             metadata=task_request.metadata
         )
-        
+
         # Create event generator
         async def event_generator():
             try:
@@ -268,7 +307,7 @@ async def execute_task_stream(task_request: TaskRequest):
                     "details": e.details
                 }
                 yield f"data: {json.dumps(error_data)}\n\n"
-            except PluginNotFoundError as e:
+            except ServerNotFoundError as e:
                 error_data = {
                     "_type": "error",
                     "code": e.code,
@@ -276,7 +315,7 @@ async def execute_task_stream(task_request: TaskRequest):
                     "details": e.details
                 }
                 yield f"data: {json.dumps(error_data)}\n\n"
-            except PluginExecutionError as e:
+            except ServerExecutionError as e:
                 error_data = {
                     "_type": "error",
                     "code": e.code,
@@ -300,7 +339,7 @@ async def execute_task_stream(task_request: TaskRequest):
                     "details": {}
                 }
                 yield f"data: {json.dumps(error_data)}\n\n"
-        
+
         return StreamingResponse(
             event_generator(),
             media_type="text/event-stream",
@@ -310,7 +349,7 @@ async def execute_task_stream(task_request: TaskRequest):
                 "X-Accel-Buffering": "no"  # Disable buffering in nginx
             }
         )
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -330,10 +369,10 @@ async def queue_status():
 async def get_task_status(task_id: str):
     """
     Get current status of a task.
-    
+
     Args:
         task_id: Task identifier
-    
+
     Returns:
         Task status information
     """
@@ -360,11 +399,6 @@ async def chat_completions(request: ChatCompletionRequest):
     Supports both streaming (``stream: true``) and non-streaming modes.
     Requests are routed to the appropriate LLM backend based on the model
     name and server configuration.
-
-    Server resolution order:
-      1. Explicit ``server`` field in the request
-      2. Server whose ``models`` list contains the requested model
-      3. First chat-capable server (fallback)
     """
     try:
         if request.stream:
@@ -408,8 +442,7 @@ async def list_chat_models():
     """
     OpenAI-compatible model listing endpoint.
 
-    Returns all models advertised by chat-capable servers
-    (server_type: openai / chat / llm).
+    Returns all models advertised by chat-capable servers.
     """
     try:
         models = filmeto_api.list_chat_models()
@@ -420,4 +453,4 @@ async def list_chat_models():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0", port=8000)

@@ -14,7 +14,7 @@ from typing import Dict, Any, Callable, List, Optional
 # Add parent directory to path to import base_plugin
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from server.plugins.base_plugin import BaseServerPlugin, ToolConfig
+from server.plugins.base_plugin import BaseServerPlugin, CapabilityConfig
 
 try:
     from PIL import Image, ImageDraw, ImageFont
@@ -66,9 +66,9 @@ class LocalServerPlugin(BaseServerPlugin):
             logger.error(f"Failed to create LocalServer config widget: {e}", exc_info=True)
             return None
 
-    def get_supported_tools(self) -> List[ToolConfig]:
-        """Get list of tools supported by this plugin with their configs"""
-        # Define tools supported by this plugin
+    def get_supported_capabilities(self) -> List[CapabilityConfig]:
+        """Get list of capabilities supported by this plugin with their configs"""
+        # Define capabilities supported by this plugin
         text2image_params = [
             {
                 "name": "prompt",
@@ -131,8 +131,8 @@ class LocalServerPlugin(BaseServerPlugin):
         ]
 
         return [
-            ToolConfig(name="text2image", description="Generate image from text prompt", parameters=text2image_params),
-            ToolConfig(name="image2image", description="Transform image based on text prompt", parameters=image2image_params)
+            CapabilityConfig(name="text2image", description="Generate image from text prompt", parameters=text2image_params),
+            CapabilityConfig(name="image2image", description="Transform image based on text prompt", parameters=image2image_params)
         ]
     
     async def execute_task(
@@ -141,34 +141,34 @@ class LocalServerPlugin(BaseServerPlugin):
         progress_callback: Callable[[float, str, Dict[str, Any]], None]
     ) -> Dict[str, Any]:
         """
-        Execute a task based on its tool type.
+        Execute a task based on its capability type.
 
         Args:
-            task_data: Task parameters including tool, parameters, resources
+            task_data: Task parameters including capability, parameters, resources
             progress_callback: Callback for reporting progress
 
         Returns:
             Result dictionary with output files
         """
         task_id = task_data.get("task_id", "unknown")
-        tool_name = task_data.get("tool", "")
+        capability = task_data.get("capability", "")
         parameters = task_data.get("parameters", {})
 
         try:
-            if tool_name == "text2image":
+            if capability == "text2image":
                 return await self._execute_text2image_task(task_id, parameters, progress_callback)
-            elif tool_name == "image2image":
+            elif capability == "image2image":
                 return await self._execute_image2image_task(task_id, parameters, progress_callback)
             else:
                 return {
                     "task_id": task_id,
                     "status": "error",
-                    "error_message": f"Unsupported tool: {tool_name}",
+                    "error_message": f"Unsupported capability: {capability}",
                     "output_files": []
                 }
 
         except Exception as e:
-            print(f"Error executing task with tool {tool_name}: {e}")
+            print(f"Error executing task with capability {capability}: {e}")
             return {
                 "task_id": task_id,
                 "status": "error",
