@@ -9,9 +9,9 @@ import logging
 from pathlib import Path
 from typing import Optional, Dict, Any
 
-from PySide6.QtCore import QUrl, QObject
+from PySide6.QtCore import QUrl, QObject, QSize, Qt
 from PySide6.QtQuickWidgets import QQuickWidget
-from PySide6.QtWidgets import QWidget, QVBoxLayout
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QSizePolicy
 
 logger = logging.getLogger(__name__)
 
@@ -179,12 +179,24 @@ class PluginQMLLoader:
         """
         # Create container widget
         container = QWidget(parent)
+        container.setObjectName("PluginConfigContainer")
+
+        # Set size policy to expand
+        container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
         # Create QQuickWidget
         qml_widget = QQuickWidget()
         qml_widget.setResizeMode(QQuickWidget.SizeRootObjectToView)
+
+        # Set size policy on QML widget
+        qml_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        # Set minimum size to ensure the widget is visible
+        qml_widget.setMinimumSize(400, 300)
 
         # Create and set the config model
         config_model = self._create_config_model(
@@ -198,6 +210,7 @@ class PluginQMLLoader:
             # The model will be accessible in QML as "_pluginConfigModel"
             root_context = qml_widget.rootContext()
             root_context.setContextProperty("_pluginConfigModel", config_model)
+            root_context.setContextProperty("configModel", config_model)
 
             # Store reference to prevent garbage collection
             container._config_model = config_model
@@ -232,8 +245,19 @@ class PluginQMLLoader:
                 return container._config_model.validate()
             return True
 
+        def validate_config():
+            """Alias for validate() for compatibility with Python widgets"""
+            if hasattr(container, '_config_model'):
+                return container._config_model.validate()
+            return True
+
         container.get_config = get_config
         container.validate = validate
+        container.validate_config = validate_config
+
+        # Add config_changed signal for compatibility with Python widgets
+        if hasattr(container._config_model, 'config_changed'):
+            container.config_changed = container._config_model.config_changed
 
         return container
 

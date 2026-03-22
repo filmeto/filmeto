@@ -336,11 +336,22 @@ class ServerConfigView(BaseWidget):
         if custom_widget:
             # Use custom UI from plugin
             self.custom_config_widget = custom_widget
+
+            # Set size policy to expand
+            from PySide6.QtWidgets import QSizePolicy
+            custom_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+            # Set minimum size to ensure visibility
+            custom_widget.setMinimumSize(400, 300)
+
             self.main_layout.addWidget(custom_widget)
 
             # Connect config changed signal if available
             if hasattr(custom_widget, 'config_changed'):
-                custom_widget.config_changed.connect(self._on_custom_config_changed)
+                try:
+                    custom_widget.config_changed.connect(self._on_custom_config_changed)
+                except Exception as e:
+                    logger.debug(f"Could not connect config_changed signal: {e}")
 
             return
 
