@@ -235,11 +235,15 @@ class CustomDialog(QDialog):
             parent.raise_()
             # Set focus to parent
             parent.setFocus()
+            # Force process events to ensure focus is restored
+            from PySide6.QtCore import QCoreApplication
+            QCoreApplication.processEvents()
         else:
             # If no parent, try to activate the active window or main window
             if QApplication.activeWindow():
                 QApplication.activeWindow().activateWindow()
                 QApplication.activeWindow().raise_()
+                QApplication.processEvents()
 
     def set_title(self, title):
         """设置对话框标题"""

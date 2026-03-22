@@ -305,3 +305,12 @@ class BailianConfigWidget(QWidget):
             )
             return False
         return True
+
+    def cleanup(self):
+        """Clean up resources and release focus when closing."""
+        # Clear focus from all field widgets
+        for widget in self.field_widgets.values():
+            if hasattr(widget, 'clearFocus'):
+                widget.clearFocus()
+        # Clear focus from the widget itself
+        self.clearFocus()

@@ -428,8 +428,11 @@ class ServerListDialog(CustomDialog):
         if hasattr(self.config_view, 'custom_config_widget') and self.config_view.custom_config_widget:
             widget = self.config_view.custom_config_widget
 
-            # 1. Clear focus from the widget
+            # 1. Clear focus from the widget and all its children
             widget.clearFocus()
+            for child in widget.findChildren(QWidget):
+                if hasattr(child, 'clearFocus'):
+                    child.clearFocus()
 
             # 2. Call cleanup if available
             if hasattr(widget, 'cleanup'):
@@ -444,12 +447,19 @@ class ServerListDialog(CustomDialog):
             except Exception as e:
                 logger.debug(f"Error releasing mouse: {e}")
 
-            # 4. Clear the reference
+            # 4. Hide the widget before removing to ensure it's detached from event loop
+            widget.hide()
+
+            # 5. Clear the reference
             self.config_view.custom_config_widget = None
 
         # Also call the config view's own cleanup method
         if hasattr(self.config_view, '_cleanup_custom_widget'):
             self.config_view._cleanup_custom_widget()
+
+        # Force a process events to ensure all pending events are handled
+        from PySide6.QtCore import QCoreApplication
+        QCoreApplication.processEvents()
 
     def reject(self):
         """Override reject to clean up QML widgets before closing"""
