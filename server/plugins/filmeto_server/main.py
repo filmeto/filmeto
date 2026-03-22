@@ -8,12 +8,11 @@ import os
 import sys
 import time
 import asyncio
+import logging
 from pathlib import Path
 from typing import Dict, Any, Callable, List, Optional
 
 # Import base plugin directly using file path to avoid naming conflicts
-import sys
-from pathlib import Path
 import importlib.util
 
 # Get the absolute path to the base_plugin.py file
@@ -30,7 +29,7 @@ spec.loader.exec_module(base_plugin_module)
 BaseServerPlugin = base_plugin_module.BaseServerPlugin
 CapabilityConfig = base_plugin_module.CapabilityConfig
 
-# This import is not needed since we import directly above
+logger = logging.getLogger(__name__)
 
 try:
     from PIL import Image, ImageDraw, ImageFont

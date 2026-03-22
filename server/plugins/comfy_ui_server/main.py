@@ -10,6 +10,7 @@ import sys
 import json
 import random
 import tempfile
+import logging
 from pathlib import Path
 from typing import Dict, Any, Callable, List, Optional, Tuple
 
@@ -32,9 +33,9 @@ spec.loader.exec_module(base_plugin_module)
 BaseServerPlugin = base_plugin_module.BaseServerPlugin
 CapabilityConfig = base_plugin_module.CapabilityConfig
 
-# Import the ComfyUI client using relative import
-import sys
-from pathlib import Path
+logger = logging.getLogger(__name__)
+
+# Import the ComfyUI client
 sys.path.insert(0, str(Path(__file__).parent))
 from comfy_ui_client import ComfyUIClient
 

@@ -5,6 +5,7 @@ Mac-style preferences dialog that switches between server list and config views
 using navigation buttons instead of opening separate dialogs.
 """
 
+import logging
 from typing import Optional
 from PySide6.QtWidgets import (
     QPushButton, QMessageBox, QMenu, QStackedWidget, QDialogButtonBox, QVBoxLayout, QWidget
@@ -15,6 +16,8 @@ from PySide6.QtGui import QAction
 from app.ui.dialog.custom_dialog import CustomDialog
 from app.ui.server_list.server_views import ServerListView, ServerConfigView
 from utils.i18n_utils import tr
+
+logger = logging.getLogger(__name__)
 
 
 class ServerListDialog(CustomDialog):
@@ -149,6 +152,8 @@ class ServerListDialog(CustomDialog):
     
     def _show_list_view(self):
         """Switch to list view"""
+        # Clean up any QML widgets before switching views
+        self._cleanup_config_view()
         self.stacked_widget.setCurrentWidget(self.list_view)
         self.set_title(tr("服务器管理"))
         self._update_title_bar_buttons(show_list_buttons=True)
@@ -413,5 +418,30 @@ class ServerListDialog(CustomDialog):
     
     def _on_config_cancelled(self):
         """Handle configuration cancelled from config view"""
+        # Clean up any QML widgets before switching views
+        self._cleanup_config_view()
         # Go back to list view
         self._show_list_view()
+
+    def _cleanup_config_view(self):
+        """Clean up resources in config view"""
+        if hasattr(self.config_view, 'custom_config_widget') and self.config_view.custom_config_widget:
+            widget = self.config_view.custom_config_widget
+            if hasattr(widget, 'cleanup'):
+                try:
+                    widget.cleanup()
+                except Exception as e:
+                    logger.debug(f"Error cleaning up config widget: {e}")
+
+    def reject(self):
+        """Override reject to clean up QML widgets before closing"""
+        self._cleanup_config_view()
+        # Clear focus from the dialog to ensure proper cleanup
+        self.clearFocus()
+        super().reject()
+
+    def done(self, result):
+        """Override done to clean up QML widgets before closing"""
+        self._cleanup_config_view()
+        self.clearFocus()
+        super().done(result)

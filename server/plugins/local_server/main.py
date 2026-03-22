@@ -8,6 +8,7 @@ import os
 import sys
 import time
 import asyncio
+import logging
 from pathlib import Path
 from typing import Dict, Any, Callable, List, Optional
 
@@ -15,6 +16,8 @@ from typing import Dict, Any, Callable, List, Optional
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from server.plugins.base_plugin import BaseServerPlugin, CapabilityConfig
+
+logger = logging.getLogger(__name__)
 
 try:
     from PIL import Image, ImageDraw, ImageFont

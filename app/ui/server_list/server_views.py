@@ -325,7 +325,14 @@ class ServerConfigView(BaseWidget):
         while layout.count():
             item = layout.takeAt(0)
             if item.widget():
-                item.widget().deleteLater()
+                widget = item.widget()
+                # Clean up QML widgets properly
+                if hasattr(widget, 'cleanup'):
+                    try:
+                        widget.cleanup()
+                    except Exception as e:
+                        logger.debug(f"Error cleaning up widget: {e}")
+                widget.deleteLater()
             elif item.layout():
                 self._clear_layout(item.layout())
     

@@ -12,6 +12,7 @@ from typing import Optional, Dict, Any
 from PySide6.QtCore import QUrl, QObject, QSize, Qt
 from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QSizePolicy
+from PySide6.QtQuick import QQuickWindow
 
 logger = logging.getLogger(__name__)
 
@@ -220,6 +221,13 @@ class PluginQMLLoader:
         qml_widget = QQuickWidget()
         qml_widget.setResizeMode(QQuickWidget.SizeRootObjectToView)
 
+        # Important: Set correct focus policy to avoid blocking parent widgets
+        qml_widget.setFocusPolicy(Qt.StrongFocus)
+
+        # Ensure proper event handling
+        qml_widget.setAttribute(Qt.WA_AcceptTouchEvents, False)
+        qml_widget.setAttribute(Qt.WA_InputMethodEnabled, False)
+
         # Set size policy on QML widget
         qml_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
@@ -261,6 +269,36 @@ class PluginQMLLoader:
 
         # Store reference to QML widget for later access
         container._qml_widget = qml_widget
+
+        # Add cleanup method to container
+        def cleanup():
+            """Clean up QML widget resources"""
+            try:
+                if hasattr(container, '_qml_widget') and container._qml_widget:
+                    qml = container._qml_widget
+                    # Clear focus first
+                    qml.clearFocus()
+                    # Release any active focus on the QML window
+                    try:
+                        qw = qml.quickWindow()
+                        if qw:
+                            # Release mouse grab
+                            qw.releaseResources()
+                            # Clear active focus
+                            if qw.activeFocusItem():
+                                qw.activeFocusItem().setFocus(False)
+                    except RuntimeError:
+                        # Window might already be destroyed
+                        pass
+                    # Set source to empty to unload QML
+                    try:
+                        qml.setSource(QUrl())
+                    except RuntimeError:
+                        pass
+            except Exception as e:
+                logger.debug(f"Error during QML cleanup: {e}")
+
+        container.cleanup = cleanup
 
         # Add methods to container for external access
         def get_config():

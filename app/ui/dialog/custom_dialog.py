@@ -1,6 +1,6 @@
-from PySide6.QtWidgets import QDialog, QWidget, QHBoxLayout, QVBoxLayout, QLabel, QFrame, QPushButton
+from PySide6.QtWidgets import QDialog, QWidget, QHBoxLayout, QVBoxLayout, QLabel, QFrame, QPushButton, QApplication
 from PySide6.QtCore import Qt, QPoint, Signal
-from PySide6.QtGui import QMouseEvent
+from PySide6.QtGui import QMouseEvent, QCursor
 from .mac_button import MacTitleBar
 from ..styles import DIALOG_STYLE, DIALOG_NAV_BUTTON_STYLE, _lighten_color, _darken_color
 
@@ -186,7 +186,19 @@ class CustomDialog(QDialog):
         if event.buttons() == Qt.LeftButton and not self.drag_position.isNull():
             self.move(event.globalPosition().toPoint() - self.drag_position)
             event.accept()
-    
+
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        """处理鼠标释放事件"""
+        self.drag_position = QPoint()
+        super().mouseReleaseEvent(event)
+
+    def closeEvent(self, event):
+        """处理关闭事件 - 确保清理资源"""
+        # Clear focus to release any focus grabs
+        self.clearFocus()
+        # Accept the close event
+        event.accept()
+
     def set_title(self, title):
         """设置对话框标题"""
         self.title_bar.set_title(title)
