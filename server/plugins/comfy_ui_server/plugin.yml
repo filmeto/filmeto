@@ -4,6 +4,9 @@ description: ComfyUI integration for AI image and video generation
 author: Filmeto Team
 engine: comfyui
 
+# UI: Uses Python custom widget (ComfyUIConfigWidget) with tabs and workflow management
+# No QML UI defined - will use Python widget via init_ui()
+
 requirements:
   python: ">=3.9"
   packages:

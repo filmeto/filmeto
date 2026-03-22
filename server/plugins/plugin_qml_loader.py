@@ -62,6 +62,12 @@ class PluginQMLLoader:
             self._qml_cache[cache_key] = False
             return False
 
+        # Check for use_default flag (uses default PluginConfigWidget)
+        use_default = ui_config.get("use_default", False)
+        if use_default:
+            self._qml_cache[cache_key] = True
+            return True
+
         # Check for config_widget path
         config_widget = ui_config.get("config_widget")
         if not config_widget:
@@ -77,6 +83,19 @@ class PluginQMLLoader:
 
         self._qml_cache[cache_key] = True
         return True
+
+    def should_use_default_qml(self, plugin_info: Dict[str, Any]) -> bool:
+        """
+        Check if plugin should use default QML widget.
+
+        Args:
+            plugin_info: Plugin info dictionary
+
+        Returns:
+            True if should use default QML widget
+        """
+        ui_config = plugin_info.get("ui", {})
+        return ui_config.get("use_default", False)
 
     def get_qml_file_path(
         self,
@@ -127,6 +146,15 @@ class PluginQMLLoader:
             QWidget containing the QML widget, or None if failed
         """
         try:
+            # Check if should use default QML widget
+            if self.should_use_default_qml(plugin_info):
+                return self.create_default_qml_widget(
+                    plugin_info,
+                    config_schema,
+                    server_config,
+                    parent
+                )
+
             # Get QML file path
             if plugin_dir:
                 qml_path = self.get_qml_file_path(plugin_info, plugin_dir)

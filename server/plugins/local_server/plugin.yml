@@ -4,6 +4,10 @@ description: Local sever supporting multiple tools
 author: Filmeto Team
 engine: local
 
+# QML UI configuration (uses default PluginConfigWidget with config_schema)
+ui:
+  use_default: true
+
 requirements:
   python: ">=3.9"
   packages:
