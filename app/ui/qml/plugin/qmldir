@@ -1,0 +1,11 @@
+module plugin
+Theme 1.0 Theme.qml
+PluginConfigWidget 1.0 PluginConfigWidget.qml
+component Section 1.0 components/Section.qml
+component StringField 1.0 components/StringField.qml
+component PasswordField 1.0 components/PasswordField.qml
+component BooleanField 1.0 components/BooleanField.qml
+component IntegerField 1.0 components/IntegerField.qml
+component URLField 1.0 components/URLField.qml
+component SelectField 1.0 components/SelectField.qml
+component ConfigField 1.0 components/ConfigField.qml

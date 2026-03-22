@@ -4,6 +4,14 @@ description: Alibaba Cloud Bailian (DashScope) integration with LLM chat and AIG
 author: Filmeto Team
 engine: bailian
 
+# QML UI configuration (optional - enables custom QML config widget)
+ui:
+  config_widget: qml/config/ConfigWidget.qml
+  imports:
+    - QtQuick
+    - QtQuick.Controls
+    - QtQuick.Layouts
+
 requirements:
   python: ">=3.9"
   packages:

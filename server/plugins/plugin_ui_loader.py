@@ -4,10 +4,15 @@ Plugin UI Loader
 Handles loading plugin UI components for configuration purposes.
 This module loads plugins via code import (not subprocess) to enable
 UI widget instantiation in the main process.
+
+Supports both Python-based custom widgets and QML-based configuration UIs.
+QML UIs are preferred when defined in plugin.yml's ui section.
 """
 
 import sys
+import logging
 import importlib.util
+import yaml
 from pathlib import Path
 from typing import Optional, Dict, Any, Type
 
@@ -15,20 +20,27 @@ from PySide6.QtWidgets import QWidget
 
 from server.plugins.plugin_manager import ServerInfo
 
+logger = logging.getLogger(__name__)
+
 
 class PluginUILoader:
     """
-    Loads plugin UI components via code import.
-    
+    Loads plugin UI components via code import or QML.
+
     This class is responsible for loading plugin classes in the main process
     to enable UI widget creation. It should NOT be used for task execution,
     which should go through PluginManager's subprocess-based execution.
+
+    UI loading priority:
+    1. QML UI (if defined in plugin.yml's ui section)
+    2. Python custom widget (if plugin has init_ui method)
+    3. Default form-based UI (using config_schema)
     """
-    
+
     def __init__(self, plugins_dir: Optional[Path] = None):
         """
         Initialize plugin UI loader.
-        
+
         Args:
             plugins_dir: Directory containing plugins (default: server/plugins/)
         """
@@ -37,6 +49,14 @@ class PluginUILoader:
         else:
             # Default to server/plugins directory
             self.plugins_dir = Path(__file__).parent
+
+        # Initialize QML loader
+        self._qml_loader = None
+        try:
+            from server.plugins.plugin_qml_loader import PluginQMLLoader
+            self._qml_loader = PluginQMLLoader(self.plugins_dir)
+        except ImportError as e:
+            logger.warning(f"QML loader not available: {e}")
     
     def get_plugin_directory(self, plugin_name: str) -> Optional[Path]:
         """
@@ -175,52 +195,94 @@ class PluginUILoader:
     ) -> Optional[QWidget]:
         """
         Get custom UI widget from a plugin for configuration purposes.
-        
+
+        UI loading priority:
+        1. QML UI (if defined in plugin.yml's ui section)
+        2. Python custom widget (if plugin has init_ui method that returns a widget)
+
         Args:
             plugin_name: Name of the plugin
             workspace_path: Path to workspace directory
             server_config_dict: Optional server configuration dict for editing existing server
-            
+
         Returns:
             Custom UI widget or None if not available
         """
         try:
             # Get the plugin directory based on plugin name
             plugin_dir = self.get_plugin_directory(plugin_name)
-            
+
             if not plugin_dir:
-                print(f"Plugin directory not found for: {plugin_name}")
+                logger.warning(f"Plugin directory not found for: {plugin_name}")
                 return None
-            
-            # Import and instantiate the plugin class to get custom UI
+
+            # Get plugin info from plugin.yml
+            plugin_info = self._get_plugin_info_from_yml(plugin_dir)
+
+            # Priority 1: Try QML UI if available
+            if self._qml_loader and plugin_info:
+                if self._qml_loader.is_qml_available(plugin_info, plugin_dir):
+                    logger.info(f"Loading QML UI for plugin: {plugin_name}")
+                    config_schema = plugin_info.get("config_schema", {})
+                    qml_widget = self._qml_loader.create_qml_config_widget(
+                        plugin_info,
+                        config_schema,
+                        server_config_dict,
+                        plugin_dir
+                    )
+                    if qml_widget:
+                        return qml_widget
+                    logger.warning(f"QML UI loading failed, falling back to Python widget")
+
+            # Priority 2: Try Python custom widget
             plugin_instance = self.create_plugin_ui_instance(plugin_dir)
-            
-            if not plugin_instance:
-                print(f"Failed to create plugin instance for: {plugin_name}")
-                return None
-            
-            # Call init_ui method with workspace path and server config
-            if workspace_path is None:
-                # Try to get workspace path from a default location
-                workspace_path = Path.cwd() / "workspace"
-            
-            custom_widget = plugin_instance.init_ui(str(workspace_path), server_config_dict)
-            
-            return custom_widget
-            
+
+            if plugin_instance:
+                # Call init_ui method with workspace path and server config
+                if workspace_path is None:
+                    workspace_path = Path.cwd() / "workspace"
+
+                custom_widget = plugin_instance.init_ui(str(workspace_path), server_config_dict)
+
+                if custom_widget:
+                    return custom_widget
+
+            return None
+
         except Exception as e:
             logger.error(f"Failed to get custom UI from plugin {plugin_name}: {e}", exc_info=True)
+            return None
+
+    def _get_plugin_info_from_yml(self, plugin_dir: Path) -> Optional[Dict[str, Any]]:
+        """
+        Get plugin info from plugin.yml file.
+
+        Args:
+            plugin_dir: Path to the plugin directory
+
+        Returns:
+            Plugin info dictionary or None if not found
+        """
+        config_file = plugin_dir / "plugin.yml"
+        if not config_file.exists():
+            return None
+
+        try:
+            with open(config_file, 'r', encoding='utf-8') as f:
+                return yaml.safe_load(f)
+        except Exception as e:
+            logger.error(f"Failed to read plugin.yml: {e}")
             return None
     
     def get_plugin_info_from_code(self, plugin_name: str) -> Optional[Dict[str, Any]]:
         """
         Get plugin info by loading the plugin class directly (not from plugin.yml).
-        
+
         This can be useful for getting runtime plugin information.
-        
+
         Args:
             plugin_name: Name of the plugin
-            
+
         Returns:
             Plugin info dictionary or None if failed
         """
@@ -228,14 +290,53 @@ class PluginUILoader:
             plugin_dir = self.get_plugin_directory(plugin_name)
             if not plugin_dir:
                 return None
-            
+
             plugin_instance = self.create_plugin_ui_instance(plugin_dir)
             if not plugin_instance:
                 return None
-            
+
             return plugin_instance.get_plugin_info()
-            
+
         except Exception as e:
-            print(f"Failed to get plugin info from code for {plugin_name}: {e}")
+            logger.error(f"Failed to get plugin info from code for {plugin_name}: {e}")
             return None
+
+    def get_default_qml_widget(
+        self,
+        plugin_name: str,
+        server_config_dict: Optional[Dict[str, Any]] = None
+    ) -> Optional[QWidget]:
+        """
+        Get a default QML widget for a plugin using its config_schema.
+
+        This creates a QML widget from the built-in PluginConfigWidget.qml
+        which auto-renders fields from the plugin's config_schema.
+
+        Args:
+            plugin_name: Name of the plugin
+            server_config_dict: Optional server configuration dict
+
+        Returns:
+            QWidget containing the default QML widget or None
+        """
+        if not self._qml_loader:
+            return None
+
+        plugin_dir = self.get_plugin_directory(plugin_name)
+        if not plugin_dir:
+            return None
+
+        plugin_info = self._get_plugin_info_from_yml(plugin_dir)
+        if not plugin_info:
+            return None
+
+        config_schema = plugin_info.get("config_schema", {})
+        if not config_schema:
+            return None
+
+        return self._qml_loader.create_default_qml_widget(
+            plugin_info,
+            config_schema,
+            server_config_dict
+        )
 
