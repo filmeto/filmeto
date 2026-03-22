@@ -45,7 +45,7 @@ Item {
 
         Flickable {
             id: flickable
-            contentWidth: availableWidth
+            contentWidth: flickable.width
             contentHeight: mainLayout.implicitHeight + 32
 
             ColumnLayout {
