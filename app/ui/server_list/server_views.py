@@ -299,7 +299,7 @@ class ServerConfigView(BaseWidget):
     def configure(self, plugin_info, server_config=None):
         """
         Configure the view for a specific plugin/server.
-        
+
         Args:
             plugin_info: PluginInfo object
             server_config: Optional ServerConfig for editing existing server
@@ -308,17 +308,42 @@ class ServerConfigView(BaseWidget):
         self.server_config = server_config
         self._is_edit_mode = server_config is not None
         self.field_widgets = {}
-        
+
+        # Clean up existing custom widget first (before clearing layout)
+        self._cleanup_custom_widget()
+
         # Clear existing layout
         while self.main_layout.count():
             item = self.main_layout.takeAt(0)
             if item.widget():
-                item.widget().deleteLater()
+                widget = item.widget()
+                # Check for cleanup method (for QML widgets)
+                if hasattr(widget, 'cleanup'):
+                    try:
+                        widget.cleanup()
+                    except Exception as e:
+                        logger.debug(f"Error cleaning up widget: {e}")
+                widget.deleteLater()
             elif item.layout():
                 self._clear_layout(item.layout())
-        
+
         # Build UI
         self._build_config_ui()
+
+    def _cleanup_custom_widget(self):
+        """Clean up the custom config widget properly"""
+        if self.custom_config_widget:
+            # Clear focus from the custom widget
+            self.custom_config_widget.clearFocus()
+            # Call cleanup if available
+            if hasattr(self.custom_config_widget, 'cleanup'):
+                try:
+                    self.custom_config_widget.cleanup()
+                except Exception as e:
+                    logger.debug(f"Error cleaning up custom config widget: {e}")
+            # Release mouse grab if any
+            self.custom_config_widget.releaseMouse()
+            self.custom_config_widget = None
     
     def _clear_layout(self, layout):
         """Recursively clear a layout"""

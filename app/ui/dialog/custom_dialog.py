@@ -118,16 +118,17 @@ class CustomTitleBar(QFrame):
 
 class CustomDialog(QDialog):
     """自定义无边框对话框"""
-    
+
     # Forward navigation signals
     back_clicked = Signal()
     forward_clicked = Signal()
-    
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        
+        self.setAttribute(Qt.WA_QuitOnClose, False)  # Don't quit app when dialog closes
+
         # 应用全局对话框样式
         self.setStyleSheet(DIALOG_STYLE)
 
@@ -196,8 +197,49 @@ class CustomDialog(QDialog):
         """处理关闭事件 - 确保清理资源"""
         # Clear focus to release any focus grabs
         self.clearFocus()
+        # Release mouse grab if any
+        self.releaseMouse()
         # Accept the close event
         event.accept()
+
+    def reject(self):
+        """Override reject to properly restore parent window state"""
+        # Clear focus first
+        self.clearFocus()
+        # Release mouse grab
+        self.releaseMouse()
+        # Call parent reject
+        super().reject()
+        # Restore parent window activation
+        self._restore_parent_window()
+
+    def done(self, result):
+        """Override done to properly restore parent window state"""
+        # Clear focus first
+        self.clearFocus()
+        # Release mouse grab
+        self.releaseMouse()
+        # Call parent done
+        super().done(result)
+        # Restore parent window activation
+        self._restore_parent_window()
+
+    def _restore_parent_window(self):
+        """Restore parent window activation and focus"""
+        parent = self.parentWidget()
+        if parent:
+            # Ensure parent is enabled
+            parent.setEnabled(True)
+            # Activate parent window
+            parent.activateWindow()
+            parent.raise_()
+            # Set focus to parent
+            parent.setFocus()
+        else:
+            # If no parent, try to activate the active window or main window
+            if QApplication.activeWindow():
+                QApplication.activeWindow().activateWindow()
+                QApplication.activeWindow().raise_()
 
     def set_title(self, title):
         """设置对话框标题"""

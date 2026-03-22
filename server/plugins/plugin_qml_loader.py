@@ -221,10 +221,11 @@ class PluginQMLLoader:
         qml_widget = QQuickWidget()
         qml_widget.setResizeMode(QQuickWidget.SizeRootObjectToView)
 
-        # Important: Set correct focus policy to avoid blocking parent widgets
-        qml_widget.setFocusPolicy(Qt.StrongFocus)
+        # Use ClickFocus instead of StrongFocus to prevent automatic focus grabbing
+        # This allows internal QML controls to work while not blocking parent widgets
+        qml_widget.setFocusPolicy(Qt.ClickFocus)
 
-        # Ensure proper event handling
+        # Disable attributes that could block parent widgets
         qml_widget.setAttribute(Qt.WA_AcceptTouchEvents, False)
         qml_widget.setAttribute(Qt.WA_InputMethodEnabled, False)
 
@@ -276,25 +277,42 @@ class PluginQMLLoader:
             try:
                 if hasattr(container, '_qml_widget') and container._qml_widget:
                     qml = container._qml_widget
-                    # Clear focus first
+
+                    # 1. First, clear focus from the container to ensure focus moves away
+                    container.clearFocus()
+
+                    # 2. Clear focus from QML widget
                     qml.clearFocus()
-                    # Release any active focus on the QML window
+
+                    # 3. Release keyboard and mouse grabs
                     try:
                         qw = qml.quickWindow()
                         if qw:
-                            # Release mouse grab
+                            # Clear active focus item
+                            active_item = qw.activeFocusItem()
+                            if active_item:
+                                active_item.setFocus(False)
+
+                            # Clear content item focus
+                            content = qw.contentItem()
+                            if content:
+                                content.setFocus(False)
+
+                            # Release all resources
                             qw.releaseResources()
-                            # Clear active focus
-                            if qw.activeFocusItem():
-                                qw.activeFocusItem().setFocus(False)
-                    except RuntimeError:
-                        # Window might already be destroyed
+                    except (RuntimeError, AttributeError):
+                        # Window might already be destroyed or not available
                         pass
-                    # Set source to empty to unload QML
+
+                    # 4. Set source to empty to unload QML
                     try:
                         qml.setSource(QUrl())
-                    except RuntimeError:
+                    except (RuntimeError, AttributeError):
                         pass
+
+                    # 5. Delete the QML widget reference
+                    container._qml_widget = None
+
             except Exception as e:
                 logger.debug(f"Error during QML cleanup: {e}")
 

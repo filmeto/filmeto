@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QDialog, QWidget, QHBoxLayout, QVBoxLayout, QFrame, QLabel, QPushButton
+from PySide6.QtWidgets import QDialog, QWidget, QHBoxLayout, QVBoxLayout, QFrame, QLabel, QPushButton, QApplication
 from PySide6.QtCore import Qt, QPoint, Signal
 from PySide6.QtGui import QMouseEvent
 from .mac_button import MacTitleBar
@@ -17,6 +17,7 @@ class LeftPanelDialog(QDialog):
         super().__init__(parent)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
         self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WA_QuitOnClose, False)  # Don't quit app when dialog closes
 
         # Store workspace for server status widget
         self._workspace = workspace
@@ -255,4 +256,43 @@ class LeftPanelDialog(QDialog):
         """设置右边标题条的标题文本"""
         if self.right_title_label:
             self.right_title_label.setText(title)
+
+    def reject(self):
+        """Override reject to properly restore parent window state"""
+        # Clear focus first
+        self.clearFocus()
+        # Release mouse grab
+        self.releaseMouse()
+        # Call parent reject
+        super().reject()
+        # Restore parent window activation
+        self._restore_parent_window()
+
+    def done(self, result):
+        """Override done to properly restore parent window state"""
+        # Clear focus first
+        self.clearFocus()
+        # Release mouse grab
+        self.releaseMouse()
+        # Call parent done
+        super().done(result)
+        # Restore parent window activation
+        self._restore_parent_window()
+
+    def _restore_parent_window(self):
+        """Restore parent window activation and focus"""
+        parent = self.parentWidget()
+        if parent:
+            # Ensure parent is enabled
+            parent.setEnabled(True)
+            # Activate parent window
+            parent.activateWindow()
+            parent.raise_()
+            # Set focus to parent
+            parent.setFocus()
+        else:
+            # If no parent, try to activate the active window or main window
+            if QApplication.activeWindow():
+                QApplication.activeWindow().activateWindow()
+                QApplication.activeWindow().raise_()
 

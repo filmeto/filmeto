@@ -427,21 +427,38 @@ class ServerListDialog(CustomDialog):
         """Clean up resources in config view"""
         if hasattr(self.config_view, 'custom_config_widget') and self.config_view.custom_config_widget:
             widget = self.config_view.custom_config_widget
+
+            # 1. Clear focus from the widget
+            widget.clearFocus()
+
+            # 2. Call cleanup if available
             if hasattr(widget, 'cleanup'):
                 try:
                     widget.cleanup()
                 except Exception as e:
                     logger.debug(f"Error cleaning up config widget: {e}")
 
+            # 3. Release mouse grab
+            try:
+                widget.releaseMouse()
+            except Exception as e:
+                logger.debug(f"Error releasing mouse: {e}")
+
+            # 4. Clear the reference
+            self.config_view.custom_config_widget = None
+
+        # Also call the config view's own cleanup method
+        if hasattr(self.config_view, '_cleanup_custom_widget'):
+            self.config_view._cleanup_custom_widget()
+
     def reject(self):
         """Override reject to clean up QML widgets before closing"""
         self._cleanup_config_view()
-        # Clear focus from the dialog to ensure proper cleanup
-        self.clearFocus()
+        # Call parent reject (which handles focus restoration)
         super().reject()
 
     def done(self, result):
         """Override done to clean up QML widgets before closing"""
         self._cleanup_config_view()
-        self.clearFocus()
+        # Call parent done (which handles focus restoration)
         super().done(result)
