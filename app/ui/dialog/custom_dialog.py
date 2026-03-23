@@ -3,6 +3,9 @@ from PySide6.QtCore import Qt, QPoint, QTimer, Signal
 from PySide6.QtGui import QMouseEvent, QCursor
 from .mac_button import MacTitleBar
 from ..styles import DIALOG_STYLE, DIALOG_NAV_BUTTON_STYLE, _lighten_color, _darken_color
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class CustomTitleBar(QFrame):
@@ -227,6 +230,13 @@ class CustomDialog(QDialog):
     def _restore_parent_window(self):
         """Restore parent window activation and focus"""
         parent = self.parentWidget()
+        modal = QApplication.activeModalWidget()
+        logger.info(
+            "CustomDialog restore parent=%s modal=%s active=%s",
+            type(parent).__name__ if parent else "None",
+            type(modal).__name__ if modal else "None",
+            type(QApplication.activeWindow()).__name__ if QApplication.activeWindow() else "None",
+        )
         if parent:
             # Ensure parent is enabled immediately (was blocked by modal dialog)
             parent.setEnabled(True)
@@ -248,6 +258,12 @@ class CustomDialog(QDialog):
                 parent.activateWindow()
                 parent.raise_()
                 parent.setFocus()
+                logger.info(
+                    "CustomDialog activated parent=%s parent_enabled=%s focus_widget=%s",
+                    type(parent).__name__,
+                    parent.isEnabled(),
+                    type(QApplication.focusWidget()).__name__ if QApplication.focusWidget() else "None",
+                )
         except RuntimeError:
             pass
 

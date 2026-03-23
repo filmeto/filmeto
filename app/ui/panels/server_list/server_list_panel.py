@@ -7,7 +7,7 @@ directly within the panel switcher.
 """
 import logging
 
-from PySide6.QtWidgets import QMessageBox, QMenu
+from PySide6.QtWidgets import QApplication, QMessageBox, QMenu
 from PySide6.QtGui import QAction
 
 from app.ui.panels.base_panel import BasePanel
@@ -69,6 +69,7 @@ class ServerListPanel(BasePanel):
         """Open the server list dialog for editing."""
         try:
             from app.ui.server_list.server_list_dialog import ServerListDialog
+            from PySide6.QtCore import QCoreApplication
             dialog = ServerListDialog(self.workspace, self)
             server = self.server_manager.get_server(server_name)
             if server:
@@ -76,7 +77,22 @@ class ServerListPanel(BasePanel):
                 if plugin_info:
                     dialog._show_config_view(plugin_info, server.config)
             dialog.servers_modified.connect(self._load_servers)
-            dialog.exec()
+            logger.info(
+                "ServerListPanel opening edit dialog parent_enabled=%s active_modal=%s",
+                self.isEnabled(),
+                type(QApplication.activeModalWidget()).__name__ if QApplication.activeModalWidget() else "None",
+            )
+            try:
+                dialog.exec()
+            finally:
+                dialog.deleteLater()
+                QCoreApplication.processEvents()
+                logger.info(
+                    "ServerListPanel closed edit dialog parent_enabled=%s active_modal=%s focus_widget=%s",
+                    self.isEnabled(),
+                    type(QApplication.activeModalWidget()).__name__ if QApplication.activeModalWidget() else "None",
+                    type(QApplication.focusWidget()).__name__ if QApplication.focusWidget() else "None",
+                )
         except Exception as e:
             logger.error(f"Failed to edit server: {e}")
 
@@ -99,9 +115,25 @@ class ServerListPanel(BasePanel):
         """Open server list dialog for adding a new server."""
         try:
             from app.ui.server_list.server_list_dialog import ServerListDialog
+            from PySide6.QtCore import QCoreApplication
             dialog = ServerListDialog(self.workspace, self)
             dialog.servers_modified.connect(self._load_servers)
-            dialog.exec()
+            logger.info(
+                "ServerListPanel opening add dialog parent_enabled=%s active_modal=%s",
+                self.isEnabled(),
+                type(QApplication.activeModalWidget()).__name__ if QApplication.activeModalWidget() else "None",
+            )
+            try:
+                dialog.exec()
+            finally:
+                dialog.deleteLater()
+                QCoreApplication.processEvents()
+                logger.info(
+                    "ServerListPanel closed add dialog parent_enabled=%s active_modal=%s focus_widget=%s",
+                    self.isEnabled(),
+                    type(QApplication.activeModalWidget()).__name__ if QApplication.activeModalWidget() else "None",
+                    type(QApplication.focusWidget()).__name__ if QApplication.focusWidget() else "None",
+                )
         except Exception as e:
             logger.error(f"Failed to open add server dialog: {e}")
 
