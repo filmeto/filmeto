@@ -29,6 +29,31 @@ Item {
         return true
     }
 
+    // Cleanup function to properly release focus and close popups
+    // Called from Python before widget destruction
+    function cleanup() {
+        // Close any open ComboBox popups
+        if (chatModelComboBox.popup.visible) {
+            chatModelComboBox.popup.close()
+        }
+        if (imageModelComboBox.popup.visible) {
+            imageModelComboBox.popup.close()
+        }
+
+        // Clear text selection and focus from TextField
+        if (apiKeyField.activeFocus) {
+            apiKeyField.deselect()
+            apiKeyField.focus = false
+        }
+        if (codingPlanApiKeyField.activeFocus) {
+            codingPlanApiKeyField.deselect()
+            codingPlanApiKeyField.focus = false
+        }
+
+        // Force focus release from any focused item
+        root.forceActiveFocus()
+    }
+
     // Background
     Rectangle {
         anchors.fill: parent

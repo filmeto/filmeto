@@ -336,6 +336,13 @@ class ServerConfigView(BaseWidget):
             # Clear focus from the custom widget
             self.custom_config_widget.clearFocus()
 
+            # Release mouse grab BEFORE any other cleanup operations
+            # This must be done while widget is still valid
+            try:
+                self.custom_config_widget.releaseMouse()
+            except Exception as e:
+                logger.debug(f"Error releasing mouse: {e}")
+
             # Disconnect config_changed signal if connected
             if hasattr(self.custom_config_widget, 'config_changed'):
                 try:
@@ -359,8 +366,7 @@ class ServerConfigView(BaseWidget):
             # Delete the widget
             self.custom_config_widget.deleteLater()
 
-            # Release mouse grab if any
-            self.custom_config_widget.releaseMouse()
+            # Clear reference
             self.custom_config_widget = None
     
     def _clear_layout(self, layout):
