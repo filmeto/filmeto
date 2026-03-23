@@ -254,19 +254,10 @@ class StartupWindow(LeftPanelDialog):
         try:
             server_dialog.exec()
         finally:
-            # Force clear modal state before processing events
-            if server_dialog.isModal():
-                server_dialog.setWindowModality(Qt.NonModal)
-
-            # Let dialog close itself; just flush deferred deletes and restore focus.
+            # The ServerListDialog (via CustomDialog) already handles parent window restoration.
+            # We just need to ensure any pending events are processed.
             QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
             QCoreApplication.processEvents()
-
-            # Force activate parent window
-            self.setEnabled(True)
-            self.activateWindow()
-            self.raise_()
-            self.setFocus()
 
             active_modal = QApplication.activeModalWidget()
             if active_modal:
@@ -285,6 +276,7 @@ class StartupWindow(LeftPanelDialog):
                 type(QApplication.activeModalWidget()).__name__ if QApplication.activeModalWidget() else "None",
                 type(QApplication.focusWidget()).__name__ if QApplication.focusWidget() else "None",
             )
+            # Log modal snapshots for debugging (optional)
             from PySide6.QtCore import QTimer
             QTimer.singleShot(0, self._log_modal_snapshot_0ms)
             QTimer.singleShot(100, self._log_modal_snapshot_100ms)

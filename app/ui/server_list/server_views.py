@@ -338,6 +338,12 @@ class ServerConfigView(BaseWidget):
     def _cleanup_custom_widget(self):
         """Clean up the custom config widget properly"""
         if self.custom_config_widget:
+            # CRITICAL: Set focus to the config view itself BEFORE cleaning up.
+            # QQuickWidget has its own focus management and when destroyed,
+            # can leave focus as None instead of returning to parent.
+            self.setFocus()
+            self.activateWindow()
+
             # Clear focus from the custom widget
             self.custom_config_widget.clearFocus()
 

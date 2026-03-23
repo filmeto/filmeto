@@ -243,21 +243,20 @@ class CustomDialog(QDialog):
         if parent:
             # Ensure parent is enabled immediately (was blocked by modal dialog)
             parent.setEnabled(True)
-            # Defer the actual window activation via a timer so it fires after
-            # all pending native events (including QQuickWidget teardown) are
-            # processed by the event loop.  A 0-ms timer is enough to let the
-            # current event-loop iteration finish before we try to steal focus.
-            QTimer.singleShot(0, lambda: self._do_activate_parent(parent))
+            # Activate parent window SYNCHRONOUSLY to ensure it's ready when exec() returns
+            self._do_activate_parent(parent)
         else:
             active = QApplication.activeWindow()
             if active:
-                QTimer.singleShot(0, lambda: self._do_activate_parent(active))
+                self._do_activate_parent(active)
 
     def _do_activate_parent(self, parent):
-        """Actually activate the parent window after event loop settles."""
+        """Actually activate the parent window."""
         try:
-            # Clear modal state first
-            self.setWindowModality(Qt.NonModal)
+            # Check if dialog is still valid before accessing it
+            if not self.isHidden():
+                # Clear modal state first (only if dialog still visible)
+                self.setWindowModality(Qt.NonModal)
 
             if parent and not parent.isHidden():
                 parent.setEnabled(True)
@@ -271,6 +270,7 @@ class CustomDialog(QDialog):
                     type(QApplication.focusWidget()).__name__ if QApplication.focusWidget() else "None",
                 )
         except RuntimeError:
+            # Dialog may have been destroyed
             pass
 
     def set_title(self, title):
@@ -368,6 +368,8 @@ class CustomDialog(QDialog):
 
     def clear_buttons(self):
         """Clear all buttons from the button area"""
+        import warnings
+
         # Remove all widgets from the layout
         while self.button_area_layout.count():
             item = self.button_area_layout.takeAt(0)
@@ -375,8 +377,12 @@ class CustomDialog(QDialog):
                 widget = item.widget()
                 # Disconnect all signals to prevent callbacks to deleted widgets
                 try:
-                    widget.clicked.disconnect()
-                except RuntimeError:
+                    if hasattr(widget, 'clicked'):
+                        # Suppress RuntimeWarning when no connections exist
+                        with warnings.catch_warnings():
+                            warnings.simplefilter("ignore", RuntimeWarning)
+                            widget.clicked.disconnect()
+                except (RuntimeError, TypeError):
                     pass
                 # Use delayed deletion to avoid immediate destruction during signal handling
                 widget.deleteLater()

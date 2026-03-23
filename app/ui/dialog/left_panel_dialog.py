@@ -284,15 +284,18 @@ class LeftPanelDialog(QDialog):
         parent = self.parentWidget()
         if parent:
             parent.setEnabled(True)
-            QTimer.singleShot(0, lambda: self._do_activate_parent(parent))
+            self._do_activate_parent(parent)
         else:
             active = QApplication.activeWindow()
             if active:
-                QTimer.singleShot(0, lambda: self._do_activate_parent(active))
+                self._do_activate_parent(active)
 
     def _do_activate_parent(self, parent):
-        """Actually activate the parent window after event loop settles."""
+        """Actually activate the parent window."""
         try:
+            if not self.isHidden():
+                self.setWindowModality(Qt.NonModal)
+
             if parent and not parent.isHidden():
                 parent.setEnabled(True)
                 parent.activateWindow()
