@@ -256,6 +256,9 @@ class CustomDialog(QDialog):
     def _do_activate_parent(self, parent):
         """Actually activate the parent window after event loop settles."""
         try:
+            # Clear modal state first
+            self.setWindowModality(Qt.NonModal)
+
             if parent and not parent.isHidden():
                 parent.setEnabled(True)
                 parent.activateWindow()

@@ -254,12 +254,20 @@ class StartupWindow(LeftPanelDialog):
         try:
             server_dialog.exec()
         finally:
+            # Force clear modal state before processing events
+            if server_dialog.isModal():
+                server_dialog.setWindowModality(Qt.NonModal)
+
             # Let dialog close itself; just flush deferred deletes and restore focus.
             QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
             QCoreApplication.processEvents()
-            QCoreApplication.processEvents()
+
+            # Force activate parent window
+            self.setEnabled(True)
             self.activateWindow()
             self.raise_()
+            self.setFocus()
+
             active_modal = QApplication.activeModalWidget()
             if active_modal:
                 top_levels = [

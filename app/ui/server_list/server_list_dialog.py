@@ -10,7 +10,7 @@ from typing import Optional
 from PySide6.QtWidgets import (
     QApplication, QDialog, QPushButton, QMessageBox, QMenu, QStackedWidget, QDialogButtonBox, QVBoxLayout, QWidget
 )
-from PySide6.QtCore import QTimer, Signal, Qt
+from PySide6.QtCore import QCoreApplication, QTimer, Signal, Qt
 from PySide6.QtGui import QAction
 
 from app.ui.dialog.custom_dialog import CustomDialog
@@ -552,6 +552,12 @@ class ServerListDialog(CustomDialog):
         """Override reject to clean up QML widgets before closing"""
         self._log_ui_state("reject-start")
         self._cleanup_config_view()
+        # Set non-modal BEFORE hide to ensure Qt updates modal stack
+        self.setWindowModality(Qt.NonModal)
+        # Process events to let Qt update its internal modal widget list
+        QCoreApplication.processEvents()
+        # Hide dialog
+        self.hide()
         # Call parent reject (which handles focus restoration)
         super().reject()
         self._log_ui_state("reject-end")
@@ -563,10 +569,20 @@ class ServerListDialog(CustomDialog):
         """Override done to clean up QML widgets before closing"""
         self._log_ui_state(f"done-start-{result}")
         self._cleanup_config_view()
-        # Call parent done (which handles focus restoration)
+        # Important: Set non-modal BEFORE calling super().done()
+        # This ensures Qt removes dialog from activeModalWidget() stack
+        self.setWindowModality(Qt.NonModal)
+        # Process events to let Qt update internal state
+        QCoreApplication.processEvents()
+        # Call parent done FIRST (before hide)
+        # This is critical - super().done() must be called while dialog is still visible
+        # to ensure proper modal stack management in Qt
         super().done(result)
+        # Now hide and process events
+        self.hide()
+        QCoreApplication.processEvents()
         self._log_ui_state(f"done-end-{result}")
-        QTimer.singleShot(0, lambda: self._log_ui_state(f"done-post-0ms-{result}"))
+        QTimer.singleShot(0, lambda: self._log_ui_state(f"done-post-1ms-{result}"))
         QTimer.singleShot(100, lambda: self._log_ui_state(f"done-post-100ms-{result}"))
         QTimer.singleShot(500, lambda: self._log_ui_state(f"done-post-500ms-{result}"))
 
@@ -574,5 +590,11 @@ class ServerListDialog(CustomDialog):
         """Ensure cleanup also runs when dialog closes directly."""
         self._log_ui_state("close-start")
         self._cleanup_config_view()
+        # Set non-modal BEFORE hide to ensure Qt updates modal stack
+        self.setWindowModality(Qt.NonModal)
+        # Process events to let Qt update its internal modal widget list
+        QCoreApplication.processEvents()
+        # Hide dialog
+        self.hide()
         super().closeEvent(event)
         self._log_ui_state("close-end")
