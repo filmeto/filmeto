@@ -281,14 +281,22 @@ class PluginQMLLoader:
                     # Clear Python reference immediately to prevent double-cleanup
                     container._qml_widget = None
 
-                    # 1. Hide QML widget to stop rendering
+                    # 1. Call QML cleanup function if available (closes popups, clears focus)
+                    try:
+                        root_obj = qml.rootObject()
+                        if root_obj and hasattr(root_obj, 'cleanup'):
+                            root_obj.cleanup()
+                    except (RuntimeError, AttributeError) as e:
+                        logger.debug(f"Error calling QML cleanup: {e}")
+
+                    # 2. Hide QML widget to stop rendering
                     qml.hide()
 
-                    # 2. Clear focus from container and QML widget
+                    # 3. Clear focus from container and QML widget
                     container.clearFocus()
                     qml.clearFocus()
 
-                    # 3. Clear QML internal focus state
+                    # 4. Clear QML internal focus state
                     try:
                         qw = qml.quickWindow()
                         if qw:
@@ -301,29 +309,29 @@ class PluginQMLLoader:
                     except (RuntimeError, AttributeError):
                         pass
 
-                    # 4. Unload QML scene to destroy all QML objects
+                    # 5. Unload QML scene to destroy all QML objects
                     try:
                         qml.setSource(QUrl())
                     except (RuntimeError, AttributeError):
                         pass
 
-                    # 5. Remove from container layout to detach from event chain
+                    # 6. Remove from container layout to detach from event chain
                     container_layout = container.layout()
                     if container_layout:
                         container_layout.removeWidget(qml)
 
-                    # 6. Detach from parent window hierarchy so X11/XCB releases
+                    # 7. Detach from parent window hierarchy so X11/XCB releases
                     #    the native sub-window handle and any associated event state
                     try:
                         qml.setParent(None)
                     except (RuntimeError, AttributeError):
                         pass
 
-                    # 7. Process events to allow platform plugin to fully release
+                    # 8. Process events to allow platform plugin to fully release
                     #    native resources before the widget is deleted
                     QCoreApplication.processEvents()
 
-                    # 8. Schedule deletion and process again to complete it
+                    # 9. Schedule deletion and process again to complete it
                     qml.deleteLater()
                     QCoreApplication.processEvents()
 
