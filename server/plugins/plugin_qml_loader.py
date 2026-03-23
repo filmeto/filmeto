@@ -258,6 +258,7 @@ class PluginQMLLoader:
         # Load the QML file
         qml_url = QUrl.fromLocalFile(str(qml_path))
         qml_widget.setSource(qml_url)
+        logger.info("PluginQMLLoader loaded qml source=%s", qml_url.toString())
 
         # Check for errors
         if qml_widget.status() == QQuickWidget.Error:
@@ -278,6 +279,17 @@ class PluginQMLLoader:
             try:
                 if hasattr(container, '_qml_widget') and container._qml_widget:
                     qml = container._qml_widget
+                    quick_window = None
+                    try:
+                        quick_window = qml.quickWindow()
+                    except (RuntimeError, AttributeError):
+                        pass
+                    logger.info(
+                        "PluginQMLLoader cleanup start widget=%s visible=%s quick_window=%s",
+                        type(qml).__name__,
+                        qml.isVisible(),
+                        "yes" if quick_window else "no",
+                    )
                     # Clear Python reference immediately to prevent double-cleanup
                     container._qml_widget = None
 
@@ -334,6 +346,7 @@ class PluginQMLLoader:
                     # 9. Schedule deletion and process again to complete it
                     qml.deleteLater()
                     QCoreApplication.processEvents()
+                    logger.info("PluginQMLLoader cleanup end")
 
             except Exception as e:
                 logger.debug(f"Error during QML cleanup: {e}")

@@ -1,6 +1,6 @@
 import logging
 from PySide6.QtGui import QMouseEvent, QCursor
-from PySide6.QtWidgets import (QWidget, QHBoxLayout,
+from PySide6.QtWidgets import (QApplication, QWidget, QHBoxLayout,
                                QPushButton, QMenu)
 from PySide6.QtCore import Signal, Qt
 
@@ -268,9 +268,25 @@ class MainWindowTopSideBar(BaseWidget):
     
     def _show_server_dialog(self):
         """Show server management dialog"""
+        from PySide6.QtCore import QCoreApplication
         server_dialog = ServerListDialog(self.workspace, self)
         server_dialog.servers_modified.connect(self.server_status_widget.force_refresh)
-        server_dialog.exec()
+        logger.info(
+            "TopSideBar opening ServerListDialog parent_enabled=%s active_modal=%s",
+            self.isEnabled(),
+            type(QApplication.activeModalWidget()).__name__ if QApplication.activeModalWidget() else "None",
+        )
+        try:
+            server_dialog.exec()
+        finally:
+            server_dialog.deleteLater()
+            QCoreApplication.processEvents()
+            logger.info(
+                "TopSideBar closed ServerListDialog parent_enabled=%s active_modal=%s focus_widget=%s",
+                self.isEnabled(),
+                type(QApplication.activeModalWidget()).__name__ if QApplication.activeModalWidget() else "None",
+                type(QApplication.focusWidget()).__name__ if QApplication.focusWidget() else "None",
+            )
 
     def _on_resolution_changed(self, index):
         """处理分辨率更改事件"""

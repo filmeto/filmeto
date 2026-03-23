@@ -8,7 +8,7 @@ using navigation buttons instead of opening separate dialogs.
 import logging
 from typing import Optional
 from PySide6.QtWidgets import (
-    QPushButton, QMessageBox, QMenu, QStackedWidget, QDialogButtonBox, QVBoxLayout, QWidget
+    QApplication, QDialog, QPushButton, QMessageBox, QMenu, QStackedWidget, QDialogButtonBox, QVBoxLayout, QWidget
 )
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QAction
@@ -55,6 +55,28 @@ class ServerListDialog(CustomDialog):
         
         # Show list view initially
         self._show_list_view()
+        self._log_ui_state("init-complete")
+
+    def _log_ui_state(self, stage: str):
+        """Log modal/focus/window state to debug UI input issues."""
+        try:
+            modal = QApplication.activeModalWidget()
+            active = QApplication.activeWindow()
+            focus = QApplication.focusWidget()
+            parent = self.parentWidget()
+            logger.info(
+                "ServerListDialog[%s] visible=%s enabled=%s modal=%s active_window=%s focus_widget=%s parent=%s parent_enabled=%s",
+                stage,
+                self.isVisible(),
+                self.isEnabled(),
+                type(modal).__name__ if modal else "None",
+                type(active).__name__ if active else "None",
+                type(focus).__name__ if focus else "None",
+                type(parent).__name__ if parent else "None",
+                parent.isEnabled() if parent else "n/a",
+            )
+        except Exception as e:
+            logger.debug("ServerListDialog state log failed at %s: %s", stage, e)
     
     def _init_ui(self):
         """Initialize UI components"""
@@ -181,6 +203,7 @@ class ServerListDialog(CustomDialog):
         self._update_dialog_buttons()  # Update buttons for config view
         self._add_to_history("config")
         self._update_navigation_buttons()
+        self._log_ui_state(f"show-config-{plugin_info.name}")
     
     def _update_dialog_buttons(self):
         """Update the dialog's button row based on current view"""
@@ -426,8 +449,15 @@ class ServerListDialog(CustomDialog):
     def _cleanup_config_view(self):
         """Clean up resources in config view"""
         from PySide6.QtCore import QCoreApplication
+        self._log_ui_state("cleanup-config-start")
         if hasattr(self.config_view, 'custom_config_widget') and self.config_view.custom_config_widget:
             widget = self.config_view.custom_config_widget
+            logger.info(
+                "ServerListDialog cleanup widget type=%s objectName=%s visible=%s",
+                type(widget).__name__,
+                widget.objectName(),
+                widget.isVisible(),
+            )
 
             # 1. Clear focus from the widget and all its children
             widget.clearFocus()
@@ -471,6 +501,7 @@ class ServerListDialog(CustomDialog):
 
             # 8. Process events to complete native resource release
             QCoreApplication.processEvents()
+            self._log_ui_state("cleanup-config-after-deleteLater")
 
         # Also call the config view's own cleanup method (handles any remaining state)
         if hasattr(self.config_view, '_cleanup_custom_widget'):
@@ -478,15 +509,20 @@ class ServerListDialog(CustomDialog):
 
         # Final event processing pass
         QCoreApplication.processEvents()
+        self._log_ui_state("cleanup-config-end")
 
     def reject(self):
         """Override reject to clean up QML widgets before closing"""
+        self._log_ui_state("reject-start")
         self._cleanup_config_view()
         # Call parent reject (which handles focus restoration)
         super().reject()
+        self._log_ui_state("reject-end")
 
     def done(self, result):
         """Override done to clean up QML widgets before closing"""
+        self._log_ui_state(f"done-start-{result}")
         self._cleanup_config_view()
         # Call parent done (which handles focus restoration)
         super().done(result)
+        self._log_ui_state(f"done-end-{result}")

@@ -308,6 +308,11 @@ class ServerConfigView(BaseWidget):
         self.server_config = server_config
         self._is_edit_mode = server_config is not None
         self.field_widgets = {}
+        logger.info(
+            "ServerConfigView configure plugin=%s edit_mode=%s",
+            getattr(plugin_info, "name", "unknown"),
+            self._is_edit_mode,
+        )
 
         # Clean up existing custom widget first (before clearing layout)
         self._cleanup_custom_widget()
@@ -392,6 +397,11 @@ class ServerConfigView(BaseWidget):
         if custom_widget:
             # Use custom UI from plugin
             self.custom_config_widget = custom_widget
+            logger.info(
+                "ServerConfigView custom widget type=%s objectName=%s",
+                type(custom_widget).__name__,
+                custom_widget.objectName(),
+            )
 
             # Set size policy to expand
             from PySide6.QtWidgets import QSizePolicy

@@ -7,7 +7,7 @@ Independent window for startup/home mode with its own size management.
 import json
 import os
 import logging
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QDialog
+from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QDialog
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QKeyEvent
 
@@ -239,13 +239,30 @@ class StartupWindow(LeftPanelDialog):
     def _on_server_status_clicked(self):
         """Handle server status button click."""
         from app.ui.server_status import ServerListDialog
+        from PySide6.QtCore import QCoreApplication
 
         # Create and show server management dialog
         server_dialog = ServerListDialog(self.workspace, self)
         # Connect to refresh server status widget when servers are modified
         if self.server_status_widget:
             server_dialog.servers_modified.connect(self.server_status_widget.force_refresh)
-        server_dialog.exec()
+        logger.info(
+            "StartupWindow opening ServerListDialog parent_enabled=%s active_modal=%s",
+            self.isEnabled(),
+            type(QApplication.activeModalWidget()).__name__ if QApplication.activeModalWidget() else "None",
+        )
+        try:
+            server_dialog.exec()
+        finally:
+            # Ensure modal dialog and any embedded QQuickWidget are fully destroyed.
+            server_dialog.deleteLater()
+            QCoreApplication.processEvents()
+            logger.info(
+                "StartupWindow closed ServerListDialog parent_enabled=%s active_modal=%s focus_widget=%s",
+                self.isEnabled(),
+                type(QApplication.activeModalWidget()).__name__ if QApplication.activeModalWidget() else "None",
+                type(QApplication.focusWidget()).__name__ if QApplication.focusWidget() else "None",
+            )
     
     def refresh_projects(self):
         """Refresh the project list."""
