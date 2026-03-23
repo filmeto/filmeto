@@ -10,7 +10,7 @@ from typing import Optional
 from PySide6.QtWidgets import (
     QApplication, QDialog, QPushButton, QMessageBox, QMenu, QStackedWidget, QDialogButtonBox, QVBoxLayout, QWidget
 )
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QTimer, Signal, Qt
 from PySide6.QtGui import QAction
 
 from app.ui.dialog.custom_dialog import CustomDialog
@@ -36,7 +36,10 @@ class ServerListDialog(CustomDialog):
     
     def __init__(self, workspace, parent=None):
         super().__init__(parent)
+        # Ensure C++ object is destroyed when closed (important for modal teardown)
+        self.setAttribute(Qt.WA_DeleteOnClose, True)
         self.workspace = workspace
+        self._instance_id = hex(id(self))
         self.server_manager = None
         
         # Navigation state
@@ -56,6 +59,18 @@ class ServerListDialog(CustomDialog):
         # Show list view initially
         self._show_list_view()
         self._log_ui_state("init-complete")
+        self.destroyed.connect(lambda: logger.info("ServerListDialog destroyed id=%s", self._instance_id))
+
+    def _dump_top_level_windows(self, stage: str):
+        try:
+            windows = []
+            for w in QApplication.topLevelWidgets():
+                windows.append(
+                    f"{type(w).__name__}(visible={w.isVisible()},enabled={w.isEnabled()},modal={w.isModal()},obj={w.objectName()})"
+                )
+            logger.info("ServerListDialog[%s] top_levels=%s", stage, windows)
+        except Exception as e:
+            logger.debug("ServerListDialog top-level dump failed at %s: %s", stage, e)
 
     def _log_ui_state(self, stage: str):
         """Log modal/focus/window state to debug UI input issues."""
@@ -65,8 +80,9 @@ class ServerListDialog(CustomDialog):
             focus = QApplication.focusWidget()
             parent = self.parentWidget()
             logger.info(
-                "ServerListDialog[%s] visible=%s enabled=%s modal=%s active_window=%s focus_widget=%s parent=%s parent_enabled=%s",
+                "ServerListDialog[%s] id=%s visible=%s enabled=%s modal=%s active_window=%s focus_widget=%s parent=%s parent_enabled=%s",
                 stage,
+                self._instance_id,
                 self.isVisible(),
                 self.isEnabled(),
                 type(modal).__name__ if modal else "None",
@@ -75,6 +91,7 @@ class ServerListDialog(CustomDialog):
                 type(parent).__name__ if parent else "None",
                 parent.isEnabled() if parent else "n/a",
             )
+            self._dump_top_level_windows(stage)
         except Exception as e:
             logger.debug("ServerListDialog state log failed at %s: %s", stage, e)
     
@@ -518,6 +535,9 @@ class ServerListDialog(CustomDialog):
         # Call parent reject (which handles focus restoration)
         super().reject()
         self._log_ui_state("reject-end")
+        QTimer.singleShot(0, lambda: self._log_ui_state("reject-post-0ms"))
+        QTimer.singleShot(100, lambda: self._log_ui_state("reject-post-100ms"))
+        QTimer.singleShot(500, lambda: self._log_ui_state("reject-post-500ms"))
 
     def done(self, result):
         """Override done to clean up QML widgets before closing"""
@@ -526,3 +546,6 @@ class ServerListDialog(CustomDialog):
         # Call parent done (which handles focus restoration)
         super().done(result)
         self._log_ui_state(f"done-end-{result}")
+        QTimer.singleShot(0, lambda: self._log_ui_state(f"done-post-0ms-{result}"))
+        QTimer.singleShot(100, lambda: self._log_ui_state(f"done-post-100ms-{result}"))
+        QTimer.singleShot(500, lambda: self._log_ui_state(f"done-post-500ms-{result}"))
