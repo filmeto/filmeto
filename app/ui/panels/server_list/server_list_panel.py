@@ -70,6 +70,7 @@ class ServerListPanel(BasePanel):
         try:
             from app.ui.server_list.server_list_dialog import ServerListDialog
             from PySide6.QtCore import QCoreApplication, QEvent, Qt
+            import shiboken6
             dialog = ServerListDialog(self.workspace, self)
             server = self.server_manager.get_server(server_name)
             if server:
@@ -85,13 +86,19 @@ class ServerListPanel(BasePanel):
             try:
                 dialog.exec()
             finally:
-                try:
-                    dialog.setWindowModality(Qt.NonModal)
-                    dialog.hide()
-                    dialog.close()
-                except Exception as e:
-                    logger.debug(f"ServerListPanel force-close edit dialog failed: {e}")
-                dialog.deleteLater()
+                if shiboken6.isValid(dialog):
+                    try:
+                        dialog.setWindowModality(Qt.NonModal)
+                        dialog.hide()
+                        dialog.close()
+                    except Exception as e:
+                        logger.debug(f"ServerListPanel force-close edit dialog failed: {e}")
+                    try:
+                        dialog.deleteLater()
+                    except Exception as e:
+                        logger.debug(f"ServerListPanel deleteLater(edit) failed: {e}")
+                else:
+                    logger.info("ServerListPanel cleanup skipped(edit): dialog already deleted")
                 QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
                 QCoreApplication.processEvents()
                 QCoreApplication.processEvents()
@@ -124,6 +131,7 @@ class ServerListPanel(BasePanel):
         try:
             from app.ui.server_list.server_list_dialog import ServerListDialog
             from PySide6.QtCore import QCoreApplication, QEvent, Qt
+            import shiboken6
             dialog = ServerListDialog(self.workspace, self)
             dialog.servers_modified.connect(self._load_servers)
             logger.info(
@@ -134,13 +142,19 @@ class ServerListPanel(BasePanel):
             try:
                 dialog.exec()
             finally:
-                try:
-                    dialog.setWindowModality(Qt.NonModal)
-                    dialog.hide()
-                    dialog.close()
-                except Exception as e:
-                    logger.debug(f"ServerListPanel force-close add dialog failed: {e}")
-                dialog.deleteLater()
+                if shiboken6.isValid(dialog):
+                    try:
+                        dialog.setWindowModality(Qt.NonModal)
+                        dialog.hide()
+                        dialog.close()
+                    except Exception as e:
+                        logger.debug(f"ServerListPanel force-close add dialog failed: {e}")
+                    try:
+                        dialog.deleteLater()
+                    except Exception as e:
+                        logger.debug(f"ServerListPanel deleteLater(add) failed: {e}")
+                else:
+                    logger.info("ServerListPanel cleanup skipped(add): dialog already deleted")
                 QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
                 QCoreApplication.processEvents()
                 QCoreApplication.processEvents()
