@@ -271,6 +271,14 @@ class PluginQMLLoader:
 
         # Store reference to QML widget for later access
         container._qml_widget = qml_widget
+        container._instance_id = hex(id(container))
+        logger.info("PluginQMLLoader created container id=%s", container._instance_id)
+        container.destroyed.connect(
+            lambda: logger.info("PluginQMLLoader container destroyed id=%s", container._instance_id)
+        )
+        qml_widget.destroyed.connect(
+            lambda: logger.info("PluginQMLLoader qml_widget destroyed container_id=%s", container._instance_id)
+        )
 
         # Add cleanup method to container
         def cleanup():

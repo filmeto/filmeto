@@ -239,7 +239,7 @@ class StartupWindow(LeftPanelDialog):
     def _on_server_status_clicked(self):
         """Handle server status button click."""
         from app.ui.server_status import ServerListDialog
-        from PySide6.QtCore import QCoreApplication
+        from PySide6.QtCore import QCoreApplication, QEvent, Qt
 
         # Create and show server management dialog
         server_dialog = ServerListDialog(self.workspace, self)
@@ -254,15 +254,68 @@ class StartupWindow(LeftPanelDialog):
         try:
             server_dialog.exec()
         finally:
+            try:
+                server_dialog.setWindowModality(Qt.NonModal)
+                server_dialog.hide()
+                server_dialog.close()
+            except Exception as e:
+                logger.debug(f"StartupWindow force-close server dialog failed: {e}")
+
             # Ensure modal dialog and any embedded QQuickWidget are fully destroyed.
             server_dialog.deleteLater()
+            QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
             QCoreApplication.processEvents()
+            QCoreApplication.processEvents()
+            active_modal = QApplication.activeModalWidget()
+            if active_modal:
+                top_levels = [
+                    f"{type(w).__name__}(visible={w.isVisible()},enabled={w.isEnabled()},modal={w.isModal()})"
+                    for w in QApplication.topLevelWidgets()
+                ]
+                logger.warning(
+                    "StartupWindow detected lingering active_modal=%s top_levels=%s",
+                    type(active_modal).__name__,
+                    top_levels,
+                )
             logger.info(
                 "StartupWindow closed ServerListDialog parent_enabled=%s active_modal=%s focus_widget=%s",
                 self.isEnabled(),
                 type(QApplication.activeModalWidget()).__name__ if QApplication.activeModalWidget() else "None",
                 type(QApplication.focusWidget()).__name__ if QApplication.focusWidget() else "None",
             )
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(0, self._log_modal_snapshot_0ms)
+            QTimer.singleShot(100, self._log_modal_snapshot_100ms)
+            QTimer.singleShot(500, self._log_modal_snapshot_500ms)
+
+    def _log_modal_snapshot_0ms(self):
+        self._log_modal_snapshot("0ms")
+
+    def _log_modal_snapshot_100ms(self):
+        self._log_modal_snapshot("100ms")
+
+    def _log_modal_snapshot_500ms(self):
+        self._log_modal_snapshot("500ms")
+
+    def _log_modal_snapshot(self, tag: str):
+        try:
+            active_modal = QApplication.activeModalWidget()
+            active_window = QApplication.activeWindow()
+            focus_widget = QApplication.focusWidget()
+            top_levels = [
+                f"{type(w).__name__}(visible={w.isVisible()},enabled={w.isEnabled()},modal={w.isModal()},obj={w.objectName()})"
+                for w in QApplication.topLevelWidgets()
+            ]
+            logger.info(
+                "StartupWindow modal snapshot %s active_modal=%s active_window=%s focus_widget=%s top_levels=%s",
+                tag,
+                type(active_modal).__name__ if active_modal else "None",
+                type(active_window).__name__ if active_window else "None",
+                type(focus_widget).__name__ if focus_widget else "None",
+                top_levels,
+            )
+        except Exception as e:
+            logger.debug(f"StartupWindow modal snapshot failed ({tag}): {e}")
     
     def refresh_projects(self):
         """Refresh the project list."""

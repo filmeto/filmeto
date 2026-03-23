@@ -69,7 +69,7 @@ class ServerListPanel(BasePanel):
         """Open the server list dialog for editing."""
         try:
             from app.ui.server_list.server_list_dialog import ServerListDialog
-            from PySide6.QtCore import QCoreApplication
+            from PySide6.QtCore import QCoreApplication, QEvent, Qt
             dialog = ServerListDialog(self.workspace, self)
             server = self.server_manager.get_server(server_name)
             if server:
@@ -85,7 +85,15 @@ class ServerListPanel(BasePanel):
             try:
                 dialog.exec()
             finally:
+                try:
+                    dialog.setWindowModality(Qt.NonModal)
+                    dialog.hide()
+                    dialog.close()
+                except Exception as e:
+                    logger.debug(f"ServerListPanel force-close edit dialog failed: {e}")
                 dialog.deleteLater()
+                QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+                QCoreApplication.processEvents()
                 QCoreApplication.processEvents()
                 logger.info(
                     "ServerListPanel closed edit dialog parent_enabled=%s active_modal=%s focus_widget=%s",
@@ -115,7 +123,7 @@ class ServerListPanel(BasePanel):
         """Open server list dialog for adding a new server."""
         try:
             from app.ui.server_list.server_list_dialog import ServerListDialog
-            from PySide6.QtCore import QCoreApplication
+            from PySide6.QtCore import QCoreApplication, QEvent, Qt
             dialog = ServerListDialog(self.workspace, self)
             dialog.servers_modified.connect(self._load_servers)
             logger.info(
@@ -126,7 +134,15 @@ class ServerListPanel(BasePanel):
             try:
                 dialog.exec()
             finally:
+                try:
+                    dialog.setWindowModality(Qt.NonModal)
+                    dialog.hide()
+                    dialog.close()
+                except Exception as e:
+                    logger.debug(f"ServerListPanel force-close add dialog failed: {e}")
                 dialog.deleteLater()
+                QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+                QCoreApplication.processEvents()
                 QCoreApplication.processEvents()
                 logger.info(
                     "ServerListPanel closed add dialog parent_enabled=%s active_modal=%s focus_widget=%s",
