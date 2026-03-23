@@ -202,6 +202,9 @@ class CustomDialog(QDialog):
         self.clearFocus()
         # Release mouse grab if any
         self.releaseMouse()
+        # Closing via window controls bypasses reject()/done(); explicitly
+        # restore parent activation to avoid leaving UI input blocked.
+        self._restore_parent_window()
         # Accept the close event
         event.accept()
 
