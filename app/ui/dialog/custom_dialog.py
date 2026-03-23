@@ -365,12 +365,18 @@ class CustomDialog(QDialog):
 
     def clear_buttons(self):
         """Clear all buttons from the button area"""
-        # Remove all widgets from the layout (keeping track of any stretch/spacer items)
-        # We need to recreate the layout properly
+        # Remove all widgets from the layout
         while self.button_area_layout.count():
             item = self.button_area_layout.takeAt(0)
             if item.widget():
-                item.widget().deleteLater()
+                widget = item.widget()
+                # Disconnect all signals to prevent callbacks to deleted widgets
+                try:
+                    widget.clicked.disconnect()
+                except RuntimeError:
+                    pass
+                # Use delayed deletion to avoid immediate destruction during signal handling
+                widget.deleteLater()
 
         # Hide the button area after clearing
         self.button_area.hide()

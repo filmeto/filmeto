@@ -36,8 +36,9 @@ class ServerListDialog(CustomDialog):
     
     def __init__(self, workspace, parent=None):
         super().__init__(parent)
-        # Ensure C++ object is destroyed when closed (important for modal teardown)
-        self.setAttribute(Qt.WA_DeleteOnClose, True)
+        # Don't use WA_DeleteOnClose to avoid premature destruction
+        # We'll handle cleanup manually in reject(), done(), and closeEvent()
+        # self.setAttribute(Qt.WA_DeleteOnClose, True)
         self.workspace = workspace
         self._instance_id = hex(id(self))
         self.server_manager = None
@@ -45,6 +46,9 @@ class ServerListDialog(CustomDialog):
         # Navigation state
         self.view_history = []
         self.current_view_index = -1
+
+        # Track current buttons to avoid duplicates
+        self._current_buttons = []
         
         # Setup dialog
         self.setMinimumSize(900, 600)
@@ -224,9 +228,19 @@ class ServerListDialog(CustomDialog):
     
     def _update_dialog_buttons(self):
         """Update the dialog's button row based on current view"""
-        # Use the button row method to set up all buttons at once
-        # This avoids the clear/add pattern that might be causing issues
-        if self.stacked_widget.currentWidget() == self.config_view:
+        # Check current view before modifying buttons
+        is_config_view = self.stacked_widget.currentWidget() == self.config_view
+
+        # Store current buttons for later cleanup
+        if hasattr(self, '_current_buttons'):
+            for btn in self._current_buttons:
+                try:
+                    btn.clicked.disconnect()
+                except RuntimeError:
+                    pass
+        self._current_buttons = []
+
+        if is_config_view:
             # For config view: Close, Cancel, Save/Create buttons
             buttons = [
                 (tr("关闭"), self.reject, "reject"),
@@ -239,8 +253,13 @@ class ServerListDialog(CustomDialog):
                 (tr("关闭"), self.reject, "reject")
             ]
 
-        # Use add_button_row which handles the layout properly
-        self.add_button_row(buttons)
+        # Clear existing buttons safely
+        self.clear_buttons()
+
+        # Add new buttons
+        for text, handler, role in buttons:
+            new_button = self.add_button(text, handler, role)
+            self._current_buttons.append(new_button)
 
     def _emit_save_signal(self):
         """Emit save signal to trigger validation and saving in config view"""
@@ -407,6 +426,7 @@ class ServerListDialog(CustomDialog):
             action = QAction(plugin.name, self)
             action.triggered.connect(lambda checked=False, p=plugin: self._show_config_view(p))
             menu.addAction(action)
+
         
         # Show menu at button position
         button = self.sender()
