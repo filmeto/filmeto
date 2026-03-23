@@ -269,6 +269,7 @@ class MainWindowTopSideBar(BaseWidget):
     def _show_server_dialog(self):
         """Show server management dialog"""
         from PySide6.QtCore import QCoreApplication, QEvent, Qt
+        import shiboken6
         server_dialog = ServerListDialog(self.workspace, self)
         server_dialog.servers_modified.connect(self.server_status_widget.force_refresh)
         logger.info(
@@ -279,13 +280,19 @@ class MainWindowTopSideBar(BaseWidget):
         try:
             server_dialog.exec()
         finally:
-            try:
-                server_dialog.setWindowModality(Qt.NonModal)
-                server_dialog.hide()
-                server_dialog.close()
-            except Exception as e:
-                logger.debug(f"TopSideBar force-close server dialog failed: {e}")
-            server_dialog.deleteLater()
+            if shiboken6.isValid(server_dialog):
+                try:
+                    server_dialog.setWindowModality(Qt.NonModal)
+                    server_dialog.hide()
+                    server_dialog.close()
+                except Exception as e:
+                    logger.debug(f"TopSideBar force-close server dialog failed: {e}")
+                try:
+                    server_dialog.deleteLater()
+                except Exception as e:
+                    logger.debug(f"TopSideBar deleteLater failed: {e}")
+            else:
+                logger.info("TopSideBar cleanup skipped: ServerListDialog already deleted")
             QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
             QCoreApplication.processEvents()
             QCoreApplication.processEvents()

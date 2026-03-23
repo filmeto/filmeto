@@ -240,6 +240,7 @@ class StartupWindow(LeftPanelDialog):
         """Handle server status button click."""
         from app.ui.server_status import ServerListDialog
         from PySide6.QtCore import QCoreApplication, QEvent, Qt
+        import shiboken6
 
         # Create and show server management dialog
         server_dialog = ServerListDialog(self.workspace, self)
@@ -254,15 +255,22 @@ class StartupWindow(LeftPanelDialog):
         try:
             server_dialog.exec()
         finally:
-            try:
-                server_dialog.setWindowModality(Qt.NonModal)
-                server_dialog.hide()
-                server_dialog.close()
-            except Exception as e:
-                logger.debug(f"StartupWindow force-close server dialog failed: {e}")
+            # Dialog may already be destroyed (WA_DeleteOnClose / close path).
+            if shiboken6.isValid(server_dialog):
+                try:
+                    server_dialog.setWindowModality(Qt.NonModal)
+                    server_dialog.hide()
+                    server_dialog.close()
+                except Exception as e:
+                    logger.debug(f"StartupWindow force-close server dialog failed: {e}")
 
-            # Ensure modal dialog and any embedded QQuickWidget are fully destroyed.
-            server_dialog.deleteLater()
+                # Ensure modal dialog and any embedded QQuickWidget are fully destroyed.
+                try:
+                    server_dialog.deleteLater()
+                except Exception as e:
+                    logger.debug(f"StartupWindow deleteLater failed: {e}")
+            else:
+                logger.info("StartupWindow cleanup skipped: ServerListDialog already deleted")
             QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
             QCoreApplication.processEvents()
             QCoreApplication.processEvents()
