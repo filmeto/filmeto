@@ -149,11 +149,11 @@ class ServerListDialog(CustomDialog):
         self.title_bar.toolbar_layout.addWidget(self.refresh_button)
         
         # Add server button
-        self.add_button = QPushButton("➕ " + tr("添加服务器"), self)
-        self.add_button.clicked.connect(self._on_add_server)
-        self.add_button.setFixedHeight(26)
-        self._style_title_button(self.add_button)
-        self.title_bar.toolbar_layout.addWidget(self.add_button)
+        self.add_server_button = QPushButton("➕ " + tr("添加服务器"), self)
+        self.add_server_button.clicked.connect(self._on_add_server)
+        self.add_server_button.setFixedHeight(26)
+        self._style_title_button(self.add_server_button)
+        self.title_bar.toolbar_layout.addWidget(self.add_server_button)
     
     def _style_title_button(self, button):
         """Apply styling to title bar buttons"""
@@ -268,7 +268,7 @@ class ServerListDialog(CustomDialog):
     def _update_title_bar_buttons(self, show_list_buttons: bool):
         """Update visibility of title bar buttons based on current view"""
         self.refresh_button.setVisible(show_list_buttons)
-        self.add_button.setVisible(show_list_buttons)
+        self.add_server_button.setVisible(show_list_buttons)
     
     def _add_to_history(self, view_name: str):
         """Add view to navigation history"""
