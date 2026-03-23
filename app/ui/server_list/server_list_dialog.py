@@ -549,3 +549,10 @@ class ServerListDialog(CustomDialog):
         QTimer.singleShot(0, lambda: self._log_ui_state(f"done-post-0ms-{result}"))
         QTimer.singleShot(100, lambda: self._log_ui_state(f"done-post-100ms-{result}"))
         QTimer.singleShot(500, lambda: self._log_ui_state(f"done-post-500ms-{result}"))
+
+    def closeEvent(self, event):
+        """Ensure cleanup also runs when dialog closes directly."""
+        self._log_ui_state("close-start")
+        self._cleanup_config_view()
+        super().closeEvent(event)
+        self._log_ui_state("close-end")
