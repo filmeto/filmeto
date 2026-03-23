@@ -425,6 +425,7 @@ class ServerListDialog(CustomDialog):
 
     def _cleanup_config_view(self):
         """Clean up resources in config view"""
+        from PySide6.QtCore import QCoreApplication
         if hasattr(self.config_view, 'custom_config_widget') and self.config_view.custom_config_widget:
             widget = self.config_view.custom_config_widget
 
@@ -434,7 +435,8 @@ class ServerListDialog(CustomDialog):
                 if hasattr(child, 'clearFocus'):
                     child.clearFocus()
 
-            # 2. Call cleanup if available
+            # 2. Call cleanup if available — for QML widgets this destroys the
+            #    QQuickWidget and detaches it from the native window hierarchy
             if hasattr(widget, 'cleanup'):
                 try:
                     widget.cleanup()
@@ -447,18 +449,34 @@ class ServerListDialog(CustomDialog):
             except Exception as e:
                 logger.debug(f"Error releasing mouse: {e}")
 
-            # 4. Hide the widget before removing to ensure it's detached from event loop
-            widget.hide()
+            # 4. Remove the container widget from the config view's layout so it
+            #    is no longer part of the native widget hierarchy
+            if hasattr(self.config_view, 'main_layout'):
+                try:
+                    self.config_view.main_layout.removeWidget(widget)
+                except Exception as e:
+                    logger.debug(f"Error removing widget from layout: {e}")
 
-            # 5. Clear the reference
+            # 5. Detach from parent and schedule deletion
+            try:
+                widget.setParent(None)
+            except Exception as e:
+                logger.debug(f"Error detaching widget: {e}")
+
+            # 6. Clear the reference
             self.config_view.custom_config_widget = None
 
-        # Also call the config view's own cleanup method
+            # 7. Delete the container widget
+            widget.deleteLater()
+
+            # 8. Process events to complete native resource release
+            QCoreApplication.processEvents()
+
+        # Also call the config view's own cleanup method (handles any remaining state)
         if hasattr(self.config_view, '_cleanup_custom_widget'):
             self.config_view._cleanup_custom_widget()
 
-        # Force a process events to ensure all pending events are handled
-        from PySide6.QtCore import QCoreApplication
+        # Final event processing pass
         QCoreApplication.processEvents()
 
     def reject(self):

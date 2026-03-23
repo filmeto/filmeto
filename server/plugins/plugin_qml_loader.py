@@ -274,44 +274,58 @@ class PluginQMLLoader:
         # Add cleanup method to container
         def cleanup():
             """Clean up QML widget resources"""
+            from PySide6.QtCore import QCoreApplication
             try:
                 if hasattr(container, '_qml_widget') and container._qml_widget:
                     qml = container._qml_widget
+                    # Clear Python reference immediately to prevent double-cleanup
+                    container._qml_widget = None
 
-                    # 1. First, clear focus from the container to ensure focus moves away
+                    # 1. Hide QML widget to stop rendering
+                    qml.hide()
+
+                    # 2. Clear focus from container and QML widget
                     container.clearFocus()
-
-                    # 2. Clear focus from QML widget
                     qml.clearFocus()
 
-                    # 3. Release keyboard and mouse grabs
+                    # 3. Clear QML internal focus state
                     try:
                         qw = qml.quickWindow()
                         if qw:
-                            # Clear active focus item
                             active_item = qw.activeFocusItem()
                             if active_item:
                                 active_item.setFocus(False)
-
-                            # Clear content item focus
                             content = qw.contentItem()
                             if content:
                                 content.setFocus(False)
-
-                            # Release all resources
-                            qw.releaseResources()
                     except (RuntimeError, AttributeError):
-                        # Window might already be destroyed or not available
                         pass
 
-                    # 4. Set source to empty to unload QML
+                    # 4. Unload QML scene to destroy all QML objects
                     try:
                         qml.setSource(QUrl())
                     except (RuntimeError, AttributeError):
                         pass
 
-                    # 5. Delete the QML widget reference
-                    container._qml_widget = None
+                    # 5. Remove from container layout to detach from event chain
+                    container_layout = container.layout()
+                    if container_layout:
+                        container_layout.removeWidget(qml)
+
+                    # 6. Detach from parent window hierarchy so X11/XCB releases
+                    #    the native sub-window handle and any associated event state
+                    try:
+                        qml.setParent(None)
+                    except (RuntimeError, AttributeError):
+                        pass
+
+                    # 7. Process events to allow platform plugin to fully release
+                    #    native resources before the widget is deleted
+                    QCoreApplication.processEvents()
+
+                    # 8. Schedule deletion and process again to complete it
+                    qml.deleteLater()
+                    QCoreApplication.processEvents()
 
             except Exception as e:
                 logger.debug(f"Error during QML cleanup: {e}")

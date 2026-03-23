@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import QDialog, QWidget, QHBoxLayout, QVBoxLayout, QLabel, QFrame, QPushButton, QApplication
-from PySide6.QtCore import Qt, QPoint, Signal
+from PySide6.QtCore import Qt, QPoint, QTimer, Signal
 from PySide6.QtGui import QMouseEvent, QCursor
 from .mac_button import MacTitleBar
 from ..styles import DIALOG_STYLE, DIALOG_NAV_BUTTON_STYLE, _lighten_color, _darken_color
@@ -228,22 +228,28 @@ class CustomDialog(QDialog):
         """Restore parent window activation and focus"""
         parent = self.parentWidget()
         if parent:
-            # Ensure parent is enabled
+            # Ensure parent is enabled immediately (was blocked by modal dialog)
             parent.setEnabled(True)
-            # Activate parent window
-            parent.activateWindow()
-            parent.raise_()
-            # Set focus to parent
-            parent.setFocus()
-            # Force process events to ensure focus is restored
-            from PySide6.QtCore import QCoreApplication
-            QCoreApplication.processEvents()
+            # Defer the actual window activation via a timer so it fires after
+            # all pending native events (including QQuickWidget teardown) are
+            # processed by the event loop.  A 0-ms timer is enough to let the
+            # current event-loop iteration finish before we try to steal focus.
+            QTimer.singleShot(0, lambda: self._do_activate_parent(parent))
         else:
-            # If no parent, try to activate the active window or main window
-            if QApplication.activeWindow():
-                QApplication.activeWindow().activateWindow()
-                QApplication.activeWindow().raise_()
-                QApplication.processEvents()
+            active = QApplication.activeWindow()
+            if active:
+                QTimer.singleShot(0, lambda: self._do_activate_parent(active))
+
+    def _do_activate_parent(self, parent):
+        """Actually activate the parent window after event loop settles."""
+        try:
+            if parent and not parent.isHidden():
+                parent.setEnabled(True)
+                parent.activateWindow()
+                parent.raise_()
+                parent.setFocus()
+        except RuntimeError:
+            pass
 
     def set_title(self, title):
         """设置对话框标题"""
