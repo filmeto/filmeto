@@ -85,9 +85,13 @@ class WindowManager(QObject):
         """Handle entering edit mode from startup window."""
         # Get pending prompt from startup window if available
         pending_prompt = None
+        pending_target = None
         if self.startup_window and hasattr(self.startup_window, '_pending_prompt'):
             pending_prompt = self.startup_window._pending_prompt
             self.startup_window._pending_prompt = None  # Clear after reading
+        if self.startup_window and hasattr(self.startup_window, '_pending_startup_target'):
+            pending_target = self.startup_window._pending_startup_target
+            self.startup_window._pending_startup_target = None
         
         # Show edit window
         self.show_edit_window(project_name)
@@ -95,6 +99,8 @@ class WindowManager(QObject):
         # Set prompt in agent panel if there's a pending prompt
         if pending_prompt and self.edit_window:
             self._set_prompt_in_agent_panel(pending_prompt)
+        if pending_target and self.edit_window:
+            self._apply_pending_startup_target(pending_target)
     
     def _set_prompt_in_agent_panel(self, prompt: str):
         """Set the prompt in the agent panel."""
@@ -155,6 +161,35 @@ class WindowManager(QObject):
                     agent_panel.prompt_input_widget.input_text.setFocus()
         except Exception as e:
             logger.error(f"Error setting prompt in agent panel (delayed): {e}", exc_info=True)
+
+    def _apply_pending_startup_target(self, target: dict):
+        if not target or target.get("type") != "screenplay_scene":
+            return
+        scene_id = target.get("scene_id")
+        if not scene_id:
+            return
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(250, lambda: self._open_screenplay_scene_in_edit_window(scene_id))
+
+    def _open_screenplay_scene_in_edit_window(self, scene_id: str):
+        try:
+            edit_widget = self.edit_window.edit_widget
+            if not edit_widget:
+                return
+            h_layout = edit_widget.get_h_layout()
+            if not h_layout or not hasattr(h_layout, 'workspace') or not h_layout.workspace:
+                return
+            if not hasattr(h_layout.workspace, 'workspace_top') or not h_layout.workspace.workspace_top:
+                return
+            workspace_top_right_bar = h_layout.workspace.workspace_top.right
+            if not workspace_top_right_bar:
+                return
+            workspace_top_right_bar.switch_to_panel('screenplay')
+            panel = workspace_top_right_bar.get_panel('screenplay')
+            if panel and hasattr(panel, '_show_scene_editor'):
+                panel._show_scene_editor(scene_id)
+        except Exception as e:
+            logger.error("Error opening screenplay scene from startup target: %s", e, exc_info=True)
     
     def _on_go_home(self):
         """Handle returning to home/startup mode."""

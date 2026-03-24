@@ -286,6 +286,10 @@ Rectangle {
                                                     Layout.fillWidth: true
                                                 }
                                             }
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                onClicked: if (bridge && modelData.sceneId) bridge.open_screenplay_scene(modelData.sceneId)
+                                            }
                                         }
                                     }
                                     Item { Layout.fillHeight: true }
