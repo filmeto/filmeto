@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     pass
 
 
-class ServerListLabels(QObject):
+class ServerListLabelsViewModel(QObject):
     """Translatable strings exposed to QML (updated when language or data changes)."""
 
     def __init__(self, parent: Optional[QObject] = None):
@@ -95,8 +95,8 @@ class ServerListLabels(QObject):
             self.statusLineChanged.emit()
 
 
-class ServerListBridge(QObject):
-    """Slots invoked from QML; connect to QWidget-level signals in Python."""
+class ServerListActionsViewModel(QObject):
+    """Actions ViewModel invoked by QML and forwarded as Qt signals."""
 
     editRequested = Signal(str)
     toggleRequested = Signal(str, bool)
@@ -116,3 +116,8 @@ class ServerListBridge(QObject):
     @Slot(str)
     def request_delete(self, server_name: str) -> None:
         self.deleteRequested.emit(server_name)
+
+
+# Backward compatibility aliases
+ServerListLabels = ServerListLabelsViewModel
+ServerListBridge = ServerListActionsViewModel

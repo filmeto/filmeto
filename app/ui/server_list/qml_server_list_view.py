@@ -10,7 +10,10 @@ from PySide6.QtCore import QUrl, Qt, Signal
 from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
-from app.ui.server_list.server_list_qml_bridge import ServerListBridge, ServerListLabels
+from app.ui.server_list.server_list_qml_bridge import (
+    ServerListActionsViewModel,
+    ServerListLabelsViewModel,
+)
 from app.ui.server_list.server_list_qml_model import ServerListModel
 from utils.i18n_utils import tr, translation_manager
 
@@ -36,8 +39,8 @@ class ServerListView(QWidget):
         self.server_manager: Optional["ServerManager"] = None
 
         self._model = ServerListModel(self)
-        self._labels = ServerListLabels(self)
-        self._bridge = ServerListBridge(self)
+        self._labels = ServerListLabelsViewModel(self)
+        self._bridge = ServerListActionsViewModel(self)
 
         self._bridge.editRequested.connect(self.server_selected_for_edit.emit)
         self._bridge.toggleRequested.connect(self.server_toggled.emit)

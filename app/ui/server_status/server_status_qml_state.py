@@ -3,7 +3,7 @@
 from PySide6.QtCore import QObject, Property, Signal, Slot
 
 
-class ServerStatusQmlState(QObject):
+class ServerStatusViewModel(QObject):
     """Exposes counts to QML and relays click to Python."""
 
     clicked = Signal()
@@ -40,3 +40,7 @@ class ServerStatusQmlState(QObject):
 
     def get_inactive(self) -> int:
         return self._inactive
+
+
+# Backward compatibility alias
+ServerStatusQmlState = ServerStatusViewModel

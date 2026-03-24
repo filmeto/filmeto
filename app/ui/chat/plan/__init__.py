@@ -5,9 +5,10 @@ agent execution plans in the chat interface.
 """
 
 from .plan_widget import AgentChatPlanWidget
-from .plan_bridge import PlanBridge
+from .plan_bridge import PlanViewModel, PlanBridge
 
 __all__ = [
     "AgentChatPlanWidget",
+    "PlanViewModel",
     "PlanBridge",
 ]

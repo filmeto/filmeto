@@ -9,7 +9,7 @@ from PySide6.QtCore import QUrl, Qt, Signal
 from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
-from app.ui.server_status.server_status_qml_state import ServerStatusQmlState
+from app.ui.server_status.server_status_qml_state import ServerStatusViewModel
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class ServerStatusButton(QWidget):
         self.setFixedSize(80, 32)
         self.setCursor(Qt.PointingHandCursor)
 
-        self._state = ServerStatusQmlState(self)
+        self._state = ServerStatusViewModel(self)
         self._state.clicked.connect(self.status_clicked.emit)
 
         self._quick = QQuickWidget(self)

@@ -8,7 +8,7 @@ from PySide6.QtCore import QObject, QPoint, QPointF, Property, Signal, Slot
 from PySide6.QtWidgets import QDialog, QWidget
 
 
-class MacWindowActions(QObject):
+class MacWindowControlsViewModel(QObject):
     """Close / minimize / green button behavior for QML MacWindowControls."""
 
     maximizedChanged = Signal()
@@ -56,7 +56,7 @@ class MacWindowActions(QObject):
         self.maximizedChanged.emit()
 
 
-class DialogTitleDragBridge(QObject):
+class DialogTitleDragViewModel(QObject):
     """Drag frameless dialog by title region (global coordinates from QML)."""
 
     def __init__(self, dialog: QWidget, parent: Optional[QObject] = None):
@@ -86,7 +86,7 @@ class DialogTitleDragBridge(QObject):
         self._dlg_origin = None
 
 
-class CustomDialogTitleBarBridge(QObject):
+class CustomDialogTitleBarViewModel(QObject):
     """Title text, nav visibility, nav clicks for CustomDialogTitleBar.qml."""
 
     back_clicked = Signal()
@@ -153,3 +153,9 @@ class CustomDialogTitleBarBridge(QObject):
     def forward(self) -> None:
         if self._forward_enabled:
             self.forward_clicked.emit()
+
+
+# Backward compatibility aliases
+MacWindowActions = MacWindowControlsViewModel
+DialogTitleDragBridge = DialogTitleDragViewModel
+CustomDialogTitleBarBridge = CustomDialogTitleBarViewModel
