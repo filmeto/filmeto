@@ -33,9 +33,6 @@ class ActorPanel(ThreadSafetyMixin, BasePanel):
 
     def setup_ui(self):
         self.set_panel_title(tr("Characters"))
-        self.add_toolbar_button("\ue610", self._on_add_character, tr("New Character"))
-        self.add_toolbar_button("\ue6a7", self._on_draw_character, tr("Random Generate"))
-        self.add_toolbar_button("\ue653", self._on_extract_character, tr("Extract From Story"))
 
         self.actor_model = ActorListModel(self)
         self.actor_view_model = ActorPanelViewModel(self)
