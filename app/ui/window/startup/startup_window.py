@@ -29,6 +29,9 @@ class _StartupWindowBridge(QObject):
     projectMetaChanged = Signal()
     activePanelChanged = Signal()
     activePanelTitleChanged = Signal()
+    memberItemsChanged = Signal()
+    screenplayItemsChanged = Signal()
+    screenplaySummaryChanged = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -36,6 +39,9 @@ class _StartupWindowBridge(QObject):
         self._selected_project = ""
         self._title = "Filmeto"
         self._active_panel = "members"
+        self._member_items = []
+        self._screenplay_items = []
+        self._screenplay_summary = ""
         self._timeline_count = "0"
         self._task_count = "0"
         self._budget_text = "$0.00 / $0.00"
@@ -65,6 +71,18 @@ class _StartupWindowBridge(QObject):
             "plan": "Plan",
         }
         return mapping.get(self._active_panel, "Panel")
+
+    @Property("QVariantList", notify=memberItemsChanged)
+    def memberItems(self):
+        return self._member_items
+
+    @Property("QVariantList", notify=screenplayItemsChanged)
+    def screenplayItems(self):
+        return self._screenplay_items
+
+    @Property(str, notify=screenplaySummaryChanged)
+    def screenplaySummary(self):
+        return self._screenplay_summary
 
     @Property(str, notify=projectMetaChanged)
     def timelineCount(self):
@@ -144,6 +162,16 @@ class _StartupWindowBridge(QObject):
             self._active_panel = panel_name
             self.activePanelChanged.emit()
             self.activePanelTitleChanged.emit()
+
+    def set_member_items(self, items):
+        self._member_items = items or []
+        self.memberItemsChanged.emit()
+
+    def set_screenplay_data(self, *, summary: str, items):
+        self._screenplay_summary = summary or ""
+        self._screenplay_items = items or []
+        self.screenplaySummaryChanged.emit()
+        self.screenplayItemsChanged.emit()
 
 
 class StartupWindow(QDialog):
@@ -280,7 +308,62 @@ class StartupWindow(QDialog):
             budget_text=budget_text,
             story=story,
         )
+        self._refresh_member_items_for_project(project_name)
+        self._refresh_screenplay_items_for_project(project_name)
         self._sync_startup_panel_project(project_name)
+
+    def _refresh_member_items_for_project(self, project_name: str):
+        if not project_name:
+            self._bridge.set_member_items([])
+            return
+        try:
+            project = self.workspace.project_manager.get_project(project_name)
+            if not project:
+                self._bridge.set_member_items([])
+                return
+            from agent.crew import CrewService
+            crew_service = CrewService()
+            members = crew_service.list_crew_members(project)
+            rows = []
+            for m in members:
+                rows.append(
+                    {
+                        "name": getattr(getattr(m, "config", None), "name", "") or "",
+                        "icon": getattr(getattr(m, "config", None), "icon", "") or "",
+                        "color": getattr(getattr(m, "config", None), "color", "#5c5f66") or "#5c5f66",
+                    }
+                )
+            self._bridge.set_member_items(rows)
+        except Exception as e:
+            logger.debug("Failed to refresh member items: %s", e)
+            self._bridge.set_member_items([])
+
+    def _refresh_screenplay_items_for_project(self, project_name: str):
+        if not project_name:
+            self._bridge.set_screenplay_data(summary="", items=[])
+            return
+        try:
+            project = self.workspace.project_manager.get_project(project_name)
+            if not project:
+                self._bridge.set_screenplay_data(summary="", items=[])
+                return
+            manager = project.get_screenplay_manager()
+            scenes = manager.list_scenes() if manager else []
+            scenes.sort(key=lambda s: str(getattr(s, "scene_number", "")))
+            rows = []
+            for scene in scenes[:20]:
+                rows.append(
+                    {
+                        "sceneNumber": str(getattr(scene, "scene_number", "") or ""),
+                        "title": str(getattr(scene, "title", "") or ""),
+                        "overview": str(getattr(scene, "logline", "") or getattr(scene, "story_beat", "") or ""),
+                    }
+                )
+            summary = f"{len(scenes)} scenes"
+            self._bridge.set_screenplay_data(summary=summary, items=rows)
+        except Exception as e:
+            logger.debug("Failed to refresh screenplay items: %s", e)
+            self._bridge.set_screenplay_data(summary="", items=[])
 
     def get_selected_project(self) -> str:
         return self._bridge.selectedProject
