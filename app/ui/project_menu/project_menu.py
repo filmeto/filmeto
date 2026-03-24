@@ -4,7 +4,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, Property, QUrl, QSize, QRectF, Signal, Slot, Qt
 from PySide6.QtGui import QAction, QIcon, QPixmap, QPainter, QFont, QColor, QPen
 from PySide6.QtQuickWidgets import QQuickWidget
-from PySide6.QtWidgets import QMenu, QVBoxLayout, QLabel, QPushButton, QDialog, QLineEdit, QHBoxLayout, QDialogButtonBox
+from PySide6.QtWidgets import QApplication, QMenu, QVBoxLayout, QLabel, QPushButton, QDialog, QLineEdit, QHBoxLayout, QDialogButtonBox
 
 from app.data.workspace import Workspace
 from app.ui.base_widget import BaseWidget
@@ -16,21 +16,33 @@ PROJECT_MENU_QML_PATH = Path(__file__).resolve().parent.parent / "qml" / "projec
 
 class _ProjectMenuBridge(QObject):
     projectNameChanged = Signal()
+    darkModeChanged = Signal()
     clicked = Signal()
 
     def __init__(self, parent: QObject | None = None):
         super().__init__(parent)
         self._project_name = ""
+        self._dark_mode = True
 
     @Property(str, notify=projectNameChanged)
     def projectName(self) -> str:
         return self._project_name
+
+    @Property(bool, notify=darkModeChanged)
+    def darkMode(self) -> bool:
+        return self._dark_mode
 
     def set_project_name(self, name: str) -> None:
         name = name or ""
         if self._project_name != name:
             self._project_name = name
             self.projectNameChanged.emit()
+
+    def set_dark_mode(self, dark_mode: bool) -> None:
+        dark_mode = bool(dark_mode)
+        if self._dark_mode != dark_mode:
+            self._dark_mode = dark_mode
+            self.darkModeChanged.emit()
 
     @Slot()
     def open_menu(self) -> None:
@@ -50,6 +62,7 @@ class ProjectMenu(BaseWidget):
 
         self._bridge = _ProjectMenuBridge(self)
         self._bridge.set_project_name(workspace.project_name)
+        self._bridge.set_dark_mode(self._is_dark_theme_active())
         self._bridge.clicked.connect(self._show_menu)
 
         self._quick = QQuickWidget(self)
@@ -92,6 +105,18 @@ class ProjectMenu(BaseWidget):
         self.load_existing_projects()
 
         self.new_project_action.triggered.connect(self.on_new_project_triggered)
+
+    def _is_dark_theme_active(self) -> bool:
+        app = QApplication.instance()
+        if not app:
+            return True
+        stylesheet = app.styleSheet() or ""
+        lowered = stylesheet.lower()
+        if "#1e1f22" in lowered or "#2b2d30" in lowered:
+            return True
+        if "#f0f0f0" in lowered or "#ffffff" in lowered:
+            return False
+        return True
 
     def _show_menu(self) -> None:
         anchor = self._quick.mapToGlobal(self._quick.rect().bottomLeft())
