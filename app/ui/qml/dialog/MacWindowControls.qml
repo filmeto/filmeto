@@ -1,6 +1,6 @@
 import QtQuick 2.15
 
-// macActions: MacWindowActions, dialogMode: bool — set from Python root properties.
+// macActions: MacWindowControlsViewModel, dialogMode: bool — set from Python root properties.
 Item {
     id: root
     height: 36

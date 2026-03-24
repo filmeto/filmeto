@@ -1,0 +1,30 @@
+---
+description: QML-Python bridge architecture principles
+alwaysApply: true
+---
+
+# QML Bridge Principles
+
+Applies to all QML + Python bridge code (ViewModel/bridge/model/state objects).
+
+1. Principle 1: Keep bridge layering explicit. Do not use one bridge as a "god object".
+2. Principle 2: QML depends only on bridge/ViewModel, never directly on service/domain.
+3. Principle 3: Bridge APIs expose UI semantics, not raw low-level domain semantics.
+4. Principle 4: QML reads state via `Property`, sends actions via `Slot`, receives events via `Signal`.
+5. Principle 5: Avoid direct QML mutation of Python internal state; route state changes through explicit actions.
+6. Principle 6: Every observable `Property` must have correct notify signals; state changes must be observable and deterministic.
+7. Principle 7: Complex list/table data must use Qt Model (`QAbstractListModel`/`QAbstractTableModel`), not ad-hoc object injection.
+8. Principle 8: Do not place business logic in QML; keep QML logic lightweight and presentation-focused.
+9. Principle 9: Keep bridge interfaces small and stable; do not expose the full Python object graph to QML.
+10. Principle 11: Bridge layer must be testable in Python without requiring tight coupling to QML runtime.
+11. Principle 12: Use a unified async strategy; bridge code must not start threads/tasks arbitrarily.
+12. Principle 13: Follow naming and modularization conventions; prefer names like `XXXViewModel`.
+13. Principle 14: Minimize global singleton bridge objects; use singleton only when clearly justified.
+14. Principle 15: Cross-page concerns (navigation, dialog, notification) must be abstracted and centralized, not scattered in QML.
+
+## Additional Constraints
+
+- Prefer unidirectional flow: QML action -> bridge/viewmodel -> service/domain -> bridge state update -> QML re-render.
+- Validate and sanitize bridge inputs from QML at API boundaries.
+- Keep side effects in service/application layers; bridge coordinates but should not own domain rules.
+- Bridge modules should remain focused by feature and avoid cyclic dependencies.

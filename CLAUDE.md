@@ -110,3 +110,22 @@ When creating documentation:
 - Duplicating existing utilities from `utils/`
 - Over-engineering simple tasks
 - Making changes without reading existing code first
+
+## QML Bridge Principles
+
+When implementing QML-to-Python integration, follow these rules:
+
+1. Principle 1: Keep bridge layering explicit. Do not treat bridge as a universal object.
+2. Principle 2: QML must depend only on bridge/ViewModel, not directly on service/domain.
+3. Principle 3: Bridge should expose UI semantics, not low-level semantics.
+4. Principle 4: QML reads state via `Property`, sends actions via `Slot`, receives events via `Signal`.
+5. Principle 5: Avoid letting QML directly modify Python internal state.
+6. Principle 6: Every `Property` must provide clear notify signals; state changes must be observable.
+7. Principle 7: Complex lists/tables must use Qt Model (`QAbstractListModel` / `QAbstractTableModel`), not ad-hoc object injection.
+8. Principle 8: Do not place business logic in QML; keep QML logic presentation-oriented.
+9. Principle 9: Keep bridge interfaces small and stable; do not expose the full Python object graph.
+10. Principle 11: Bridge must be testable and should not be tightly coupled to QML runtime.
+11. Principle 12: Asynchronous work must follow a unified strategy; bridge must not start threads arbitrarily.
+12. Principle 13: Follow naming/modularization conventions; prefer names like `XXXViewModel`.
+13. Principle 14: Minimize global singleton bridge objects; use singleton only with clear justification.
+14. Principle 15: Cross-page behaviors (navigation, dialogs, notifications) must be abstracted centrally, not scattered in QML.

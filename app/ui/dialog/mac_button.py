@@ -11,7 +11,7 @@ from PySide6.QtCore import QEvent, Qt, QUrl, Signal
 from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
 
-from app.ui.dialog.dialog_qml_bridge import MacWindowActions
+from app.ui.dialog.dialog_qml_bridge import MacWindowControlsViewModel
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class MacTitleBar(QWidget):
         self.setFixedHeight(36)
         self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
-        self._actions = MacWindowActions(window, self)
+        self._actions = MacWindowControlsViewModel(window, self)
 
         self._quick = QQuickWidget(self)
         self._quick.setResizeMode(QQuickWidget.SizeRootObjectToView)

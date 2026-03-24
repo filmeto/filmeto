@@ -1,12 +1,15 @@
 """Base panel class for workspace tool panels."""
 
+from pathlib import Path
+
 from PySide6.QtWidgets import (
-    QVBoxLayout, QHBoxLayout, QWidget, QLabel, QPushButton, 
-    QSpacerItem, QSizePolicy, QFrame, QStackedWidget
+    QVBoxLayout, QWidget, QLabel, QStackedWidget
 )
-from PySide6.QtCore import Qt, QSize, QTimer
+from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtQuickWidgets import QQuickWidget
 from app.ui.base_widget import BaseWidget
 from app.data.workspace import Workspace
+from app.ui.panels.panel_toolbar_bridge import PanelToolbarViewModel
 
 
 class BasePanel(BaseWidget):
@@ -47,60 +50,18 @@ class BasePanel(BaseWidget):
         self._main_layout.setContentsMargins(0, 0, 0, 0)
         self._main_layout.setSpacing(0)
         
-        # Top toolbar
-        self.toolbar = QWidget()
+        # Top toolbar (QML)
+        self._toolbar_view_model = PanelToolbarViewModel(self)
+        self._toolbar_callbacks = {}
+        self.toolbar = QQuickWidget(self)
         self.toolbar.setObjectName("panelToolbar")
+        self.toolbar.setResizeMode(QQuickWidget.SizeRootObjectToView)
         self.toolbar.setFixedHeight(40)
-        self.toolbar.setStyleSheet("""
-            QWidget#panelToolbar {
-                background-color: #2D2D2D;
-                border-bottom: 1px solid #1E1E1E;
-            }
-            QLabel#panelTitle {
-                color: #E0E0E0;
-                font-weight: bold;
-                font-size: 12px;
-                margin-left: 8px;
-                text-transform: uppercase;
-                letter-spacing: 1px;
-            }
-            QPushButton.toolbarButton {
-                background-color: transparent;
-                border: none;
-                border-radius: 4px;
-                color: #A0A0A0;
-                padding: 4px;
-                font-family: "iconfont";
-                font-size: 16px;
-            }
-            QPushButton.toolbarButton:hover {
-                background-color: #3D3D3D;
-                color: #FFFFFF;
-            }
-            QPushButton.toolbarButton:pressed {
-                background-color: #4D4D4D;
-            }
-        """)
-        
-        self.toolbar_layout = QHBoxLayout(self.toolbar)
-        self.toolbar_layout.setContentsMargins(8, 0, 8, 0)
-        self.toolbar_layout.setSpacing(4)
-        
-        # Left side: Title
-        self.title_label = QLabel()
-        self.title_label.setObjectName("panelTitle")
-        self.toolbar_layout.addWidget(self.title_label)
-        
-        # Middle: Spacer
-        self.toolbar_layout.addStretch()
-        
-        # Right side: Actions
-        self.actions_widget = QWidget()
-        self.actions_layout = QHBoxLayout(self.actions_widget)
-        self.actions_layout.setContentsMargins(0, 0, 0, 0)
-        self.actions_layout.setSpacing(4)
-        self.toolbar_layout.addWidget(self.actions_widget)
-        
+        self.toolbar.setStyleSheet("background: transparent; border: none;")
+        self.toolbar.rootContext().setContextProperty("panelToolbarViewModel", self._toolbar_view_model)
+        qml_path = Path(__file__).resolve().parent.parent / "qml" / "panels" / "PanelToolbar.qml"
+        self.toolbar.setSource(QUrl.fromLocalFile(str(qml_path)))
+        self._toolbar_view_model.actionInvoked.connect(self._on_toolbar_action_invoked)
         self._main_layout.addWidget(self.toolbar)
         
         # Stacked widget for content and loading state
@@ -145,19 +106,19 @@ class BasePanel(BaseWidget):
 
     def set_panel_title(self, title: str):
         """Set the panel title in the toolbar."""
-        self.title_label.setText(title)
+        self._toolbar_view_model.set_title(title)
         
     def add_toolbar_button(self, icon_text: str, callback=None, tooltip: str = ""):
         """Add an icon button to the toolbar's right side."""
-        button = QPushButton(icon_text)
-        button.setProperty("class", "toolbarButton")
-        button.setFixedSize(28, 28)
-        if tooltip:
-            button.setToolTip(tooltip)
+        handle = self._toolbar_view_model.add_action(icon_text, tooltip)
         if callback:
-            button.clicked.connect(callback)
-        self.actions_layout.addWidget(button)
-        return button
+            self._toolbar_callbacks[handle.action_id] = callback
+        return handle
+
+    def _on_toolbar_action_invoked(self, action_id: str):
+        callback = self._toolbar_callbacks.get(action_id)
+        if callback:
+            callback()
 
     def setup_ui(self):
         """

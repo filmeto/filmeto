@@ -2,7 +2,7 @@
 //
 // This widget supports two modes:
 // 1. Inline mode: Used in chat messages with static planData
-// 2. Panel mode: Connected to PlanBridge for real-time updates
+// 2. Panel mode: Connected to PlanViewModel for real-time updates
 //
 // Features:
 // - Collapsible header with status counts

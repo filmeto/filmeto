@@ -16,9 +16,9 @@ from PySide6.QtWidgets import (
 )
 
 from app.ui.dialog.dialog_qml_bridge import (
-    CustomDialogTitleBarBridge,
-    DialogTitleDragBridge,
-    MacWindowActions,
+    CustomDialogTitleBarViewModel,
+    DialogTitleDragViewModel,
+    MacWindowControlsViewModel,
 )
 
 from ..styles import DIALOG_STYLE, _darken_color, _lighten_color
@@ -40,13 +40,13 @@ class CustomTitleBar(QFrame):
 
         self.parent_dialog = parent
 
-        self._mac = MacWindowActions(parent, self)
+        self._mac = MacWindowControlsViewModel(parent, self)
         self._mac.set_dialog_mode(True)
-        self._title_bridge = CustomDialogTitleBarBridge(self)
+        self._title_bridge = CustomDialogTitleBarViewModel(self)
         self._title_bridge.title = title
         self._title_bridge.back_clicked.connect(self.back_clicked.emit)
         self._title_bridge.forward_clicked.connect(self.forward_clicked.emit)
-        self._drag = DialogTitleDragBridge(parent, self)
+        self._drag = DialogTitleDragViewModel(parent, self)
 
         row = QHBoxLayout(self)
         row.setContentsMargins(8, 0, 8, 0)

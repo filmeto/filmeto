@@ -13,7 +13,7 @@ from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QSizePolicy
 
 from app.ui.base_widget import BaseWidget
-from app.ui.chat.plan.plan_bridge import PlanBridge
+from app.ui.chat.plan.plan_bridge import PlanViewModel
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ class AgentChatPlanWidget(BaseWidget):
     including task status, crew member assignments, and progress tracking.
 
     Features:
-    - Real-time plan updates via PlanBridge
+    - Real-time plan updates via PlanViewModel
     - Collapsible header with status counts (Running/Waiting/Success/Failed)
     - Task list with crew member info
     - Hardware-accelerated QML rendering
@@ -64,7 +64,7 @@ class AgentChatPlanWidget(BaseWidget):
         self._is_expanded = False
 
         # Create bridge for data binding
-        self._bridge = PlanBridge(workspace, self)
+        self._bridge = PlanViewModel(workspace, self)
 
         # Create QML widget with transparent background
         self._quick_widget = QQuickWidget(self)
@@ -74,7 +74,8 @@ class AgentChatPlanWidget(BaseWidget):
         self._quick_widget.setAttribute(Qt.WA_TranslucentBackground, True)
         self._quick_widget.setClearColor(Qt.transparent)
 
-        # Expose bridge to QML
+        # Expose ViewModel to QML (keep legacy alias for compatibility).
+        self._quick_widget.rootContext().setContextProperty("_planViewModel", self._bridge)
         self._quick_widget.rootContext().setContextProperty("_planBridge", self._bridge)
 
         # Load QML
@@ -96,6 +97,7 @@ class AgentChatPlanWidget(BaseWidget):
         self._qml_root = self._quick_widget.rootObject()
         if self._qml_root:
             self._qml_root.setProperty("mode", "panel")
+            self._qml_root.setProperty("planViewModel", self._bridge)
             self._qml_root.setProperty("planBridge", self._bridge)
 
             # Connect to QML isExpanded changes
@@ -222,10 +224,10 @@ class AgentChatPlanWidget(BaseWidget):
             self._bridge.refresh_plan()
 
     @property
-    def bridge(self) -> PlanBridge:
+    def bridge(self) -> PlanViewModel:
         """Get the plan bridge.
 
         Returns:
-            PlanBridge instance
+            PlanViewModel instance
         """
         return self._bridge

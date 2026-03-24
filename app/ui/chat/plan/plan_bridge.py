@@ -19,8 +19,8 @@ from utils.i18n_utils import tr
 logger = logging.getLogger(__name__)
 
 
-class PlanBridge(QObject):
-    """Qt Bridge for plan data exposure to QML.
+class PlanViewModel(QObject):
+    """Qt ViewModel for plan data exposure to QML.
 
     This bridge connects to the plan signal manager and exposes
     plan data, task statistics, and crew member info to QML components.
@@ -47,7 +47,7 @@ class PlanBridge(QObject):
     DEBOUNCE_INTERVAL = 50
 
     def __init__(self, workspace, parent=None):
-        """Initialize the PlanBridge.
+        """Initialize the PlanViewModel.
 
         Args:
             workspace: Workspace instance
@@ -636,3 +636,7 @@ class PlanBridge(QObject):
             plan_id = self._current_plan_data.get("plan_id")
             if plan_id:
                 self.resumeRequested.emit(plan_id)
+
+
+# Backward compatibility alias
+PlanBridge = PlanViewModel
