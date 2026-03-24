@@ -4,10 +4,8 @@ Members Panel
 This module implements a panel for displaying agent chat members that can be used
 in both startup and edit windows.
 """
-from PySide6.QtWidgets import QVBoxLayout
-
 from app.ui.panels.base_panel import BasePanel
-from app.ui.chat.agent_chat_members import AgentChatMembersWidget
+from app.ui.panels.members.qml_members_widget import QmlAgentChatMembersWidget
 from utils.i18n_utils import tr, translation_manager
 
 
@@ -20,7 +18,7 @@ class MembersPanel(BasePanel):
         self.set_panel_title(tr("Crew Members"))
 
         # Create the agent chat members component
-        self.agent_chat_members_component = AgentChatMembersWidget(self.workspace)
+        self.agent_chat_members_component = QmlAgentChatMembersWidget(self.workspace)
 
         # Add it to the content layout
         self.content_layout.addWidget(self.agent_chat_members_component)
@@ -82,5 +80,7 @@ class MembersPanel(BasePanel):
         """Called when the language is changed."""
         # Update the panel title
         self.set_panel_title(tr("Crew Members"))
+        if hasattr(self.agent_chat_members_component, "refresh_texts"):
+            self.agent_chat_members_component.refresh_texts()
         # Reload members to refresh their displayed titles
         self._load_crew_members()
