@@ -1,121 +1,95 @@
-from PySide6.QtWidgets import QDialog, QWidget, QHBoxLayout, QVBoxLayout, QLabel, QFrame, QPushButton, QApplication
-from PySide6.QtCore import Qt, QPoint, QTimer, Signal
-from PySide6.QtGui import QMouseEvent, QCursor
-from .mac_button import MacTitleBar
-from ..styles import DIALOG_STYLE, DIALOG_NAV_BUTTON_STYLE, _lighten_color, _darken_color
 import logging
+from pathlib import Path
+
+from PySide6.QtCore import QPoint, Qt, QUrl, Signal
+from PySide6.QtGui import QMouseEvent
+from PySide6.QtQuickWidgets import QQuickWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QFrame,
+    QHBoxLayout,
+    QPushButton,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
+
+from app.ui.dialog.dialog_qml_bridge import (
+    CustomDialogTitleBarBridge,
+    DialogTitleDragBridge,
+    MacWindowActions,
+)
+
+from ..styles import DIALOG_STYLE, _darken_color, _lighten_color
 
 logger = logging.getLogger(__name__)
 
 
 class CustomTitleBar(QFrame):
-    """自定义标题栏，模仿Mac风格"""
-    
-    # Forward navigation signals from MacTitleBar
+    """Title bar: mac controls, optional nav, title + drag, toolbar (QWidget) — QML chrome."""
+
     back_clicked = Signal()
     forward_clicked = Signal()
 
     def __init__(self, parent, title=""):
         super().__init__(parent)
-        self.setObjectName("CustomDialogTitleBar")  # Add object name for CSS
-        self.setFixedHeight(36)  # 调整高度以适应 MacTitleBar
-        # 样式已移至全局样式表 DIALOG_STYLE
+        self.setObjectName("CustomDialogTitleBar")
+        self.setFixedHeight(36)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
         self.parent_dialog = parent
-        self.drag_position = QPoint()
 
-        # 创建标题栏布局
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 0, 8, 0)  # 调整边距以适应 MacTitleBar
-        layout.setSpacing(0)
+        self._mac = MacWindowActions(parent, self)
+        self._mac.set_dialog_mode(True)
+        self._title_bridge = CustomDialogTitleBarBridge(self)
+        self._title_bridge.title = title
+        self._title_bridge.back_clicked.connect(self.back_clicked.emit)
+        self._title_bridge.forward_clicked.connect(self.forward_clicked.emit)
+        self._drag = DialogTitleDragBridge(parent, self)
 
-        # Mac风格的窗口控制按钮组 (red, yellow, green)
-        self.mac_control_buttons = MacTitleBar(self.parent_dialog)
-        self.mac_control_buttons.set_for_dialog()
-        # Hide navigation controls from MacTitleBar since we're providing our own in CustomTitleBar
-        self.mac_control_buttons.show_navigation_buttons(False)  # Ensure MacTitleBar's nav buttons are hidden
-        layout.addWidget(self.mac_control_buttons)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(8, 0, 8, 0)
+        row.setSpacing(0)
 
-        # Add a separator space between the Mac control buttons and the navigation buttons
-        separator = QWidget()
-        separator.setFixedWidth(8)
-        layout.addWidget(separator)
+        self._quick = QQuickWidget(self)
+        self._quick.setResizeMode(QQuickWidget.SizeRootObjectToView)
+        self._quick.setClearColor(Qt.transparent)
+        self._quick.setAttribute(Qt.WA_TranslucentBackground, True)
+        self._quick.setStyleSheet("background: transparent;")
+        self._quick.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self._quick.setFixedHeight(36)
 
-        # Add navigation buttons after the Mac control buttons
-        nav_layout = QHBoxLayout()
-        nav_layout.setContentsMargins(0, 0, 0, 0)
-        nav_layout.setSpacing(4)
+        qml_dir = Path(__file__).resolve().parent.parent / "qml" / "dialog"
+        self._quick.engine().addImportPath(str(qml_dir.parent))
+        rc = self._quick.rootContext()
+        rc.setContextProperty("chromeMacActions", self._mac)
+        rc.setContextProperty("chromeTitleModel", self._title_bridge)
+        rc.setContextProperty("chromeDragBridge", self._drag)
 
-        # Back button
-        self.back_button = QPushButton("◀", self)
-        self.back_button.setFixedSize(24, 24)
-        self.back_button.clicked.connect(self.back_clicked.emit)
-        self.back_button.setEnabled(False)
-        self._style_nav_button(self.back_button)
-        nav_layout.addWidget(self.back_button)
+        self._quick.setSource(QUrl.fromLocalFile(str(qml_dir / "CustomDialogTitleBar.qml")))
 
-        # Forward button
-        self.forward_button = QPushButton("▶", self)
-        self.forward_button.setFixedSize(24, 24)
-        self.forward_button.clicked.connect(self.forward_clicked.emit)
-        self.forward_button.setEnabled(False)
-        self._style_nav_button(self.forward_button)
-        nav_layout.addWidget(self.forward_button)
+        if self._quick.status() == QQuickWidget.Error:
+            for err in self._quick.errors():
+                logger.error("CustomDialogTitleBar QML: %s", err.toString())
 
-        # Container for navigation buttons
-        self.nav_container = QWidget(self)
-        self.nav_container.setLayout(nav_layout)
-        self.nav_container.hide()  # Initially hidden
-        layout.addWidget(self.nav_container)
+        row.addWidget(self._quick, 1)
 
-        # 标题标签
-        self.title_label = QLabel(title)
-        self.title_label.setObjectName("CustomDialogTitleLabel")  # Add object name for CSS
-        # 样式已移至全局样式表 DIALOG_STYLE
-
-        # 添加弹性空间
-        layout.addWidget(self.title_label)
-        layout.addStretch()
-
-        # 右侧工具栏容器（供子类添加按钮）
         self.toolbar_layout = QHBoxLayout()
         self.toolbar_layout.setSpacing(8)
-        layout.addLayout(self.toolbar_layout)
+        row.addLayout(self.toolbar_layout)
 
-        # 启用鼠标跟踪
         self.setMouseTracking(True)
 
-    def _style_nav_button(self, button):
-        """Apply styling to navigation buttons"""
-        button.setStyleSheet(DIALOG_NAV_BUTTON_STYLE)
-    
-    def mousePressEvent(self, event: QMouseEvent):
-        """处理鼠标按下事件"""
-        if event.button() == Qt.LeftButton:
-            self.drag_position = event.globalPosition().toPoint() - self.parent_dialog.frameGeometry().topLeft()
-            event.accept()
-    
-    def mouseMoveEvent(self, event: QMouseEvent):
-        """处理鼠标移动事件"""
-        if event.buttons() == Qt.LeftButton and not self.drag_position.isNull():
-            self.parent_dialog.move(event.globalPosition().toPoint() - self.drag_position)
-            event.accept()
-    
     def set_title(self, title):
-        """设置标题"""
-        self.title_label.setText(title)
+        self._title_bridge.title = title
 
     def show_navigation_buttons(self, show: bool = True):
-        """Show or hide navigation buttons"""
-        if show:
-            self.nav_container.show()
-        else:
-            self.nav_container.hide()
+        self._title_bridge.navVisible = show
 
     def set_navigation_enabled(self, back_enabled: bool, forward_enabled: bool):
-        """Enable or disable navigation buttons"""
-        self.back_button.setEnabled(back_enabled)
-        self.forward_button.setEnabled(forward_enabled)
+        self._title_bridge.backEnabled = back_enabled
+        self._title_bridge.forwardEnabled = forward_enabled
     
 
 
