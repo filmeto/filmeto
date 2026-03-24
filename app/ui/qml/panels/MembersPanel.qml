@@ -27,12 +27,34 @@ Item {
                 Layout.fillWidth: true
                 placeholderText: membersViewModel ? membersViewModel.searchPlaceholder : ""
                 onTextChanged: membersModel.set_filter(text)
+                color: "#e6e6e6"
+                placeholderTextColor: "#8f8f8f"
+                selectByMouse: true
+                background: Rectangle {
+                    radius: 6
+                    color: "#2b2b2b"
+                    border.color: searchField.activeFocus ? "#4a90e2" : "#383838"
+                }
             }
 
             ToolButton {
                 text: ""
                 font.family: "iconfont"
                 font.pixelSize: 16
+                padding: 6
+                background: Rectangle {
+                    radius: 6
+                    color: parent.down ? "#3d3d3d" : (parent.hovered ? "#353535" : "#2b2b2b")
+                    border.color: parent.hovered ? "#4a4a4a" : "#383838"
+                }
+                contentItem: Text {
+                    text: parent.text
+                    font.family: parent.font.family
+                    font.pixelSize: parent.font.pixelSize
+                    color: "#d0d0d0"
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
                 onClicked: if (membersViewModel) membersViewModel.on_add_member_clicked()
                 ToolTip.visible: hovered && membersViewModel && membersViewModel.addTooltip
                 ToolTip.text: membersViewModel ? membersViewModel.addTooltip : ""

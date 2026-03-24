@@ -5,6 +5,28 @@ import QtQuick.Layouts 1.15
 Item {
     id: root
     anchors.fill: parent
+    component IconToolButton: ToolButton {
+        id: iconButton
+        implicitWidth: 32
+        implicitHeight: 32
+        width: 32
+        height: 32
+        font.family: "iconfont"
+        font.pixelSize: 18
+        padding: 0
+        background: Rectangle {
+            radius: 4
+            color: iconButton.down ? "#4D4D4D" : (iconButton.hovered ? "#3D3D3D" : "transparent")
+        }
+        contentItem: Text {
+            text: iconButton.text
+            font.family: iconButton.font.family
+            font.pixelSize: iconButton.font.pixelSize
+            color: iconButton.hovered ? "#FFFFFF" : "#A0A0A0"
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
+    }
 
     function insertIntoEditor(snippet) {
         if (!editor) {
@@ -42,19 +64,15 @@ Item {
                     Layout.bottomMargin: 8
                     spacing: 6
 
-                    ToolButton {
+                    IconToolButton {
                         text: "\ue835"
-                        font.family: "iconfont"
-                        font.pixelSize: 16
                         onClicked: if (screenPlayViewModel) screenPlayViewModel.on_add_scene_clicked()
                         ToolTip.visible: hovered
                         ToolTip.text: "Add Scene"
                     }
 
-                    ToolButton {
+                    IconToolButton {
                         text: "\ue6b8"
-                        font.family: "iconfont"
-                        font.pixelSize: 16
                         onClicked: if (screenPlayViewModel) screenPlayViewModel.on_refresh_clicked()
                         ToolTip.visible: hovered
                         ToolTip.text: "Refresh"
@@ -152,46 +170,36 @@ Item {
                     Layout.bottomMargin: 8
                     spacing: 6
 
-                    ToolButton {
+                    IconToolButton {
                         text: "\ue64f"
-                        font.family: "iconfont"
-                        font.pixelSize: 16
                         onClicked: if (screenPlayViewModel) screenPlayViewModel.on_return_clicked()
                         ToolTip.visible: hovered
                         ToolTip.text: "Return to List"
                     }
 
-                    ToolButton {
+                    IconToolButton {
                         text: "\ue654"
-                        font.family: "iconfont"
-                        font.pixelSize: 16
                         onClicked: if (screenPlayViewModel) screenPlayViewModel.on_save_clicked()
                         ToolTip.visible: hovered
                         ToolTip.text: "Save Scene"
                     }
 
-                    ToolButton {
+                    IconToolButton {
                         text: "\ue702"
-                        font.family: "iconfont"
-                        font.pixelSize: 16
                         onClicked: root.insertIntoEditor("\nACTION DESCRIPTION GOES HERE.\n")
                         ToolTip.visible: hovered
                         ToolTip.text: "Action"
                     }
 
-                    ToolButton {
+                    IconToolButton {
                         text: "\ue60c"
-                        font.family: "iconfont"
-                        font.pixelSize: 16
                         onClicked: root.insertIntoEditor("\nCHARACTER_NAME\n")
                         ToolTip.visible: hovered
                         ToolTip.text: "Character"
                     }
 
-                    ToolButton {
+                    IconToolButton {
                         text: "\ue721"
-                        font.family: "iconfont"
-                        font.pixelSize: 16
                         onClicked: root.insertIntoEditor("\nWhat the character says here.\n")
                         ToolTip.visible: hovered
                         ToolTip.text: "Dialogue"
