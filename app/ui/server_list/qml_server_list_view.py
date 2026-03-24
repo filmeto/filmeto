@@ -10,7 +10,7 @@ from PySide6.QtCore import QUrl, Qt, Signal
 from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
-from app.ui.server_list.server_list_qml_bridge import (
+from app.ui.server_list.server_list_view_model import (
     ServerListActionsViewModel,
     ServerListLabelsViewModel,
 )

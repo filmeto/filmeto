@@ -13,7 +13,7 @@ from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QSizePolicy
 
 from app.ui.base_widget import BaseWidget
-from app.ui.chat.plan.plan_bridge import PlanViewModel
+from app.ui.chat.plan.plan_view_model import PlanViewModel
 
 logger = logging.getLogger(__name__)
 

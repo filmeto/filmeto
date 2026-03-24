@@ -9,7 +9,7 @@ from PySide6.QtCore import QUrl, Qt, Signal
 from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
-from app.ui.server_status.server_status_qml_state import ServerStatusViewModel
+from app.ui.server_status.server_status_view_model import ServerStatusViewModel
 
 logger = logging.getLogger(__name__)
 
