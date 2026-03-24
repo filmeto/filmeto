@@ -8,6 +8,12 @@ Item {
 
     property bool dialogMode: true
     property var macActions: null
+    property color backgroundColor: "#3d3f4e"
+
+    Rectangle {
+        anchors.fill: parent
+        color: root.backgroundColor
+    }
 
     MouseArea {
         id: hoverStrip

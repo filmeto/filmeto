@@ -27,6 +27,7 @@ Item {
                 if (item) {
                     item.macActions = chromeMacActions
                     item.dialogMode = true
+                    item.backgroundColor = "transparent"
                 }
             }
         }
