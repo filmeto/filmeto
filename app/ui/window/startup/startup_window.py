@@ -1,324 +1,334 @@
 # -*- coding: utf-8 -*-
-"""
-Startup Window
+"""QML-based startup window."""
 
-Independent window for startup/home mode with its own size management.
-"""
 import json
-import os
 import logging
-from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QDialog
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QKeyEvent
+import os
+from pathlib import Path
+
+from PySide6.QtCore import QObject, Property, QUrl, Signal, Slot, Qt
+from PySide6.QtQuickWidgets import QQuickWidget
+from PySide6.QtWidgets import QApplication, QDialog, QVBoxLayout
 
 from app.data.workspace import Workspace
-from app.ui.dialog.left_panel_dialog import LeftPanelDialog
-from app.ui.window.startup.project_list_widget import ProjectListWidget
 
 logger = logging.getLogger(__name__)
+STARTUP_QML_PATH = Path(__file__).resolve().parent.parent.parent / "qml" / "startup" / "StartupWindowRoot.qml"
 
 
-class StartupWindow(LeftPanelDialog):
-    """
-    Independent window for startup/home mode.
+class _StartupWindowBridge(QObject):
+    projectsChanged = Signal()
+    selectedProjectChanged = Signal()
+    titleChanged = Signal()
+    requestEditProject = Signal(str)
+    requestCreateProject = Signal(str)
+    requestRefreshProjects = Signal()
+    requestCloseWindow = Signal()
+    requestOpenSettings = Signal()
+    requestOpenServerDialog = Signal()
+    projectMetaChanged = Signal()
+    activePanelChanged = Signal()
+    activePanelTitleChanged = Signal()
 
-    This window displays the project list and project info,
-    allowing users to browse and manage projects.
-    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._projects = []
+        self._selected_project = ""
+        self._title = "Filmeto"
+        self._active_panel = "members"
+        self._timeline_count = "0"
+        self._task_count = "0"
+        self._budget_text = "$0.00 / $0.00"
+        self._story = ""
 
-    enter_edit_mode = Signal(str)  # Emits project name when entering edit mode
+    @Property("QVariantList", notify=projectsChanged)
+    def projects(self):
+        return self._projects
+
+    @Property(str, notify=selectedProjectChanged)
+    def selectedProject(self):
+        return self._selected_project
+
+    @Property(str, notify=titleChanged)
+    def title(self):
+        return self._title
+
+    @Property(str, notify=activePanelChanged)
+    def activePanel(self):
+        return self._active_panel
+
+    @Property(str, notify=activePanelTitleChanged)
+    def activePanelTitle(self):
+        mapping = {
+            "members": "Members",
+            "screenplay": "Screen Play",
+            "plan": "Plan",
+        }
+        return mapping.get(self._active_panel, "Panel")
+
+    @Property(str, notify=projectMetaChanged)
+    def timelineCount(self):
+        return self._timeline_count
+
+    @Property(str, notify=projectMetaChanged)
+    def taskCount(self):
+        return self._task_count
+
+    @Property(str, notify=projectMetaChanged)
+    def budgetText(self):
+        return self._budget_text
+
+    @Property(str, notify=projectMetaChanged)
+    def storyDescription(self):
+        return self._story
+
+    def set_projects(self, projects):
+        self._projects = projects
+        self.projectsChanged.emit()
+
+    def set_selected_project(self, project_name: str):
+        project_name = project_name or ""
+        if self._selected_project != project_name:
+            self._selected_project = project_name
+            self.selectedProjectChanged.emit()
+
+    def set_project_meta(self, *, timeline_count: str, task_count: str, budget_text: str, story: str):
+        changed = False
+        if self._timeline_count != timeline_count:
+            self._timeline_count = timeline_count
+            changed = True
+        if self._task_count != task_count:
+            self._task_count = task_count
+            changed = True
+        if self._budget_text != budget_text:
+            self._budget_text = budget_text
+            changed = True
+        if self._story != story:
+            self._story = story
+            changed = True
+        if changed:
+            self.projectMetaChanged.emit()
+
+    @Slot(str)
+    def select_project(self, project_name: str):
+        self.set_selected_project(project_name)
+
+    @Slot(str)
+    def edit_project(self, project_name: str):
+        self.requestEditProject.emit(project_name)
+
+    @Slot(str)
+    def create_project(self, project_name: str):
+        self.requestCreateProject.emit(project_name)
+
+    @Slot()
+    def refresh_projects(self):
+        self.requestRefreshProjects.emit()
+
+    @Slot()
+    def close_window(self):
+        self.requestCloseWindow.emit()
+
+    @Slot()
+    def open_settings(self):
+        self.requestOpenSettings.emit()
+
+    @Slot()
+    def open_server_dialog(self):
+        self.requestOpenServerDialog.emit()
+
+    @Slot(str)
+    def set_active_panel(self, panel_name: str):
+        panel_name = panel_name or "members"
+        if self._active_panel != panel_name:
+            self._active_panel = panel_name
+            self.activePanelChanged.emit()
+            self.activePanelTitleChanged.emit()
+
+
+class StartupWindow(QDialog):
+    enter_edit_mode = Signal(str)
 
     def __init__(self, workspace: Workspace):
-        super(StartupWindow, self).__init__(parent=None, left_panel_width=250, workspace=workspace)
+        super().__init__(parent=None)
         self.workspace = workspace
-        
-        # Store pending prompt to be set in agent panel after entering edit mode
         self._pending_prompt = None
-        
-        # Window size storage
         self._window_sizes = {}
         self._load_window_sizes()
-        
-        # Set up the UI
-        self._setup_ui()
-        
-        # Set initial window size (ensure not maximized)
+
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setObjectName("startup_window_qml")
+
+        self._bridge = _StartupWindowBridge(self)
+        self._bridge.requestEditProject.connect(self._on_edit_project)
+        self._bridge.requestCreateProject.connect(self._on_create_project)
+        self._bridge.requestRefreshProjects.connect(self.refresh_projects)
+        self._bridge.requestCloseWindow.connect(self.close)
+        self._bridge.requestOpenSettings.connect(self._on_settings_clicked)
+        self._bridge.requestOpenServerDialog.connect(self._on_server_status_clicked)
+        self._bridge.selectedProjectChanged.connect(self._refresh_selected_project_meta)
+        self._bridge.activePanelChanged.connect(self._on_active_panel_changed)
+
+        self._quick = QQuickWidget(self)
+        self._quick.setResizeMode(QQuickWidget.SizeRootObjectToView)
+        self._quick.setAttribute(Qt.WA_TranslucentBackground, True)
+        self._quick.setClearColor(Qt.transparent)
+        self._quick.rootContext().setContextProperty("startupBridge", self._bridge)
+        self._quick.setSource(QUrl.fromLocalFile(str(STARTUP_QML_PATH)))
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(self._quick)
+
         width, height = self._get_window_size()
         self.resize(width, height)
-        
-        # Ensure window is in normal state (not maximized)
         self.setWindowState(Qt.WindowNoState)
-        
-        # Center the window on screen
         screen = self.screen().availableGeometry()
-        x = (screen.width() - width) // 2
-        y = (screen.height() - height) // 2
-        self.move(x, y)
-    
+        self.move((screen.width() - width) // 2, (screen.height() - height) // 2)
+
+        self.refresh_projects()
+        self._startup_panel_switcher = None
+
     def _load_window_sizes(self):
-        """Load stored window sizes from file."""
         try:
             config_dir = os.path.join(os.path.dirname(__file__), "..", "..", "config")
             os.makedirs(config_dir, exist_ok=True)
             config_file = os.path.join(config_dir, "window_sizes.json")
-            
             if os.path.exists(config_file):
-                with open(config_file, 'r', encoding='utf-8') as f:
+                with open(config_file, "r", encoding="utf-8") as f:
                     self._window_sizes = json.load(f)
             else:
-                # Default size for startup window
-                self._window_sizes = {
-                    "startup": {"width": 800, "height": 600}
-                }
+                self._window_sizes = {"startup": {"width": 1600, "height": 900}}
         except Exception as e:
-            logger.error(f"Error loading window sizes: {e}")
-            # Default sizes if loading fails
-            self._window_sizes = {
-                "startup": {"width": 800, "height": 600}
-            }
-    
+            logger.error("Error loading window sizes: %s", e)
+            self._window_sizes = {"startup": {"width": 1600, "height": 900}}
+
     def _save_window_sizes(self):
-        """Save current window size to file."""
         try:
             config_dir = os.path.join(os.path.dirname(__file__), "..", "..", "config")
             os.makedirs(config_dir, exist_ok=True)
             config_file = os.path.join(config_dir, "window_sizes.json")
-            
-            # Load existing sizes to preserve edit window size
             existing_sizes = {}
             if os.path.exists(config_file):
-                with open(config_file, 'r', encoding='utf-8') as f:
+                with open(config_file, "r", encoding="utf-8") as f:
                     existing_sizes = json.load(f)
-            
-            # Update startup window size
-            existing_sizes["startup"] = {
-                "width": self.width(),
-                "height": self.height()
-            }
-            
-            with open(config_file, 'w', encoding='utf-8') as f:
+            existing_sizes["startup"] = {"width": self.width(), "height": self.height()}
+            with open(config_file, "w", encoding="utf-8") as f:
                 json.dump(existing_sizes, f, ensure_ascii=False, indent=2)
         except Exception as e:
-            logger.error(f"Error saving window sizes: {e}")
-    
+            logger.error("Error saving window sizes: %s", e)
+
     def _get_window_size(self):
-        """Get the stored size for startup window."""
-        # Startup window now uses larger 1600x900 size
-        # This ensures consistent startup experience
-        return 1600, 900
-    
+        stored = (self._window_sizes or {}).get("startup", {})
+        return int(stored.get("width", 1600)), int(stored.get("height", 900))
+
     def closeEvent(self, event):
-        """Handle close event to save current window size."""
         self._save_window_sizes()
-        # Closing startup window should close the application
-        from PySide6.QtWidgets import QApplication
         QApplication.instance().quit()
         event.accept()
-    
-    def _setup_ui(self):
-        """Set up the UI with left panel and right work area."""
-        # Left panel: Project list with header, scrollable list, and toolbar
-        # The ProjectListWidget already has the correct layout structure:
-        # - Header (top, fixed)
-        # - Scrollable project list (middle, stretches)
-        # - Toolbar (bottom, fixed)
-        self.project_list = ProjectListWidget(self.workspace)
-
-        # Clear the default left content layout and set up proper layout
-        # Remove the default margins and spacing to let ProjectListWidget control its own layout
-        while self.left_content_layout.count():
-            item = self.left_content_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-            elif item.layout():
-                item.layout().deleteLater()
-
-        # Set margins to 0 so ProjectListWidget fills the entire left panel
-        self.left_content_layout.setContentsMargins(0, 0, 0, 0)
-        self.left_content_layout.setSpacing(0)
-
-        # Add project list widget, it will stretch vertically
-        self.left_content_layout.addWidget(self.project_list, 1)
-
-        # Set right title bar text
-        self.set_right_title("Filmeto")
-
-        # Right work area: Using ProjectStartupWidget which contains the tab functionality
-        from app.ui.window.startup.project_startup_widget import ProjectStartupWidget
-        # Initialize with the selected project from the project list
-        selected_project = self.project_list.get_selected_project()
-        self.startup_widget = ProjectStartupWidget(self, self.workspace, selected_project)
-
-        # Connect the enter_edit_mode signal from the startup widget
-        self.startup_widget.enter_edit_mode.connect(self._on_edit_project_from_widget)
-
-        # Set the right work widget and adjust margins to 0 on the right
-        self.set_right_work_widget(self.startup_widget)
-        # Adjust the right work layout margins to have no margins
-        self.right_work_layout.setContentsMargins(0, 0, 0, 0)  # Left, Top, Right, Bottom
-
-        # Connect signals
-        self._connect_signals()
-
-        # Apply styles
-        self._apply_styles()
-    
-    def _connect_signals(self):
-        """Connect signals between components."""
-        # Project selection changes - update the ProjectStartupWidget to show the selected project
-        self.project_list.project_selected.connect(self._on_project_selected_in_list)
-
-        # Edit project (from list) - these will now be handled by the ProjectStartupWidget
-        self.project_list.project_edit.connect(self.startup_widget._on_edit_project)
-
-        # New project created - update the ProjectStartupWidget
-        self.project_list.project_created.connect(self._on_project_created_in_list)
-
-        # Settings button click
-        self.settings_clicked.connect(self._on_settings_clicked)
-
-        # Server status button click
-        self.server_status_clicked.connect(self._on_server_status_clicked)
-    
-    def _apply_styles(self):
-        """Startup content styling is delegated to QML child widgets."""
-        pass
-    
-    def _on_project_selected_in_list(self, project_name: str):
-        """Handle project selection from the list."""
-        # Update the ProjectStartupWidget to show the selected project
-        self.startup_widget.set_project(project_name)
-
-    def _on_project_created_in_list(self, project_name: str):
-        """Handle new project creation."""
-        # Update the ProjectStartupWidget to show the new project
-        self.startup_widget.set_project(project_name)
 
     def _on_edit_project(self, project_name: str):
-        """Handle edit project request."""
-        # Switch to the project and enter edit mode
+        if not project_name:
+            return
         self.workspace.switch_project(project_name)
         self.enter_edit_mode.emit(project_name)
-    
-    def _on_edit_project_from_widget(self, project_name: str):
-        """Handle edit project request from the startup widget."""
-        # Switch to the project and enter edit mode
-        self.workspace.switch_project(project_name)
-        self.enter_edit_mode.emit(project_name)
+
+    def _on_create_project(self, project_name: str):
+        name = (project_name or "").strip()
+        if not name:
+            return
+        try:
+            self.workspace.project_manager.create_project(name)
+            self.refresh_projects()
+            self._bridge.set_selected_project(name)
+        except Exception as e:
+            logger.error("Error creating project: %s", e)
+
+    def refresh_projects(self):
+        self.workspace.project_manager.ensure_projects_loaded()
+        projects = self.workspace.project_manager.list_projects()
+        self._bridge.set_projects([{"name": p} for p in projects])
+        if projects and self._bridge.selectedProject not in projects:
+            self._bridge.set_selected_project(projects[0])
+        self._refresh_selected_project_meta()
+
+    def _refresh_selected_project_meta(self):
+        project_name = self._bridge.selectedProject
+        if not project_name:
+            self._bridge.set_project_meta(
+                timeline_count="0",
+                task_count="0",
+                budget_text="$0.00 / $0.00",
+                story="",
+            )
+            return
+        project = self.workspace.project_manager.get_project(project_name)
+        if not project:
+            return
+        config = project.get_config()
+        timeline_count = str(config.get("timeline_index", 0))
+        task_count = str(config.get("task_index", 0))
+        used = float(config.get("budget_used", 0) or 0)
+        total = float(config.get("budget_total", 0) or 0)
+        budget_text = f"${used:.2f} / ${total:.2f}"
+        story = config.get("story_description", "") or ""
+        self._bridge.set_project_meta(
+            timeline_count=timeline_count,
+            task_count=task_count,
+            budget_text=budget_text,
+            story=story,
+        )
+        self._sync_startup_panel_project(project_name)
+
+    def get_selected_project(self) -> str:
+        return self._bridge.selectedProject
+
+    def _ensure_startup_panel_switcher(self):
+        if self._startup_panel_switcher:
+            return
+        from app.ui.window.startup.panel_switcher import StartupWindowWorkspaceTopRightBar
+        self._startup_panel_switcher = StartupWindowWorkspaceTopRightBar(self.workspace, self)
+
+    def _sync_startup_panel_project(self, project_name: str):
+        if not project_name:
+            return
+        try:
+            self.workspace.switch_project(project_name)
+        except Exception as e:
+            logger.debug("Project sync failed for panel switcher: %s", e)
+
+    def _on_active_panel_changed(self):
+        panel = self._bridge.activePanel
+        if not panel:
+            return
+        try:
+            self._ensure_startup_panel_switcher()
+            selected = self._bridge.selectedProject
+            if selected:
+                self._sync_startup_panel_project(selected)
+            self._startup_panel_switcher.switch_to_panel(panel)
+        except Exception as e:
+            logger.error("Failed to switch startup panel '%s': %s", panel, e)
 
     def _on_settings_clicked(self):
-        """Handle settings button click."""
         from app.ui.settings import SettingsWidget
 
-        # Create settings dialog
         settings_dialog = QDialog(self)
         settings_dialog.setWindowTitle("Settings")
         settings_dialog.setMinimumSize(900, 700)
         settings_dialog.setWindowFlags(Qt.Dialog | Qt.WindowCloseButtonHint)
-
-        # Create layout
         layout = QVBoxLayout(settings_dialog)
         layout.setContentsMargins(0, 0, 0, 0)
-
-        # Create settings widget
         settings_widget = SettingsWidget(self.workspace)
         layout.addWidget(settings_widget)
-
-        # Show dialog
         settings_dialog.exec()
 
     def _on_server_status_clicked(self):
-        """Handle server status button click."""
         from app.ui.server_status import ServerListDialog
-        from PySide6.QtCore import QCoreApplication, QEvent
 
-        # Create and show server management dialog
         server_dialog = ServerListDialog(self.workspace, self)
-        # Connect to refresh server status widget when servers are modified
-        if self.server_status_widget:
-            server_dialog.servers_modified.connect(self.server_status_widget.force_refresh)
-        logger.info(
-            "StartupWindow opening ServerListDialog parent_enabled=%s active_modal=%s",
-            self.isEnabled(),
-            type(QApplication.activeModalWidget()).__name__ if QApplication.activeModalWidget() else "None",
-        )
-        try:
-            server_dialog.exec()
-        finally:
-            # The ServerListDialog (via CustomDialog) already handles parent window restoration.
-            # We just need to ensure any pending events are processed.
-            QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
-            QCoreApplication.processEvents()
-
-            active_modal = QApplication.activeModalWidget()
-            if active_modal:
-                top_levels = [
-                    f"{type(w).__name__}(visible={w.isVisible()},enabled={w.isEnabled()},modal={w.isModal()})"
-                    for w in QApplication.topLevelWidgets()
-                ]
-                logger.warning(
-                    "StartupWindow detected lingering active_modal=%s top_levels=%s",
-                    type(active_modal).__name__,
-                    top_levels,
-                )
-            logger.info(
-                "StartupWindow closed ServerListDialog parent_enabled=%s active_modal=%s focus_widget=%s",
-                self.isEnabled(),
-                type(QApplication.activeModalWidget()).__name__ if QApplication.activeModalWidget() else "None",
-                type(QApplication.focusWidget()).__name__ if QApplication.focusWidget() else "None",
-            )
-            # Log modal snapshots for debugging (optional)
-            from PySide6.QtCore import QTimer
-            QTimer.singleShot(0, self._log_modal_snapshot_0ms)
-            QTimer.singleShot(100, self._log_modal_snapshot_100ms)
-            QTimer.singleShot(500, self._log_modal_snapshot_500ms)
-
-    def _log_modal_snapshot_0ms(self):
-        self._log_modal_snapshot("0ms")
-
-    def _log_modal_snapshot_100ms(self):
-        self._log_modal_snapshot("100ms")
-
-    def _log_modal_snapshot_500ms(self):
-        self._log_modal_snapshot("500ms")
-
-    def _log_modal_snapshot(self, tag: str):
-        try:
-            active_modal = QApplication.activeModalWidget()
-            active_window = QApplication.activeWindow()
-            focus_widget = QApplication.focusWidget()
-            top_levels = [
-                f"{type(w).__name__}(visible={w.isVisible()},enabled={w.isEnabled()},modal={w.isModal()},obj={w.objectName()})"
-                for w in QApplication.topLevelWidgets()
-            ]
-            logger.info(
-                "StartupWindow modal snapshot %s active_modal=%s active_window=%s focus_widget=%s top_levels=%s",
-                tag,
-                type(active_modal).__name__ if active_modal else "None",
-                type(active_window).__name__ if active_window else "None",
-                type(focus_widget).__name__ if focus_widget else "None",
-                top_levels,
-            )
-        except Exception as e:
-            logger.debug(f"StartupWindow modal snapshot failed ({tag}): {e}")
-    
-    def refresh_projects(self):
-        """Refresh the project list."""
-        # Refresh the project list in the left panel
-        self.project_list.refresh()
-
-        # Also refresh the project info in the startup widget
-        selected_project = self.project_list.get_selected_project()
-        if selected_project:
-            self.startup_widget.set_project(selected_project)
-
-    def get_selected_project(self) -> str:
-        """Get the currently selected project name."""
-        # Get the selected project from the project list
-        return self.project_list.get_selected_project()
-    
-    def keyPressEvent(self, event: QKeyEvent):
-        """Handle keyboard shortcuts."""
-        # Let the startup widget handle its own keyboard events
-        super().keyPressEvent(event)
+        server_dialog.servers_modified.connect(self.refresh_projects)
+        server_dialog.exec()
 
