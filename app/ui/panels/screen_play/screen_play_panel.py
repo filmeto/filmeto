@@ -29,8 +29,6 @@ class ScreenPlayPanel(BasePanel):
         self.set_panel_title("Screen Play")
 
     def setup_ui(self):
-        self.add_toolbar_button("\ue6b8", self._refresh_scenes, "Refresh Scenes")
-
         self.screen_play_model = ScreenPlayListModel(self)
         self.screen_play_view_model = ScreenPlayViewModel(self)
 
