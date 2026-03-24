@@ -9,20 +9,73 @@ and the startup window. Supports tabbed chat with group chat and private
 from typing import Optional, Any, Dict
 import asyncio
 import logging
+from pathlib import Path
 from PySide6.QtWidgets import QVBoxLayout, QWidget, QSplitter, QTabWidget, QTabBar
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtCore import Signal, Slot
+from PySide6.QtCore import Qt, QTimer, QObject, Property, Slot, QUrl
+from PySide6.QtCore import Signal
+from PySide6.QtQuickWidgets import QQuickWidget
 
 from app.ui.base_widget import BaseWidget
 from app.data.workspace import Workspace
 from app.ui.chat.list import QmlAgentChatListWidget
 from app.ui.chat.plan import AgentChatPlanWidget
-from app.ui.prompt.agent_prompt_widget import AgentPromptWidget
 from utils.i18n_utils import tr
 
 logger = logging.getLogger(__name__)
 
 GROUP_CHAT_TAB_INDEX = 0
+CHAT_INPUT_QML_PATH = Path(__file__).parent.parent / "qml" / "chat" / "widgets" / "ChatInputBar.qml"
+
+
+class _ChatInputBridge(QObject):
+    textChanged = Signal()
+    enabledChanged = Signal()
+    placeholderChanged = Signal()
+    sendLabelChanged = Signal()
+    submitted = Signal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._text = ""
+        self._enabled = True
+        self._placeholder = tr("Type your message...")
+        self._send_label = tr("Send")
+
+    @Property(str, notify=textChanged)
+    def text(self) -> str:
+        return self._text
+
+    @Property(bool, notify=enabledChanged)
+    def enabled(self) -> bool:
+        return self._enabled
+
+    @Property(str, notify=placeholderChanged)
+    def placeholder(self) -> str:
+        return self._placeholder
+
+    @Property(str, notify=sendLabelChanged)
+    def sendLabel(self) -> str:
+        return self._send_label
+
+    @Slot(str)
+    def on_text_changed(self, value: str):
+        if self._text != value:
+            self._text = value
+            self.textChanged.emit()
+
+    @Slot()
+    def submit(self):
+        message = (self._text or "").strip()
+        if not message or not self._enabled:
+            return
+        self.submitted.emit(message)
+        self._text = ""
+        self.textChanged.emit()
+
+    def set_enabled(self, enabled: bool):
+        if self._enabled != enabled:
+            self._enabled = enabled
+            self.enabledChanged.emit()
 
 
 class AgentChatWidget(BaseWidget):
@@ -40,6 +93,7 @@ class AgentChatWidget(BaseWidget):
         self._agent_ready = False
         self._agent_lock = asyncio.Lock()
         self._private_tabs: Dict[str, int] = {}  # crew_member_name -> tab_index
+        self._input_bridge = _ChatInputBridge(self)
         # Cached reference for blinker connect/disconnect (same object required)
         self._crew_activity_handler = self._on_crew_member_activity_from_agent
         self._pending_crew_activity: list = []  # [(member_name, active), ...] replayed after init
@@ -97,8 +151,15 @@ class AgentChatWidget(BaseWidget):
         self.splitter.addWidget(self.plan_widget)
         self.splitter.setCollapsible(1, False)
 
-        self.prompt_input_widget = AgentPromptWidget(self.workspace, self)
+        self.prompt_input_widget = QQuickWidget(self)
         self.prompt_input_widget.setObjectName("agent_chat_prompt_widget")
+        self.prompt_input_widget.setResizeMode(QQuickWidget.SizeRootObjectToView)
+        self.prompt_input_widget.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.prompt_input_widget.setClearColor(Qt.transparent)
+        self.prompt_input_widget.rootContext().setContextProperty("inputBridge", self._input_bridge)
+        self.prompt_input_widget.statusChanged.connect(self._on_prompt_qml_status_changed)
+        self.prompt_input_widget.setSource(QUrl.fromLocalFile(str(CHAT_INPUT_QML_PATH)))
+        self._check_prompt_qml_loaded()
         self.splitter.addWidget(self.prompt_input_widget)
 
         QTimer.singleShot(0, lambda: self.splitter.setSizes([600, self.plan_widget._collapsed_height, 200]))
@@ -108,7 +169,7 @@ class AgentChatWidget(BaseWidget):
 
         group_layout.addWidget(self.splitter)
 
-        self.prompt_input_widget.message_submitted.connect(self._on_message_submitted)
+        self._input_bridge.submitted.connect(self._on_message_submitted)
         self.chat_history_widget.reference_clicked.connect(self._on_reference_clicked)
         self.plan_widget.expandedChanged.connect(self._on_plan_expanded_changed)
         self.chat_history_widget.crew_member_activity.connect(self.crew_member_activity.emit)
@@ -240,6 +301,18 @@ class AgentChatWidget(BaseWidget):
         except RuntimeError:
             QTimer.singleShot(0, lambda: asyncio.ensure_future(self._process_message_async(message)))
 
+    @Slot()
+    def _check_prompt_qml_loaded(self):
+        if self.prompt_input_widget.status() != QQuickWidget.Error:
+            return
+        errors = [err.toString() for err in self.prompt_input_widget.errors()]
+        logger.error("Failed to load agent chat QML input widget: %s", "; ".join(errors))
+        self.error_occurred.emit(tr("Failed to load chat input UI."))
+
+    @Slot(int)
+    def _on_prompt_qml_status_changed(self, _status):
+        self._check_prompt_qml_loaded()
+
     def _on_reference_clicked(self, ref_type: str, ref_id: str):
         logger.info(f"Reference clicked: {ref_type} / {ref_id}")
 
@@ -336,5 +409,4 @@ class AgentChatWidget(BaseWidget):
         return self._extract_project_name(self.workspace.get_project()) if self.agent else None
 
     def set_enabled(self, enabled: bool):
-        if self.prompt_input_widget:
-            self.prompt_input_widget.set_enabled(enabled)
+        self._input_bridge.set_enabled(enabled)

@@ -13,10 +13,12 @@ Real-time rendering:
 import asyncio
 import logging
 import uuid
+from pathlib import Path
 from typing import Dict, Any
 
 from PySide6.QtWidgets import QVBoxLayout, QSplitter
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import Qt, Signal, QTimer, QObject, Property, Slot, QUrl
+from PySide6.QtQuickWidgets import QQuickWidget
 
 from agent.crew import CrewMember
 from agent.crew.crew_member_history_service import crew_member_message_saved
@@ -26,10 +28,61 @@ from app.ui.chat.list import QmlAgentChatListWidget
 from app.ui.chat.list.builders.message_builder import MessageBuilder
 from app.ui.chat.list.builders.message_converter import MessageConverter
 from app.ui.chat.list.managers.metadata_resolver import MetadataResolver
-from app.ui.prompt.agent_prompt_widget import AgentPromptWidget
 from utils.i18n_utils import tr
 
 logger = logging.getLogger(__name__)
+CHAT_INPUT_QML_PATH = Path(__file__).parent.parent / "qml" / "chat" / "widgets" / "ChatInputBar.qml"
+
+
+class _ChatInputBridge(QObject):
+    textChanged = Signal()
+    enabledChanged = Signal()
+    placeholderChanged = Signal()
+    sendLabelChanged = Signal()
+    submitted = Signal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._text = ""
+        self._enabled = True
+        self._placeholder = tr("Type your message...")
+        self._send_label = tr("Send")
+
+    @Property(str, notify=textChanged)
+    def text(self) -> str:
+        return self._text
+
+    @Property(bool, notify=enabledChanged)
+    def enabled(self) -> bool:
+        return self._enabled
+
+    @Property(str, notify=placeholderChanged)
+    def placeholder(self) -> str:
+        return self._placeholder
+
+    @Property(str, notify=sendLabelChanged)
+    def sendLabel(self) -> str:
+        return self._send_label
+
+    @Slot(str)
+    def on_text_changed(self, value: str):
+        if self._text != value:
+            self._text = value
+            self.textChanged.emit()
+
+    @Slot()
+    def submit(self):
+        message = (self._text or "").strip()
+        if not message or not self._enabled:
+            return
+        self.submitted.emit(message)
+        self._text = ""
+        self.textChanged.emit()
+
+    def set_enabled(self, enabled: bool):
+        if self._enabled != enabled:
+            self._enabled = enabled
+            self.enabledChanged.emit()
 
 
 class PrivateChatWidget(BaseWidget):
@@ -58,6 +111,7 @@ class PrivateChatWidget(BaseWidget):
 
         self.error_occurred.connect(self._on_error)
         self._new_history_message.connect(self._render_history_message)
+        self._input_bridge = _ChatInputBridge(self)
         self._setup_ui()
         self._connect_history_signal()
 
@@ -83,8 +137,15 @@ class PrivateChatWidget(BaseWidget):
             self.chat_list_widget._model
         )
 
-        self.prompt_widget = AgentPromptWidget(self.workspace, self)
+        self.prompt_widget = QQuickWidget(self)
         self.prompt_widget.setObjectName("private_chat_prompt_widget")
+        self.prompt_widget.setResizeMode(QQuickWidget.SizeRootObjectToView)
+        self.prompt_widget.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.prompt_widget.setClearColor(Qt.transparent)
+        self.prompt_widget.rootContext().setContextProperty("inputBridge", self._input_bridge)
+        self.prompt_widget.statusChanged.connect(self._on_prompt_qml_status_changed)
+        self.prompt_widget.setSource(QUrl.fromLocalFile(str(CHAT_INPUT_QML_PATH)))
+        self._check_prompt_qml_loaded()
         self.splitter.addWidget(self.prompt_widget)
 
         QTimer.singleShot(0, lambda: self.splitter.setSizes([600, 200]))
@@ -93,7 +154,7 @@ class PrivateChatWidget(BaseWidget):
 
         layout.addWidget(self.splitter)
 
-        self.prompt_widget.message_submitted.connect(self._on_message_submitted)
+        self._input_bridge.submitted.connect(self._on_message_submitted)
 
     def _load_history(self):
         """Load the crew member's chat history into the display."""
@@ -354,6 +415,18 @@ class PrivateChatWidget(BaseWidget):
             loop.create_task(self._process_message_async(message))
         except RuntimeError:
             QTimer.singleShot(0, lambda: asyncio.ensure_future(self._process_message_async(message)))
+
+    @Slot()
+    def _check_prompt_qml_loaded(self):
+        if self.prompt_widget.status() != QQuickWidget.Error:
+            return
+        errors = [err.toString() for err in self.prompt_widget.errors()]
+        logger.error("Failed to load private chat QML input widget: %s", "; ".join(errors))
+        self.error_occurred.emit(tr("Failed to load chat input UI."))
+
+    @Slot(int)
+    def _on_prompt_qml_status_changed(self, _status):
+        self._check_prompt_qml_loaded()
 
     async def _process_message_async(self, message: str):
         """Send message directly to crew member's chat_stream."""
