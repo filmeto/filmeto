@@ -13,8 +13,8 @@ from PySide6.QtWidgets import QVBoxLayout, QWidget
 from app.ui.server_list.server_list_view_model import (
     ServerListActionsViewModel,
     ServerListLabelsViewModel,
+    ServerListModel,
 )
-from app.ui.server_list.server_list_qml_model import ServerListModel
 from utils.i18n_utils import tr, translation_manager
 
 if TYPE_CHECKING:
