@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtQuickWidgets import QQuickWidget
 from app.ui.base_widget import BaseWidget
 from app.data.workspace import Workspace
-from app.ui.panels.panel_toolbar_bridge import PanelToolbarViewModel
+from app.ui.panels.panel_toolbar_view_model import PanelToolbarViewModel
 
 
 class BasePanel(BaseWidget):

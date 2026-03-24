@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.ui.dialog.dialog_qml_bridge import (
+from app.ui.dialog.dialog_view_model import (
     CustomDialogTitleBarViewModel,
     DialogTitleDragViewModel,
     MacWindowControlsViewModel,

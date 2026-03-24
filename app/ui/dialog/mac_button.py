@@ -11,7 +11,7 @@ from PySide6.QtCore import QEvent, Qt, QUrl, Signal
 from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
 
-from app.ui.dialog.dialog_qml_bridge import MacWindowControlsViewModel
+from app.ui.dialog.dialog_view_model import MacWindowControlsViewModel
 
 logger = logging.getLogger(__name__)
 
