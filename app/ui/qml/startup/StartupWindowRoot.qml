@@ -197,65 +197,132 @@ Rectangle {
                             color: "#7fa8ff"
                         }
 
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 48
-                        radius: 6
-                        color: "#2b2d30"
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.margins: 10
-                            Label { text: "Timeline"; color: "#A0A0A0" }
-                            Item { Layout.fillWidth: true }
-                            Label { text: bridge ? bridge.timelineCount : "0"; color: "#E1E1E1"; font.bold: true }
-                        }
-                    }
+                        StackLayout {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            currentIndex: !bridge ? 0 : (bridge.activePanel === "members" ? 0 : (bridge.activePanel === "screenplay" ? 1 : 2))
 
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 48
-                        radius: 6
-                        color: "#2b2d30"
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.margins: 10
-                            Label { text: "Tasks"; color: "#A0A0A0" }
-                            Item { Layout.fillWidth: true }
-                            Label { text: bridge ? bridge.taskCount : "0"; color: "#E1E1E1"; font.bold: true }
-                        }
-                    }
+                            Rectangle {
+                                color: "#2b2d30"
+                                radius: 6
+                                ColumnLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: 10
+                                    Label { text: "Members"; color: "#A0A0A0" }
+                                    ListView {
+                                        Layout.fillWidth: true
+                                        Layout.fillHeight: true
+                                        clip: true
+                                        spacing: 6
+                                        model: bridge ? bridge.memberItems : []
+                                        delegate: Rectangle {
+                                            required property var modelData
+                                            width: ListView.view.width
+                                            height: 36
+                                            radius: 6
+                                            color: "#3a3d45"
+                                            RowLayout {
+                                                anchors.fill: parent
+                                                anchors.margins: 8
+                                                Rectangle {
+                                                    width: 20
+                                                    height: 20
+                                                    radius: 10
+                                                    color: modelData.color || "#5c5f66"
+                                                    Text {
+                                                        anchors.centerIn: parent
+                                                        text: (modelData.icon && modelData.icon.length > 0) ? modelData.icon : ((modelData.name && modelData.name.length > 0) ? modelData.name.charAt(0).toUpperCase() : "A")
+                                                        color: "white"
+                                                        font.pixelSize: 10
+                                                    }
+                                                }
+                                                Label {
+                                                    text: modelData.name || ""
+                                                    color: "#E1E1E1"
+                                                    Layout.fillWidth: true
+                                                    elide: Text.ElideRight
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
 
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 56
-                        radius: 6
-                        color: "#2b2d30"
-                        ColumnLayout {
-                            anchors.fill: parent
-                            anchors.margins: 10
-                            Label { text: "Budget"; color: "#A0A0A0" }
-                            Label { text: bridge ? bridge.budgetText : "$0.00 / $0.00"; color: "#E1E1E1" }
-                        }
-                    }
+                            Rectangle {
+                                color: "#2b2d30"
+                                radius: 6
+                                ColumnLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: 10
+                                    Label { text: "Screen Play"; color: "#A0A0A0" }
+                                    Label { text: bridge ? bridge.screenplaySummary : ""; color: "#7fa8ff" }
+                                    ListView {
+                                        Layout.fillWidth: true
+                                        Layout.fillHeight: true
+                                        clip: true
+                                        spacing: 6
+                                        model: bridge ? bridge.screenplayItems : []
+                                        delegate: Rectangle {
+                                            required property var modelData
+                                            width: ListView.view.width
+                                            height: 52
+                                            radius: 6
+                                            color: "#3a3d45"
+                                            ColumnLayout {
+                                                anchors.fill: parent
+                                                anchors.margins: 8
+                                                spacing: 2
+                                                Label {
+                                                    text: "Scene " + (modelData.sceneNumber || "-") + "  " + (modelData.title || "")
+                                                    color: "#E1E1E1"
+                                                    font.bold: true
+                                                    elide: Text.ElideRight
+                                                    Layout.fillWidth: true
+                                                }
+                                                Label {
+                                                    text: modelData.overview || ""
+                                                    color: "#B0B0B0"
+                                                    elide: Text.ElideRight
+                                                    Layout.fillWidth: true
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Item { Layout.fillHeight: true }
+                                }
+                            }
 
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        radius: 6
-                        color: "#2b2d30"
-                        ColumnLayout {
-                            anchors.fill: parent
-                            anchors.margins: 10
-                            Label { text: "Story"; color: "#A0A0A0" }
-                            Label {
-                                Layout.fillWidth: true
-                                Layout.fillHeight: true
-                                wrapMode: Text.Wrap
-                                text: bridge ? bridge.storyDescription : ""
-                                color: "#E1E1E1"
+                            Rectangle {
+                                color: "#2b2d30"
+                                radius: 6
+                                ColumnLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: 10
+                                    spacing: 8
+                                    Label { text: "Plan"; color: "#A0A0A0" }
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Label { text: "Timeline"; color: "#A0A0A0" }
+                                        Item { Layout.fillWidth: true }
+                                        Label { text: bridge ? bridge.timelineCount : "0"; color: "#E1E1E1"; font.bold: true }
+                                    }
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Label { text: "Tasks"; color: "#A0A0A0" }
+                                        Item { Layout.fillWidth: true }
+                                        Label { text: bridge ? bridge.taskCount : "0"; color: "#E1E1E1"; font.bold: true }
+                                    }
+                                    Label { text: "Budget: " + (bridge ? bridge.budgetText : "$0.00 / $0.00"); color: "#E1E1E1" }
+                                    Label {
+                                        text: bridge ? bridge.storyDescription : ""
+                                        color: "#E1E1E1"
+                                        wrapMode: Text.Wrap
+                                        Layout.fillWidth: true
+                                        Layout.fillHeight: true
+                                    }
+                                }
                             }
                         }
-                    }
 
                         RowLayout {
                             spacing: 8
