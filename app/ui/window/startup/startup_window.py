@@ -26,6 +26,7 @@ class _StartupWindowBridge(QObject):
     requestCloseWindow = Signal()
     requestOpenSettings = Signal()
     requestOpenServerDialog = Signal()
+    requestOpenScreenplayScene = Signal(str)
     projectMetaChanged = Signal()
     activePanelChanged = Signal()
     activePanelTitleChanged = Signal()
@@ -156,6 +157,11 @@ class _StartupWindowBridge(QObject):
         self.requestOpenServerDialog.emit()
 
     @Slot(str)
+    def open_screenplay_scene(self, scene_id: str):
+        if scene_id:
+            self.requestOpenScreenplayScene.emit(scene_id)
+
+    @Slot(str)
     def set_active_panel(self, panel_name: str):
         panel_name = panel_name or "members"
         if self._active_panel != panel_name:
@@ -181,6 +187,7 @@ class StartupWindow(QDialog):
         super().__init__(parent=None)
         self.workspace = workspace
         self._pending_prompt = None
+        self._pending_startup_target = None
         self._window_sizes = {}
         self._load_window_sizes()
 
@@ -195,6 +202,7 @@ class StartupWindow(QDialog):
         self._bridge.requestCloseWindow.connect(self.close)
         self._bridge.requestOpenSettings.connect(self._on_settings_clicked)
         self._bridge.requestOpenServerDialog.connect(self._on_server_status_clicked)
+        self._bridge.requestOpenScreenplayScene.connect(self._on_open_screenplay_scene)
         self._bridge.selectedProjectChanged.connect(self._refresh_selected_project_meta)
         self._bridge.activePanelChanged.connect(self._on_active_panel_changed)
 
@@ -262,6 +270,17 @@ class StartupWindow(QDialog):
             return
         self.workspace.switch_project(project_name)
         self.enter_edit_mode.emit(project_name)
+
+    def _on_open_screenplay_scene(self, scene_id: str):
+        project_name = self._bridge.selectedProject
+        if not project_name or not scene_id:
+            return
+        self._pending_startup_target = {
+            "type": "screenplay_scene",
+            "scene_id": scene_id,
+            "panel": "screenplay",
+        }
+        self._on_edit_project(project_name)
 
     def _on_create_project(self, project_name: str):
         name = (project_name or "").strip()
@@ -354,6 +373,7 @@ class StartupWindow(QDialog):
             for scene in scenes[:20]:
                 rows.append(
                     {
+                        "sceneId": str(getattr(scene, "scene_id", "") or ""),
                         "sceneNumber": str(getattr(scene, "scene_number", "") or ""),
                         "title": str(getattr(scene, "title", "") or ""),
                         "overview": str(getattr(scene, "logline", "") or getattr(scene, "story_beat", "") or ""),
