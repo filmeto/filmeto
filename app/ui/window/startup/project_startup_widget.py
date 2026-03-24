@@ -7,9 +7,9 @@ It focuses on a single project with both chat and crew member functionality.
 """
 import logging
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel
+    QWidget, QVBoxLayout, QHBoxLayout
 )
-from PySide6.QtCore import Signal, Qt
+from PySide6.QtCore import Signal
 
 from app.data.workspace import Workspace
 from app.ui.base_widget import BaseWidget
@@ -168,8 +168,7 @@ class ProjectStartupWidget(BaseWidget):
             self.agent_chat_component.open_private_chat(crew_member)
 
     def _apply_styles(self):
-        """Apply styles to the widget."""
-        # Styles are now in the global stylesheet
+        """Visual styles are owned by QML-backed child widgets."""
         pass
 
     def _on_edit_project(self, project_name: str = None):

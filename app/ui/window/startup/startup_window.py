@@ -14,8 +14,6 @@ from PySide6.QtGui import QKeyEvent
 from app.data.workspace import Workspace
 from app.ui.dialog.left_panel_dialog import LeftPanelDialog
 from app.ui.window.startup.project_list_widget import ProjectListWidget
-from app.ui.window.startup.project_info_widget import ProjectInfoWidget
-from app.ui.prompt.agent_prompt_widget import AgentPromptWidget
 
 logger = logging.getLogger(__name__)
 
@@ -183,15 +181,8 @@ class StartupWindow(LeftPanelDialog):
         self.server_status_clicked.connect(self._on_server_status_clicked)
     
     def _apply_styles(self):
-        """Apply styles to the widget."""
-        self.setStyleSheet("""
-            QWidget#startup_right_container {
-                background-color: #2b2b2b;
-            }
-            QWidget#startup_prompt_container {
-                background-color: #2b2b2b;
-            }
-        """)
+        """Startup content styling is delegated to QML child widgets."""
+        pass
     
     def _on_project_selected_in_list(self, project_name: str):
         """Handle project selection from the list."""
