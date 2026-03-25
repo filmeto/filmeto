@@ -16,7 +16,7 @@ import uuid
 from pathlib import Path
 from typing import Dict, Any
 
-from PySide6.QtWidgets import QVBoxLayout, QSplitter
+from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtCore import Qt, Signal, QTimer, QObject, Property, Slot, QUrl
 from PySide6.QtQuickWidgets import QQuickWidget
 
@@ -24,14 +24,18 @@ from agent.crew import CrewMember
 from agent.crew.crew_member_history_service import crew_member_message_saved
 from app.data.workspace import Workspace
 from app.ui.base_widget import BaseWidget
-from app.ui.chat.list import QmlAgentChatListWidget
+from app.ui.chat.list.agent_chat_list_model import QmlAgentChatListModel
 from app.ui.chat.list.builders.message_builder import MessageBuilder
 from app.ui.chat.list.builders.message_converter import MessageConverter
+from app.ui.chat.list.handlers.qml_handler import QmlHandler
+from app.ui.chat.list.handlers.stream_event_handler import StreamEventHandler
 from app.ui.chat.list.managers.metadata_resolver import MetadataResolver
+from app.ui.chat.list.managers.scroll_manager import ScrollManager
+from app.ui.chat.list.managers.skill_manager import SkillManager
 from utils.i18n_utils import tr
 
 logger = logging.getLogger(__name__)
-CHAT_INPUT_QML_PATH = Path(__file__).parent.parent / "qml" / "chat" / "widgets" / "ChatInputBar.qml"
+PRIVATE_VIEW_QML_PATH = Path(__file__).parent.parent / "qml" / "chat" / "widgets" / "PrivateChatView.qml"
 
 
 class _ChatInputBridge(QObject):
@@ -105,9 +109,16 @@ class PrivateChatWidget(BaseWidget):
         self._history_loaded = False  # Track if initial history has been loaded
         self._last_rendered_offset = 0  # Track last rendered message offset for incremental loading
 
-        # MessageBuilder components (initialized in _setup_ui after chat_list_widget is created)
-        self._metadata_resolver = None
-        self._message_builder = None
+        # QML + model/controller state
+        self._model: QmlAgentChatListModel | None = None
+        self._metadata_resolver: MetadataResolver | None = None
+        self._message_builder: MessageBuilder | None = None
+        self._qml_handler: QmlHandler | None = None
+        self._scroll_manager: ScrollManager | None = None
+        self._skill_manager: SkillManager | None = None
+        self._stream_event_handler: StreamEventHandler | None = None
+        self._qml_root = None
+        self._chat_list_qml = None
 
         self.error_occurred.connect(self._on_error)
         self._new_history_message.connect(self._render_history_message)
@@ -121,45 +132,75 @@ class PrivateChatWidget(BaseWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
+        self._init_private_chat_controller()
 
-        self.splitter = QSplitter(Qt.Vertical)
-        self.splitter.setObjectName("private_chat_splitter")
-        self.splitter.setHandleWidth(0)
+        self._quick = QQuickWidget(self)
+        self._quick.setObjectName("private_chat_qml")
+        self._quick.setResizeMode(QQuickWidget.SizeRootObjectToView)
+        self._quick.setAttribute(Qt.WA_TranslucentBackground, True)
+        self._quick.setClearColor(Qt.transparent)
 
-        self.chat_list_widget = QmlAgentChatListWidget(self.workspace, self)
-        self.chat_list_widget.setObjectName("private_chat_list_widget")
-        self.splitter.addWidget(self.chat_list_widget)
+        qml_root_dir = Path(__file__).resolve().parent.parent / "qml"
+        self._quick.engine().addImportPath(str(qml_root_dir))
 
-        # Initialize MessageBuilder (requires chat_list_widget._model)
-        self._metadata_resolver = MetadataResolver(self.workspace)
-        self._message_builder = MessageBuilder(
-            self._metadata_resolver,
-            self.chat_list_widget._model
-        )
+        # Expose legacy name for AgentChatList.qml fallback.
+        self._quick.rootContext().setContextProperty("_chatModel", self._model)
+        self._quick.rootContext().setContextProperty("inputBridge", self._input_bridge)
 
-        self.prompt_widget = QQuickWidget(self)
-        self.prompt_widget.setObjectName("private_chat_prompt_widget")
-        self.prompt_widget.setResizeMode(QQuickWidget.SizeRootObjectToView)
-        self.prompt_widget.setAttribute(Qt.WA_TranslucentBackground, True)
-        self.prompt_widget.setClearColor(Qt.transparent)
-        self.prompt_widget.rootContext().setContextProperty("inputBridge", self._input_bridge)
-        self.prompt_widget.statusChanged.connect(self._on_prompt_qml_status_changed)
-        self.prompt_widget.setSource(QUrl.fromLocalFile(str(CHAT_INPUT_QML_PATH)))
+        self._quick.statusChanged.connect(self._on_prompt_qml_status_changed)
+        self._quick.setSource(QUrl.fromLocalFile(str(PRIVATE_VIEW_QML_PATH)))
         self._check_prompt_qml_loaded()
-        self.splitter.addWidget(self.prompt_widget)
 
-        QTimer.singleShot(0, lambda: self.splitter.setSizes([600, 200]))
-        self.splitter.setCollapsible(0, False)
-        self.splitter.setCollapsible(1, False)
+        self._qml_root = self._quick.rootObject()
+        if self._qml_root is not None:
+            self._qml_root.setProperty("chatModel", self._model)
+            self._qml_root.setProperty("inputBridge", self._input_bridge)
+            self._qml_root.setProperty("title", self.crew_member.config.name)
 
-        layout.addWidget(self.splitter)
+        self._wire_private_qml()
+        layout.addWidget(self._quick)
 
         self._input_bridge.submitted.connect(self._on_message_submitted)
+
+    def _init_private_chat_controller(self) -> None:
+        self._model = QmlAgentChatListModel(self)
+        self._metadata_resolver = MetadataResolver(self.workspace)
+        self._message_builder = MessageBuilder(self._metadata_resolver, self._model)
+        self._qml_handler = QmlHandler(self._model, 300)
+        self._scroll_manager = ScrollManager(self._model, 300)
+        self._skill_manager = SkillManager(self._model, self._metadata_resolver, self._scroll_manager)
+        self._stream_event_handler = StreamEventHandler(self._model, self._skill_manager, self._metadata_resolver)
+        self._stream_event_handler.set_callbacks(
+            update_agent_card=self._update_agent_card_internal,
+            scroll_to_bottom=lambda force=False: self._scroll_manager.scroll_to_bottom(force=force),
+            crew_member_activity=lambda _name, _active: None,
+        )
+
+    def _wire_private_qml(self) -> None:
+        if not self._qml_root:
+            return
+
+        try:
+            self._chat_list_qml = self._qml_root.findChild(QObject, "privateChatList")
+        except Exception:
+            self._chat_list_qml = None
+
+        if not self._chat_list_qml:
+            logger.error("PrivateChatView missing privateChatList object")
+            return
+
+        self._qml_handler.set_qml_root(self._chat_list_qml)
+        self._scroll_manager.set_qml_root(self._chat_list_qml)
+        self._scroll_manager.set_qml_handler(self._qml_handler)
+        self._metadata_resolver.load_crew_member_metadata()
 
     def _load_history(self):
         """Load the crew member's chat history into the display."""
         try:
-            self.chat_list_widget.clear()
+            if not self._model:
+                self._history_loaded = True
+                return
+            self._model.clear()
 
             messages = self.crew_member.get_history_latest(100)
             if not messages:
@@ -175,7 +216,7 @@ class PrivateChatWidget(BaseWidget):
 
             # Convert to QML format and batch add
             qml_items = [MessageConverter.from_chat_list_item(item) for item in items]
-            self.chat_list_widget._model.add_items_batch(qml_items)
+            self._model.add_items_batch(qml_items)
 
             self._sync_last_rendered_offset()
             self._history_loaded = True
@@ -271,7 +312,7 @@ class PrivateChatWidget(BaseWidget):
         # User messages special handling
         if sender_id and sender_id.lower() == "user":
             user_text = self._extract_user_text(content)
-            self.chat_list_widget.add_user_message(user_text, timestamp=timestamp)
+            self._add_user_message(user_text, timestamp=timestamp)
             return
 
         # Normalize content to list (history may store single content as dict)
@@ -280,7 +321,9 @@ class PrivateChatWidget(BaseWidget):
         elif not isinstance(content, list):
             msg = {**msg, "content": []}
 
-        model = self.chat_list_widget._model
+        model = self._model
+        if not model:
+            return
         existing_row = model.get_row_by_message_id(message_id)
         if existing_row is not None:
             self._message_builder.merge_content_into_existing_bubble(message_id, msg)
@@ -290,6 +333,33 @@ class PrivateChatWidget(BaseWidget):
         if item:
             qml_item = MessageConverter.from_chat_list_item(item)
             model.add_item(qml_item)
+
+    def _add_user_message(self, content: str, timestamp: str = None) -> None:
+        if not self._model:
+            return
+        message_id = str(uuid.uuid4())
+        start_time = QmlAgentChatListModel._format_start_time(timestamp) if timestamp else ""
+        date_group = QmlAgentChatListModel._get_date_group(timestamp) if timestamp else ""
+        item = {
+            self._model.MESSAGE_ID: message_id,
+            self._model.SENDER_ID: "user",
+            self._model.SENDER_NAME: tr("User"),
+            self._model.IS_USER: True,
+            self._model.CONTENT: content,
+            self._model.AGENT_COLOR: "#4a90e2",
+            self._model.AGENT_ICON: "\ue6b3",
+            self._model.CREW_METADATA: {},
+            self._model.STRUCTURED_CONTENT: [],
+            self._model.CONTENT_TYPE: "text",
+            self._model.IS_READ: True,
+            self._model.CREW_READ_BY: [],
+            self._model.TIMESTAMP: timestamp,
+            self._model.START_TIME: start_time,
+            self._model.DATE_GROUP: date_group,
+        }
+        self._model.add_item(item)
+        if self._scroll_manager:
+            self._scroll_manager.scroll_to_bottom(force=True)
 
     def _extract_user_text(self, content) -> str:
         """Extract text from user message content.
@@ -408,7 +478,7 @@ class PrivateChatWidget(BaseWidget):
         if not message or self._is_processing:
             return
 
-        self.chat_list_widget.add_user_message(message)
+        self._add_user_message(message)
 
         try:
             loop = asyncio.get_running_loop()
@@ -418,10 +488,10 @@ class PrivateChatWidget(BaseWidget):
 
     @Slot()
     def _check_prompt_qml_loaded(self):
-        if self.prompt_widget.status() != QQuickWidget.Error:
+        if not hasattr(self, "_quick") or self._quick.status() != QQuickWidget.Error:
             return
-        errors = [err.toString() for err in self.prompt_widget.errors()]
-        logger.error("Failed to load private chat QML input widget: %s", "; ".join(errors))
+        errors = [err.toString() for err in self._quick.errors()]
+        logger.error("Failed to load private chat QML view: %s", "; ".join(errors))
         self.error_occurred.emit(tr("Failed to load chat input UI."))
 
     @Slot(int)
@@ -433,7 +503,8 @@ class PrivateChatWidget(BaseWidget):
         self._is_processing = True
         try:
             async for event in self.crew_member.chat_stream(message):
-                self.chat_list_widget.handle_stream_event(event, None)
+                if self._stream_event_handler:
+                    self._stream_event_handler.handle_stream_event(event, None)
         except Exception as e:
             logger.error(f"Error in private chat: {e}", exc_info=True)
             self.error_occurred.emit(f"{tr('Error')}: {str(e)}")
@@ -443,8 +514,87 @@ class PrivateChatWidget(BaseWidget):
             self._sync_last_rendered_offset()
 
     def _on_error(self, error_message: str):
-        if self.chat_list_widget:
-            self.chat_list_widget.append_message(tr("System"), error_message)
+        if not self._model:
+            return
+        item = {
+            self._model.MESSAGE_ID: str(uuid.uuid4()),
+            self._model.SENDER_ID: "system",
+            self._model.SENDER_NAME: tr("System"),
+            self._model.IS_USER: False,
+            self._model.CONTENT: error_message,
+            self._model.AGENT_COLOR: "#9a9a9a",
+            self._model.AGENT_ICON: "\ue6b3",
+            self._model.CREW_METADATA: {},
+            self._model.STRUCTURED_CONTENT: [],
+            self._model.CONTENT_TYPE: "error",
+            self._model.IS_READ: True,
+            self._model.CREW_READ_BY: [],
+            self._model.TIMESTAMP: None,
+            self._model.START_TIME: "",
+            self._model.DATE_GROUP: "",
+        }
+        self._model.add_item(item)
+
+    def _update_agent_card_internal(
+        self,
+        message_id: str,
+        content: str = None,
+        append: bool = True,
+        is_thinking: bool = False,
+        thinking_text: str = "",
+        is_complete: bool = False,
+        structured_content=None,
+        error: str = None,
+    ) -> None:
+        if not self._model:
+            return
+
+        updates = {}
+        if content is not None:
+            item = self._model.get_item(self._model.get_row_by_message_id(message_id) or 0)
+            if item:
+                current_content = item.get(self._model.CONTENT, "")
+                new_content = (current_content + content) if append else content
+                updates[self._model.CONTENT] = new_content
+
+        if structured_content is not None:
+            item = self._model.get_item(self._model.get_row_by_message_id(message_id) or 0)
+            if item:
+                current_structured = item.get(self._model.STRUCTURED_CONTENT, [])
+                if isinstance(structured_content, list):
+                    items = []
+                    for sc in structured_content:
+                        if hasattr(sc, "to_dict"):
+                            items.append(sc.to_dict())
+                        elif isinstance(sc, dict):
+                            items.append(sc)
+                elif hasattr(structured_content, "to_dict"):
+                    items = [structured_content.to_dict()]
+                elif isinstance(structured_content, dict):
+                    items = [structured_content]
+                else:
+                    items = []
+
+                if is_complete:
+                    current_structured = [
+                        sc for sc in current_structured
+                        if sc.get("content_type") != "typing"
+                    ]
+
+                updates[self._model.STRUCTURED_CONTENT] = current_structured + items
+                if items:
+                    primary_type = items[0].get("content_type", "text")
+                    updates[self._model.CONTENT_TYPE] = primary_type
+
+        if error:
+            updates[self._model.CONTENT] = f"❌ Error: {error}"
+            updates[self._model.CONTENT_TYPE] = "error"
+
+        if updates:
+            self._model.update_item(message_id, updates)
+
+        if (is_complete or error) and self._scroll_manager:
+            self._scroll_manager.scroll_to_bottom(force=True)
 
     def get_crew_member(self) -> CrewMember:
         return self.crew_member
