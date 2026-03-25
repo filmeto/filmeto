@@ -98,6 +98,15 @@ QSplitter::handle{
     border-left:1px solid #1e1f22;
 }
 
+/* Startup home: match main workspace / right bar */
+QWidget#project_startup_widget {
+    background-color: #2b2d30;
+}
+
+QWidget#startup_window_right_bar {
+    background-color: #292b2e;
+}
+
 #main_window_bottom_bar {
     background-color: #292b2e;
     border-bottom-left-radius: 10px;
