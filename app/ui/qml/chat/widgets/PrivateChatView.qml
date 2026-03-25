@@ -8,7 +8,6 @@ Item {
     id: root
 
     property var chatModel: null
-    property var inputBridge: null
     property string title: ""
 
     signal loadMoreRequested()
@@ -59,14 +58,6 @@ Item {
                 onLoadMoreRequested: root.loadMoreRequested()
                 onReferenceClicked: root.referenceClicked(refType, refId)
                 onMessageCompleted: root.messageCompleted(messageId, agentName)
-            }
-
-            ChatInputBar {
-                id: inputBar
-                objectName: "privateChatInput"
-                SplitView.fillWidth: true
-                SplitView.preferredHeight: implicitHeight
-                inputBridge: root.inputBridge
             }
         }
     }

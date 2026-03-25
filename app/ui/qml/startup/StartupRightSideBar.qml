@@ -7,7 +7,24 @@ Rectangle {
     id: root
     color: "#2b2d30"
     width: 40
-    property var bridge: startupRightBarBridge
+
+    signal panelSelected(string panelName)
+
+    property string selectedPanel: "members"
+    property var buttons: ([
+        {"panel": "project_info", "icon": "\ue60f", "tooltip": "Project"},
+        {"panel": "members", "icon": "\ue89e", "tooltip": "Members"},
+        {"panel": "screenplay", "icon": "\ue993", "tooltip": "Screen Play"},
+        {"panel": "plan", "icon": "\ue8a5", "tooltip": "Plan Management"}
+    ])
+
+    function selectPanel(panelName, emitSignal) {
+        var p = panelName || "members"
+        root.selectedPanel = p
+        if (emitSignal === true) {
+            root.panelSelected(p)
+        }
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -16,7 +33,7 @@ Rectangle {
         spacing: 20
 
         Repeater {
-            model: bridge ? bridge.buttons : []
+            model: root.buttons
             delegate: ToolButton {
                 id: btn
                 required property var modelData
@@ -24,7 +41,7 @@ Rectangle {
                 width: 30
                 height: 30
                 checkable: true
-                checked: bridge && bridge.selectedPanel === modelData.panel
+                checked: root.selectedPanel === modelData.panel
                 text: modelData.icon
                 font.family: "iconfont"
                 font.pixelSize: 20
@@ -32,7 +49,7 @@ Rectangle {
                 hoverEnabled: true
                 ToolTip.visible: btn.hovered
                 ToolTip.text: modelData.tooltip
-                onClicked: if (bridge) bridge.select_panel(modelData.panel)
+                onClicked: root.selectPanel(modelData.panel, true)
 
                 background: Rectangle {
                     radius: 5

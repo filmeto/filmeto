@@ -139,19 +139,15 @@ Item {
         }
 
         // Avatar/icon
-        Rectangle {
+        Avatar {
             id: avatarRect
             width: avatarSize
             height: avatarSize
-            radius: width / 2
+            size: avatarSize
+            shape: "circle"
             color: avatarColor
+            icon: root.userIcon
             anchors.verticalCenter: parent.verticalCenter
-
-            Text {
-                anchors.centerIn: parent
-                text: root.userIcon
-                font.pixelSize: 18
-            }
         }
     }
 
@@ -251,18 +247,14 @@ Item {
         Repeater {
             model: root.crewReadBy || []
 
-            Rectangle {
+            Avatar {
                 id: avatarRect
                 width: 20
                 height: 20
-                radius: width / 2
+                size: 20
+                shape: "circle"
                 color: modelData.color || "#4a90e2"
-
-                Text {
-                    anchors.centerIn: parent
-                    text: modelData.icon || "🤖"
-                    font.pixelSize: 10
-                }
+                icon: modelData.icon || "🤖"
 
                 MouseArea {
                     id: avatarMouseArea

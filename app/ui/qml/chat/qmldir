@@ -10,6 +10,9 @@ UserMessageBubble 1.0 components/UserMessageBubble.qml
 # Component: Agent message bubble (left-aligned with avatar)
 AgentMessageBubble 1.0 components/AgentMessageBubble.qml
 
+# Component: Avatar (reusable)
+Avatar 1.0 components/Avatar.qml
+
 # Component: Thinking message (collapsible)
 ThinkingMessageBubble 1.0 components/ThinkingMessageBubble.qml
 

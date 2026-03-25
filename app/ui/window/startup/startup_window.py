@@ -121,9 +121,22 @@ class StartupWindow(LeftPanelDialog):
 
     def _on_project_selected_in_list(self, project_name: str):
         self.startup_widget.set_project(project_name)
+        # Keep project info panel (if loaded) in sync
+        try:
+            panel = self.startup_widget.right_panel_switcher.get_panel("project_info")
+            if panel and hasattr(panel, "set_project"):
+                panel.set_project(project_name)
+        except Exception:
+            pass
 
     def _on_project_created_in_list(self, project_name: str):
         self.startup_widget.set_project(project_name)
+        try:
+            panel = self.startup_widget.right_panel_switcher.get_panel("project_info")
+            if panel and hasattr(panel, "set_project"):
+                panel.set_project(project_name)
+        except Exception:
+            pass
 
     def _on_edit_project_from_widget(self, project_name: str):
         self.workspace.switch_project(project_name)

@@ -2,6 +2,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, Property, QUrl, Signal, Slot, Qt
 from PySide6.QtQuickWidgets import QQuickWidget
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QVBoxLayout
 
 from app.data.workspace import Workspace
@@ -117,15 +118,28 @@ class ProjectInfoWidget(BaseWidget):
 
         self._quick = QQuickWidget(self)
         self._quick.setResizeMode(QQuickWidget.SizeRootObjectToView)
-        self._quick.setAttribute(Qt.WA_TranslucentBackground, True)
-        self._quick.setClearColor(Qt.transparent)
+        self._quick.setAttribute(Qt.WA_TranslucentBackground, False)
+        self._quick.setClearColor(QColor("#1e1f22"))
+        qml_root_dir = Path(__file__).resolve().parent.parent.parent / "qml"
+        self._quick.engine().addImportPath(str(qml_root_dir))
         self._quick.rootContext().setContextProperty("projectInfoBridge", self._bridge)
+        self._quick.statusChanged.connect(self._on_qml_status_changed)
         self._quick.setSource(QUrl.fromLocalFile(str(PROJECT_INFO_QML_PATH)))
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         main_layout.addWidget(self._quick)
+
+    @Slot(int)
+    def _on_qml_status_changed(self, _status: int):
+        if self._quick.status() != QQuickWidget.Error:
+            return
+        # Lazy import to avoid startup overhead unless error occurs
+        import logging
+        logger = logging.getLogger(__name__)
+        errors = [e.toString() for e in self._quick.errors()]
+        logger.error("ProjectInfoWidget QML load error: %s", "; ".join(errors))
 
     def set_project(self, project_name: str):
         self._current_project_name = project_name

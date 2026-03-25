@@ -9,7 +9,6 @@ Item {
 
     property var chatModel: null
     property var planViewModel: null
-    property var inputBridge: null
 
     signal loadMoreRequested()
     signal referenceClicked(string refType, string refId)
@@ -48,14 +47,6 @@ Item {
             SplitView.preferredHeight: isExpanded ? 352 : 52
             SplitView.minimumHeight: isExpanded ? 352 : 52
             SplitView.maximumHeight: isExpanded ? 352 : 52
-        }
-
-        ChatInputBar {
-            id: inputBar
-            objectName: "agentChatInput"
-            SplitView.fillWidth: true
-            SplitView.preferredHeight: implicitHeight
-            inputBridge: root.inputBridge
         }
     }
 }

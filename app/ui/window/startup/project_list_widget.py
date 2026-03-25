@@ -82,7 +82,10 @@ class ProjectListWidget(BaseWidget):
         # becomes see-through because the QML root also uses transparent colors.
         self._quick.setAttribute(Qt.WA_TranslucentBackground, False)
         self._quick.setClearColor(QColor("#2b2d30"))
+        qml_root_dir = Path(__file__).resolve().parent.parent.parent / "qml"
+        self._quick.engine().addImportPath(str(qml_root_dir))
         self._quick.rootContext().setContextProperty("projectListBridge", self._bridge)
+        self._quick.statusChanged.connect(self._on_qml_status_changed)
         self._quick.setSource(QUrl.fromLocalFile(str(PROJECT_LIST_QML_PATH)))
 
         layout = QVBoxLayout(self)
@@ -91,6 +94,13 @@ class ProjectListWidget(BaseWidget):
         layout.addWidget(self._quick)
 
         self._load_projects()
+
+    @Slot(int)
+    def _on_qml_status_changed(self, _status: int):
+        if self._quick.status() != QQuickWidget.Error:
+            return
+        errors = [e.toString() for e in self._quick.errors()]
+        logger.error("ProjectListWidget QML load error: %s", "; ".join(errors))
 
     def _load_projects(self):
         self.workspace.project_manager.ensure_projects_loaded()

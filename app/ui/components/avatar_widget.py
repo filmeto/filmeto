@@ -1,99 +1,136 @@
 """
-Avatar Component
+Avatar Component (QML-backed)
 
-Reusable avatar component for displaying agent icons with consistent styling.
+Provides a QWidget wrapper around a QML Avatar component for consistent rendering
+across QML and QWidget-based parts of the app.
 """
-from PySide6.QtWidgets import QWidget
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap, QPainter, QPainterPath, QColor, QFont, QPen
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from PySide6.QtCore import QObject, Property, QUrl, Signal, Slot, Qt
+from PySide6.QtGui import QColor
+from PySide6.QtQuickWidgets import QQuickWidget
+from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+
+AVATAR_QML_PATH = Path(__file__).resolve().parents[2] / "qml" / "chat" / "components" / "Avatar.qml"
+
+
+class _AvatarBridge(QObject):
+    iconChanged = Signal()
+    colorChanged = Signal()
+    sizeChanged = Signal()
+    shapeChanged = Signal()
+
+    def __init__(self, parent: QObject | None = None):
+        super().__init__(parent)
+        self._icon = "👤"
+        self._color = "#4a90e2"
+        self._size = 32
+        self._shape = "circle"
+
+    @Property(str, notify=iconChanged)
+    def icon(self) -> str:
+        return self._icon
+
+    @Property(str, notify=colorChanged)
+    def color(self) -> str:
+        return self._color
+
+    @Property(int, notify=sizeChanged)
+    def size(self) -> int:
+        return self._size
+
+    @Property(str, notify=shapeChanged)
+    def shape(self) -> str:
+        return self._shape
+
+    def set_icon(self, icon: str) -> None:
+        icon = icon or "👤"
+        if self._icon != icon:
+            self._icon = icon
+            self.iconChanged.emit()
+
+    def set_color(self, color: str) -> None:
+        color = color or "#4a90e2"
+        if self._color != color:
+            self._color = color
+            self.colorChanged.emit()
+
+    def set_size(self, size: int) -> None:
+        size = int(size) if size else 32
+        if self._size != size:
+            self._size = size
+            self.sizeChanged.emit()
+
+    def set_shape(self, shape: str) -> None:
+        shape = shape or "circle"
+        if self._shape != shape:
+            self._shape = shape
+            self.shapeChanged.emit()
 
 
 class AvatarWidget(QWidget):
-    """Reusable avatar widget for displaying agent icons."""
+    """Reusable avatar widget rendered by QML."""
 
     def __init__(self, icon: str = "👤", color: str = "#4a90e2", size: int = 32, shape: str = "circle", parent=None):
         super().__init__(parent)
-        self.icon = icon
-        self.color = color
-        self.size = size
-        self.shape = shape  # "circle" or "rounded_rect"
 
-        self._create_avatar()
+        self._bridge = _AvatarBridge(self)
+        self._bridge.set_icon(icon)
+        self._bridge.set_color(color)
+        self._bridge.set_size(size)
+        self._bridge.set_shape(shape)
 
-    def _create_avatar(self):
-        """Create the avatar pixmap."""
-        pixmap = QPixmap(self.size, self.size)
-        pixmap.fill(Qt.transparent)
+        self._quick = QQuickWidget(self)
+        self._quick.setResizeMode(QQuickWidget.SizeRootObjectToView)
+        self._quick.setAttribute(Qt.WA_TranslucentBackground, True)
+        self._quick.setClearColor(Qt.transparent)
+        qml_root_dir = Path(__file__).resolve().parents[2] / "qml"
+        self._quick.engine().addImportPath(str(qml_root_dir))
+        self._quick.rootContext().setContextProperty("avatarBridge", self._bridge)
+        self._quick.setSource(QUrl.fromLocalFile(str(AVATAR_QML_PATH)))
 
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.Antialiasing)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(self._quick)
 
-        # Draw background based on shape
-        bg_color = QColor(self.color)
-        painter.setBrush(bg_color)
-        painter.setPen(QPen(bg_color))
+        self.setFixedSize(self._bridge.size, self._bridge.size)
 
-        if self.shape == "circle":
-            # Draw circle
-            painter.drawEllipse(0, 0, self.size, self.size)
-        else:  # rounded_rect
-            # Calculate corner radius based on size to ensure proper display for small icons
-            # Use a minimum radius of 2 and maximum of size//3 to prevent overly rounded corners
-            corner_radius = max(2, min(self.size // 3, self.size // 4))
-            painter.drawRoundedRect(0, 0, self.size, self.size, corner_radius, corner_radius)
+        root = self._quick.rootObject()
+        if root is not None:
+            root.setProperty("icon", self._bridge.icon)
+            root.setProperty("color", QColor(self._bridge.color))
+            root.setProperty("size", self._bridge.size)
+            root.setProperty("shape", self._bridge.shape)
 
-        # Draw icon
-        icon_char = self.icon
-        if len(icon_char) == 1 and ord(icon_char) < 128:
-            # Regular letter
-            font = QFont()
-            font.setPointSize(max(8, self.size // 2))  # Ensure minimum font size
-            font.setBold(True)
-            painter.setFont(font)
-        else:
-            # Emoji or iconfont
-            font = QFont()
-            font.setPointSize(max(6, self.size // 2 - 2))  # Ensure minimum font size
-            painter.setFont(font)
+        self._bridge.iconChanged.connect(self._sync_to_qml)
+        self._bridge.colorChanged.connect(self._sync_to_qml)
+        self._bridge.sizeChanged.connect(self._sync_to_qml)
+        self._bridge.shapeChanged.connect(self._sync_to_qml)
 
-        painter.setPen(QPen(QColor("#ffffff")))
-        painter.drawText(0, 0, self.size, self.size, Qt.AlignCenter, icon_char)
-
-        painter.end()
-
-        # Set as background
-        self.setFixedSize(self.size, self.size)
-        self.setStyleSheet(f"border-image: url({self._pixmap_to_base64(pixmap)});")
-
-    def _pixmap_to_base64(self, pixmap):
-        """Convert pixmap to base64 string for CSS."""
-        # This is a workaround since we can't directly embed pixmaps in stylesheets
-        # Instead, we'll override the paintEvent to draw the pixmap
-        self.pixmap = pixmap
-        return ""
-
-    def paintEvent(self, event):
-        """Paint the avatar."""
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        painter.drawPixmap(0, 0, self.pixmap)
+    @Slot()
+    def _sync_to_qml(self) -> None:
+        root = self._quick.rootObject()
+        if root is None:
+            return
+        root.setProperty("icon", self._bridge.icon)
+        root.setProperty("color", QColor(self._bridge.color))
+        root.setProperty("size", self._bridge.size)
+        root.setProperty("shape", self._bridge.shape)
+        self.setFixedSize(self._bridge.size, self._bridge.size)
 
     def set_icon(self, icon: str):
-        """Update the icon."""
-        self.icon = icon
-        self._create_avatar()
+        self._bridge.set_icon(icon)
 
     def set_color(self, color: str):
-        """Update the background color."""
-        self.color = color
-        self._create_avatar()
+        self._bridge.set_color(color)
 
     def set_size(self, size: int):
-        """Update the size."""
-        self.size = size
-        self._create_avatar()
+        self._bridge.set_size(size)
 
     def set_shape(self, shape: str):
-        """Update the shape."""
-        self.shape = shape
-        self._create_avatar()
+        self._bridge.set_shape(shape)

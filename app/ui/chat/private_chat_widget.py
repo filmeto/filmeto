@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Dict, Any
 
 from PySide6.QtWidgets import QVBoxLayout
-from PySide6.QtCore import Qt, Signal, QTimer, QObject, Property, Slot, QUrl
+from PySide6.QtCore import Qt, Signal, QTimer, QObject, Slot, QUrl
 from PySide6.QtQuickWidgets import QQuickWidget
 
 from agent.crew import CrewMember
@@ -32,61 +32,11 @@ from app.ui.chat.list.handlers.stream_event_handler import StreamEventHandler
 from app.ui.chat.list.managers.metadata_resolver import MetadataResolver
 from app.ui.chat.list.managers.scroll_manager import ScrollManager
 from app.ui.chat.list.managers.skill_manager import SkillManager
+from app.ui.prompt.agent_prompt_widget import AgentPromptWidget
 from utils.i18n_utils import tr
 
 logger = logging.getLogger(__name__)
 PRIVATE_VIEW_QML_PATH = Path(__file__).parent.parent / "qml" / "chat" / "widgets" / "PrivateChatView.qml"
-
-
-class _ChatInputBridge(QObject):
-    textChanged = Signal()
-    enabledChanged = Signal()
-    placeholderChanged = Signal()
-    sendLabelChanged = Signal()
-    submitted = Signal(str)
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._text = ""
-        self._enabled = True
-        self._placeholder = tr("Type your message...")
-        self._send_label = tr("Send")
-
-    @Property(str, notify=textChanged)
-    def text(self) -> str:
-        return self._text
-
-    @Property(bool, notify=enabledChanged)
-    def enabled(self) -> bool:
-        return self._enabled
-
-    @Property(str, notify=placeholderChanged)
-    def placeholder(self) -> str:
-        return self._placeholder
-
-    @Property(str, notify=sendLabelChanged)
-    def sendLabel(self) -> str:
-        return self._send_label
-
-    @Slot(str)
-    def on_text_changed(self, value: str):
-        if self._text != value:
-            self._text = value
-            self.textChanged.emit()
-
-    @Slot()
-    def submit(self):
-        message = (self._text or "").strip()
-        if not message or not self._enabled:
-            return
-        self.submitted.emit(message)
-        self._text = ""
-        self.textChanged.emit()
-
-    def set_enabled(self, enabled: bool):
-        if self._enabled != enabled:
-            self._enabled = enabled
-            self.enabledChanged.emit()
 
 
 class PrivateChatWidget(BaseWidget):
@@ -119,10 +69,10 @@ class PrivateChatWidget(BaseWidget):
         self._stream_event_handler: StreamEventHandler | None = None
         self._qml_root = None
         self._chat_list_qml = None
+        self._prompt_widget: AgentPromptWidget | None = None
 
         self.error_occurred.connect(self._on_error)
         self._new_history_message.connect(self._render_history_message)
-        self._input_bridge = _ChatInputBridge(self)
         self._setup_ui()
         self._connect_history_signal()
 
@@ -145,7 +95,6 @@ class PrivateChatWidget(BaseWidget):
 
         # Expose legacy name for AgentChatList.qml fallback.
         self._quick.rootContext().setContextProperty("_chatModel", self._model)
-        self._quick.rootContext().setContextProperty("inputBridge", self._input_bridge)
 
         self._quick.statusChanged.connect(self._on_prompt_qml_status_changed)
         self._quick.setSource(QUrl.fromLocalFile(str(PRIVATE_VIEW_QML_PATH)))
@@ -154,13 +103,16 @@ class PrivateChatWidget(BaseWidget):
         self._qml_root = self._quick.rootObject()
         if self._qml_root is not None:
             self._qml_root.setProperty("chatModel", self._model)
-            self._qml_root.setProperty("inputBridge", self._input_bridge)
             self._qml_root.setProperty("title", self.crew_member.config.name)
 
         self._wire_private_qml()
         layout.addWidget(self._quick)
 
-        self._input_bridge.submitted.connect(self._on_message_submitted)
+        self._prompt_widget = AgentPromptWidget(self.workspace, self)
+        self._prompt_widget.setObjectName("private_chat_prompt_widget")
+        self._prompt_widget.set_placeholder(tr("Type your message..."))
+        self._prompt_widget.prompt_submitted.connect(self._on_message_submitted)
+        layout.addWidget(self._prompt_widget)
 
     def _init_private_chat_controller(self) -> None:
         self._model = QmlAgentChatListModel(self)

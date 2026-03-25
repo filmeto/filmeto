@@ -53,19 +53,15 @@ Item {
         height: Math.max(avatarRect.height, nameColumn.implicitHeight, timeInfoColumn.implicitHeight)
 
         // Avatar/icon
-        Rectangle {
+        Avatar {
             id: avatarRect
             width: 32
             height: 32
-            radius: width / 2
+            size: 32
+            shape: "circle"
             color: root.agentColor
+            icon: root.agentIcon
             anchors.verticalCenter: parent.verticalCenter
-
-            Text {
-                anchors.centerIn: parent
-                text: root.agentIcon
-                font.pixelSize: 18
-            }
         }
 
         // Agent name and title column (left side)
@@ -187,18 +183,14 @@ Item {
         Repeater {
             model: root.crewReadBy || []
 
-            Rectangle {
+            Avatar {
                 id: avatarRect
                 width: 20
                 height: 20
-                radius: width / 2
+                size: 20
+                shape: "circle"
                 color: modelData.color || "#4a90e2"
-
-                Text {
-                    anchors.centerIn: parent
-                    text: modelData.icon || "🤖"
-                    font.pixelSize: 10
-                }
+                icon: modelData.icon || "🤖"
 
                 MouseArea {
                     id: avatarMouseArea

@@ -6,16 +6,20 @@ This is the main container widget for a single project's startup view.
 It focuses on a single project with both chat and crew member functionality.
 """
 import logging
+from pathlib import Path
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout
+    QWidget, QVBoxLayout, QHBoxLayout, QStackedLayout
 )
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Signal, Qt, QUrl
+from PySide6.QtGui import QColor
+from PySide6.QtQuickWidgets import QQuickWidget
 
 from app.data.workspace import Workspace
 from app.ui.base_widget import BaseWidget
 from utils.i18n_utils import tr
 
 logger = logging.getLogger(__name__)
+PROJECT_STARTUP_HOST_QML_PATH = Path(__file__).resolve().parent.parent.parent / "qml" / "startup" / "ProjectStartupHost.qml"
 
 
 class ProjectStartupWidget(BaseWidget):
@@ -49,15 +53,39 @@ class ProjectStartupWidget(BaseWidget):
     def _setup_ui(self):
         """Set up the UI components."""
         from PySide6.QtWidgets import QSplitter, QFrame
-        from PySide6.QtCore import Qt
+        from PySide6.QtCore import QTimer
 
         # Track if member double-click signal is connected
         self._member_double_clicked_connected = False
 
-        # Main layout
+        # QML-backed host: QML owns background/chrome; QWidget content overlays on top.
+        root = QWidget(self)
+        root.setObjectName("project_startup_root")
+        stack = QStackedLayout(root)
+        stack.setContentsMargins(0, 0, 0, 0)
+        stack.setStackingMode(QStackedLayout.StackAll)
+
+        self._qml_host = QQuickWidget(root)
+        self._qml_host.setObjectName("project_startup_host_qml")
+        self._qml_host.setResizeMode(QQuickWidget.SizeRootObjectToView)
+        self._qml_host.setAttribute(Qt.WA_TranslucentBackground, False)
+        self._qml_host.setClearColor(QColor("#1e1f22"))
+        qml_root_dir = Path(__file__).resolve().parent.parent.parent / "qml"
+        self._qml_host.engine().addImportPath(str(qml_root_dir))
+        self._qml_host.setSource(QUrl.fromLocalFile(str(PROJECT_STARTUP_HOST_QML_PATH)))
+        stack.addWidget(self._qml_host)
+
+        content = QWidget(root)
+        content.setObjectName("project_startup_content")
+        content_layout = QHBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
+        stack.addWidget(content)
+
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
+        main_layout.addWidget(root)
 
         # Create main splitter for first level split (work area and right sidebar)
         self.main_splitter = QSplitter(Qt.Horizontal)
@@ -101,13 +129,12 @@ class ProjectStartupWidget(BaseWidget):
         self.main_splitter.setStretchFactor(1, 0)  # Sidebar stays fixed
 
         # Add the main splitter to the main layout
-        main_layout.addWidget(self.main_splitter)
+        content_layout.addWidget(self.main_splitter)
 
         # Connect the right sidebar button clicks to the panel switcher
         self.right_sidebar.button_clicked.connect(self.right_panel_switcher.switch_to_panel)
 
         # Trigger the default panel to load after the UI is set up
-        from PySide6.QtCore import QTimer
         QTimer.singleShot(0, lambda: self.right_sidebar.set_selected_button('members', emit_signal=True))
 
     def _setup_chat_tab(self, tab: QWidget):
@@ -220,13 +247,8 @@ class ProjectStartupWidget(BaseWidget):
             if project:
                 self.agent_chat_component.on_project_switch(project)
 
-            # Only clear chat history if this is a different project
-            # For the same project, we want to preserve the loaded history
-            if previous_project and previous_project != project_name:
-                logger.info(f"Switched from project '{previous_project}' to '{project_name}', clearing history")
-                self.agent_chat_component.chat_history_widget.clear()
-            elif previous_project == project_name:
-                logger.debug(f"Same project '{project_name}', preserving history")
+            # AgentChatWidget now owns its own QML list model/controller.
+            # Avoid reaching into removed internal widgets (chat_history_widget no longer exists).
 
         # Update the agent chat members component with the new project context
         if hasattr(self, 'agent_chat_members_component') and self.agent_chat_members_component:
