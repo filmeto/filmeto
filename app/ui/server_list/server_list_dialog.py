@@ -95,6 +95,9 @@ class ServerListDialog(CustomDialog):
 
         # Add the close button using the standardized button mechanism
         self.add_button(tr("关闭"), self.reject, role="reject")
+
+        # Add title bar buttons
+        self._add_titlebar_buttons()
     
     def _add_titlebar_buttons(self):
         """Add action buttons to title bar"""
