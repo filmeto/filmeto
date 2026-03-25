@@ -1,6 +1,9 @@
-from PySide6.QtWidgets import QDialog, QWidget, QHBoxLayout, QVBoxLayout, QFrame, QLabel, QPushButton, QApplication
-from PySide6.QtCore import Qt, QPoint, QTimer, Signal
-from PySide6.QtGui import QMouseEvent
+from pathlib import Path
+
+from PySide6.QtWidgets import QDialog, QWidget, QHBoxLayout, QVBoxLayout, QFrame, QLabel, QPushButton, QApplication, QStackedLayout
+from PySide6.QtCore import Qt, QPoint, QTimer, Signal, QUrl
+from PySide6.QtGui import QMouseEvent, QColor
+from PySide6.QtQuickWidgets import QQuickWidget
 from .mac_button import MacTitleBar
 from ..styles import DIALOG_STYLE
 
@@ -25,10 +28,37 @@ class LeftPanelDialog(QDialog):
         # 应用全局对话框样式
         self.setStyleSheet(DIALOG_STYLE)
 
-        # 主布局 - 水平布局，分为左右两部分
+        # QML-backed host: QML owns chrome/background; QWidget containers overlay on top.
+        host_root = QWidget(self)
+        host_root.setObjectName("LeftPanelDialogHostRoot")
+        host_stack = QStackedLayout(host_root)
+        host_stack.setContentsMargins(0, 0, 0, 0)
+        host_stack.setStackingMode(QStackedLayout.StackAll)
+
+        self._qml_host = QQuickWidget(host_root)
+        self._qml_host.setObjectName("LeftPanelDialogHostQml")
+        self._qml_host.setResizeMode(QQuickWidget.SizeRootObjectToView)
+        self._qml_host.setAttribute(Qt.WA_TranslucentBackground, True)
+        self._qml_host.setClearColor(Qt.transparent)
+        qml_root_dir = Path(__file__).resolve().parent.parent / "qml"
+        self._qml_host.engine().addImportPath(str(qml_root_dir))
+        qml_path = qml_root_dir / "dialog" / "LeftPanelDialogHost.qml"
+        self._qml_host.setSource(QUrl.fromLocalFile(str(qml_path)))
+        host_stack.addWidget(self._qml_host)
+
+        content_root = QWidget(host_root)
+        content_root.setObjectName("LeftPanelDialogContentRoot")
+        host_stack.addWidget(content_root)
+
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
+        main_layout.addWidget(host_root)
+
+        # Content layout - horizontal, left panel + right work area.
+        content_layout = QHBoxLayout(content_root)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
 
         # 左边栏容器
         self.left_panel = QFrame()
@@ -58,7 +88,7 @@ class LeftPanelDialog(QDialog):
         # 添加弹性空间，将内容推到顶部
         left_layout.addStretch()
 
-        main_layout.addWidget(self.left_panel)
+        content_layout.addWidget(self.left_panel)
 
         # 右边工作区容器
         self.right_work_area = QFrame()
@@ -119,7 +149,17 @@ class LeftPanelDialog(QDialog):
 
         right_main_layout.addWidget(self.right_work_container)
 
-        main_layout.addWidget(self.right_work_area)
+        content_layout.addWidget(self.right_work_area)
+
+        # Keep QML host in sync with constructor parameters.
+        root_obj = self._qml_host.rootObject()
+        if root_obj is not None:
+            try:
+                root_obj.setProperty("leftPanelWidth", int(left_panel_width))
+                root_obj.setProperty("rightTitleBarHeight", 40)
+                root_obj.setProperty("showRightTitleBar", bool(show_right_title_bar))
+            except Exception:
+                pass
 
         # 启用鼠标跟踪，用于窗口拖拽
         self.setMouseTracking(True)

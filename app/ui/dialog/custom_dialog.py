@@ -7,10 +7,10 @@ from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
-    QFrame,
     QHBoxLayout,
     QPushButton,
     QSizePolicy,
+    QStackedLayout,
     QVBoxLayout,
     QWidget,
 )
@@ -26,8 +26,8 @@ from ..styles import DIALOG_STYLE, _darken_color, _lighten_color
 logger = logging.getLogger(__name__)
 
 
-class CustomTitleBar(QFrame):
-    """Title bar: mac controls, optional nav, title + drag, toolbar (QWidget) — QML chrome."""
+class CustomTitleBar(QWidget):
+    """Title bar: QML chrome + QWidget toolbar overlay (API-compatible)."""
 
     back_clicked = Signal()
     forward_clicked = Signal()
@@ -48,11 +48,12 @@ class CustomTitleBar(QFrame):
         self._title_bridge.forward_clicked.connect(self.forward_clicked.emit)
         self._drag = DialogTitleDragViewModel(parent, self)
 
-        row = QHBoxLayout(self)
-        row.setContentsMargins(8, 0, 8, 0)
-        row.setSpacing(0)
+        root = QWidget(self)
+        stack = QStackedLayout(root)
+        stack.setContentsMargins(0, 0, 0, 0)
+        stack.setStackingMode(QStackedLayout.StackAll)
 
-        self._quick = QQuickWidget(self)
+        self._quick = QQuickWidget(root)
         self._quick.setResizeMode(QQuickWidget.SizeRootObjectToView)
         self._quick.setClearColor(Qt.transparent)
         self._quick.setAttribute(Qt.WA_TranslucentBackground, True)
@@ -73,11 +74,24 @@ class CustomTitleBar(QFrame):
             for err in self._quick.errors():
                 logger.error("CustomDialogTitleBar QML: %s", err.toString())
 
-        row.addWidget(self._quick, 1)
+        stack.addWidget(self._quick)
+
+        toolbar_overlay = QWidget(root)
+        toolbar_overlay.setObjectName("CustomDialogTitleBarToolbarOverlay")
+        toolbar_row = QHBoxLayout(toolbar_overlay)
+        toolbar_row.setContentsMargins(8, 0, 8, 0)
+        toolbar_row.setSpacing(0)
+        toolbar_row.addStretch()
 
         self.toolbar_layout = QHBoxLayout()
         self.toolbar_layout.setSpacing(8)
-        row.addLayout(self.toolbar_layout)
+        toolbar_row.addLayout(self.toolbar_layout)
+        stack.addWidget(toolbar_overlay)
+
+        outer = QHBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        outer.addWidget(root, 1)
 
         self.setMouseTracking(True)
 
@@ -109,17 +123,40 @@ class CustomDialog(QDialog):
         # 应用全局对话框样式
         self.setStyleSheet(DIALOG_STYLE)
 
+        # QML-backed host behind QWidget content (keeps API stable).
+        host_root = QWidget(self)
+        host_stack = QStackedLayout(host_root)
+        host_stack.setContentsMargins(0, 0, 0, 0)
+        host_stack.setStackingMode(QStackedLayout.StackAll)
+
+        self._qml_host = QQuickWidget(host_root)
+        self._qml_host.setObjectName("CustomDialogHostQml")
+        self._qml_host.setResizeMode(QQuickWidget.SizeRootObjectToView)
+        self._qml_host.setAttribute(Qt.WA_TranslucentBackground, True)
+        self._qml_host.setClearColor(Qt.transparent)
+        qml_dir = Path(__file__).resolve().parent.parent / "qml" / "dialog"
+        self._qml_host.engine().addImportPath(str(qml_dir.parent))
+        self._qml_host.setSource(QUrl.fromLocalFile(str(qml_dir / "CustomDialogHost.qml")))
+        host_stack.addWidget(self._qml_host)
+
+        content_root = QWidget(host_root)
+        host_stack.addWidget(content_root)
+
         # 主布局
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
+        main_layout.addWidget(host_root)
 
         # 创建自定义标题栏
-        self.title_bar = CustomTitleBar(self)
+        self.title_bar = CustomTitleBar(content_root)
         # Forward navigation signals from title bar
         self.title_bar.back_clicked.connect(self.back_clicked.emit)
         self.title_bar.forward_clicked.connect(self.forward_clicked.emit)
-        main_layout.addWidget(self.title_bar)
+        content_layout = QVBoxLayout(content_root)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
+        content_layout.addWidget(self.title_bar)
 
         # 内容区域容器 - includes both content and button area
         self.content_container = QFrame()
@@ -147,7 +184,7 @@ class CustomDialog(QDialog):
         self.button_area.hide()
         self.main_content_layout.addWidget(self.button_area)
 
-        main_layout.addWidget(self.content_container)
+        content_layout.addWidget(self.content_container)
 
         # 启用鼠标跟踪
         self.setMouseTracking(True)

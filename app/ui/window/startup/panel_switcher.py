@@ -5,9 +5,12 @@ This module implements a panel switcher similar to the one used in the edit wind
 but adapted for the startup window.
 """
 import logging
+from pathlib import Path
 from typing import Dict, Optional, Tuple
-from PySide6.QtWidgets import QStackedWidget, QWidget
-from PySide6.QtCore import Signal, Slot
+from PySide6.QtWidgets import QStackedWidget, QWidget, QStackedLayout
+from PySide6.QtCore import Signal, Slot, QUrl, Qt
+from PySide6.QtGui import QColor
+from PySide6.QtQuickWidgets import QQuickWidget
 
 from app.ui.base_widget import BaseWidget
 from app.data.workspace import Workspace
@@ -48,6 +51,16 @@ class StartupWindowWorkspaceTopRightBar(BaseWidget):
         self.panel_registry: Dict[str, Tuple[str, str]] = {}
 
         # Setup UI
+        self._qml_bg = QQuickWidget(self)
+        self._qml_bg.setObjectName("startup_right_panel_host_qml")
+        self._qml_bg.setResizeMode(QQuickWidget.SizeRootObjectToView)
+        self._qml_bg.setAttribute(Qt.WA_TranslucentBackground, False)
+        self._qml_bg.setClearColor(QColor("#1e1f22"))
+        qml_root_dir = Path(__file__).resolve().parent.parent / "qml"
+        self._qml_bg.engine().addImportPath(str(qml_root_dir))
+        qml_path = qml_root_dir / "startup" / "StartupWorkspaceRightPanelHost.qml"
+        self._qml_bg.setSource(QUrl.fromLocalFile(str(qml_path)))
+
         self.stacked_widget = QStackedWidget(self)
         self.stacked_widget.setObjectName("startup_panels_stack_right")
 
@@ -55,11 +68,20 @@ class StartupWindowWorkspaceTopRightBar(BaseWidget):
         self._register_panels()
 
         # Set up layout
+        # QML-hosted version: QML owns the chrome/background; QWidget stack provides panel content.
+        root = QWidget(self)
+        root.setObjectName("startup_right_panel_root")
+        stack = QStackedLayout(root)
+        stack.setContentsMargins(0, 0, 0, 0)
+        stack.setStackingMode(QStackedLayout.StackAll)
+        stack.addWidget(self._qml_bg)
+        stack.addWidget(self.stacked_widget)
+
         from PySide6.QtWidgets import QVBoxLayout
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        layout.addWidget(self.stacked_widget)
+        layout.addWidget(root)
 
     def _register_panels(self):
         """
@@ -71,6 +93,7 @@ class StartupWindowWorkspaceTopRightBar(BaseWidget):
         # Map button names to panel module paths (lazy import)
         # Format: 'module_path.ClassName'
         self.panel_registry = {
+            'project_info': ('app.ui.panels.project_info.project_info_panel', 'ProjectInfoPanel'),
             'agent': ('app.ui.panels.agent.agent_panel', 'AgentPanel'),
             'chat_history': ('app.ui.panels.chat_history.chat_history_panel', 'ChatHistoryPanel'),
             'skills': ('app.ui.panels.skills.skills_panel', 'SkillsPanel'),

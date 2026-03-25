@@ -13,7 +13,7 @@ from pathlib import Path
 import uuid
 
 from PySide6.QtWidgets import QVBoxLayout, QWidget, QTabWidget, QTabBar
-from PySide6.QtCore import Qt, QTimer, QObject, Property, Slot, QUrl
+from PySide6.QtCore import Qt, QTimer, QObject, Slot, QUrl
 from PySide6.QtCore import Signal
 from PySide6.QtQuickWidgets import QQuickWidget
 
@@ -28,63 +28,13 @@ from app.ui.chat.list.managers.metadata_resolver import MetadataResolver
 from app.ui.chat.list.managers.scroll_manager import ScrollManager
 from app.ui.chat.list.managers.skill_manager import SkillManager
 from app.ui.chat.plan.plan_view_model import PlanViewModel
+from app.ui.prompt.agent_prompt_widget import AgentPromptWidget
 from utils.i18n_utils import tr
 
 logger = logging.getLogger(__name__)
 
 GROUP_CHAT_TAB_INDEX = 0
 GROUP_VIEW_QML_PATH = Path(__file__).parent.parent / "qml" / "chat" / "widgets" / "AgentChatGroupView.qml"
-
-
-class _ChatInputBridge(QObject):
-    textChanged = Signal()
-    enabledChanged = Signal()
-    placeholderChanged = Signal()
-    sendLabelChanged = Signal()
-    submitted = Signal(str)
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._text = ""
-        self._enabled = True
-        self._placeholder = tr("Type your message...")
-        self._send_label = tr("Send")
-
-    @Property(str, notify=textChanged)
-    def text(self) -> str:
-        return self._text
-
-    @Property(bool, notify=enabledChanged)
-    def enabled(self) -> bool:
-        return self._enabled
-
-    @Property(str, notify=placeholderChanged)
-    def placeholder(self) -> str:
-        return self._placeholder
-
-    @Property(str, notify=sendLabelChanged)
-    def sendLabel(self) -> str:
-        return self._send_label
-
-    @Slot(str)
-    def on_text_changed(self, value: str):
-        if self._text != value:
-            self._text = value
-            self.textChanged.emit()
-
-    @Slot()
-    def submit(self):
-        message = (self._text or "").strip()
-        if not message or not self._enabled:
-            return
-        self.submitted.emit(message)
-        self._text = ""
-        self.textChanged.emit()
-
-    def set_enabled(self, enabled: bool):
-        if self._enabled != enabled:
-            self._enabled = enabled
-            self.enabledChanged.emit()
 
 
 class AgentChatWidget(BaseWidget):
@@ -102,7 +52,7 @@ class AgentChatWidget(BaseWidget):
         self._agent_ready = False
         self._agent_lock = asyncio.Lock()
         self._private_tabs: Dict[str, int] = {}  # crew_member_name -> tab_index
-        self._input_bridge = _ChatInputBridge(self)
+        self._prompt_widget: Optional[AgentPromptWidget] = None
         # Cached reference for blinker connect/disconnect (same object required)
         self._crew_activity_handler = self._on_crew_member_activity_from_agent
         self._pending_crew_activity: list = []  # [(member_name, active), ...] replayed after init
@@ -174,7 +124,6 @@ class AgentChatWidget(BaseWidget):
         # Expose legacy names for existing QML components.
         self._group_quick.rootContext().setContextProperty("_chatModel", self._group_model)
         self._group_quick.rootContext().setContextProperty("_planViewModel", self._plan_bridge)
-        self._group_quick.rootContext().setContextProperty("inputBridge", self._input_bridge)
 
         self._group_quick.statusChanged.connect(self._on_prompt_qml_status_changed)
         self._group_quick.setSource(QUrl.fromLocalFile(str(GROUP_VIEW_QML_PATH)))
@@ -184,12 +133,15 @@ class AgentChatWidget(BaseWidget):
         if self._group_qml_root is not None:
             self._group_qml_root.setProperty("chatModel", self._group_model)
             self._group_qml_root.setProperty("planViewModel", self._plan_bridge)
-            self._group_qml_root.setProperty("inputBridge", self._input_bridge)
 
         self._wire_group_qml()
         group_layout.addWidget(self._group_quick)
+        self._prompt_widget = AgentPromptWidget(self.workspace, group_chat_container)
+        self._prompt_widget.setObjectName("agent_chat_prompt_widget")
+        self._prompt_widget.set_placeholder(tr("Type your message..."))
+        self._prompt_widget.prompt_submitted.connect(self._on_message_submitted)
+        group_layout.addWidget(self._prompt_widget)
 
-        self._input_bridge.submitted.connect(self._on_message_submitted)
 
         self.tab_widget.addTab(group_chat_container, "\ue89e")
         self.tab_widget.setTabToolTip(GROUP_CHAT_TAB_INDEX, tr("Group Chat"))
@@ -493,4 +445,5 @@ class AgentChatWidget(BaseWidget):
         return self._extract_project_name(self.workspace.get_project()) if self.agent else None
 
     def set_enabled(self, enabled: bool):
-        self._input_bridge.set_enabled(enabled)
+        if self._prompt_widget:
+            self._prompt_widget.set_enabled(enabled)
