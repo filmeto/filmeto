@@ -30,7 +30,7 @@ Rectangle {
                 font.pixelSize: 20
                 flat: true
                 hoverEnabled: true
-                ToolTip.visible: hovered
+                ToolTip.visible: btn.hovered
                 ToolTip.text: modelData.tooltip
                 onClicked: if (bridge) bridge.select_panel(modelData.panel)
 
