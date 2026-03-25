@@ -136,20 +136,19 @@ class ProjectListWidget(BaseWidget):
         )
         button_box.setStyleSheet("""
             QPushButton {
-                background-color: #3c3f41;
-                color: #ffffff;
-                border: 1px solid #555555;
-                border-radius: 4px;
+                background-color: #3d3f4e;
+                color: #E1E1E1;
+                border: 1px solid #505254;
+                border-radius: 5px;
                 padding: 6px 15px;
                 font-size: 14px;
                 min-width: 80px;
             }
             QPushButton:hover {
-                background-color: #4c5052;
-                border: 1px solid #666666;
+                background-color: #444654;
             }
             QPushButton:pressed {
-                background-color: #2c2f31;
+                background-color: #005a9e;
             }
         """)
         button_box.accepted.connect(dialog.accept)

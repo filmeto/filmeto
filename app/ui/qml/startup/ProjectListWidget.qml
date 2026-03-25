@@ -2,69 +2,51 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 
-/* Colors aligned with main window: top_side_bar main_window_top_bar_button + dark_style QPushButton */
+/* Matches pre-QML ProjectListWidget: header 80px + gradient logo, list rows, toolbar add button */
 Rectangle {
     id: root
     color: "transparent"
     property var bridge: projectListBridge
 
-    /* Same chrome as MainWindowTopSideBar settings / language buttons (#3c3f41, #555555, hover #4c5052) */
-    component TopChromeButton: ToolButton {
-        id: btn
-        implicitWidth: 32
-        implicitHeight: 32
-        flat: true
-        font.family: "iconfont"
-        font.pixelSize: 14
-        hoverEnabled: true
-        background: Rectangle {
-            radius: 4
-            border.width: 1
-            border.color: "#555555"
-            color: btn.pressed ? "#2c2f31" : (btn.hovered ? "#4c5052" : "#3c3f41")
-        }
-        contentItem: Text {
-            text: btn.text
-            font: btn.font
-            color: "#ffffff"
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-        }
-    }
-
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
 
+        /* Header: project_list_header, fixed 80, margins 16 */
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 56
+            Layout.preferredHeight: 80
             color: "transparent"
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 12
-                anchors.rightMargin: 12
-                spacing: 10
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                anchors.topMargin: 16
+                anchors.bottomMargin: 16
+                spacing: 12
 
                 Rectangle {
-                    width: 32
-                    height: 32
-                    radius: 6
-                    color: "#4080ff"
+                    width: 40
+                    height: 40
+                    radius: 8
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: "#4080ff" }
+                        GradientStop { position: 1.0; color: "#8040ff" }
+                    }
                     Text {
                         anchors.centerIn: parent
-                        text: "F"
+                        text: "A"
                         color: "white"
-                        font.pixelSize: 16
+                        font.pixelSize: 20
                         font.bold: true
                     }
                 }
 
                 Label {
-                    text: "Filmeto"
+                    text: "AniMaker"
                     color: "#E1E1E1"
-                    font.pixelSize: 14
+                    font.pixelSize: 20
                     font.bold: true
                 }
                 Item { Layout.fillWidth: true }
@@ -74,7 +56,7 @@ Rectangle {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 1
-            color: "#505254"
+            color: "rgba(60,63,65,0.5)"
         }
 
         ListView {
@@ -98,67 +80,121 @@ Rectangle {
                 width: projectList.width - 16
                 height: 48
                 radius: 6
-                color: selected ? "rgba(61,79,124,0.6)" : (ma.containsMouse ? "rgba(60,63,65,0.5)" : "transparent")
+
+                HoverHandler {
+                    id: rowHover
+                }
+
+                color: selected ? "rgba(61,79,124,0.6)" : (rowHover.hovered ? "rgba(60,63,65,0.5)" : "transparent")
                 border.color: selected ? "#4080ff" : "transparent"
                 border.width: 1
 
                 RowLayout {
                     anchors.fill: parent
                     anchors.leftMargin: 12
-                    anchors.rightMargin: 8
+                    anchors.rightMargin: 12
+                    anchors.topMargin: 8
+                    anchors.bottomMargin: 8
                     spacing: 10
 
-                    Rectangle {
-                        width: 32
-                        height: 32
-                        radius: 16
-                        color: "#4080ff"
-                        Text {
-                            anchors.centerIn: parent
-                            text: (modelData.name && modelData.name.length > 0) ? modelData.name.charAt(0).toUpperCase() : "P"
-                            color: "white"
-                            font.pixelSize: 14
-                            font.bold: true
+                    Item {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 32
+                        TapHandler {
+                            onTapped: if (bridge) bridge.select_project(modelData.name)
+                        }
+                        RowLayout {
+                            anchors.fill: parent
+                            spacing: 10
+                            Rectangle {
+                                width: 32
+                                height: 32
+                                radius: 16
+                                color: "#4080ff"
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: (modelData.name && modelData.name.length > 0) ? modelData.name.charAt(0).toUpperCase() : "P"
+                                    color: "white"
+                                    font.pixelSize: 14
+                                    font.bold: true
+                                }
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                text: modelData.name
+                                color: "#E1E1E1"
+                                font.pixelSize: 14
+                                elide: Text.ElideRight
+                            }
                         }
                     }
 
-                    Label {
-                        Layout.fillWidth: true
-                        text: modelData.name
-                        color: "#E1E1E1"
-                        font.pixelSize: 14
-                        elide: Text.ElideRight
-                    }
-
-                    TopChromeButton {
-                        visible: selected || ma.containsMouse
+                    ToolButton {
+                        id: editBtn
+                        visible: selected || rowHover.hovered
+                        width: 24
+                        height: 24
+                        flat: true
                         text: "\ue601"
+                        font.family: "iconfont"
+                        font.pixelSize: 14
+                        hoverEnabled: true
+                        background: Rectangle { color: "transparent" }
+                        contentItem: Text {
+                            text: editBtn.text
+                            font: editBtn.font
+                            color: editBtn.hovered ? "#4080ff" : "#888888"
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
                         onClicked: if (bridge) bridge.request_edit(modelData.name)
                     }
-                }
-
-                MouseArea {
-                    id: ma
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    onClicked: if (bridge) bridge.select_project(modelData.name)
                 }
             }
         }
 
+        /* project_list_toolbar: height 56, border-top rgba(60,63,65,0.5) */
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 52
+            Layout.preferredHeight: 56
             color: "transparent"
-            border.color: "#505254"
-            border.width: 1
+
+            Rectangle {
+                anchors.top: parent.top
+                width: parent.width
+                height: 1
+                color: "rgba(60,63,65,0.5)"
+            }
 
             RowLayout {
                 anchors.fill: parent
                 anchors.leftMargin: 12
                 anchors.rightMargin: 12
-                TopChromeButton {
+                anchors.topMargin: 8
+                anchors.bottomMargin: 8
+                spacing: 8
+
+                ToolButton {
+                    id: addBtn
+                    width: 40
+                    height: 40
+                    flat: true
                     text: "\ue6b3"
+                    font.family: "iconfont"
+                    font.pixelSize: 18
+                    hoverEnabled: true
+                    background: Rectangle {
+                        radius: 6
+                        color: addBtn.pressed ? "rgba(44,47,49,0.8)"
+                             : (addBtn.hovered ? "rgba(76,80,82,0.8)" : "rgba(60,63,65,0.6)")
+                    }
+                    contentItem: Text {
+                        text: addBtn.text
+                        font: addBtn.font
+                        color: "#E1E1E1"
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
                     onClicked: if (bridge) bridge.request_create_project()
                 }
                 Item { Layout.fillWidth: true }
