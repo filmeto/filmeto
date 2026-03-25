@@ -485,16 +485,11 @@ class ServerListDialog(CustomDialog):
 
     def _cleanup_config_view(self):
         """Clean up resources in config view"""
-        from PySide6.QtCore import QCoreApplication
+        # Keep cleanup minimal and deterministic.
+        # `CustomDialog` already handles focus/mouse release + parent re-activation
+        # in reject()/done()/closeEvent(). Over-manipulating focus or processing
+        # events here can leave the parent (startup window) in a disabled state.
         self._log_ui_state("cleanup-config-start")
-
-        # CRITICAL: Set focus to the dialog itself BEFORE cleaning up QML widget.
-        # QQuickWidget has its own focus management. When it's destroyed,
-        # it can leave the focus as None instead of returning to parent.
-        # By explicitly setting focus to the dialog first, we ensure focus
-        # is transferred safely before the QML widget is destroyed.
-        self.setFocus()
-        self.activateWindow()
 
         if hasattr(self.config_view, 'custom_config_widget') and self.config_view.custom_config_widget:
             widget = self.config_view.custom_config_widget
@@ -545,58 +540,30 @@ class ServerListDialog(CustomDialog):
             # 7. Delete the container widget
             widget.deleteLater()
 
-            # 8. Process events to complete native resource release
-            QCoreApplication.processEvents()
-            self._log_ui_state("cleanup-config-after-deleteLater")
-
         # Also call the config view's own cleanup method (handles any remaining state)
         if hasattr(self.config_view, '_cleanup_custom_widget'):
             self.config_view._cleanup_custom_widget()
 
-        # Final event processing pass
-        QCoreApplication.processEvents()
         self._log_ui_state("cleanup-config-end")
 
     def reject(self):
-        """Override reject to clean up QML widgets before closing"""
-        self._log_ui_state("reject-start")
+        """Close dialog and reliably restore parent input."""
         self._cleanup_config_view()
-        # Set non-modal BEFORE calling super().reject() to ensure Qt updates modal stack
+        # Ensure this dialog is not left on the modal stack.
+        self.setModal(False)
         self.setWindowModality(Qt.NonModal)
-        # Process events to let Qt update its internal modal widget list
-        QCoreApplication.processEvents()
-        # Call parent reject (which handles focus restoration and hides the dialog)
         super().reject()
-        self._log_ui_state("reject-end")
-        QTimer.singleShot(0, lambda: self._log_ui_state("reject-post-0ms"))
-        QTimer.singleShot(100, lambda: self._log_ui_state("reject-post-100ms"))
-        QTimer.singleShot(500, lambda: self._log_ui_state("reject-post-500ms"))
 
     def done(self, result):
-        """Override done to clean up QML widgets before closing"""
-        self._log_ui_state(f"done-start-{result}")
+        """Close dialog and reliably restore parent input."""
         self._cleanup_config_view()
-        # Important: Set non-modal BEFORE calling super().done()
-        # This ensures Qt removes dialog from activeModalWidget() stack
+        self.setModal(False)
         self.setWindowModality(Qt.NonModal)
-        # Process events to let Qt update internal state
-        QCoreApplication.processEvents()
-        # Call parent done (which handles focus restoration and hides the dialog)
-        # Note: super().done() already hides the dialog, so we don't need to call hide()
         super().done(result)
-        self._log_ui_state(f"done-end-{result}")
-        QTimer.singleShot(0, lambda: self._log_ui_state(f"done-post-1ms-{result}"))
-        QTimer.singleShot(100, lambda: self._log_ui_state(f"done-post-100ms-{result}"))
-        QTimer.singleShot(500, lambda: self._log_ui_state(f"done-post-500ms-{result}"))
 
     def closeEvent(self, event):
         """Ensure cleanup also runs when dialog closes directly."""
-        self._log_ui_state("close-start")
         self._cleanup_config_view()
-        # Set non-modal BEFORE calling super().closeEvent() to ensure Qt updates modal stack
+        self.setModal(False)
         self.setWindowModality(Qt.NonModal)
-        # Process events to let Qt update its internal modal widget list
-        QCoreApplication.processEvents()
-        # Call parent closeEvent (which handles the close and hides the dialog)
         super().closeEvent(event)
-        self._log_ui_state("close-end")
