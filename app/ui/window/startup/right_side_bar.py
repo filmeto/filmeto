@@ -2,6 +2,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, Property, QUrl, Qt, Signal, Slot
 from PySide6.QtQuickWidgets import QQuickWidget
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QVBoxLayout
 
 from app.data.workspace import Workspace
@@ -58,8 +59,8 @@ class StartupWindowRightSideBar(BaseWidget):
 
         self._quick = QQuickWidget(self)
         self._quick.setResizeMode(QQuickWidget.SizeRootObjectToView)
-        self._quick.setAttribute(Qt.WA_TranslucentBackground, True)
-        self._quick.setClearColor(Qt.transparent)
+        self._quick.setAttribute(Qt.WA_TranslucentBackground, False)
+        self._quick.setClearColor(QColor("#2b2d30"))
         self._quick.rootContext().setContextProperty("startupRightBarBridge", self._bridge)
         self._quick.setSource(QUrl.fromLocalFile(str(RIGHT_BAR_QML_PATH)))
 

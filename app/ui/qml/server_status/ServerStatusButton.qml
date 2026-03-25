@@ -3,7 +3,7 @@ import QtQuick.Layouts 1.15
 
 Item {
     id: root
-    width: 80
+    width: 104
     height: 32
 
     property url iconFontSource: ""

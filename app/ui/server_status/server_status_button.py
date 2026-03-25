@@ -31,7 +31,8 @@ class ServerStatusButton(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("main_window_top_bar_button")
-        self.setFixedSize(80, 32)
+        # Must fit: left/right margins + icon + "Server" text + badge.
+        self.setFixedSize(104, 32)
         self.setCursor(Qt.PointingHandCursor)
 
         self._state = ServerStatusViewModel(self)
