@@ -5,7 +5,7 @@ Item {
     id: root
 
     // Dimensions provided by Python (fallbacks keep it safe)
-    property int leftPanelWidth: 200
+    property int leftPanelWidth: 250
     property int rightTitleBarHeight: 40
     property bool showRightTitleBar: true
 
