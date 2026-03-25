@@ -10,21 +10,30 @@ from typing import Optional, Any, Dict
 import asyncio
 import logging
 from pathlib import Path
-from PySide6.QtWidgets import QVBoxLayout, QWidget, QSplitter, QTabWidget, QTabBar
+import uuid
+
+from PySide6.QtWidgets import QVBoxLayout, QWidget, QTabWidget, QTabBar
 from PySide6.QtCore import Qt, QTimer, QObject, Property, Slot, QUrl
 from PySide6.QtCore import Signal
 from PySide6.QtQuickWidgets import QQuickWidget
 
 from app.ui.base_widget import BaseWidget
 from app.data.workspace import Workspace
-from app.ui.chat.list import QmlAgentChatListWidget
-from app.ui.chat.plan import AgentChatPlanWidget
+from app.ui.chat.list.agent_chat_list_model import QmlAgentChatListModel
+from app.ui.chat.list.builders.message_builder import MessageBuilder
+from app.ui.chat.list.handlers.qml_handler import QmlHandler
+from app.ui.chat.list.handlers.stream_event_handler import StreamEventHandler
+from app.ui.chat.list.managers.history_manager import HistoryManager
+from app.ui.chat.list.managers.metadata_resolver import MetadataResolver
+from app.ui.chat.list.managers.scroll_manager import ScrollManager
+from app.ui.chat.list.managers.skill_manager import SkillManager
+from app.ui.chat.plan.plan_view_model import PlanViewModel
 from utils.i18n_utils import tr
 
 logger = logging.getLogger(__name__)
 
 GROUP_CHAT_TAB_INDEX = 0
-CHAT_INPUT_QML_PATH = Path(__file__).parent.parent / "qml" / "chat" / "widgets" / "ChatInputBar.qml"
+GROUP_VIEW_QML_PATH = Path(__file__).parent.parent / "qml" / "chat" / "widgets" / "AgentChatGroupView.qml"
 
 
 class _ChatInputBridge(QObject):
@@ -98,6 +107,19 @@ class AgentChatWidget(BaseWidget):
         self._crew_activity_handler = self._on_crew_member_activity_from_agent
         self._pending_crew_activity: list = []  # [(member_name, active), ...] replayed after init
 
+        # Group chat QML/controller state (kept explicit and testable)
+        self._group_model: Optional[QmlAgentChatListModel] = None
+        self._group_qml_root = None
+        self._group_chat_list_qml = None
+        self._metadata_resolver: Optional[MetadataResolver] = None
+        self._message_builder: Optional[MessageBuilder] = None
+        self._scroll_manager: Optional[ScrollManager] = None
+        self._skill_manager: Optional[SkillManager] = None
+        self._history_manager: Optional[HistoryManager] = None
+        self._qml_handler: Optional[QmlHandler] = None
+        self._stream_event_handler: Optional[StreamEventHandler] = None
+        self._plan_bridge: Optional[PlanViewModel] = None
+
         self.error_occurred.connect(self._on_error)
 
         self._setup_ui()
@@ -138,44 +160,98 @@ class AgentChatWidget(BaseWidget):
         group_layout.setContentsMargins(0, 0, 0, 0)
         group_layout.setSpacing(0)
 
-        self.splitter = QSplitter(Qt.Vertical)
-        self.splitter.setObjectName("agent_chat_splitter")
-        self.splitter.setHandleWidth(0)
+        self._init_group_chat_controller()
 
-        self.chat_history_widget = QmlAgentChatListWidget(self.workspace, self)
-        self.chat_history_widget.setObjectName("agent_chat_history_widget")
-        self.splitter.addWidget(self.chat_history_widget)
+        self._group_quick = QQuickWidget(self)
+        self._group_quick.setObjectName("agent_chat_group_qml")
+        self._group_quick.setResizeMode(QQuickWidget.SizeRootObjectToView)
+        self._group_quick.setAttribute(Qt.WA_TranslucentBackground, True)
+        self._group_quick.setClearColor(Qt.transparent)
 
-        self.plan_widget = AgentChatPlanWidget(self.workspace, self)
-        self.plan_widget.setObjectName("agent_chat_plan_widget")
-        self.splitter.addWidget(self.plan_widget)
-        self.splitter.setCollapsible(1, False)
+        qml_root_dir = Path(__file__).resolve().parent.parent / "qml"
+        self._group_quick.engine().addImportPath(str(qml_root_dir))
 
-        self.prompt_input_widget = QQuickWidget(self)
-        self.prompt_input_widget.setObjectName("agent_chat_prompt_widget")
-        self.prompt_input_widget.setResizeMode(QQuickWidget.SizeRootObjectToView)
-        self.prompt_input_widget.setAttribute(Qt.WA_TranslucentBackground, True)
-        self.prompt_input_widget.setClearColor(Qt.transparent)
-        self.prompt_input_widget.rootContext().setContextProperty("inputBridge", self._input_bridge)
-        self.prompt_input_widget.statusChanged.connect(self._on_prompt_qml_status_changed)
-        self.prompt_input_widget.setSource(QUrl.fromLocalFile(str(CHAT_INPUT_QML_PATH)))
+        # Expose legacy names for existing QML components.
+        self._group_quick.rootContext().setContextProperty("_chatModel", self._group_model)
+        self._group_quick.rootContext().setContextProperty("_planViewModel", self._plan_bridge)
+        self._group_quick.rootContext().setContextProperty("inputBridge", self._input_bridge)
+
+        self._group_quick.statusChanged.connect(self._on_prompt_qml_status_changed)
+        self._group_quick.setSource(QUrl.fromLocalFile(str(GROUP_VIEW_QML_PATH)))
         self._check_prompt_qml_loaded()
-        self.splitter.addWidget(self.prompt_input_widget)
 
-        QTimer.singleShot(0, lambda: self.splitter.setSizes([600, self.plan_widget._collapsed_height, 200]))
-        self.splitter.setCollapsible(0, False)
-        self.splitter.setCollapsible(1, False)
-        self.splitter.setCollapsible(2, False)
+        self._group_qml_root = self._group_quick.rootObject()
+        if self._group_qml_root is not None:
+            self._group_qml_root.setProperty("chatModel", self._group_model)
+            self._group_qml_root.setProperty("planViewModel", self._plan_bridge)
+            self._group_qml_root.setProperty("inputBridge", self._input_bridge)
 
-        group_layout.addWidget(self.splitter)
+        self._wire_group_qml()
+        group_layout.addWidget(self._group_quick)
 
         self._input_bridge.submitted.connect(self._on_message_submitted)
-        self.chat_history_widget.reference_clicked.connect(self._on_reference_clicked)
-        self.plan_widget.expandedChanged.connect(self._on_plan_expanded_changed)
-        self.chat_history_widget.crew_member_activity.connect(self.crew_member_activity.emit)
 
         self.tab_widget.addTab(group_chat_container, "\ue89e")
         self.tab_widget.setTabToolTip(GROUP_CHAT_TAB_INDEX, tr("Group Chat"))
+
+    def _init_group_chat_controller(self) -> None:
+        self._group_model = QmlAgentChatListModel(self)
+        self._metadata_resolver = MetadataResolver(self.workspace)
+        self._message_builder = MessageBuilder(self._metadata_resolver, self._group_model)
+        self._scroll_manager = ScrollManager(self._group_model, 300)
+        self._skill_manager = SkillManager(self._group_model, self._metadata_resolver, self._scroll_manager)
+        self._history_manager = HistoryManager(self.workspace, self._group_model, self._message_builder)
+        self._qml_handler = QmlHandler(self._group_model, 300)
+        self._stream_event_handler = StreamEventHandler(self._group_model, self._skill_manager, self._metadata_resolver)
+        self._plan_bridge = PlanViewModel(self.workspace, self)
+
+        # Set up callbacks between components (mirrors QmlAgentChatListWidget).
+        load_more_timer = QTimer(self)
+        load_more_timer.setSingleShot(True)
+        load_more_timer.timeout.connect(self._history_manager.load_older_messages)
+        self._qml_handler.set_debounce_timer(load_more_timer)
+
+        self._qml_handler.set_callbacks(
+            on_reference_clicked=lambda ref_type, ref_id: self._on_reference_clicked(ref_type, ref_id),
+            on_message_completed=lambda msg_id, agent_name: None,
+            on_load_more=lambda: None,
+        )
+        self._stream_event_handler.set_callbacks(
+            update_agent_card=lambda *args, **kwargs: None,
+            scroll_to_bottom=lambda force=False: self._scroll_manager.scroll_to_bottom(force=force),
+            crew_member_activity=lambda name, active: self.crew_member_activity.emit(name, active),
+        )
+
+        self._history_manager.connect_to_storage_signals()
+
+    def _wire_group_qml(self) -> None:
+        if not self._group_qml_root:
+            return
+
+        try:
+            self._group_chat_list_qml = self._group_qml_root.findChild(QObject, "agentChatList")
+        except Exception:
+            self._group_chat_list_qml = None
+
+        if not self._group_chat_list_qml:
+            logger.error("AgentChatGroupView missing agentChatList object")
+            return
+
+        self._qml_handler.set_qml_root(self._group_chat_list_qml)
+        self._scroll_manager.set_qml_root(self._group_chat_list_qml)
+        self._scroll_manager.set_qml_handler(self._qml_handler)
+
+        self._history_manager.set_qml_root(self._group_chat_list_qml)
+        self._history_manager.set_callbacks(
+            on_load_more=lambda: None,
+            refresh_qml=lambda: self._qml_handler.refresh_model_binding(self._group_quick),
+            scroll_to_bottom=lambda: self._scroll_manager.scroll_to_bottom(force=True),
+            get_first_visible_message_id=self._qml_handler.get_first_visible_message_id,
+            restore_scroll_position=self._qml_handler.restore_scroll_position,
+        )
+
+        self._metadata_resolver.load_crew_member_metadata()
+        self._history_manager.load_recent_conversation()
 
     def open_private_chat(self, crew_member) -> None:
         """Open a private chat tab for a crew member, or switch to it if already open."""
@@ -303,10 +379,10 @@ class AgentChatWidget(BaseWidget):
 
     @Slot()
     def _check_prompt_qml_loaded(self):
-        if self.prompt_input_widget.status() != QQuickWidget.Error:
+        if not hasattr(self, "_group_quick") or self._group_quick.status() != QQuickWidget.Error:
             return
-        errors = [err.toString() for err in self.prompt_input_widget.errors()]
-        logger.error("Failed to load agent chat QML input widget: %s", "; ".join(errors))
+        errors = [err.toString() for err in self._group_quick.errors()]
+        logger.error("Failed to load agent chat QML group view: %s", "; ".join(errors))
         self.error_occurred.emit(tr("Failed to load chat input UI."))
 
     @Slot(int)
@@ -315,19 +391,6 @@ class AgentChatWidget(BaseWidget):
 
     def _on_reference_clicked(self, ref_type: str, ref_id: str):
         logger.info(f"Reference clicked: {ref_type} / {ref_id}")
-
-    @Slot(bool)
-    def _on_plan_expanded_changed(self, is_expanded: bool):
-        current_sizes = self.splitter.sizes()
-        chat_height = current_sizes[0]
-        prompt_height = current_sizes[2]
-
-        plan_height = self.plan_widget._expanded_height if is_expanded else self.plan_widget._collapsed_height
-
-        total_available = chat_height + current_sizes[1] + prompt_height
-        new_chat_height = total_available - plan_height - prompt_height
-
-        self.splitter.setSizes([max(100, new_chat_height), plan_height, prompt_height])
 
     async def _process_message_async(self, message: str):
         try:
@@ -346,8 +409,26 @@ class AgentChatWidget(BaseWidget):
 
     @Slot(str)
     def _on_error(self, error_message: str):
-        if self.chat_history_widget:
-            self.chat_history_widget.append_message(tr("System"), error_message)
+        if not self._group_model:
+            return
+        item = {
+            self._group_model.MESSAGE_ID: str(uuid.uuid4()),
+            self._group_model.SENDER_ID: "system",
+            self._group_model.SENDER_NAME: tr("System"),
+            self._group_model.IS_USER: False,
+            self._group_model.CONTENT: error_message,
+            self._group_model.AGENT_COLOR: "#9a9a9a",
+            self._group_model.AGENT_ICON: "\ue6b3",
+            self._group_model.CREW_METADATA: {},
+            self._group_model.STRUCTURED_CONTENT: [],
+            self._group_model.CONTENT_TYPE: "error",
+            self._group_model.IS_READ: True,
+            self._group_model.CREW_READ_BY: [],
+            self._group_model.TIMESTAMP: None,
+            self._group_model.START_TIME: "",
+            self._group_model.DATE_GROUP: "",
+        }
+        self._group_model.add_item(item)
 
     def _extract_project_name(self, project: Any) -> str:
         if project:
@@ -389,10 +470,13 @@ class AgentChatWidget(BaseWidget):
 
         asyncio.ensure_future(self._initialize_agent())
 
-        if self.plan_widget:
-            self.plan_widget.refresh_plan()
-        if self.chat_history_widget:
-            self.chat_history_widget.on_project_switched(self._extract_project_name(project))
+        if self._plan_bridge:
+            self._plan_bridge.on_project_switched()
+            self._plan_bridge.checkInterruptedPlans()
+            self._plan_bridge.refresh_plan()
+        if self._history_manager:
+            self._metadata_resolver.load_crew_member_metadata()
+            self._history_manager.on_project_switched()
 
         self._close_all_private_tabs()
 

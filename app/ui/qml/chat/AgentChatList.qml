@@ -22,8 +22,9 @@ ListView {
     // Loading state property (set from Python)
     property bool isLoadingOlder: false
 
-    // Model from Python (via contextProperty)
-    model: _chatModel
+    // Model from Python (prefer explicit injection; keep legacy _chatModel fallback)
+    property var chatModel: null
+    model: chatModel ? chatModel : _chatModel
 
     // Smooth scrolling
     flickableDirection: Flickable.VerticalFlick

@@ -11,6 +11,7 @@ import logging
 from pathlib import Path
 
 from PySide6.QtCore import QTimer, Signal, QUrl, Qt
+from PySide6.QtGui import QPalette
 from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
@@ -42,9 +43,10 @@ class ServerStatusButton(QWidget):
         self._quick.setResizeMode(QQuickWidget.SizeRootObjectToView)
         self._quick.setFocusPolicy(Qt.ClickFocus)
         self._quick.setAttribute(Qt.WA_AcceptTouchEvents, False)
-        # Ensure QML can render rounded corners without showing a white clear-color.
-        self._quick.setClearColor(Qt.transparent)
-        self._quick.setAttribute(Qt.WA_TranslucentBackground, True)
+        # Keep this control visually opaque; transparent QQuickWidget can make the
+        # toolbar look "see-through" due to native composition.
+        self._quick.setAttribute(Qt.WA_TranslucentBackground, False)
+        self._quick.setClearColor(self.palette().color(QPalette.Window))
         self._quick.setStyleSheet("background: transparent; border: none;")
 
         qml_dir = Path(__file__).resolve().parent.parent / "qml" / "server_status"
