@@ -24,7 +24,7 @@ Rectangle {
             Button {
                 id: addContextBtn
                 text: "+"
-                enabled: bridge ? bridge.enabled : true
+                enabled: bridge ? (bridge.enabled && !bridge.conversationActive) : true
                 implicitWidth: 24
                 implicitHeight: 24
                 onClicked: if (bridge) bridge.request_add_context()
@@ -78,7 +78,7 @@ Rectangle {
             id: inputArea
             Layout.fillWidth: true
             Layout.fillHeight: true
-            enabled: bridge ? bridge.enabled : true
+            enabled: bridge ? (bridge.enabled && !bridge.conversationActive) : true
             placeholderText: bridge ? bridge.placeholder : "Input Prompts..."
             wrapMode: TextEdit.Wrap
             color: "#e8e8e8"
@@ -87,19 +87,17 @@ Rectangle {
             text: bridge ? bridge.text : ""
             onTextChanged: if (bridge) bridge.on_text_changed(text)
 
-            Keys.onReturnPressed: function(event) {
-                if (event.modifiers & Qt.ShiftModifier) {
-                    return
+            Keys.onPressed: function(event) {
+                if (!bridge) return
+
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                    // Shift/Ctrl+Enter inserts newline; plain Enter submits.
+                    if (event.modifiers & Qt.ShiftModifier) return
+                    if (event.modifiers & Qt.ControlModifier) return
+
+                    bridge.submit()
+                    event.accepted = true
                 }
-                if (bridge) bridge.submit()
-                event.accepted = true
-            }
-            Keys.onEnterPressed: function(event) {
-                if (event.modifiers & Qt.ShiftModifier) {
-                    return
-                }
-                if (bridge) bridge.submit()
-                event.accepted = true
             }
         }
 
@@ -109,7 +107,7 @@ Rectangle {
 
             ComboBox {
                 id: agentCombo
-                enabled: bridge ? bridge.enabled : true
+                enabled: bridge ? (bridge.enabled && !bridge.conversationActive) : true
                 model: ["Default Agent", "Creative Agent", "Analytical Agent"]
                 implicitWidth: 160
             }
@@ -117,8 +115,17 @@ Rectangle {
             Item { Layout.fillWidth: true }
 
             Button {
-                text: bridge ? bridge.sendLabel : "Send"
+                id: cancelBtn
+                text: "Cancel"
+                visible: bridge ? bridge.conversationActive : false
                 enabled: bridge ? bridge.enabled : true
+                onClicked: if (bridge) bridge.request_cancel()
+            }
+
+            Button {
+                text: bridge ? bridge.sendLabel : "Send"
+                enabled: bridge ? (bridge.enabled && !bridge.conversationActive) : true
+                visible: bridge ? !bridge.conversationActive : true
                 onClicked: if (bridge) bridge.submit()
             }
         }

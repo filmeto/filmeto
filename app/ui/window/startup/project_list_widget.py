@@ -4,6 +4,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, Property, QUrl, Signal, Slot, Qt
 from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import QVBoxLayout, QLabel, QLineEdit, QDialogButtonBox
+from PySide6.QtGui import QColor
 
 from app.data.workspace import Workspace
 from app.ui.base_widget import BaseWidget
@@ -77,8 +78,10 @@ class ProjectListWidget(BaseWidget):
 
         self._quick = QQuickWidget(self)
         self._quick.setResizeMode(QQuickWidget.SizeRootObjectToView)
-        self._quick.setAttribute(Qt.WA_TranslucentBackground, True)
-        self._quick.setClearColor(Qt.transparent)
+        # Make the QML surface opaque; otherwise the startup project's list panel
+        # becomes see-through because the QML root also uses transparent colors.
+        self._quick.setAttribute(Qt.WA_TranslucentBackground, False)
+        self._quick.setClearColor(QColor("#2b2d30"))
         self._quick.rootContext().setContextProperty("projectListBridge", self._bridge)
         self._quick.setSource(QUrl.fromLocalFile(str(PROJECT_LIST_QML_PATH)))
 

@@ -5,7 +5,8 @@ import QtQuick.Layouts 1.15
 /* Matches pre-QML ProjectListWidget: header 80px + gradient logo, list rows, toolbar add button */
 Rectangle {
     id: root
-    color: "transparent"
+    // Opaque background to avoid the startup window/project list panel becoming see-through.
+    color: "#2b2d30"
     property var bridge: projectListBridge
 
     ColumnLayout {
@@ -16,7 +17,7 @@ Rectangle {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 80
-            color: "transparent"
+            color: "#2b2d30"
 
             RowLayout {
                 anchors.fill: parent
@@ -160,7 +161,7 @@ Rectangle {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 56
-            color: "transparent"
+            color: "#2b2d30"
 
             Rectangle {
                 anchors.top: parent.top
