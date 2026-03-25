@@ -99,6 +99,14 @@ QSplitter::handle{
     border-left:1px solid #ffffff;
 }
 
+QWidget#project_startup_widget {
+    background-color: #f9f9f9;
+}
+
+QWidget#startup_window_right_bar {
+    background-color: #f5f5f5;
+}
+
 #main_window_bottom_bar {
     background-color: #f5f5f5;
     border-bottom-left-radius: 10px;
