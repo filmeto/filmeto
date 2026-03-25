@@ -8,9 +8,9 @@ using navigation buttons instead of opening separate dialogs.
 import logging
 from typing import Optional
 from PySide6.QtWidgets import (
-    QApplication, QDialog, QPushButton, QMessageBox, QMenu, QStackedWidget, QDialogButtonBox, QVBoxLayout, QWidget
+    QPushButton, QMessageBox, QMenu, QStackedWidget, QWidget
 )
-from PySide6.QtCore import QCoreApplication, QTimer, Signal, Qt
+from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QAction
 
 from app.ui.dialog.custom_dialog import CustomDialog
@@ -36,69 +36,29 @@ class ServerListDialog(CustomDialog):
     
     def __init__(self, workspace, parent=None):
         super().__init__(parent)
-        # Don't use WA_DeleteOnClose to avoid premature destruction
-        # We'll handle cleanup manually in reject(), done(), and closeEvent()
-        # self.setAttribute(Qt.WA_DeleteOnClose, True)
         self.workspace = workspace
-        self._instance_id = hex(id(self))
         self.server_manager = None
-        
+
         # Navigation state
         self.view_history = []
         self.current_view_index = -1
 
         # Track current buttons to avoid duplicates
         self._current_buttons = []
-        
+
         # Setup dialog
         self.setMinimumSize(900, 600)
         self.resize(900, 600)
-        
+
         # Initialize UI
         self._init_ui()
-        
+
         # Load servers
         self._load_servers()
-        
+
         # Show list view initially
         self._show_list_view()
-        self._log_ui_state("init-complete")
-        self.destroyed.connect(lambda: logger.info("ServerListDialog destroyed id=%s", self._instance_id))
 
-    def _dump_top_level_windows(self, stage: str):
-        try:
-            windows = []
-            for w in QApplication.topLevelWidgets():
-                windows.append(
-                    f"{type(w).__name__}(visible={w.isVisible()},enabled={w.isEnabled()},modal={w.isModal()},obj={w.objectName()})"
-                )
-            logger.info("ServerListDialog[%s] top_levels=%s", stage, windows)
-        except Exception as e:
-            logger.debug("ServerListDialog top-level dump failed at %s: %s", stage, e)
-
-    def _log_ui_state(self, stage: str):
-        """Log modal/focus/window state to debug UI input issues."""
-        try:
-            modal = QApplication.activeModalWidget()
-            active = QApplication.activeWindow()
-            focus = QApplication.focusWidget()
-            parent = self.parentWidget()
-            logger.info(
-                "ServerListDialog[%s] id=%s visible=%s enabled=%s modal=%s active_window=%s focus_widget=%s parent=%s parent_enabled=%s",
-                stage,
-                self._instance_id,
-                self.isVisible(),
-                self.isEnabled(),
-                type(modal).__name__ if modal else "None",
-                type(active).__name__ if active else "None",
-                type(focus).__name__ if focus else "None",
-                type(parent).__name__ if parent else "None",
-                parent.isEnabled() if parent else "n/a",
-            )
-            self._dump_top_level_windows(stage)
-        except Exception as e:
-            logger.debug("ServerListDialog state log failed at %s: %s", stage, e)
-    
     def _init_ui(self):
         """Initialize UI components"""
         # Show navigation buttons
@@ -134,10 +94,7 @@ class ServerListDialog(CustomDialog):
         self.setContentWidget(self.stacked_widget)
 
         # Add the close button using the standardized button mechanism
-        close_button = self.add_button(tr("关闭"), self.reject, role="reject")
-
-        # Add title bar buttons
-        self._add_titlebar_buttons()
+        self.add_button(tr("关闭"), self.reject, role="reject")
     
     def _add_titlebar_buttons(self):
         """Add action buttons to title bar"""
@@ -224,7 +181,6 @@ class ServerListDialog(CustomDialog):
         self._update_dialog_buttons()  # Update buttons for config view
         self._add_to_history("config")
         self._update_navigation_buttons()
-        self._log_ui_state(f"show-config-{plugin_info.name}")
     
     def _update_dialog_buttons(self):
         """Update the dialog's button row based on current view"""
@@ -484,119 +440,29 @@ class ServerListDialog(CustomDialog):
         self._show_list_view()
 
     def _cleanup_config_view(self):
-        """Clean up resources in config view"""
-        from PySide6.QtCore import QCoreApplication
-        self._log_ui_state("cleanup-config-start")
-
-        # CRITICAL: Set focus to the dialog itself BEFORE cleaning up QML widget.
-        # QQuickWidget has its own focus management. When it's destroyed,
-        # it can leave the focus as None instead of returning to parent.
-        # By explicitly setting focus to the dialog first, we ensure focus
-        # is transferred safely before the QML widget is destroyed.
-        self.setFocus()
-        self.activateWindow()
-
+        """Clean up resources in config view - simplified to avoid affecting parent window."""
         if hasattr(self.config_view, 'custom_config_widget') and self.config_view.custom_config_widget:
             widget = self.config_view.custom_config_widget
-            logger.info(
-                "ServerListDialog cleanup widget type=%s objectName=%s visible=%s",
-                type(widget).__name__,
-                widget.objectName(),
-                widget.isVisible(),
-            )
 
-            # 1. Clear focus from the widget and all its children
-            widget.clearFocus()
-            for child in widget.findChildren(QWidget):
-                if hasattr(child, 'clearFocus'):
-                    child.clearFocus()
-
-            # 2. Call cleanup if available — for QML widgets this destroys the
-            #    QQuickWidget and detaches it from the native window hierarchy
-            if hasattr(widget, 'cleanup'):
-                try:
-                    widget.cleanup()
-                except Exception as e:
-                    logger.debug(f"Error cleaning up config widget: {e}")
-
-            # 3. Release mouse grab
-            try:
-                widget.releaseMouse()
-            except Exception as e:
-                logger.debug(f"Error releasing mouse: {e}")
-
-            # 4. Remove the container widget from the config view's layout so it
-            #    is no longer part of the native widget hierarchy
+            # Simple cleanup - just remove from layout and schedule deletion
             if hasattr(self.config_view, 'main_layout'):
-                try:
-                    self.config_view.main_layout.removeWidget(widget)
-                except Exception as e:
-                    logger.debug(f"Error removing widget from layout: {e}")
+                self.config_view.main_layout.removeWidget(widget)
 
-            # 5. Detach from parent and schedule deletion
-            try:
-                widget.setParent(None)
-            except Exception as e:
-                logger.debug(f"Error detaching widget: {e}")
-
-            # 6. Clear the reference
+            widget.setParent(None)
+            widget.deleteLater()
             self.config_view.custom_config_widget = None
 
-            # 7. Delete the container widget
-            widget.deleteLater()
-
-            # 8. Process events to complete native resource release
-            QCoreApplication.processEvents()
-            self._log_ui_state("cleanup-config-after-deleteLater")
-
-        # Also call the config view's own cleanup method (handles any remaining state)
-        if hasattr(self.config_view, '_cleanup_custom_widget'):
-            self.config_view._cleanup_custom_widget()
-
-        # Final event processing pass
-        QCoreApplication.processEvents()
-        self._log_ui_state("cleanup-config-end")
-
     def reject(self):
-        """Override reject to clean up QML widgets before closing"""
-        self._log_ui_state("reject-start")
+        """Override reject to clean up before closing."""
         self._cleanup_config_view()
-        # Set non-modal BEFORE calling super().reject() to ensure Qt updates modal stack
-        self.setWindowModality(Qt.NonModal)
-        # Process events to let Qt update its internal modal widget list
-        QCoreApplication.processEvents()
-        # Call parent reject (which handles focus restoration and hides the dialog)
         super().reject()
-        self._log_ui_state("reject-end")
-        QTimer.singleShot(0, lambda: self._log_ui_state("reject-post-0ms"))
-        QTimer.singleShot(100, lambda: self._log_ui_state("reject-post-100ms"))
-        QTimer.singleShot(500, lambda: self._log_ui_state("reject-post-500ms"))
 
     def done(self, result):
-        """Override done to clean up QML widgets before closing"""
-        self._log_ui_state(f"done-start-{result}")
+        """Override done to clean up before closing."""
         self._cleanup_config_view()
-        # Important: Set non-modal BEFORE calling super().done()
-        # This ensures Qt removes dialog from activeModalWidget() stack
-        self.setWindowModality(Qt.NonModal)
-        # Process events to let Qt update internal state
-        QCoreApplication.processEvents()
-        # Call parent done (which handles focus restoration and hides the dialog)
-        # Note: super().done() already hides the dialog, so we don't need to call hide()
         super().done(result)
-        self._log_ui_state(f"done-end-{result}")
-        QTimer.singleShot(0, lambda: self._log_ui_state(f"done-post-1ms-{result}"))
-        QTimer.singleShot(100, lambda: self._log_ui_state(f"done-post-100ms-{result}"))
-        QTimer.singleShot(500, lambda: self._log_ui_state(f"done-post-500ms-{result}"))
 
     def closeEvent(self, event):
-        """Ensure cleanup also runs when dialog closes directly."""
-        self._log_ui_state("close-start")
+        """Ensure cleanup runs when dialog closes."""
         self._cleanup_config_view()
-        # Set non-modal BEFORE calling super().closeEvent() to ensure Qt updates modal stack
-        self.setWindowModality(Qt.NonModal)
-        # Process events to let Qt update its internal modal widget list
-        QCoreApplication.processEvents()
-        # Call parent closeEvent (which handles the close and hides the dialog)
         super().closeEvent(event)
-        self._log_ui_state("close-end")
