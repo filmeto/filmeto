@@ -32,10 +32,11 @@ Item {
     Rectangle {
         id: bg
         anchors.fill: parent
-        radius: 4
-        color: mouseArea.pressed ? "#2c2f31" : (mouseArea.containsMouse ? "#4c5052" : "#3c3f41")
-        border.width: 1
-        border.color: mouseArea.containsMouse ? "#666666" : "#555555"
+        radius: 6
+        color: mouseArea.pressed ? "rgba(255,255,255,0.16)"
+             : (mouseArea.containsMouse ? "rgba(255,255,255,0.10)" : "transparent")
+        border.width: 0
+        border.color: "transparent"
     }
 
     RowLayout {
@@ -55,7 +56,7 @@ Item {
         Text {
             text: "Server"
             font.pixelSize: 12
-            color: "#ffffff"
+            color: "#E1E1E1"
             Layout.alignment: Qt.AlignVCenter
         }
 
