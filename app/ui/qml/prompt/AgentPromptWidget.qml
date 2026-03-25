@@ -44,30 +44,11 @@ Rectangle {
                     id: contextRepeater
                     model: bridge ? bridge.contexts : []
 
-                    Rectangle {
-                        radius: 10
-                        color: "#3a3d45"
-                        border.color: "#525764"
-                        border.width: 1
-                        height: 22
-                        width: chipText.implicitWidth + removeBtn.implicitWidth + 16
-
-                        Row {
-                            anchors.centerIn: parent
-                            spacing: 6
-
-                            Text {
-                                id: chipText
-                                text: (modelData && modelData.name) ? modelData.name : ""
-                                color: "#e7eaf0"
-                                font.pixelSize: 12
-                            }
-
-                            ToolButton {
-                                id: removeBtn
-                                text: "x"
-                                onClicked: if (bridge && modelData && modelData.id) bridge.request_remove_context(modelData.id)
-                            }
+                    ContextItemWidget {
+                        contextId: (modelData && modelData.id) ? modelData.id : ""
+                        contextName: (modelData && modelData.name) ? modelData.name : ""
+                        onRemoveRequested: function(id) {
+                            if (bridge && id) bridge.request_remove_context(id)
                         }
                     }
                 }
