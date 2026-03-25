@@ -222,7 +222,15 @@ class ServerListDialog(CustomDialog):
 
     def _emit_save_signal(self):
         """Emit save signal to trigger validation and saving in config view"""
-        self.config_view._on_save_clicked()
+        try:
+            self.config_view._on_save_clicked()
+        except Exception as e:
+            logger.error(f"Error during save: {e}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                tr("错误"),
+                f"{tr('保存失败')}: {str(e)}"
+            )
 
     def _update_title_bar_buttons(self, show_list_buttons: bool):
         """Update visibility of title bar buttons based on current view"""

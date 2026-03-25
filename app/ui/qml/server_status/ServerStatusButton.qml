@@ -3,7 +3,7 @@ import QtQuick.Layouts 1.15
 
 Item {
     id: root
-    width: 80
+    width: 100
     height: 32
 
     property url iconFontSource: ""
@@ -33,9 +33,10 @@ Item {
         id: bg
         anchors.fill: parent
         radius: 4
-        color: mouseArea.pressed ? "#2c2f31" : (mouseArea.containsMouse ? "#4c5052" : "#3c3f41")
-        border.width: 1
-        border.color: mouseArea.containsMouse ? "#666666" : "#555555"
+        // Use transparent color to blend with title bar
+        color: mouseArea.pressed ? Qt.rgba(0.173, 0.184, 0.192, 0.5) : (mouseArea.containsMouse ? Qt.rgba(0.298, 0.314, 0.322, 0.5) : "transparent")
+        border.width: mouseArea.containsMouse ? 1 : 0
+        border.color: "#666666"
     }
 
     RowLayout {

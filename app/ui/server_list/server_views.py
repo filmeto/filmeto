@@ -184,6 +184,15 @@ class ServerConfigView(BaseWidget):
                 except Exception as e:
                     logger.debug(f"Could not connect config_changed signal: {e}")
 
+            # Connect validation error signal if available
+            if hasattr(custom_widget, '_config_model'):
+                try:
+                    config_model = custom_widget._config_model
+                    if hasattr(config_model, 'validation_error'):
+                        config_model.validation_error.connect(self._on_validation_error)
+                except Exception as e:
+                    logger.debug(f"Could not connect validation_error signal: {e}")
+
             return
 
         # This fallback should not be needed anymore as all plugins should implement init_ui
@@ -480,14 +489,22 @@ class ServerConfigView(BaseWidget):
         """Handle configuration change from custom widget"""
         # This can be used to enable/disable save button or show unsaved changes
         pass
+
+    def _on_validation_error(self, error_msg: str):
+        """Handle validation error from custom widget"""
+        logger.warning(f"Validation error: {error_msg}")
+        QMessageBox.warning(self, tr("验证错误"), error_msg)
     
     def _on_save_clicked(self):
         """Handle save button click"""
+        logger.info(f"_on_save_clicked called, custom_config_widget={self.custom_config_widget}")
         # Check if using custom UI
         if self.custom_config_widget:
+            logger.info("Using custom UI save path")
             return self._on_save_clicked_custom()
-        
+
         # Default form-based save
+        logger.info("Using default form-based save path")
         # Validate required fields
         server_name = self.name_field.text().strip()
         if not server_name:
@@ -561,17 +578,39 @@ class ServerConfigView(BaseWidget):
     
     def _on_save_clicked_custom(self):
         """Handle save button click for custom UI"""
+        logger.info("_on_save_clicked_custom called")
+
+        # Check if model exists and get validation errors before validating
+        if hasattr(self.custom_config_widget, '_config_model'):
+            config_model = self.custom_config_widget._config_model
+            if hasattr(config_model, 'get_validation_errors'):
+                errors = config_model.get_validation_errors()
+                if errors:
+                    logger.warning(f"Validation errors: {errors}")
+                    QMessageBox.warning(self, tr("验证错误"), errors)
+                    return
+
         # Validate custom widget config
         if hasattr(self.custom_config_widget, 'validate_config'):
+            logger.info("Validating custom widget config")
             if not self.custom_config_widget.validate_config():
+                logger.warning("Custom widget validation failed")
+                # Validation error should have been emitted and shown by _on_validation_error
                 return
-        
+
         # Get config from custom widget
         if not hasattr(self.custom_config_widget, 'get_config'):
+            logger.error("Custom widget does not implement get_config()")
             QMessageBox.warning(self, tr("错误"), "Custom widget does not implement get_config()")
             return
-        
-        config_data = self.custom_config_widget.get_config()
+
+        try:
+            config_data = self.custom_config_widget.get_config()
+            logger.info(f"Got config from custom widget: {config_data}")
+        except Exception as e:
+            logger.error(f"Error getting config from custom widget: {e}", exc_info=True)
+            QMessageBox.warning(self, tr("错误"), f"{tr('获取配置失败')}: {str(e)}")
+            return
         
         # Build configuration
         from server.server import ServerConfig
