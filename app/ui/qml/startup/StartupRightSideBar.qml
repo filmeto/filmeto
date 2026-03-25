@@ -5,7 +5,7 @@ import QtQuick.Layouts 1.15
 /* Matches edit window MainWindowRightSideBar: QPushButton global + checkable (#005a9e when checked) */
 Rectangle {
     id: root
-    color: "transparent"
+    color: "#2b2d30"
     width: 40
     property var bridge: startupRightBarBridge
 
