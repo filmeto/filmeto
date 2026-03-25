@@ -73,9 +73,10 @@ Rectangle {
             bottomMargin: 8
 
             delegate: Rectangle {
+                id: projectRow
                 required property var modelData
-                required property int index
                 readonly property bool selected: bridge && bridge.selectedProject === modelData.name
+                property bool rowHovered: false
 
                 width: projectList.width - 16
                 height: 48
@@ -83,9 +84,11 @@ Rectangle {
 
                 HoverHandler {
                     id: rowHover
+                    target: projectRow
+                    onHoveredChanged: projectRow.rowHovered = rowHover.hovered
                 }
 
-                color: selected ? "rgba(61,79,124,0.6)" : (rowHover.hovered ? "rgba(60,63,65,0.5)" : "transparent")
+                color: selected ? "rgba(61,79,124,0.6)" : (projectRow.rowHovered ? "rgba(60,63,65,0.5)" : "transparent")
                 border.color: selected ? "#4080ff" : "transparent"
                 border.width: 1
 
@@ -131,7 +134,7 @@ Rectangle {
 
                     ToolButton {
                         id: editBtn
-                        visible: selected || rowHover.hovered
+                        visible: selected || projectRow.rowHovered
                         width: 24
                         height: 24
                         flat: true
