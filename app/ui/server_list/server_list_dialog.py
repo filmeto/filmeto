@@ -64,6 +64,7 @@ class ServerListDialog(CustomDialog):
         self._show_list_view()
         self._log_ui_state("init-complete")
         self.destroyed.connect(lambda: logger.info("ServerListDialog destroyed id=%s", self._instance_id))
+        self.finished.connect(self._cleanup_config_view)
 
     def _dump_top_level_windows(self, stage: str):
         try:
@@ -546,24 +547,3 @@ class ServerListDialog(CustomDialog):
 
         self._log_ui_state("cleanup-config-end")
 
-    def reject(self):
-        """Close dialog and reliably restore parent input."""
-        self._cleanup_config_view()
-        # Ensure this dialog is not left on the modal stack.
-        self.setModal(False)
-        self.setWindowModality(Qt.NonModal)
-        super().reject()
-
-    def done(self, result):
-        """Close dialog and reliably restore parent input."""
-        self._cleanup_config_view()
-        self.setModal(False)
-        self.setWindowModality(Qt.NonModal)
-        super().done(result)
-
-    def closeEvent(self, event):
-        """Ensure cleanup also runs when dialog closes directly."""
-        self._cleanup_config_view()
-        self.setModal(False)
-        self.setWindowModality(Qt.NonModal)
-        super().closeEvent(event)
