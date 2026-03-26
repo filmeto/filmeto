@@ -66,7 +66,7 @@ class PrivateChatWidget(BaseWidget):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(2, 2, 2, 2)
         layout.setSpacing(0)
 
         self.splitter = QSplitter(Qt.Vertical)

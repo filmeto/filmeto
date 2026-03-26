@@ -7,7 +7,7 @@ Rectangle {
     color: "#26282b"
     border.color: root.editingActive ? "#4a90e2" : "#505254"
     border.width: 1
-    radius: 8
+    radius: 0
     implicitHeight: 136
 
     property var bridge: agentPromptBridge

@@ -1,15 +1,16 @@
 """
 Bailian Server Configuration Widget
 
-Simplified configuration UI for Alibaba Cloud DashScope (Bailian) server.
-Only requires a single API Key for authentication.
+Tabbed configuration UI for Alibaba Cloud DashScope (Bailian) server.
+Splits into Basic Config and Ability Models panels.
 """
 
 from typing import Dict, Any, Optional
+from pathlib import Path
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QFrame,
     QScrollArea, QFormLayout, QLineEdit,
-    QCheckBox, QMessageBox
+    QCheckBox, QMessageBox, QTabWidget
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
@@ -48,7 +49,7 @@ _CHECKBOX_STYLE = """
 
 
 class BailianConfigWidget(QWidget):
-    """Simplified configuration widget for Bailian server - Only API Key needed."""
+    """Tabbed configuration widget for Bailian server with Basic Config and Ability Models panels."""
 
     config_changed = Signal()
 
@@ -61,21 +62,76 @@ class BailianConfigWidget(QWidget):
         # Store label widgets for show/hide
         self.label_widgets: Dict[str, QLabel] = {}
 
+        # Ability models
+        self._ability_model = None
+        self._ability_qml_widget = None
+
         self._init_ui()
         self._load_config()
 
     def _init_ui(self):
-        """Initialize the UI"""
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        """Initialize the UI with tab layout"""
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # Create tab widget
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setStyleSheet("""
+            QTabWidget::pane {
+                border: 1px solid #3a3a3a;
+                background-color: #1e1e1e;
+                border-top: none;
+            }
+            QTabBar::tab {
+                background-color: #2d2d2d;
+                color: #cccccc;
+                padding: 8px 16px;
+                border: 1px solid #3a3a3a;
+                border-bottom: none;
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
+                margin-right: 2px;
+                min-width: 100px;
+                text-align: left;
+            }
+            QTabBar::tab:selected {
+                background-color: #3a3a3a;
+                color: #ffffff;
+                border-bottom: 2px solid #1e1e1e;
+            }
+            QTabBar::tab:hover:!selected {
+                background-color: #3a3a3a;
+            }
+        """)
+        self.tab_widget.tabBar().setExpanding(False)
+
+        # Create pages
+        self.basic_page = self._create_basic_page()
+
+        # Add tabs
+        self.tab_widget.addTab(self.basic_page, "⚙ Basic Config")
+        self._setup_ability_models_tab()
+
+        main_layout.addWidget(self.tab_widget)
+
+    def _create_basic_page(self) -> QWidget:
+        """Create basic configuration page"""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(10, 5, 10, 5)
+        layout.setSpacing(8)
 
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll_area.setStyleSheet("QScrollArea { background-color: #1e1e1e; border: none; }")
 
         container = QWidget()
         container.setStyleSheet("background-color: #1e1e1e;")
         container_layout = QVBoxLayout(container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(8)
 
         # Help text
         help_label = QLabel(
@@ -101,7 +157,51 @@ class BailianConfigWidget(QWidget):
 
         container_layout.addStretch()
         scroll_area.setWidget(container)
-        layout.addWidget(scroll_area)
+        layout.addWidget(scroll_area, 1)
+
+        return page
+
+    def _setup_ability_models_tab(self):
+        """QML ability–model enablement panel (shared component)."""
+        try:
+            from PySide6.QtQuickWidgets import QQuickWidget
+
+            from server.plugins.ability_model_config import (
+                ABILITY_MODELS_KEY,
+                normalize_ability_models_raw,
+            )
+            from server.plugins.ability_models_qml_model import AbilityModelsConfigModel
+            from server.plugins.bailian_server.bailian_ability_catalog import build_bailian_ability_catalog
+
+            # Build catalog from models.yml
+            catalog = build_bailian_ability_catalog()
+            params = (self.server_config or {}).get("config") or {}
+            saved = normalize_ability_models_raw(params.get(ABILITY_MODELS_KEY))
+            self._ability_model = AbilityModelsConfigModel(
+                parent=self, on_persist=lambda: self.config_changed.emit()
+            )
+            self._ability_model.load(catalog, saved)
+
+            qml = QQuickWidget(self)
+            qml.setResizeMode(QQuickWidget.SizeRootObjectToView)
+            qml.setMinimumHeight(420)
+            engine = qml.engine()
+            app_qml = Path(__file__).resolve().parents[4] / "app" / "ui" / "qml"
+            for sub in (app_qml, app_qml / "plugin"):
+                if sub.exists():
+                    engine.addImportPath(str(sub))
+            ctx = qml.rootContext()
+            ctx.setContextProperty("abilityModelsConfigModel", self._ability_model)
+            host = app_qml / "plugin" / "components" / "AbilityModelsConfigHost.qml"
+            qml.setSource(QUrl.fromLocalFile(str(host)))
+            if qml.status() == QQuickWidget.Error:
+                for err in qml.errors():
+                    print(f"QML ability panel error: {err.toString()}")
+                return
+            self._ability_qml_widget = qml
+            self.tab_widget.addTab(qml, "⚡ Ability Models")
+        except Exception as e:
+            print(f"Bailian ability models tab skipped: {e}")
 
     def _create_api_group(self) -> QFrame:
         """Create API Key settings group with dynamic Coding Plan API key field."""
@@ -271,6 +371,8 @@ class BailianConfigWidget(QWidget):
                     parent.adjustSize()
 
     def get_config(self) -> Dict[str, Any]:
+        from server.plugins.ability_model_config import ABILITY_MODELS_KEY
+
         result = {}
         for name, widget in self.field_widgets.items():
             if isinstance(widget, QCheckBox):
@@ -293,6 +395,10 @@ class BailianConfigWidget(QWidget):
             result["coding_plan_endpoint"] = models_config.get_coding_plan_endpoint()
             # Models with prefix for UI display
             result["coding_plan_models"] = models_config.get_coding_plan_models(with_prefix=True)
+
+        # Add ability models configuration from the QML panel
+        if self._ability_model:
+            result[ABILITY_MODELS_KEY] = self._ability_model.serialize()
 
         return result
 

@@ -83,7 +83,7 @@ class AgentChatWidget(BaseWidget):
         """Create the fixed group chat tab (always at index 0)."""
         group_chat_container = QWidget()
         group_layout = QVBoxLayout(group_chat_container)
-        group_layout.setContentsMargins(0, 0, 0, 0)
+        group_layout.setContentsMargins(2, 2, 2, 2)
         group_layout.setSpacing(0)
 
         self.splitter = QSplitter(Qt.Vertical)
