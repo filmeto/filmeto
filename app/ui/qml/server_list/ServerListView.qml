@@ -1,6 +1,7 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import "../common/buttons" as CommonButtons
 
 // serverRows, serverLabels, serverBridge are set on root from Python after load.
 
@@ -105,68 +106,31 @@ Item {
                 RowLayout {
                     spacing: 4
 
-                    Button {
+                    CommonButtons.WarningButton {
                         text: model.enabled ? root.serverLabels.disable : root.serverLabels.enable
-                        implicitWidth: 60
-                        implicitHeight: 28
-                        font.pixelSize: 11
-                        font.bold: true
-                        flat: true
-                        background: Rectangle {
-                            radius: 4
-                            color: parent.down ? "#3c4042" : (parent.hovered ? (model.enabled ? "#ffa726" : "#66bb6a") : (model.enabled ? "#FF9800" : "#4CAF50"))
-                        }
-                        contentItem: Label {
-                            text: parent.text
-                            color: "white"
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                            font: parent.font
-                        }
+                        size: "small"
+                        visible: model.enabled
                         onClicked: root.serverBridge.request_toggle(model.name, !model.enabled)
                     }
 
-                    Button {
+                    CommonButtons.SuccessButton {
+                        text: model.enabled ? root.serverLabels.disable : root.serverLabels.enable
+                        size: "small"
+                        visible: !model.enabled
+                        onClicked: root.serverBridge.request_toggle(model.name, !model.enabled)
+                    }
+
+                    CommonButtons.SecondaryButton {
                         text: root.serverLabels.edit
-                        implicitWidth: 50
-                        implicitHeight: 28
-                        font.pixelSize: 11
-                        font.bold: true
-                        flat: true
-                        background: Rectangle {
-                            radius: 4
-                            color: parent.down ? "#1565c0" : (parent.hovered ? "#42a5f5" : "#2196F3")
-                        }
-                        contentItem: Label {
-                            text: parent.text
-                            color: "white"
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                            font: parent.font
-                        }
+                        size: "small"
                         onClicked: root.serverBridge.request_edit(model.name)
                     }
 
-                    Button {
+                    CommonButtons.DangerButton {
                         text: root.serverLabels.deleteText
-                        implicitWidth: 50
-                        implicitHeight: 28
-                        font.pixelSize: 11
-                        font.bold: true
+                        size: "small"
                         enabled: model.canDelete
-                        flat: true
                         opacity: model.canDelete ? 1.0 : 0.45
-                        background: Rectangle {
-                            radius: 4
-                            color: !parent.enabled ? "#555555" : (parent.down ? "#b71c1c" : (parent.hovered ? "#ef5350" : "#F44336"))
-                        }
-                        contentItem: Label {
-                            text: parent.text
-                            color: parent.enabled ? "white" : "#888888"
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                            font: parent.font
-                        }
                         onClicked: {
                             if (model.canDelete)
                                 root.serverBridge.request_delete(model.name)

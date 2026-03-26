@@ -3,6 +3,7 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import plugin 1.0
+import "../common/buttons" as CommonButtons
 
 Popup {
     id: root
@@ -143,47 +144,19 @@ Popup {
 
                 Item { Layout.fillWidth: true }
 
-                Button {
+                CommonButtons.SecondaryButton {
                     text: qsTr("Cancel")
-                    implicitHeight: 32
-                    implicitWidth: 80
                     onClicked: {
                         root.rejected()
                         root.close()
                     }
-                    background: Rectangle {
-                        color: parent.down ? Qt.darker(Theme.inputBackground, 1.15) : Theme.inputBackground
-                        border.color: parent.hovered ? Theme.borderFocus : Theme.border
-                        border.width: 1
-                        radius: 4
-                    }
-                    contentItem: Text {
-                        text: parent.text
-                        font.pixelSize: 12
-                        color: Theme.textPrimary
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
                 }
 
-                Button {
+                CommonButtons.PrimaryButton {
                     text: qsTr("OK")
-                    implicitHeight: 32
-                    implicitWidth: 80
                     onClicked: {
                         root.accepted()
                         root.close()
-                    }
-                    background: Rectangle {
-                        color: parent.down ? Qt.darker(Theme.accent, 1.2) : Theme.accent
-                        radius: 4
-                    }
-                    contentItem: Text {
-                        text: parent.text
-                        font.pixelSize: 12
-                        color: Theme.textPrimary
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
                     }
                 }
             }

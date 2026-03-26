@@ -1,32 +1,12 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import "../common/buttons" as CommonButtons
+import "../common/inputs" as CommonInputs
 
 Item {
     id: root
     anchors.fill: parent
-    component IconToolButton: ToolButton {
-        id: iconButton
-        implicitWidth: 32
-        implicitHeight: 32
-        width: 32
-        height: 32
-        font.family: "iconfont"
-        font.pixelSize: 18
-        padding: 0
-        background: Rectangle {
-            radius: 4
-            color: iconButton.down ? "#4D4D4D" : (iconButton.hovered ? "#3D3D3D" : "transparent")
-        }
-        contentItem: Text {
-            text: iconButton.text
-            font.family: iconButton.font.family
-            font.pixelSize: iconButton.font.pixelSize
-            color: iconButton.hovered ? "#FFFFFF" : "#A0A0A0"
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-        }
-    }
 
     function insertIntoEditor(snippet) {
         if (!editor) {
@@ -49,6 +29,7 @@ Item {
         anchors.fill: parent
         currentIndex: screenPlayViewModel && screenPlayViewModel.mode === "editor" ? 1 : 0
 
+        // List Page
         Item {
             id: listPage
 
@@ -64,18 +45,18 @@ Item {
                     Layout.bottomMargin: 8
                     spacing: 6
 
-                    IconToolButton {
-                        text: "\ue835"
+                    CommonButtons.IconButton {
+                        iconCode: "\ue835"
+                        iconFontFamily: "iconfont"
+                        tooltip: qsTr("Add Scene")
                         onClicked: if (screenPlayViewModel) screenPlayViewModel.on_add_scene_clicked()
-                        ToolTip.visible: hovered
-                        ToolTip.text: "Add Scene"
                     }
 
-                    IconToolButton {
-                        text: "\ue6b8"
+                    CommonButtons.IconButton {
+                        iconCode: "\ue6b8"
+                        iconFontFamily: "iconfont"
+                        tooltip: qsTr("Refresh")
                         onClicked: if (screenPlayViewModel) screenPlayViewModel.on_refresh_clicked()
-                        ToolTip.visible: hovered
-                        ToolTip.text: "Refresh"
                     }
 
                     Item {
@@ -83,6 +64,7 @@ Item {
                     }
                 }
 
+                // Empty state
                 Rectangle {
                     visible: screenPlayModel && screenPlayModel.count === 0
                     Layout.fillWidth: true
@@ -155,6 +137,7 @@ Item {
             }
         }
 
+        // Editor Page
         Item {
             id: editorPage
 
@@ -170,39 +153,39 @@ Item {
                     Layout.bottomMargin: 8
                     spacing: 6
 
-                    IconToolButton {
-                        text: "\ue64f"
+                    CommonButtons.IconButton {
+                        iconCode: "\ue64f"
+                        iconFontFamily: "iconfont"
+                        tooltip: qsTr("Return to List")
                         onClicked: if (screenPlayViewModel) screenPlayViewModel.on_return_clicked()
-                        ToolTip.visible: hovered
-                        ToolTip.text: "Return to List"
                     }
 
-                    IconToolButton {
-                        text: "\ue654"
+                    CommonButtons.IconButton {
+                        iconCode: "\ue654"
+                        iconFontFamily: "iconfont"
+                        tooltip: qsTr("Save Scene")
                         onClicked: if (screenPlayViewModel) screenPlayViewModel.on_save_clicked()
-                        ToolTip.visible: hovered
-                        ToolTip.text: "Save Scene"
                     }
 
-                    IconToolButton {
-                        text: "\ue702"
+                    CommonButtons.IconButton {
+                        iconCode: "\ue702"
+                        iconFontFamily: "iconfont"
+                        tooltip: qsTr("Action")
                         onClicked: root.insertIntoEditor("\nACTION DESCRIPTION GOES HERE.\n")
-                        ToolTip.visible: hovered
-                        ToolTip.text: "Action"
                     }
 
-                    IconToolButton {
-                        text: "\ue60c"
+                    CommonButtons.IconButton {
+                        iconCode: "\ue60c"
+                        iconFontFamily: "iconfont"
+                        tooltip: qsTr("Character")
                         onClicked: root.insertIntoEditor("\nCHARACTER_NAME\n")
-                        ToolTip.visible: hovered
-                        ToolTip.text: "Character"
                     }
 
-                    IconToolButton {
-                        text: "\ue721"
+                    CommonButtons.IconButton {
+                        iconCode: "\ue721"
+                        iconFontFamily: "iconfont"
+                        tooltip: qsTr("Dialogue")
                         onClicked: root.insertIntoEditor("\nWhat the character says here.\n")
-                        ToolTip.visible: hovered
-                        ToolTip.text: "Dialogue"
                     }
 
                     Item {
@@ -210,7 +193,7 @@ Item {
                     }
                 }
 
-                TextArea {
+                CommonInputs.TextArea {
                     id: editor
                     Layout.fillWidth: true
                     Layout.fillHeight: true
@@ -218,17 +201,6 @@ Item {
                     Layout.rightMargin: 8
                     Layout.bottomMargin: 8
                     text: screenPlayViewModel ? screenPlayViewModel.editorText : ""
-                    wrapMode: TextEdit.Wrap
-                    selectByMouse: true
-                    color: "#f0f0f0"
-                    selectionColor: "#4a90e2"
-                    selectedTextColor: "#ffffff"
-                    font.pixelSize: 13
-                    background: Rectangle {
-                        radius: 6
-                        color: "#2b2b2b"
-                        border.color: "#202020"
-                    }
                     onTextChanged: if (screenPlayViewModel) screenPlayViewModel.on_editor_text_changed(text)
 
                     Connections {

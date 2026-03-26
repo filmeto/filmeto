@@ -1,6 +1,7 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import "../common/buttons" as CommonButtons
 
 // Context (set before setSource): chromeMacActions, chromeTitleModel, chromeDragBridge
 
@@ -39,44 +40,18 @@ Item {
             visible: chromeTitleModel && chromeTitleModel.navVisible
             spacing: 4
 
-            ToolButton {
-                text: "◀"
-                width: 24
-                height: 24
+            CommonButtons.IconButton {
+                iconCode: "◀"
+                size: "small"
                 enabled: chromeTitleModel && chromeTitleModel.backEnabled
-                flat: true
-                background: Rectangle {
-                    color: parent.hovered ? "#4c4f52" : "transparent"
-                    radius: 4
-                }
-                contentItem: Label {
-                    text: parent.text
-                    color: parent.enabled ? "#888888" : "#444444"
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                    font.pixelSize: 14
-                    font.bold: true
-                }
+                iconColor: enabled ? "#888888" : "#444444"
                 onClicked: if (chromeTitleModel) chromeTitleModel.back()
             }
-            ToolButton {
-                text: "▶"
-                width: 24
-                height: 24
+            CommonButtons.IconButton {
+                iconCode: "▶"
+                size: "small"
                 enabled: chromeTitleModel && chromeTitleModel.forwardEnabled
-                flat: true
-                background: Rectangle {
-                    color: parent.hovered ? "#4c4f52" : "transparent"
-                    radius: 4
-                }
-                contentItem: Label {
-                    text: parent.text
-                    color: parent.enabled ? "#888888" : "#444444"
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                    font.pixelSize: 14
-                    font.bold: true
-                }
+                iconColor: enabled ? "#888888" : "#444444"
                 onClicked: if (chromeTitleModel) chromeTitleModel.forward()
             }
         }

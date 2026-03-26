@@ -1,15 +1,12 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import "../common/buttons" as CommonButtons
+import "../common/inputs" as CommonInputs
 
 Item {
     id: root
     anchors.fill: parent
-
-    Rectangle {
-        anchors.fill: parent
-        color: "transparent"
-    }
 
     ScrollView {
         anchors.fill: parent
@@ -19,32 +16,32 @@ Item {
             width: parent.width
             spacing: 12
 
-            TextField {
+            CommonInputs.TextInput {
                 Layout.fillWidth: true
-                placeholderText: "Character name"
+                placeholderText: qsTr("Character name")
                 text: actorEditViewModel ? actorEditViewModel.name : ""
                 enabled: actorEditViewModel ? actorEditViewModel.nameEditable : true
                 onTextChanged: if (actorEditViewModel) actorEditViewModel.on_name_changed(text)
             }
 
-            TextArea {
+            CommonInputs.TextArea {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 80
-                placeholderText: "Description"
+                placeholderText: qsTr("Description")
                 text: actorEditViewModel ? actorEditViewModel.description : ""
                 onTextChanged: if (actorEditViewModel) actorEditViewModel.on_description_changed(text)
             }
 
-            TextArea {
+            CommonInputs.TextArea {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 120
-                placeholderText: "Story"
+                placeholderText: qsTr("Story")
                 text: actorEditViewModel ? actorEditViewModel.story : ""
                 onTextChanged: if (actorEditViewModel) actorEditViewModel.on_story_changed(text)
             }
 
             Label {
-                text: "Resources"
+                text: qsTr("Resources")
                 color: "#e1e1e1"
                 font.bold: true
             }
@@ -60,28 +57,30 @@ Item {
                         color: "#e1e1e1"
                         Layout.preferredWidth: 90
                     }
-                    TextField {
+                    CommonInputs.TextInput {
                         Layout.fillWidth: true
                         text: modelData.path
                         readOnly: true
                     }
-                    Button {
-                        text: "Browse"
+                    CommonButtons.SecondaryButton {
+                        text: qsTr("Browse")
+                        size: "small"
                         onClicked: if (actorEditViewModel) actorEditViewModel.pick_resource(modelData.key)
                     }
-                    Button {
-                        text: "Clear"
+                    CommonButtons.GhostButton {
+                        text: qsTr("Clear")
+                        size: "small"
                         onClicked: if (actorEditViewModel) actorEditViewModel.clear_resource(modelData.key)
                     }
                 }
             }
 
             Label {
-                text: "Relationships (name: description, one per line)"
+                text: qsTr("Relationships (name: description, one per line)")
                 color: "#e1e1e1"
                 font.bold: true
             }
-            TextArea {
+            CommonInputs.TextArea {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 120
                 text: actorEditViewModel ? actorEditViewModel.relationshipsText : ""

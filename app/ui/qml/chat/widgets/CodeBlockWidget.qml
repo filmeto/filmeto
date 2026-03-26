@@ -2,6 +2,7 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import "../../common/buttons" as CommonButtons
 
 Rectangle {
     id: root
@@ -59,46 +60,25 @@ Rectangle {
 
             Item { Layout.fillWidth: true }
 
-            // Copy button
-            Button {
+            // Copy button - using common component
+            CommonButtons.GhostButton {
                 id: copyBtn
-                implicitWidth: 32
-                implicitHeight: 24
+                size: "small"
+                iconText: _copied ? "✓" : "📋"
+                text: _copied ? "" : qsTr("Copy")
 
-                property bool copyBtnCopied: false
-
-                background: Rectangle {
-                    color: copyBtn.hovered ? "#404040" : "transparent"
-                    radius: 4
-                }
-
-                contentItem: RowLayout {
-                    spacing: 4
-                    anchors.centerIn: parent
-
-                    Text {
-                        text: copyBtn.copyBtnCopied ? "✓" : "📋"
-                        font.pixelSize: 12
-                    }
-
-                    Text {
-                        visible: !copyBtn.copyBtnCopied
-                        text: "复制"
-                        color: textColor
-                        font.pixelSize: 11
-                    }
-                }
+                property bool _copied: false
 
                 onClicked: {
                     root.copyToClipboard()
-                    copyBtn.copyBtnCopied = true
+                    _copied = true
                     copyResetTimer.restart()
                 }
 
                 Timer {
                     id: copyResetTimer
                     interval: 2000
-                    onTriggered: copyBtn.copyBtnCopied = false
+                    onTriggered: copyBtn._copied = false
                 }
             }
         }

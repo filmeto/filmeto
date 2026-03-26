@@ -1,6 +1,7 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import "../common/buttons" as CommonButtons
 
 Item {
     id: root
@@ -20,31 +21,22 @@ Item {
             Layout.margins: 8
             spacing: 6
 
-            ToolButton {
-                text: "\ue610"
-                font.family: "iconfont"
-                font.pixelSize: 16
+            CommonButtons.IconButton {
+                iconCode: "\ue610"
+                tooltip: qsTr("New Character")
                 onClicked: if (actorPanelViewModel) actorPanelViewModel.on_add_clicked()
-                ToolTip.visible: hovered
-                ToolTip.text: "New Character"
             }
 
-            ToolButton {
-                text: "\ue6a7"
-                font.family: "iconfont"
-                font.pixelSize: 16
+            CommonButtons.IconButton {
+                iconCode: "\ue6a7"
+                tooltip: qsTr("Random Generate")
                 onClicked: if (actorPanelViewModel) actorPanelViewModel.on_draw_clicked()
-                ToolTip.visible: hovered
-                ToolTip.text: "Random Generate"
             }
 
-            ToolButton {
-                text: "\ue653"
-                font.family: "iconfont"
-                font.pixelSize: 16
+            CommonButtons.IconButton {
+                iconCode: "\ue653"
+                tooltip: qsTr("Extract From Story")
                 onClicked: if (actorPanelViewModel) actorPanelViewModel.on_extract_clicked()
-                ToolTip.visible: hovered
-                ToolTip.text: "Extract From Story"
             }
 
             Item { Layout.fillWidth: true }
