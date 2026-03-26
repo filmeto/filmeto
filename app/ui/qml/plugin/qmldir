@@ -10,3 +10,8 @@ URLField 1.0 components/URLField.qml
 SelectField 1.0 components/SelectField.qml
 ConfigField 1.0 components/ConfigField.qml
 AbilityModelsConfigPanel 1.0 components/AbilityModelsConfigPanel.qml
+AbilityModelsToolbar 1.0 components/AbilityModelsToolbar.qml
+AbilityListPanel 1.0 components/AbilityListPanel.qml
+ModelListPanel 1.0 components/ModelListPanel.qml
+ModelItemDelegate 1.0 components/ModelItemDelegate.qml
+ModelEditDialog 1.0 components/dialogs/ModelEditDialog.qml
