@@ -107,14 +107,14 @@ class ImageEdit(BaseTool, BaseTaskWidget):
             import logging
             logger = logging.getLogger(__name__)
             logger.info(f"Processing imgedit task with FilmetoApi: {task.options}")
-            from server.api import FilmetoApi, FilmetoTask, ToolType, ResourceInput, ResourceType
+            from server.api import FilmetoApi, FilmetoTask, Capability, ResourceInput, ResourceType
             from app.data.task import TaskResult as AppTaskResult, TaskProgress as AppTaskProgress
             from server.api.types import TaskProgress as FilmetoTaskProgress, TaskResult as FilmetoTaskResult
 
             api = FilmetoApi()
             
             # Find a plugin that supports image2image (used for imgedit)
-            plugins = api.get_plugins_by_tool(ToolType.IMAGE2IMAGE)
+            plugins = api.get_plugins_by_tool(Capability.IMAGE2IMAGE.value)
             if not plugins:
                 logger.warning("No plugins found for image2image")
                 return
@@ -134,8 +134,8 @@ class ImageEdit(BaseTool, BaseTaskWidget):
                 ))
 
             filmeto_task = FilmetoTask(
-                tool_name=ToolType.IMAGE2IMAGE,
-                plugin_name=plugin_name,
+                capability=Capability.IMAGE2IMAGE,
+                server_name=plugin_name,
                 parameters={
                     "prompt": task.options['prompt'],
                     "input_image_path": task.options['input_image_path'],
