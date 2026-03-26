@@ -9,7 +9,7 @@ import logging
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QFrame, QSizePolicy, QLineEdit, QDialog,
-    QDialogButtonBox, QListWidget, QListWidgetItem
+    QDialogButtonBox, QListWidget, QListWidgetItem, QSplitter,
 )
 from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtGui import QColor, QFont, QIcon, QPixmap, QPainter, QPainterPath
@@ -176,42 +176,46 @@ class ProjectListWidget(BaseWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        
-        # Header with logo and app name
+
+        # Top: branding / header (fixed height)
         header = QWidget()
         header.setObjectName("project_list_header")
         header.setFixedHeight(80)
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(16, 16, 16, 16)
         header_layout.setSpacing(12)
-        
-        # Logo placeholder
+
         logo_label = QLabel()
         logo_label.setFixedSize(40, 40)
-        logo_pixmap = self._create_logo_pixmap()
-        logo_label.setPixmap(logo_pixmap)
+        logo_label.setPixmap(self._create_logo_pixmap())
         header_layout.addWidget(logo_label)
-        
-        # App name
+
         app_name = QLabel("AniMaker")
         app_name.setStyleSheet("color: #E1E1E1; font-size: 20px; font-weight: bold;")
         header_layout.addWidget(app_name)
         header_layout.addStretch()
-        
-        layout.addWidget(header)
-        
-        # Separator line
+
         separator = QFrame()
         separator.setFrameShape(QFrame.HLine)
         separator.setStyleSheet("background-color: rgba(60, 63, 65, 0.5);")
         separator.setFixedHeight(1)
-        layout.addWidget(separator)
-        
-        # Project list area (scrollable)
+
+        top_section = QWidget()
+        top_section.setObjectName("project_list_top_section")
+        top_layout = QVBoxLayout(top_section)
+        top_layout.setContentsMargins(0, 0, 0, 0)
+        top_layout.setSpacing(0)
+        top_layout.addWidget(header)
+        top_layout.addWidget(separator)
+        top_section.setFixedHeight(81)
+
+        # Middle: scrollable project list (takes remaining height)
         scroll_area = QScrollArea()
+        scroll_area.setObjectName("project_list_scroll")
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         scroll_area.setStyleSheet("""
             QScrollArea {
                 background-color: transparent;
@@ -224,38 +228,46 @@ class ProjectListWidget(BaseWidget):
                 background-color: transparent;
             }
         """)
-        
+
         self.project_list_container = QWidget()
         self.project_list_container.setStyleSheet("background-color: transparent;")
         self.project_list_layout = QVBoxLayout(self.project_list_container)
         self.project_list_layout.setContentsMargins(8, 8, 8, 8)
         self.project_list_layout.setSpacing(4)
         self.project_list_layout.setAlignment(Qt.AlignTop)
-        
-        # Add stretch at the bottom to push toolbar to the bottom
         self.project_list_layout.addStretch()
-        
+
         scroll_area.setWidget(self.project_list_container)
-        layout.addWidget(scroll_area, 1)
-        
-        # Bottom toolbar
+
+        # Bottom: toolbar (fixed height)
         toolbar = QWidget()
         toolbar.setObjectName("project_list_toolbar")
         toolbar.setFixedHeight(56)
         toolbar_layout = QHBoxLayout(toolbar)
         toolbar_layout.setContentsMargins(12, 8, 12, 8)
         toolbar_layout.setSpacing(8)
-        
-        # Add project button
+
         self.add_button = QPushButton("\ue6b3")  # Add icon
         self.add_button.setToolTip(tr("新建项目"))
         self.add_button.setFixedSize(40, 40)
         self.add_button.clicked.connect(self._on_add_project)
         toolbar_layout.addWidget(self.add_button)
-        
+
         toolbar_layout.addStretch()
-        
-        layout.addWidget(toolbar)
+
+        splitter = QSplitter(Qt.Vertical)
+        splitter.setObjectName("project_list_splitter")
+        splitter.setChildrenCollapsible(False)
+        splitter.setHandleWidth(1)
+        splitter.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        splitter.addWidget(top_section)
+        splitter.addWidget(scroll_area)
+        splitter.addWidget(toolbar)
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        splitter.setStretchFactor(2, 0)
+
+        layout.addWidget(splitter, 1)
     
     def _create_logo_pixmap(self) -> QPixmap:
         """Create a placeholder logo pixmap."""
@@ -300,6 +312,9 @@ class ProjectListWidget(BaseWidget):
             QWidget#project_list_toolbar {
                 background-color: transparent;
                 border-top: 1px solid rgba(60, 63, 65, 0.5);
+            }
+            QSplitter#project_list_splitter::handle {
+                background-color: rgba(60, 63, 65, 0.35);
             }
             QPushButton {
                 background-color: rgba(60, 63, 65, 0.6);

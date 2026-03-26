@@ -53,10 +53,7 @@ class LeftPanelDialog(QDialog):
         self.left_content_layout = QVBoxLayout(self.left_content_container)
         self.left_content_layout.setContentsMargins(8, 8, 8, 8)
         self.left_content_layout.setSpacing(8)
-        left_layout.addWidget(self.left_content_container)
-
-        # 添加弹性空间，将内容推到顶部
-        left_layout.addStretch()
+        left_layout.addWidget(self.left_content_container, 1)
 
         main_layout.addWidget(self.left_panel)
 
