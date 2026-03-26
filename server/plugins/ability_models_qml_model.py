@@ -34,6 +34,8 @@ class AbilityModelsConfigModel(QAbstractListModel):
     abilityFilterChanged = Signal()
     sortModeChanged = Signal()
     groupByAbilityChanged = Signal()
+    enabledOnlyChanged = Signal()
+    customOnlyChanged = Signal()
     persisted = Signal()
 
     def __init__(
@@ -49,6 +51,8 @@ class AbilityModelsConfigModel(QAbstractListModel):
         self._ability_filter = ""
         self._sort_mode = 0
         self._group_by_ability = True
+        self._enabled_only = False
+        self._custom_only = False
 
     def roleNames(self):
         return {
@@ -135,6 +139,46 @@ class AbilityModelsConfigModel(QAbstractListModel):
         bool, _get_group_by_ability, _set_group_by_ability, notify=groupByAbilityChanged
     )
 
+    def _get_enabled_only(self) -> bool:
+        return self._enabled_only
+
+    def _set_enabled_only(self, value: bool) -> None:
+        v = bool(value)
+        if self._enabled_only != v:
+            self._enabled_only = v
+            self.enabledOnlyChanged.emit()
+            self._refresh_display()
+
+    enabledOnly = Property(bool, _get_enabled_only, _set_enabled_only, notify=enabledOnlyChanged)
+
+    def _get_custom_only(self) -> bool:
+        return self._custom_only
+
+    def _set_custom_only(self, value: bool) -> None:
+        v = bool(value)
+        if self._custom_only != v:
+            self._custom_only = v
+            self.customOnlyChanged.emit()
+            self._refresh_display()
+
+    customOnly = Property(bool, _get_custom_only, _set_custom_only, notify=customOnlyChanged)
+
+    def _passes_filters(self, i: int, include_ability_filter: bool = True) -> bool:
+        e = self._entries[i]
+        ft = (self._filter_text or "").lower()
+        af = (self._ability_filter or "").strip()
+        if include_ability_filter and af and af != "__all__" and e["ability"] != af:
+            return False
+        if self._enabled_only and not bool(e.get("enabled", True)):
+            return False
+        if self._custom_only and not bool(e.get("custom", False)):
+            return False
+        if ft:
+            blob = f'{e["ability"]} {e["model_id"]} {e["label"]}'.lower()
+            if ft not in blob:
+                return False
+        return True
+
     def _refresh_display(self) -> None:
         self.beginResetModel()
         self._rebuild_order()
@@ -143,26 +187,16 @@ class AbilityModelsConfigModel(QAbstractListModel):
     def _rebuild_order(self) -> None:
         n = len(self._entries)
         indices = list(range(n))
-        ft = (self._filter_text or "").lower()
-        af = (self._ability_filter or "").strip()
-
-        def passes(i: int) -> bool:
-            e = self._entries[i]
-            if af and af != "__all__" and e["ability"] != af:
-                return False
-            if ft:
-                blob = f'{e["ability"]} {e["model_id"]} {e["label"]}'.lower()
-                if ft not in blob:
-                    return False
-            return True
-
-        self._display_order = [i for i in indices if passes(i)]
+        self._display_order = [i for i in indices if self._passes_filters(i, include_ability_filter=True)]
 
         def sort_key(i: int):
             e = self._entries[i]
             if self._sort_mode == 0:
                 return (e["ability"], e["model_id"])
-            return (e["model_id"], e["ability"])
+            if self._sort_mode == 1:
+                return (e["model_id"], e["ability"])
+            # Keep list insertion order to support user-driven reordering.
+            return (i,)
 
         self._display_order.sort(key=sort_key)
 
@@ -179,6 +213,7 @@ class AbilityModelsConfigModel(QAbstractListModel):
         merged = merge_catalog_with_saved(norm_cat, saved if isinstance(saved, list) else [])
         self.beginResetModel()
         self._entries = merged
+        self._sort_mode = 2
         self._rebuild_order()
         self.endResetModel()
         self._emit_persist()
@@ -244,3 +279,79 @@ class AbilityModelsConfigModel(QAbstractListModel):
                 seen.append(ab)
         seen.sort()
         return seen
+
+    @Slot(str, result="QVariant")
+    def modelsForAbility(self, ability: str):
+        ab = (ability or "").strip()
+        out: List[Dict[str, Any]] = []
+        for display_row, raw_index in enumerate(self._display_order):
+            e = self._entries[raw_index]
+            if ab and e["ability"] != ab:
+                continue
+            out.append(
+                {
+                    "displayRow": display_row,
+                    "ability": e["ability"],
+                    "modelId": e["model_id"],
+                    "label": e["label"],
+                    "enabled": bool(e.get("enabled", True)),
+                    "custom": bool(e.get("custom", False)),
+                }
+            )
+        return out
+
+    @Slot(result="QVariant")
+    def abilityStats(self):
+        stats: Dict[str, Dict[str, int]] = {}
+        for i, e in enumerate(self._entries):
+            if not self._passes_filters(i, include_ability_filter=False):
+                continue
+            ab = e["ability"]
+            if ab not in stats:
+                stats[ab] = {"total": 0, "enabled": 0}
+            stats[ab]["total"] += 1
+            if bool(e.get("enabled", True)):
+                stats[ab]["enabled"] += 1
+        result = []
+        for ab in sorted(stats.keys()):
+            s = stats[ab]
+            result.append({"ability": ab, "total": s["total"], "enabled": s["enabled"]})
+        return result
+
+    @Slot(int, int)
+    def moveAt(self, display_row: int, offset: int) -> None:
+        if offset == 0:
+            return
+        if display_row < 0 or display_row >= len(self._display_order):
+            return
+        target_display = display_row + int(offset)
+        if target_display < 0 or target_display >= len(self._display_order):
+            return
+
+        src_raw = self._display_order[display_row]
+        dst_raw = self._display_order[target_display]
+        src_ability = self._entries[src_raw]["ability"]
+        dst_ability = self._entries[dst_raw]["ability"]
+        if src_ability != dst_ability:
+            return
+
+        self._entries[src_raw], self._entries[dst_raw] = self._entries[dst_raw], self._entries[src_raw]
+        self._refresh_display()
+        self._emit_persist()
+
+    @Slot(int, str, str)
+    def updateEntryAt(self, display_row: int, ability: str, model_id: str) -> None:
+        if display_row < 0 or display_row >= len(self._display_order):
+            return
+        ability = (ability or "").strip()
+        model_id = (model_id or "").strip()
+        if not ability or not model_id:
+            return
+        raw_index = self._display_order[display_row]
+        entry = self._entries[raw_index]
+        entry["ability"] = ability
+        entry["model_id"] = model_id
+        if bool(entry.get("custom", False)):
+            entry["label"] = model_id
+        self._refresh_display()
+        self._emit_persist()
