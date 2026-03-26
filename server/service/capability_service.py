@@ -14,6 +14,7 @@ from server.api.types import (
     ModelInfo, ModelPricing
 )
 from server.server import ServerManager, Server
+from server.plugins.ability_model_config import is_model_enabled_for_ability
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +197,23 @@ class CapabilityService:
                 )
                 model_infos.append(model_info)
 
-        return model_infos
+        return self._filter_model_infos_by_ability_models(
+            config, capability_type, model_infos
+        )
+
+    def _filter_model_infos_by_ability_models(
+        self,
+        config,
+        capability_type: Capability,
+        model_infos: List[ModelInfo],
+    ) -> List[ModelInfo]:
+        """Drop models disabled in ``parameters.ability_models`` (per ability)."""
+        ability = capability_type.value
+        return [
+            m
+            for m in model_infos
+            if is_model_enabled_for_ability(config.parameters, ability, m.name)
+        ]
 
     def _create_model_info(
         self,

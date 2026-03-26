@@ -361,6 +361,20 @@ class BailianConfigQMLModel(PluginConfigQMLModel):
         parent=None
     ):
         super().__init__(plugin_info, config_schema, server_config, parent)
+        if (
+            ABILITY_MODELS_KEY not in self._config_values
+            or self._config_values.get(ABILITY_MODELS_KEY) is None
+        ):
+            from server.plugins.bailian_server.bailian_ability_catalog import (
+                build_default_bailian_ability_models,
+            )
+
+            defaults = build_default_bailian_ability_models()
+            self._config_values[ABILITY_MODELS_KEY] = defaults
+            if self._ability_models_model:
+                self._ability_models_model.load(
+                    self._build_ability_models_catalog(), defaults
+                )
 
     def _build_ability_models_catalog(self) -> List[Dict[str, Any]]:
         try:

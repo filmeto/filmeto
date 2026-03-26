@@ -33,6 +33,8 @@ from typing import TYPE_CHECKING, AsyncIterator, List
 
 import litellm
 
+from server.plugins.ability_model_config import is_model_enabled_for_ability
+
 from server.api.chat_types import (
     ChatCompletionChunk,
     ChatCompletionChunkChoice,
@@ -50,7 +52,20 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-CHAT_SERVER_TYPES = frozenset({"chat", "openai", "llm"})
+CHAT_SERVER_TYPES = frozenset({"chat", "openai", "llm", "bailian"})
+
+
+def _advertised_chat_model_ids(cfg: "ServerConfig") -> List[str]:
+    """Model ids from parameters that are enabled for ``chat_completion``."""
+    ids: List[str] = list(cfg.parameters.get("models", []) or [])
+    default_model = cfg.parameters.get("default_model")
+    if default_model and default_model not in ids:
+        ids.append(default_model)
+    return [
+        mid
+        for mid in ids
+        if is_model_enabled_for_ability(cfg.parameters, "chat_completion", mid)
+    ]
 
 
 def _is_chat_capable(cfg: ServerConfig) -> bool:
@@ -61,6 +76,8 @@ def _is_chat_capable(cfg: ServerConfig) -> bool:
       - it explicitly sets ``parameters.chat_enabled: true``
     """
     if cfg.server_type in CHAT_SERVER_TYPES:
+        return True
+    if cfg.parameters.get("provider") == "dashscope":
         return True
     return bool(cfg.parameters.get("chat_enabled"))
 
@@ -153,15 +170,10 @@ class ChatService:
 
             owner = cfg.name
 
-            for model_id in cfg.parameters.get("models", []):
+            for model_id in _advertised_chat_model_ids(cfg):
                 if model_id not in seen:
                     seen.add(model_id)
                     models.append(ModelInfo(id=model_id, owned_by=owner))
-
-            default_model = cfg.parameters.get("default_model")
-            if default_model and default_model not in seen:
-                seen.add(default_model)
-                models.append(ModelInfo(id=default_model, owned_by=owner))
 
         return models
 
@@ -190,10 +202,7 @@ class ChatService:
             cfg = server.config
             if not cfg.enabled or not _is_chat_capable(cfg):
                 continue
-            advertised = set(cfg.parameters.get("models", []))
-            default_m = cfg.parameters.get("default_model")
-            if default_m:
-                advertised.add(default_m)
+            advertised = set(_advertised_chat_model_ids(cfg))
             if model in advertised:
                 return cfg
 
