@@ -4,6 +4,7 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import plugin 1.0
 
 Item {
     id: root
@@ -263,6 +264,11 @@ Item {
                             }
                         }
                     }
+                }
+
+                AbilityModelsConfigPanel {
+                    Layout.fillWidth: true
+                    amModel: configModel ? configModel.abilityModelsModel : null
                 }
 
                 // Spacer

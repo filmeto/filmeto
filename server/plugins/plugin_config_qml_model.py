@@ -6,10 +6,17 @@ This model exposes configuration data and schema to QML for data binding.
 """
 
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, List, Optional
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal, Property, Slot
+
+from server.plugins.ability_model_config import (
+    ABILITY_MODELS_KEY,
+    normalize_ability_models_raw,
+    normalize_catalog_item,
+)
+from server.plugins.ability_models_qml_model import AbilityModelsConfigModel
 
 logger = logging.getLogger(__name__)
 
@@ -58,8 +65,10 @@ class PluginConfigQMLModel(QObject):
         self._config_schema = config_schema or {"fields": []}
         self._server_config = server_config or {}
         self._config_values: Dict[str, Any] = {}
+        self._ability_models_model: Optional[AbilityModelsConfigModel] = None
 
         self._init_values()
+        self._init_ability_models_from_plugin()
 
     def _init_values(self):
         """Initialize config values from schema defaults and existing config."""
@@ -87,9 +96,48 @@ class PluginConfigQMLModel(QObject):
         if legacy_api_key and not self._config_values.get("api_key"):
             self._config_values["api_key"] = legacy_api_key
 
+    def _persist_ability_models(self):
+        if not self._ability_models_model:
+            return
+        self._config_values[ABILITY_MODELS_KEY] = self._ability_models_model.serialize()
+        self.config_changed.emit()
+
+    def _build_ability_models_catalog(self) -> List[Dict[str, Any]]:
+        raw = self._plugin_info.get("ability_models_catalog") or []
+        out: List[Dict[str, Any]] = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            c = normalize_catalog_item(item)
+            if c:
+                out.append(c)
+        return out
+
+    def _init_ability_models_from_plugin(self):
+        catalog = self._build_ability_models_catalog()
+        if not catalog:
+            return
+        saved = normalize_ability_models_raw(self._config_values.get(ABILITY_MODELS_KEY))
+        self._ability_models_model = AbilityModelsConfigModel(
+            parent=self, on_persist=self._persist_ability_models
+        )
+        self._ability_models_model.load(catalog, saved)
+        self.ability_models_model_changed.emit()
+
     # ─────────────────────────────────────────────────────────────
     # Properties (exposed to QML)
     # ─────────────────────────────────────────────────────────────
+
+    ability_models_model_changed = Signal()
+
+    def _get_ability_models_model(self):
+        return self._ability_models_model
+
+    abilityModelsModel = Property(
+        QObject,
+        _get_ability_models_model,
+        notify=ability_models_model_changed,
+    )
 
     @Property(str, constant=True)
     def plugin_name(self) -> str:
@@ -155,7 +203,10 @@ class PluginConfigQMLModel(QObject):
         Returns:
             Dictionary of all configuration values
         """
-        return dict(self._config_values)
+        result = dict(self._config_values)
+        if self._ability_models_model:
+            result[ABILITY_MODELS_KEY] = self._ability_models_model.serialize()
+        return result
 
     @Slot(result=bool)
     def validate(self) -> bool:
@@ -311,6 +362,17 @@ class BailianConfigQMLModel(PluginConfigQMLModel):
     ):
         super().__init__(plugin_info, config_schema, server_config, parent)
 
+    def _build_ability_models_catalog(self) -> List[Dict[str, Any]]:
+        try:
+            from server.plugins.bailian_server.bailian_ability_catalog import (
+                build_bailian_ability_catalog,
+            )
+
+            return build_bailian_ability_catalog()
+        except Exception as e:
+            logger.warning("Bailian ability catalog unavailable: %s", e)
+            return super()._build_ability_models_catalog()
+
     @Slot(result=bool)
     def is_coding_plan_enabled(self) -> bool:
         """Check if Coding Plan is enabled."""
@@ -362,11 +424,18 @@ class BailianConfigQMLModel(PluginConfigQMLModel):
         # Add provider
         result["provider"] = "dashscope"
 
+        from server.plugins.ability_model_config import is_model_enabled_for_ability
+
         # Add available models
         default_model = result.get("default_model", "qwen-max")
         try:
             from server.plugins.bailian_server.models_config import models_config
-            models = models_config.get_dashscope_models()
+
+            models = [
+                m
+                for m in models_config.get_dashscope_models()
+                if is_model_enabled_for_ability(result, "chat_completion", m)
+            ]
             if default_model and default_model not in models:
                 models.insert(0, default_model)
             result["models"] = models
@@ -377,8 +446,14 @@ class BailianConfigQMLModel(PluginConfigQMLModel):
         if result.get("coding_plan_enabled") and result.get("coding_plan_api_key"):
             try:
                 from server.plugins.bailian_server.models_config import models_config
+
                 result["coding_plan_endpoint"] = models_config.get_coding_plan_endpoint()
-                result["coding_plan_models"] = models_config.get_coding_plan_models(with_prefix=True)
+                all_cp = models_config.get_coding_plan_models(with_prefix=True)
+                result["coding_plan_models"] = [
+                    m
+                    for m in all_cp
+                    if is_model_enabled_for_ability(result, "chat_completion", m)
+                ]
             except ImportError:
                 pass
 

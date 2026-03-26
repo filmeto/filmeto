@@ -9,3 +9,4 @@ IntegerField 1.0 components/IntegerField.qml
 URLField 1.0 components/URLField.qml
 SelectField 1.0 components/SelectField.qml
 ConfigField 1.0 components/ConfigField.qml
+AbilityModelsConfigPanel 1.0 components/AbilityModelsConfigPanel.qml
