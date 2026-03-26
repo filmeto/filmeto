@@ -1,7 +1,0 @@
-module ComfyUIConfig
-plugin comfyui 1.0
-ConfigWidget 1.0 ConfigWidget.qml
-ServiceTab 1.0 ServiceTab.qml
-WorkflowsTab 1.0 WorkflowsTab.qml
-ModelsTab 1.0 ModelsTab.qml
-WorkflowItemDelegate 1.0 WorkflowItemDelegate.qml
