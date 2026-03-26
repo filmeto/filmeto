@@ -7,6 +7,7 @@ Designed to be embedded in the server_list dialog's ServerConfigView.
 
 import json
 import logging
+import yaml
 from typing import Dict, Any, Optional
 from pathlib import Path
 from PySide6.QtWidgets import (
@@ -15,7 +16,7 @@ from PySide6.QtWidgets import (
     QScrollArea, QFormLayout, QLineEdit, QSpinBox, QCheckBox,
     QMessageBox, QFileDialog, QTabWidget, QDialog
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QUrl, Signal
 from PySide6.QtGui import QFont, QCursor
 
 logger = logging.getLogger(__name__)
@@ -77,7 +78,9 @@ class ComfyUIConfigWidget(QWidget):
         
         self.field_widgets: Dict[str, QWidget] = {}
         self.workflows = []
-        
+        self._ability_model = None
+        self._ability_qml_widget = None
+
         self._init_ui()
         self._load_config()
         self._initialize_default_workflows()
@@ -129,10 +132,62 @@ class ComfyUIConfigWidget(QWidget):
         # Add tabs
         self.tab_widget.addTab(self.service_page, "⚙ Service")
         self.tab_widget.addTab(self.workflow_page, "⚡ Workflows")
+        self._setup_ability_models_tab()
 
         main_layout.addWidget(self.tab_widget)
-    
-    
+
+    def _setup_ability_models_tab(self):
+        """QML ability–model enablement panel (shared component)."""
+        try:
+            from PySide6.QtQuickWidgets import QQuickWidget
+
+            from server.plugins.ability_model_config import (
+                ABILITY_MODELS_KEY,
+                normalize_ability_models_raw,
+                normalize_catalog_item,
+            )
+            from server.plugins.ability_models_qml_model import AbilityModelsConfigModel
+
+            plugin_yml = Path(__file__).parent.parent / "plugin.yml"
+            if not plugin_yml.exists():
+                return
+            with open(plugin_yml, "r", encoding="utf-8") as f:
+                pinfo = yaml.safe_load(f) or {}
+            raw_cat = pinfo.get("ability_models_catalog") or []
+            catalog = []
+            for item in raw_cat:
+                if isinstance(item, dict):
+                    c = normalize_catalog_item(item)
+                    if c:
+                        catalog.append(c)
+            params = (self.server_config or {}).get("config") or {}
+            saved = normalize_ability_models_raw(params.get(ABILITY_MODELS_KEY))
+            self._ability_model = AbilityModelsConfigModel(
+                parent=self, on_persist=lambda: self.config_changed.emit()
+            )
+            self._ability_model.load(catalog, saved)
+
+            qml = QQuickWidget(self)
+            qml.setResizeMode(QQuickWidget.SizeRootObjectToView)
+            qml.setMinimumHeight(420)
+            engine = qml.engine()
+            app_qml = Path(__file__).resolve().parents[4] / "app" / "ui" / "qml"
+            for sub in (app_qml, app_qml / "plugin"):
+                if sub.exists():
+                    engine.addImportPath(str(sub))
+            ctx = qml.rootContext()
+            ctx.setContextProperty("abilityModelsConfigModel", self._ability_model)
+            host = app_qml / "plugin" / "components" / "AbilityModelsConfigHost.qml"
+            qml.setSource(QUrl.fromLocalFile(str(host)))
+            if qml.status() == QQuickWidget.Error:
+                for err in qml.errors():
+                    logger.error("QML ability panel error: %s", err.toString())
+                return
+            self._ability_qml_widget = qml
+            self.tab_widget.addTab(qml, "Models")
+        except Exception as e:
+            logger.warning("ComfyUI ability models tab skipped: %s", e)
+
     def _create_service_page(self) -> QWidget:
         """Create service configuration page"""
         page = QWidget()
@@ -899,8 +954,10 @@ class ComfyUIConfigWidget(QWidget):
     
     def get_config(self) -> Dict[str, Any]:
         """Get current configuration from widgets"""
-        config = {}
-        
+        from server.plugins.ability_model_config import ABILITY_MODELS_KEY
+
+        config = dict((self.server_config or {}).get("config") or {})
+
         for field_name, widget in self.field_widgets.items():
             if isinstance(widget, QLineEdit):
                 config[field_name] = widget.text()
@@ -908,7 +965,10 @@ class ComfyUIConfigWidget(QWidget):
                 config[field_name] = widget.value()
             elif isinstance(widget, QCheckBox):
                 config[field_name] = widget.isChecked()
-        
+
+        if self._ability_model:
+            config[ABILITY_MODELS_KEY] = self._ability_model.serialize()
+
         return config
     
     def validate_config(self) -> bool:

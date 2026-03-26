@@ -69,6 +69,14 @@ abilities:
         max: 1.0
         description: Strength of transformation
 
+ability_models_catalog:
+  - ability: text2image
+    model_id: default
+    label: Text to image
+  - ability: image2image
+    model_id: default
+    label: Image to image
+
 startup:
   timeout: 30
   health_check: true

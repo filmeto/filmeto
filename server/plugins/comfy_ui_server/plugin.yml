@@ -105,6 +105,20 @@ execution:
   timeout: 300
   max_retries: 3
 
+ability_models_catalog:
+  - ability: text2image
+    model_id: text2image
+    label: Text to image workflow
+  - ability: image2image
+    model_id: image2image
+    label: Image to image workflow
+  - ability: inpainting
+    model_id: inpainting
+    label: Inpainting workflow
+  - ability: image2video
+    model_id: image2video
+    label: Image to video workflow
+
 # Configuration schema for creating server instances
 config_schema:
   fields:
