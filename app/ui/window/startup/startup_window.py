@@ -7,7 +7,7 @@ Independent window for startup/home mode with its own size management.
 import json
 import os
 import logging
-from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QDialog
+from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QKeyEvent
 
@@ -217,23 +217,9 @@ class StartupWindow(LeftPanelDialog):
 
     def _on_settings_clicked(self):
         """Handle settings button click."""
-        from app.ui.settings import SettingsWidget
+        from app.ui.settings import SettingsDialog
 
-        # Create settings dialog
-        settings_dialog = QDialog(self)
-        settings_dialog.setWindowTitle("Settings")
-        settings_dialog.setMinimumSize(900, 700)
-        settings_dialog.setWindowFlags(Qt.Dialog | Qt.WindowCloseButtonHint)
-
-        # Create layout
-        layout = QVBoxLayout(settings_dialog)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        # Create settings widget
-        settings_widget = SettingsWidget(self.workspace)
-        layout.addWidget(settings_widget)
-
-        # Show dialog
+        settings_dialog = SettingsDialog(self.workspace, self)
         settings_dialog.exec()
 
     def _on_server_status_clicked(self):

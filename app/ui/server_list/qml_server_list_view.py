@@ -50,6 +50,9 @@ class ServerListView(QWidget):
         self._quick_widget.setResizeMode(QQuickWidget.SizeRootObjectToView)
         self._quick_widget.setFocusPolicy(Qt.ClickFocus)
         self._quick_widget.setAttribute(Qt.WA_AcceptTouchEvents, False)
+        self._quick_widget.setAttribute(Qt.WA_TranslucentBackground, True)
+        self._quick_widget.setClearColor(Qt.transparent)
+        self._quick_widget.setStyleSheet("background: transparent;")
 
         qml_dir = Path(__file__).resolve().parent.parent / "qml" / "server_list"
         self._quick_widget.engine().addImportPath(str(qml_dir.parent))

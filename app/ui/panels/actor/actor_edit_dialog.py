@@ -166,6 +166,8 @@ class ActorEditDialog(CustomDialog):
 
         quick = QQuickWidget(self)
         quick.setResizeMode(QQuickWidget.SizeRootObjectToView)
+        quick.setAttribute(Qt.WA_TranslucentBackground, True)
+        quick.setClearColor(Qt.transparent)
         quick.rootContext().setContextProperty("actorEditViewModel", self._view_model)
         qml_path = Path(__file__).resolve().parent.parent.parent / "qml" / "dialog" / "ActorEditDialog.qml"
         quick.setSource(QUrl.fromLocalFile(str(qml_path)))
