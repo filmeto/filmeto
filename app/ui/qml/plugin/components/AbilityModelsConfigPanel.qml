@@ -3,6 +3,7 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import plugin 1.0
+import "../../dialog"
 
 ColumnLayout {
     id: root
@@ -510,12 +511,11 @@ ColumnLayout {
         function onCustomOnlyChanged() { root.refreshData() }
     }
 
-    Dialog {
+    CustomDialog {
         id: addDialog
-        modal: true
         title: qsTr("Add model")
-        standardButtons: Dialog.Ok | Dialog.Cancel
-        width: 420
+        dialogWidth: 420
+
         onAccepted: {
             if (!amModel)
                 return
@@ -524,13 +524,9 @@ ColumnLayout {
             root.refreshData()
         }
 
-        contentItem: Item {
-            implicitWidth: 396
-            implicitHeight: 126
+        content: Component {
             ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 12
-                spacing: 8
+                spacing: 12
                 Label {
                     text: qsTr("Ability")
                     color: textSecondary
@@ -569,12 +565,11 @@ ColumnLayout {
         }
     }
 
-    Dialog {
+    CustomDialog {
         id: editDialog
-        modal: true
         title: qsTr("Edit model")
-        standardButtons: Dialog.Ok | Dialog.Cancel
-        width: 420
+        dialogWidth: 420
+
         onAccepted: {
             if (!amModel || editingDisplayRow < 0)
                 return
@@ -583,13 +578,9 @@ ColumnLayout {
             root.refreshData()
         }
 
-        contentItem: Item {
-            implicitWidth: 396
-            implicitHeight: 154
+        content: Component {
             ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 12
-                spacing: 8
+                spacing: 12
                 Label {
                     visible: !editingCustom
                     text: qsTr("Built-in model can only be viewed, not renamed.")
