@@ -279,7 +279,15 @@ class CapabilityService:
         models = {}
 
         # Look for capability-specific models in parameters.models
-        capability_models_config = config.parameters.get("models", {}).get(capability_type.value, {})
+        raw_models = config.parameters.get("models")
+        capability_models_config: Any
+        if isinstance(raw_models, dict):
+            capability_models_config = raw_models.get(capability_type.value, {})
+        elif isinstance(raw_models, list):
+            # Bailian and similar plugins persist a flat list of model ids under parameters.models
+            capability_models_config = raw_models
+        else:
+            capability_models_config = {}
 
         if isinstance(capability_models_config, list):
             # Format: ["model1", "model2"] or [{"name": "model1", ...}]

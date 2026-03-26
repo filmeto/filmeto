@@ -33,9 +33,6 @@ class ServerStatusButton(QWidget):
         self.setObjectName("main_window_top_bar_button")
         self.setFixedSize(100, 32)
         self.setCursor(Qt.PointingHandCursor)
-        # Make widget background transparent like settings button
-        self.setAttribute(Qt.WA_TranslucentBackground, True)
-        self.setStyleSheet("background-color: transparent; border: none;")
 
         self._state = ServerStatusViewModel(self)
         self._state.clicked.connect(self.status_clicked.emit)
@@ -44,7 +41,7 @@ class ServerStatusButton(QWidget):
         self._quick.setResizeMode(QQuickWidget.SizeRootObjectToView)
         self._quick.setFocusPolicy(Qt.ClickFocus)
         self._quick.setAttribute(Qt.WA_AcceptTouchEvents, False)
-        self._quick.setStyleSheet("background: transparent; border: none;")
+        self._quick.setStyleSheet("background: transparent;")
 
         qml_dir = Path(__file__).resolve().parent.parent / "qml" / "server_status"
         self._quick.engine().addImportPath(str(qml_dir.parent))

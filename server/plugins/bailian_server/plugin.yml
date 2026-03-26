@@ -18,8 +18,8 @@ requirements:
     - pillow>=9.0.0
     - litellm>=1.0.0
 
-# Define multiple tools supported by this plugin
-tools:
+# Abilities exposed by this plugin (alias: legacy key ``tools``)
+abilities:
   - name: text2image
     description: Generate image from text prompt using Wanx model
     parameters:

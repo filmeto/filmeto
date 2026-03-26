@@ -51,6 +51,47 @@ class ServerInfo:
     config: Dict[str, Any]
 
 
+def capabilities_from_plugin_yml(
+    config: Dict[str, Any], plugin_dir_name: str = ""
+) -> List[CapabilityInfo]:
+    """
+    Build CapabilityInfo list from plugin.yml.
+
+    Preferred keys: ``ability`` (single string) and ``abilities`` (list of entries).
+    Legacy: ``tool_type`` and ``tools`` (same shapes).
+    """
+    single = config.get("ability") or config.get("tool_type")
+    if single:
+        return [
+            CapabilityInfo(
+                name=str(single),
+                description=config.get("description", ""),
+                parameters=config.get("parameters", []),
+            )
+        ]
+
+    entries = config.get("abilities") or config.get("tools")
+    if not entries:
+        return []
+
+    capabilities: List[CapabilityInfo] = []
+    for cap_config in entries:
+        if not isinstance(cap_config, dict) or "name" not in cap_config:
+            logger.warning(
+                "Skipping invalid ability entry in server %s",
+                plugin_dir_name or "unknown",
+            )
+            continue
+        capabilities.append(
+            CapabilityInfo(
+                name=cap_config["name"],
+                description=cap_config.get("description", ""),
+                parameters=cap_config.get("parameters", []),
+            )
+        )
+    return capabilities
+
+
 class PluginProcess:
     """
     Manages a single plugin process and communication.
@@ -441,30 +482,12 @@ class PluginManager:
                 if not requirements_file.exists():
                     requirements_file = None
 
-                if 'tool_type' in config:
-                    capabilities = [CapabilityInfo(
-                        name=config['tool_type'],
-                        description=config.get('description', ''),
-                        parameters=config.get('parameters', [])
-                    )]
-                elif 'tools' in config:
-                    capabilities = []
-                    for cap_config in config['tools']:
-                        if not isinstance(cap_config, dict) or 'name' not in cap_config:
-                            logger.warning(
-                                f"Skipping invalid capability entry in server {plugin_dir.name}"
-                            )
-                            continue
-                        capabilities.append(CapabilityInfo(
-                            name=cap_config['name'],
-                            description=cap_config.get('description', ''),
-                            parameters=cap_config.get('parameters', [])
-                        ))
-                    if not capabilities:
-                        logger.error(f"Server {plugin_dir.name} has no valid capabilities defined")
-                        continue
-                else:
-                    logger.error(f"Server config missing 'tool_type' or 'tools': {plugin_dir.name}")
+                capabilities = capabilities_from_plugin_yml(config, plugin_dir.name)
+                if not capabilities:
+                    logger.error(
+                        f"Server {plugin_dir.name} missing ability definitions: "
+                        f"expected 'ability' / 'abilities' (or legacy 'tool_type' / 'tools')"
+                    )
                     continue
 
                 server_info = ServerInfo(

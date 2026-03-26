@@ -8,8 +8,8 @@ import QtQuick.Layouts 1.15
 Item {
     id: root
 
-    // Configuration model reference (set from Python)
-    property var configModel: null
+    // configModel is set on the QML engine context by PluginQMLLoader; do not declare a
+    // same-named property here — it would shadow the context property and stay null.
 
     // Internal state
     property bool codingPlanEnabled: configModel ? configModel.get_config_value("coding_plan_enabled") || false : false
