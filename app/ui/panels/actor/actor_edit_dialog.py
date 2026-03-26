@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import Dict, Optional
 
-from PySide6.QtCore import Property, QUrl, Signal, Slot, QObject
+from PySide6.QtCore import Property, QUrl, Signal, Slot, QObject, Qt
 from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 
