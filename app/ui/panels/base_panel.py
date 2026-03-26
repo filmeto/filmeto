@@ -57,6 +57,8 @@ class BasePanel(BaseWidget):
         self.toolbar.setObjectName("panelToolbar")
         self.toolbar.setResizeMode(QQuickWidget.SizeRootObjectToView)
         self.toolbar.setFixedHeight(40)
+        self.toolbar.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.toolbar.setClearColor(Qt.transparent)
         self.toolbar.setStyleSheet("background: transparent; border: none;")
         self.toolbar.rootContext().setContextProperty("panelToolbarViewModel", self._toolbar_view_model)
         qml_path = Path(__file__).resolve().parent.parent / "qml" / "panels" / "PanelToolbar.qml"

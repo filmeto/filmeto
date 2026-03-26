@@ -240,26 +240,19 @@ class MainWindowTopSideBar(BaseWidget):
 
     def _show_settings_dialog(self):
         """Show the settings dialog"""
-        from app.ui.settings.settings_widget import SettingsWidget
-        from PySide6.QtWidgets import QDialog
-        
-        # Create a QDialog to host the SettingsWidget
-        dialog = QDialog(self.window)
-        dialog.setWindowTitle(tr("全局设置"))
-        dialog.setMinimumSize(800, 600)
-        
-        # Create the settings widget
-        settings_widget = SettingsWidget(self.workspace)
-        settings_widget.settings_changed.connect(self._on_settings_changed)
-        
-        # Use a layout to hold the settings widget
-        from PySide6.QtWidgets import QVBoxLayout
-        layout = QVBoxLayout(dialog)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(settings_widget)
-        
-        # Show the dialog
-        dialog.exec()
+        from PySide6.QtCore import QCoreApplication, QEvent
+        from app.ui.settings.settings_dialog import SettingsDialog
+
+        dialog = SettingsDialog(self.workspace, self.window)
+        dialog.settings_changed.connect(self._on_settings_changed)
+        try:
+            dialog.exec()
+        finally:
+            QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+            QCoreApplication.processEvents()
+            QCoreApplication.processEvents()
+            self.window.activateWindow()
+            self.window.raise_()
 
     def _on_settings_changed(self):
         """Handle settings changes"""

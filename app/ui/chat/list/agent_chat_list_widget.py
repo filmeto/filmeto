@@ -91,6 +91,9 @@ class QmlAgentChatListWidget(BaseWidget):
         # Initialize QML View widget
         self._quick_widget = QQuickWidget(self)
         self._quick_widget.setResizeMode(QQuickWidget.SizeRootObjectToView)
+        self._quick_widget.setAttribute(Qt.WA_TranslucentBackground, True)
+        self._quick_widget.setClearColor(Qt.transparent)
+        self._quick_widget.setStyleSheet("background: transparent;")
 
         # Register context property for model access (matches _chatModel in QML)
         self._quick_widget.rootContext().setContextProperty("_chatModel", self._model)
