@@ -303,7 +303,7 @@ ColumnLayout {
                     spacing: 6
 
                     Label {
-                        text: selectedAbility.length ? (qsTr("Models - ") + selectedAbility) : qsTr("Models")
+                        text: selectedAbility.length ? qsTr("Models - %1").arg(selectedAbility) : qsTr("Models")
                         font.pixelSize: 11
                         font.bold: true
                         color: textSecondary
@@ -328,11 +328,28 @@ ColumnLayout {
                                 spacing: 8
 
                                 Switch {
+                                    id: rowSwitch
                                     checked: !!modelData.enabled
                                     onToggled: {
                                         if (amModel)
                                             amModel.setEnabledAt(modelData.displayRow, checked)
                                         root.refreshData()
+                                    }
+                                    indicator: Rectangle {
+                                        implicitWidth: 34
+                                        implicitHeight: 18
+                                        radius: height / 2
+                                        color: rowSwitch.checked ? accent : inputBg
+                                        border.color: rowSwitch.checked ? borderFocus : border
+                                        border.width: 1
+                                        Rectangle {
+                                            width: 14
+                                            height: 14
+                                            radius: 7
+                                            y: 2
+                                            x: rowSwitch.checked ? parent.width - width - 2 : 2
+                                            color: textPrimary
+                                        }
                                     }
                                 }
 
@@ -514,17 +531,39 @@ ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 12
                 spacing: 8
-                Label { text: qsTr("Ability") }
+                Label {
+                    text: qsTr("Ability")
+                    color: textSecondary
+                }
                 TextField {
                     id: addAbilityField
                     Layout.fillWidth: true
                     placeholderText: qsTr("e.g. text2image")
+                    color: textPrimary
+                    placeholderTextColor: textMuted
+                    background: Rectangle {
+                        color: inputBg
+                        border.color: addAbilityField.activeFocus ? borderFocus : border
+                        border.width: 1
+                        radius: 3
+                    }
                 }
-                Label { text: qsTr("Model ID") }
+                Label {
+                    text: qsTr("Model ID")
+                    color: textSecondary
+                }
                 TextField {
                     id: addModelField
                     Layout.fillWidth: true
                     placeholderText: qsTr("model_id")
+                    color: textPrimary
+                    placeholderTextColor: textMuted
+                    background: Rectangle {
+                        color: inputBg
+                        border.color: addModelField.activeFocus ? borderFocus : border
+                        border.width: 1
+                        radius: 3
+                    }
                 }
             }
         }
@@ -558,17 +597,39 @@ ColumnLayout {
                     wrapMode: Text.WordWrap
                     Layout.fillWidth: true
                 }
-                Label { text: qsTr("Ability") }
+                Label {
+                    text: qsTr("Ability")
+                    color: textSecondary
+                }
                 TextField {
                     id: editAbilityField
                     Layout.fillWidth: true
                     readOnly: !editingCustom
+                    color: textPrimary
+                    placeholderTextColor: textMuted
+                    background: Rectangle {
+                        color: inputBg
+                        border.color: editAbilityField.activeFocus ? borderFocus : border
+                        border.width: 1
+                        radius: 3
+                    }
                 }
-                Label { text: qsTr("Model ID") }
+                Label {
+                    text: qsTr("Model ID")
+                    color: textSecondary
+                }
                 TextField {
                     id: editModelField
                     Layout.fillWidth: true
                     readOnly: !editingCustom
+                    color: textPrimary
+                    placeholderTextColor: textMuted
+                    background: Rectangle {
+                        color: inputBg
+                        border.color: editModelField.activeFocus ? borderFocus : border
+                        border.width: 1
+                        radius: 3
+                    }
                 }
             }
         }
