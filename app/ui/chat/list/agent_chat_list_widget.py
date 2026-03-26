@@ -12,7 +12,7 @@ import uuid
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
-from PySide6.QtCore import QUrl, Slot, Signal, QTimer
+from PySide6.QtCore import QUrl, Slot, Signal, QTimer, Qt
 from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import QWidget, QVBoxLayout
 
