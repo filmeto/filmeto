@@ -13,8 +13,8 @@ Rectangle {
     signal editRequested(var itemData)
     signal removeRequested(int displayRow)
 
-    color: Theme.inputBackground
-    border.color: Theme.border
+    color: "#1e1e1e"
+    border.color: "#3a3a3a"
     radius: 4
 
     ColumnLayout {
@@ -26,7 +26,7 @@ Rectangle {
             text: root.selectedAbility.length ? qsTr("Models - %1").arg(root.selectedAbility) : qsTr("Models")
             font.pixelSize: 11
             font.bold: true
-            color: Theme.textSecondary
+            color: "#b0b0b0"
         }
 
         ListView {
@@ -39,7 +39,7 @@ Rectangle {
                 width: modelList.width
                 height: 50
                 itemData: modelData
-                rowColor: index % 2 ? Theme.inputBackground : Theme.cardBackground
+                rowColor: index % 2 ? "#1e1e1e" : "#2d2d2d"
                 onToggleEnabled: (displayRow, enabled) => root.toggleEnabled(displayRow, enabled)
                 onMoveUp: displayRow => root.moveUp(displayRow)
                 onMoveDown: displayRow => root.moveDown(displayRow)

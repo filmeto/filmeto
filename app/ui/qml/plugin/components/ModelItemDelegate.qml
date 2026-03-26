@@ -6,7 +6,7 @@ import plugin 1.0
 Rectangle {
     id: root
     property var itemData: ({})
-    property color rowColor: Theme.inputBackground
+    property color rowColor: "#1e1e1e"
     signal toggleEnabled(int displayRow, bool enabled)
     signal moveUp(int displayRow)
     signal moveDown(int displayRow)
@@ -30,8 +30,8 @@ Rectangle {
                 implicitWidth: 34
                 implicitHeight: 18
                 radius: height / 2
-                color: rowSwitch.checked ? Theme.accent : Theme.inputBackground
-                border.color: rowSwitch.checked ? Theme.borderFocus : Theme.border
+                color: rowSwitch.checked ? "#3498db" : "#1e1e1e"
+                border.color: rowSwitch.checked ? "#3498db" : "#3a3a3a"
                 border.width: 1
                 Rectangle {
                     width: 14
@@ -39,7 +39,7 @@ Rectangle {
                     radius: 7
                     y: 2
                     x: rowSwitch.checked ? parent.width - width - 2 : 2
-                    color: Theme.textPrimary
+                    color: "#e0e0e0"
                 }
             }
         }
@@ -49,13 +49,13 @@ Rectangle {
             spacing: 0
             Label {
                 text: root.itemData.label || ""
-                color: Theme.textPrimary
+                color: "#e0e0e0"
                 elide: Text.ElideRight
                 Layout.fillWidth: true
             }
             Label {
                 text: (root.itemData.modelId || "") + (!!root.itemData.custom ? qsTr(" (custom)") : "")
-                color: Theme.textTertiary
+                color: "#808080"
                 font.pixelSize: 10
                 elide: Text.ElideRight
                 Layout.fillWidth: true
@@ -77,14 +77,14 @@ Rectangle {
                     else root.editRequested(root.itemData)
                 }
                 background: Rectangle {
-                    color: parent.down ? Qt.darker(Theme.inputBackground, 1.15) : Theme.inputBackground
-                    border.color: parent.hovered ? Theme.borderFocus : Theme.border
+                    color: parent.down ? "#252525" : "#1e1e1e"
+                    border.color: parent.hovered ? "#3498db" : "#3a3a3a"
                     border.width: 1
                     radius: 3
                 }
                 contentItem: Text {
                     text: parent.text
-                    color: Theme.textPrimary
+                    color: "#e0e0e0"
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                 }
@@ -97,14 +97,14 @@ Rectangle {
             visible: !!root.itemData.custom
             onClicked: root.removeRequested(root.itemData.displayRow)
             background: Rectangle {
-                color: parent.down ? Qt.darker(Theme.inputBackground, 1.25) : Theme.inputBackground
-                border.color: parent.hovered ? Theme.borderFocus : Theme.border
+                color: parent.down ? "#2a1a1a" : "#1e1e1e"
+                border.color: parent.hovered ? "#e74c3c" : "#3a3a3a"
                 border.width: 1
                 radius: 3
             }
             contentItem: Text {
                 text: parent.text
-                color: Theme.textPrimary
+                color: "#e0e0e0"
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
             }

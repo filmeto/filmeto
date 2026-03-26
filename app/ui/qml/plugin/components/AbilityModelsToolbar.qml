@@ -36,13 +36,13 @@ ColumnLayout {
                 implicitHeight: 30
                 placeholderText: qsTr("Search ability/model...")
                 text: root.filterText
-                color: Theme.textPrimary
-                placeholderTextColor: Theme.textTertiary
+                color: "#e0e0e0"
+                placeholderTextColor: "#808080"
                 verticalAlignment: TextInput.AlignVCenter
                 onTextChanged: root.filterTextEdited(text)
                 background: Rectangle {
-                    color: Theme.inputBackground
-                    border.color: filterField.activeFocus ? Theme.borderFocus : Theme.border
+                    color: "#1e1e1e"
+                    border.color: filterField.activeFocus ? "#3498db" : "#3a3a3a"
                     border.width: 1
                     radius: 3
                 }
@@ -54,15 +54,15 @@ ColumnLayout {
                 implicitHeight: 30
                 onClicked: root.toggleFilters()
                 background: Rectangle {
-                    color: filterButton.down ? Qt.darker(Theme.inputBackground, 1.15) : Theme.inputBackground
-                    border.color: filterButton.hovered ? Theme.borderFocus : Theme.border
+                    color: filterButton.down ? "#252525" : "#1e1e1e"
+                    border.color: filterButton.hovered ? "#3498db" : "#3a3a3a"
                     border.width: 1
                     radius: 3
                 }
                 contentItem: Text {
                     text: filterButton.text
                     font.pixelSize: 11
-                    color: Theme.textPrimary
+                    color: "#e0e0e0"
                     verticalAlignment: Text.AlignVCenter
                     horizontalAlignment: Text.AlignHCenter
                 }
@@ -75,12 +75,12 @@ ColumnLayout {
             implicitHeight: 30
             onClicked: root.addClicked(root.defaultAbility)
             background: Rectangle {
-                color: addButton.down ? Qt.darker(Theme.accent, 1.2) : Theme.accent
+                color: addButton.down ? "#2980b9" : "#3498db"
                 radius: 3
             }
             contentItem: Text {
                 text: addButton.text
-                color: Theme.textPrimary
+                color: "#ffffff"
                 font.pixelSize: 11
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
@@ -91,8 +91,8 @@ ColumnLayout {
     Rectangle {
         Layout.fillWidth: true
         visible: root.showFilters
-        color: Theme.cardBackground
-        border.color: Theme.border
+        color: "#2d2d2d"
+        border.color: "#3a3a3a"
         radius: 4
         implicitHeight: filterRow.implicitHeight + 14
 
@@ -110,14 +110,14 @@ ColumnLayout {
                 currentIndex: root.sortMode
                 onActivated: index => root.sortModeSelected(index)
                 background: Rectangle {
-                    color: Theme.inputBackground
-                    border.color: sortBox.hovered ? Theme.borderFocus : Theme.border
+                    color: "#1e1e1e"
+                    border.color: sortBox.hovered ? "#3498db" : "#3a3a3a"
                     border.width: 1
                     radius: 3
                 }
                 contentItem: Text {
                     text: sortBox.displayText
-                    color: Theme.textPrimary
+                    color: "#e0e0e0"
                     verticalAlignment: Text.AlignVCenter
                     leftPadding: 8
                 }
@@ -130,7 +130,7 @@ ColumnLayout {
                 onToggled: root.enabledOnlyToggled(checked)
                 contentItem: Text {
                     text: enabledOnlyBox.text
-                    color: Theme.textSecondary
+                    color: "#b0b0b0"
                     leftPadding: enabledOnlyBox.indicator.width + enabledOnlyBox.spacing
                     verticalAlignment: Text.AlignVCenter
                 }
@@ -140,8 +140,8 @@ ColumnLayout {
                     x: enabledOnlyBox.leftPadding
                     y: parent.height / 2 - height / 2
                     radius: 3
-                    border.color: enabledOnlyBox.checked ? Theme.borderFocus : Theme.border
-                    color: enabledOnlyBox.checked ? Theme.accent : Theme.inputBackground
+                    border.color: enabledOnlyBox.checked ? "#3498db" : "#3a3a3a"
+                    color: enabledOnlyBox.checked ? "#3498db" : "#1e1e1e"
                 }
             }
 
@@ -152,7 +152,7 @@ ColumnLayout {
                 onToggled: root.customOnlyToggled(checked)
                 contentItem: Text {
                     text: customOnlyBox.text
-                    color: Theme.textSecondary
+                    color: "#b0b0b0"
                     leftPadding: customOnlyBox.indicator.width + customOnlyBox.spacing
                     verticalAlignment: Text.AlignVCenter
                 }
@@ -162,8 +162,8 @@ ColumnLayout {
                     x: customOnlyBox.leftPadding
                     y: parent.height / 2 - height / 2
                     radius: 3
-                    border.color: customOnlyBox.checked ? Theme.borderFocus : Theme.border
-                    color: customOnlyBox.checked ? Theme.accent : Theme.inputBackground
+                    border.color: customOnlyBox.checked ? "#3498db" : "#3a3a3a"
+                    color: customOnlyBox.checked ? "#3498db" : "#1e1e1e"
                 }
             }
         }

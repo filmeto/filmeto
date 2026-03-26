@@ -21,14 +21,14 @@ ColumnLayout {
         text: qsTr("Models by ability")
         font.bold: true
         font.pixelSize: 13
-        color: Theme.textPrimary
+        color: "#e0e0e0"
         Layout.fillWidth: true
     }
 
     Label {
         text: qsTr("Manage models by ability with clear filters, ordering and quick actions.")
         font.pixelSize: 10
-        color: Theme.textTertiary
+        color: "#808080"
         wrapMode: Text.WordWrap
         Layout.fillWidth: true
     }
@@ -72,8 +72,8 @@ ColumnLayout {
     Rectangle {
         Layout.fillWidth: true
         Layout.preferredHeight: 340
-        color: Theme.cardBackground
-        border.color: Theme.border
+        color: "#2d2d2d"
+        border.color: "#3a3a3a"
         border.width: 1
         radius: 4
 

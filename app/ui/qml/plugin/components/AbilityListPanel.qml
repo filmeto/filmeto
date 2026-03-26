@@ -9,8 +9,8 @@ Rectangle {
     property string selectedAbility: ""
     signal abilitySelected(string ability)
 
-    color: Theme.inputBackground
-    border.color: Theme.border
+    color: "#1e1e1e"
+    border.color: "#3a3a3a"
     radius: 4
 
     ColumnLayout {
@@ -22,7 +22,7 @@ Rectangle {
             text: qsTr("Abilities")
             font.pixelSize: 11
             font.bold: true
-            color: Theme.textSecondary
+            color: "#b0b0b0"
         }
 
         ListView {
@@ -34,7 +34,7 @@ Rectangle {
             delegate: Rectangle {
                 width: abilityList.width
                 height: 34
-                color: modelData.ability === root.selectedAbility ? Qt.lighter(Theme.accent, 0.55) : (index % 2 ? Theme.inputBackground : Theme.cardBackground)
+                color: modelData.ability === root.selectedAbility ? "#1a4a7a" : (index % 2 ? "#1e1e1e" : "#2d2d2d")
                 radius: 3
 
                 MouseArea {
@@ -51,12 +51,12 @@ Rectangle {
                     Label {
                         Layout.fillWidth: true
                         text: modelData.ability
-                        color: Theme.textPrimary
+                        color: "#e0e0e0"
                         elide: Text.ElideRight
                     }
                     Label {
                         text: modelData.enabled + "/" + modelData.total
-                        color: Theme.textTertiary
+                        color: "#808080"
                         font.pixelSize: 10
                     }
                 }
