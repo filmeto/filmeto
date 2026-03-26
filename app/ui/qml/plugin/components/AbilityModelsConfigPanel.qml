@@ -1,9 +1,8 @@
-// Ability -> models cascaded editor with toolbar, filters and modal add/edit.
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import plugin 1.0
-import "../../dialog"
+import "dialogs" as Dialogs
 
 ColumnLayout {
     id: root
@@ -14,16 +13,6 @@ ColumnLayout {
     property var modelItems: []
     property int editingDisplayRow: -1
     property bool editingCustom: false
-    readonly property color bg: Theme.backgroundColor
-    readonly property color panelBg: Theme.cardBackground
-    readonly property color inputBg: Theme.inputBackground
-    readonly property color border: Theme.border
-    readonly property color borderFocus: Theme.borderFocus
-    readonly property color textPrimary: Theme.textPrimary
-    readonly property color textSecondary: Theme.textSecondary
-    readonly property color textMuted: Theme.textTertiary
-    readonly property color accent: Theme.accent
-    readonly property color onAccentText: Theme.textPrimary
     visible: amModel !== null
     Layout.fillWidth: true
     spacing: 8
@@ -32,194 +21,59 @@ ColumnLayout {
         text: qsTr("Models by ability")
         font.bold: true
         font.pixelSize: 13
-        color: textPrimary
+        color: Theme.textPrimary
         Layout.fillWidth: true
     }
 
     Label {
         text: qsTr("Manage models by ability with clear filters, ordering and quick actions.")
         font.pixelSize: 10
-        color: textMuted
+        color: Theme.textTertiary
         wrapMode: Text.WordWrap
         Layout.fillWidth: true
     }
 
-    RowLayout {
+    AbilityModelsToolbar {
         Layout.fillWidth: true
-        spacing: 8
-
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 8
-
-            TextField {
-                id: filterField
-                Layout.fillWidth: true
-                implicitHeight: 30
-                placeholderText: qsTr("Search ability/model...")
-                text: amModel ? amModel.filterText : ""
-                color: textPrimary
-                placeholderTextColor: textMuted
-                verticalAlignment: TextInput.AlignVCenter
-                onTextChanged: {
-                    if (amModel) {
-                        amModel.filterText = text
-                        root.refreshData()
-                    }
-                }
-                background: Rectangle {
-                    color: inputBg
-                    border.color: filterField.activeFocus ? borderFocus : border
-                    border.width: 1
-                    radius: 3
-                }
-            }
-
-            Button {
-                id: filterButton
-                text: showFilters ? qsTr("Hide Filters") : qsTr("Filters")
-                implicitHeight: 30
-                onClicked: showFilters = !showFilters
-                background: Rectangle {
-                    color: filterButton.down ? Qt.darker(inputBg, 1.15) : inputBg
-                    border.color: filterButton.hovered ? borderFocus : border
-                    border.width: 1
-                    radius: 3
-                }
-                contentItem: Text {
-                    text: filterButton.text
-                    font.pixelSize: 11
-                    color: textPrimary
-                    verticalAlignment: Text.AlignVCenter
-                    horizontalAlignment: Text.AlignHCenter
-                }
-            }
+        filterText: amModel ? amModel.filterText : ""
+        showFilters: root.showFilters
+        sortMode: amModel ? amModel.sortMode : 2
+        enabledOnly: amModel ? amModel.enabledOnly : false
+        customOnly: amModel ? amModel.customOnly : false
+        defaultAbility: root.selectedAbility.length ? root.selectedAbility : "text2image"
+        onFilterTextEdited: text => {
+            if (!amModel) return
+            amModel.filterText = text
+            root.refreshData()
         }
-
-        Button {
-            id: addButton
-            text: qsTr("Add")
-            implicitHeight: 30
-            onClicked: {
-                addAbilityField.text = selectedAbility.length ? selectedAbility : "text2image"
-                addModelField.text = ""
-                addDialog.open()
-            }
-            background: Rectangle {
-                color: addButton.down ? Qt.darker(accent, 1.2) : accent
-                radius: 3
-            }
-            contentItem: Text {
-                text: addButton.text
-                color: onAccentText
-                font.pixelSize: 11
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-            }
+        onToggleFilters: root.showFilters = !root.showFilters
+        onAddClicked: ability => {
+            addDialog.abilityValue = ability
+            addDialog.modelIdValue = ""
+            addDialog.open()
         }
-    }
-
-    Rectangle {
-        Layout.fillWidth: true
-        visible: showFilters
-        color: panelBg
-        border.color: border
-        radius: 4
-        implicitHeight: filterRow.implicitHeight + 14
-
-        RowLayout {
-            id: filterRow
-            anchors.fill: parent
-            anchors.margins: 7
-            spacing: 12
-
-            ComboBox {
-                id: sortBox
-                implicitWidth: 170
-                implicitHeight: 28
-                model: [qsTr("Sort: ability, model"), qsTr("Sort: model id"), qsTr("Sort: custom order")]
-                currentIndex: amModel ? amModel.sortMode : 2
-                onActivated: {
-                    if (amModel) {
-                        amModel.sortMode = index
-                        root.refreshData()
-                    }
-                }
-                background: Rectangle {
-                    color: inputBg
-                    border.color: sortBox.hovered ? borderFocus : border
-                    border.width: 1
-                    radius: 3
-                }
-                contentItem: Text {
-                    text: sortBox.displayText
-                    color: textPrimary
-                    verticalAlignment: Text.AlignVCenter
-                    leftPadding: 8
-                }
-            }
-
-            CheckBox {
-                id: enabledOnlyBox
-                text: qsTr("Enabled only")
-                checked: amModel ? amModel.enabledOnly : false
-                onToggled: {
-                    if (amModel) {
-                        amModel.enabledOnly = checked
-                        root.refreshData()
-                    }
-                }
-                contentItem: Text {
-                    text: enabledOnlyBox.text
-                    color: textSecondary
-                    leftPadding: enabledOnlyBox.indicator.width + enabledOnlyBox.spacing
-                    verticalAlignment: Text.AlignVCenter
-                }
-                indicator: Rectangle {
-                    implicitWidth: 16
-                    implicitHeight: 16
-                    x: enabledOnlyBox.leftPadding
-                    y: parent.height / 2 - height / 2
-                    radius: 3
-                    border.color: enabledOnlyBox.checked ? borderFocus : border
-                    color: enabledOnlyBox.checked ? accent : inputBg
-                }
-            }
-
-            CheckBox {
-                id: customOnlyBox
-                text: qsTr("Custom only")
-                checked: amModel ? amModel.customOnly : false
-                onToggled: {
-                    if (amModel) {
-                        amModel.customOnly = checked
-                        root.refreshData()
-                    }
-                }
-                contentItem: Text {
-                    text: customOnlyBox.text
-                    color: textSecondary
-                    leftPadding: customOnlyBox.indicator.width + customOnlyBox.spacing
-                    verticalAlignment: Text.AlignVCenter
-                }
-                indicator: Rectangle {
-                    implicitWidth: 16
-                    implicitHeight: 16
-                    x: customOnlyBox.leftPadding
-                    y: parent.height / 2 - height / 2
-                    radius: 3
-                    border.color: customOnlyBox.checked ? borderFocus : border
-                    color: customOnlyBox.checked ? accent : inputBg
-                }
-            }
+        onSortModeSelected: mode => {
+            if (!amModel) return
+            amModel.sortMode = mode
+            root.refreshData()
+        }
+        onEnabledOnlyToggled: checked => {
+            if (!amModel) return
+            amModel.enabledOnly = checked
+            root.refreshData()
+        }
+        onCustomOnlyToggled: checked => {
+            if (!amModel) return
+            amModel.customOnly = checked
+            root.refreshData()
         }
     }
 
     Rectangle {
         Layout.fillWidth: true
         Layout.preferredHeight: 340
-        color: panelBg
-        border.color: border
+        color: Theme.cardBackground
+        border.color: Theme.border
         border.width: 1
         radius: 4
 
@@ -228,243 +82,50 @@ ColumnLayout {
             anchors.margins: 6
             spacing: 8
 
-            Rectangle {
+            AbilityListPanel {
                 Layout.preferredWidth: 220
                 Layout.fillHeight: true
-                color: inputBg
-                border.color: border
-                radius: 4
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 6
-                    spacing: 6
-
-                    Label {
-                        text: qsTr("Abilities")
-                        font.pixelSize: 11
-                        font.bold: true
-                        color: textSecondary
-                    }
-
-                    ListView {
-                        id: abilityList
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        clip: true
-                        model: abilityItems
-                        delegate: Rectangle {
-                            width: abilityList.width
-                            height: 34
-                            color: modelData.ability === selectedAbility ? Qt.lighter(accent, 0.55) : (index % 2 ? inputBg : panelBg)
-                            radius: 3
-
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: {
-                                    selectedAbility = modelData.ability
-                                    if (amModel)
-                                        amModel.abilityFilter = selectedAbility
-                                    root.refreshData()
-                                }
-                            }
-
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: 8
-                                anchors.rightMargin: 8
-                                spacing: 4
-                                Label {
-                                    Layout.fillWidth: true
-                                    text: modelData.ability
-                                    color: textPrimary
-                                    elide: Text.ElideRight
-                                }
-                                Label {
-                                    text: modelData.enabled + "/" + modelData.total
-                                    color: textMuted
-                                    font.pixelSize: 10
-                                }
-                            }
-                        }
-                    }
+                abilityItems: root.abilityItems
+                selectedAbility: root.selectedAbility
+                onAbilitySelected: ability => {
+                    root.selectedAbility = ability
+                    if (amModel) amModel.abilityFilter = root.selectedAbility
+                    root.refreshData()
                 }
             }
 
-            Rectangle {
+            ModelListPanel {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                color: inputBg
-                border.color: border
-                radius: 4
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 6
-                    spacing: 6
-
-                    Label {
-                        text: selectedAbility.length ? qsTr("Models - %1").arg(selectedAbility) : qsTr("Models")
-                        font.pixelSize: 11
-                        font.bold: true
-                        color: textSecondary
-                    }
-
-                    ListView {
-                        id: modelList
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        clip: true
-                        model: modelItems
-                        delegate: Rectangle {
-                            width: modelList.width
-                            height: 50
-                            color: index % 2 ? inputBg : panelBg
-                            radius: 3
-
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: 8
-                                anchors.rightMargin: 8
-                                spacing: 8
-
-                                Switch {
-                                    id: rowSwitch
-                                    checked: !!modelData.enabled
-                                    onToggled: {
-                                        if (amModel)
-                                            amModel.setEnabledAt(modelData.displayRow, checked)
-                                        root.refreshData()
-                                    }
-                                    indicator: Rectangle {
-                                        implicitWidth: 34
-                                        implicitHeight: 18
-                                        radius: height / 2
-                                        color: rowSwitch.checked ? accent : inputBg
-                                        border.color: rowSwitch.checked ? borderFocus : border
-                                        border.width: 1
-                                        Rectangle {
-                                            width: 14
-                                            height: 14
-                                            radius: 7
-                                            y: 2
-                                            x: rowSwitch.checked ? parent.width - width - 2 : 2
-                                            color: textPrimary
-                                        }
-                                    }
-                                }
-
-                                ColumnLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 0
-                                    Label {
-                                        text: modelData.label
-                                        color: textPrimary
-                                        elide: Text.ElideRight
-                                        Layout.fillWidth: true
-                                    }
-                                    Label {
-                                        text: modelData.modelId + (modelData.custom ? qsTr(" (custom)") : "")
-                                        color: textMuted
-                                        font.pixelSize: 10
-                                        elide: Text.ElideRight
-                                        Layout.fillWidth: true
-                                    }
-                                }
-
-                                Button {
-                                    text: qsTr("Up")
-                                    implicitHeight: 26
-                                    onClicked: {
-                                        if (amModel)
-                                            amModel.moveAt(modelData.displayRow, -1)
-                                        root.refreshData()
-                                    }
-                                    background: Rectangle {
-                                        color: parent.down ? Qt.darker(inputBg, 1.15) : inputBg
-                                        border.color: parent.hovered ? borderFocus : border
-                                        border.width: 1
-                                        radius: 3
-                                    }
-                                    contentItem: Text {
-                                        text: parent.text
-                                        color: textPrimary
-                                        horizontalAlignment: Text.AlignHCenter
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
-                                }
-
-                                Button {
-                                    text: qsTr("Down")
-                                    implicitHeight: 26
-                                    onClicked: {
-                                        if (amModel)
-                                            amModel.moveAt(modelData.displayRow, 1)
-                                        root.refreshData()
-                                    }
-                                    background: Rectangle {
-                                        color: parent.down ? Qt.darker(inputBg, 1.15) : inputBg
-                                        border.color: parent.hovered ? borderFocus : border
-                                        border.width: 1
-                                        radius: 3
-                                    }
-                                    contentItem: Text {
-                                        text: parent.text
-                                        color: textPrimary
-                                        horizontalAlignment: Text.AlignHCenter
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
-                                }
-
-                                Button {
-                                    text: qsTr("Edit")
-                                    implicitHeight: 26
-                                    onClicked: {
-                                        editingDisplayRow = modelData.displayRow
-                                        editingCustom = !!modelData.custom
-                                        editAbilityField.text = modelData.ability
-                                        editModelField.text = modelData.modelId
-                                        editDialog.open()
-                                    }
-                                    background: Rectangle {
-                                        color: parent.down ? Qt.darker(inputBg, 1.15) : inputBg
-                                        border.color: parent.hovered ? borderFocus : border
-                                        border.width: 1
-                                        radius: 3
-                                    }
-                                    contentItem: Text {
-                                        text: parent.text
-                                        color: textPrimary
-                                        horizontalAlignment: Text.AlignHCenter
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
-                                }
-
-                                Button {
-                                    text: qsTr("Remove")
-                                    implicitHeight: 26
-                                    visible: !!modelData.custom
-                                    onClicked: {
-                                        if (amModel)
-                                            amModel.removeAt(modelData.displayRow)
-                                        root.refreshData()
-                                    }
-                                    background: Rectangle {
-                                        color: parent.down ? Qt.darker(inputBg, 1.25) : inputBg
-                                        border.color: parent.hovered ? borderFocus : border
-                                        border.width: 1
-                                        radius: 3
-                                    }
-                                    contentItem: Text {
-                                        text: parent.text
-                                        color: textPrimary
-                                        horizontalAlignment: Text.AlignHCenter
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
-                                }
-                            }
-                        }
-                    }
+                selectedAbility: root.selectedAbility
+                modelItems: root.modelItems
+                onToggleEnabled: (displayRow, enabled) => {
+                    if (!amModel) return
+                    amModel.setEnabledAt(displayRow, enabled)
+                    root.refreshData()
+                }
+                onMoveUp: displayRow => {
+                    if (!amModel) return
+                    amModel.moveAt(displayRow, -1)
+                    root.refreshData()
+                }
+                onMoveDown: displayRow => {
+                    if (!amModel) return
+                    amModel.moveAt(displayRow, 1)
+                    root.refreshData()
+                }
+                onEditRequested: itemData => {
+                    root.editingDisplayRow = itemData.displayRow
+                    root.editingCustom = !!itemData.custom
+                    editDialog.abilityValue = itemData.ability
+                    editDialog.modelIdValue = itemData.modelId
+                    editDialog.editable = root.editingCustom
+                    editDialog.open()
+                }
+                onRemoveRequested: displayRow => {
+                    if (!amModel) return
+                    amModel.removeAt(displayRow)
+                    root.refreshData()
                 }
             }
         }
@@ -477,7 +138,6 @@ ColumnLayout {
             selectedAbility = ""
             return
         }
-
         abilityItems = amModel.abilityStats()
         if (!selectedAbility.length && abilityItems.length > 0)
             selectedAbility = abilityItems[0].ability
@@ -492,10 +152,7 @@ ColumnLayout {
         if (!exists)
             selectedAbility = abilityItems.length > 0 ? abilityItems[0].ability : ""
 
-        if (selectedAbility.length)
-            amModel.abilityFilter = selectedAbility
-        else
-            amModel.abilityFilter = ""
+        amModel.abilityFilter = selectedAbility.length ? selectedAbility : ""
         modelItems = amModel.modelsForAbility(selectedAbility)
     }
 
@@ -511,118 +168,27 @@ ColumnLayout {
         function onCustomOnlyChanged() { root.refreshData() }
     }
 
-    CustomDialog {
+    Dialogs.ModelEditDialog {
         id: addDialog
-        title: qsTr("Add model")
-        dialogWidth: 420
-
-        onAccepted: {
-            if (!amModel)
-                return
-            amModel.addCustomEntry(addAbilityField.text, addModelField.text)
-            selectedAbility = addAbilityField.text
+        isEdit: false
+        editable: true
+        onSubmitted: (ability, modelId) => {
+            if (!amModel) return
+            amModel.addCustomEntry(ability, modelId)
+            root.selectedAbility = ability
             root.refreshData()
-        }
-
-        content: Component {
-            ColumnLayout {
-                spacing: 12
-                Label {
-                    text: qsTr("Ability")
-                    color: textSecondary
-                }
-                TextField {
-                    id: addAbilityField
-                    Layout.fillWidth: true
-                    placeholderText: qsTr("e.g. text2image")
-                    color: textPrimary
-                    placeholderTextColor: textMuted
-                    background: Rectangle {
-                        color: inputBg
-                        border.color: addAbilityField.activeFocus ? borderFocus : border
-                        border.width: 1
-                        radius: 3
-                    }
-                }
-                Label {
-                    text: qsTr("Model ID")
-                    color: textSecondary
-                }
-                TextField {
-                    id: addModelField
-                    Layout.fillWidth: true
-                    placeholderText: qsTr("model_id")
-                    color: textPrimary
-                    placeholderTextColor: textMuted
-                    background: Rectangle {
-                        color: inputBg
-                        border.color: addModelField.activeFocus ? borderFocus : border
-                        border.width: 1
-                        radius: 3
-                    }
-                }
-            }
         }
     }
 
-    CustomDialog {
+    Dialogs.ModelEditDialog {
         id: editDialog
-        title: qsTr("Edit model")
-        dialogWidth: 420
-
-        onAccepted: {
-            if (!amModel || editingDisplayRow < 0)
-                return
-            amModel.updateEntryAt(editingDisplayRow, editAbilityField.text, editModelField.text)
-            selectedAbility = editAbilityField.text
+        isEdit: true
+        editable: root.editingCustom
+        onSubmitted: (ability, modelId) => {
+            if (!amModel || root.editingDisplayRow < 0) return
+            amModel.updateEntryAt(root.editingDisplayRow, ability, modelId)
+            root.selectedAbility = ability
             root.refreshData()
-        }
-
-        content: Component {
-            ColumnLayout {
-                spacing: 12
-                Label {
-                    visible: !editingCustom
-                    text: qsTr("Built-in model can only be viewed, not renamed.")
-                    color: textMuted
-                    wrapMode: Text.WordWrap
-                    Layout.fillWidth: true
-                }
-                Label {
-                    text: qsTr("Ability")
-                    color: textSecondary
-                }
-                TextField {
-                    id: editAbilityField
-                    Layout.fillWidth: true
-                    readOnly: !editingCustom
-                    color: textPrimary
-                    placeholderTextColor: textMuted
-                    background: Rectangle {
-                        color: inputBg
-                        border.color: editAbilityField.activeFocus ? borderFocus : border
-                        border.width: 1
-                        radius: 3
-                    }
-                }
-                Label {
-                    text: qsTr("Model ID")
-                    color: textSecondary
-                }
-                TextField {
-                    id: editModelField
-                    Layout.fillWidth: true
-                    readOnly: !editingCustom
-                    color: textPrimary
-                    placeholderTextColor: textMuted
-                    background: Rectangle {
-                        color: inputBg
-                        border.color: editModelField.activeFocus ? borderFocus : border
-                        border.width: 1
-                        radius: 3
-                    }
-                }
-            }
         }
     }
 }
