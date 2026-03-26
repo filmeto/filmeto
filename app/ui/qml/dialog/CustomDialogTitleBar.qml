@@ -8,10 +8,25 @@ Item {
     id: root
     height: 36
 
+    // 使用两个矩形拼接：顶部带圆角 + 底部平直
+    // 顶部矩形只显示顶部圆角，通过负y值和足够高度来实现
     Rectangle {
-        anchors.fill: parent
+        x: 0
+        y: -10
+        width: parent.width
+        height: 20 + 10  // radius + extra
         color: "#3d3f4e"
         radius: 10
+    }
+
+    // 底部填充矩形，与content container背景色一致
+    Rectangle {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.top: parent.top
+        anchors.topMargin: 15  // 稍微超过圆角起始位置确保无缝
+        color: "#3d3f4e"
     }
 
     RowLayout {

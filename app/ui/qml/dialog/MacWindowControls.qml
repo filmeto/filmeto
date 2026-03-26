@@ -8,11 +8,12 @@ Item {
 
     property bool dialogMode: true
     property var macActions: null
-    property color backgroundColor: "#3d3f4e"
+    property color backgroundColor: "transparent"  // dialog模式下默认透明
 
     Rectangle {
         anchors.fill: parent
         color: root.backgroundColor
+        visible: !root.dialogMode  // dialog模式下隐藏背景
     }
 
     MouseArea {
