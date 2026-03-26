@@ -13,6 +13,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, Set, Tuple
 from PySide6.QtCore import Qt, QAbstractListModel, QModelIndex, QObject, Slot, Property, QTimer, Signal
+from shiboken6 import isValid
 
 from agent.chat.agent_chat_message import AgentMessage
 from agent.chat.agent_chat_types import ContentType
@@ -259,6 +260,32 @@ class QmlAgentChatListModel(QAbstractListModel):
         self._batch_timer.setSingleShot(True)
         self._batch_timer.timeout.connect(self._flush_dirty_rows)
 
+    def _safe_stop_batch_timer(self) -> bool:
+        """Stop batch timer only if underlying Qt object is still valid."""
+        timer = getattr(self, "_batch_timer", None)
+        if timer is None:
+            return False
+        try:
+            if isValid(timer):
+                timer.stop()
+                return True
+        except RuntimeError:
+            # Underlying C++ object already destroyed.
+            return False
+        return False
+
+    def _safe_start_batch_timer_if_needed(self) -> None:
+        """Start batch timer only when timer C++ object is valid and idle."""
+        timer = getattr(self, "_batch_timer", None)
+        if timer is None:
+            return
+        try:
+            if isValid(timer) and not timer.isActive():
+                timer.start()
+        except RuntimeError:
+            # Underlying C++ object already destroyed.
+            return
+
     def roleNames(self):
         """Return role names for QML binding."""
         from PySide6.QtCore import QByteArray
@@ -437,8 +464,7 @@ class QmlAgentChatListModel(QAbstractListModel):
 
         # Mark row as dirty and schedule batched emission
         self._dirty_rows.add(row)
-        if not self._batch_timer.isActive():
-            self._batch_timer.start()
+        self._safe_start_batch_timer_if_needed()
 
         return True
 
@@ -449,7 +475,7 @@ class QmlAgentChatListModel(QAbstractListModel):
         data (e.g., scroll-to-bottom after content update).
         """
         if self._dirty_rows:
-            self._batch_timer.stop()
+            self._safe_stop_batch_timer()
             self._flush_dirty_rows()
 
     def _flush_dirty_rows(self) -> None:
@@ -492,7 +518,7 @@ class QmlAgentChatListModel(QAbstractListModel):
     def clear(self) -> None:
         """Clear all items from the model."""
         # Stop any pending batch updates
-        self._batch_timer.stop()
+        self._safe_stop_batch_timer()
         self._dirty_rows.clear()
 
         self.beginResetModel()
