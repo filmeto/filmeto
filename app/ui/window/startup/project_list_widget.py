@@ -11,8 +11,8 @@ from PySide6.QtWidgets import (
     QScrollArea, QFrame, QSizePolicy, QLineEdit, QDialog,
     QDialogButtonBox, QListWidget, QListWidgetItem, QSplitter,
 )
-from PySide6.QtCore import Qt, Signal, QSize
-from PySide6.QtGui import QColor, QFont, QIcon, QPixmap, QPainter, QPainterPath
+from PySide6.QtCore import Qt, Signal, QSize, QRectF
+from PySide6.QtGui import QColor, QFont, QPixmap, QPainter, QPainterPath, QPen
 
 from app.data.workspace import Workspace
 from app.ui.base_widget import BaseWidget
@@ -190,7 +190,7 @@ class ProjectListWidget(BaseWidget):
         logo_label.setPixmap(self._create_logo_pixmap())
         header_layout.addWidget(logo_label)
 
-        app_name = QLabel("AniMaker")
+        app_name = QLabel("Filmeto")
         app_name.setStyleSheet("color: #E1E1E1; font-size: 20px; font-weight: bold;")
         header_layout.addWidget(app_name)
         header_layout.addStretch()
@@ -270,33 +270,26 @@ class ProjectListWidget(BaseWidget):
         layout.addWidget(splitter, 1)
     
     def _create_logo_pixmap(self) -> QPixmap:
-        """Create a placeholder logo pixmap."""
+        """Placeholder pixmap when no application icon is applied (dashed frame)."""
         size = 40
         pixmap = QPixmap(size, size)
         pixmap.fill(Qt.transparent)
-        
+
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.Antialiasing)
-        
-        # Draw gradient background
-        from PySide6.QtGui import QLinearGradient
-        gradient = QLinearGradient(0, 0, size, size)
-        gradient.setColorAt(0, QColor("#4080ff"))
-        gradient.setColorAt(1, QColor("#8040ff"))
-        painter.setBrush(gradient)
-        painter.setPen(Qt.NoPen)
-        
-        # Draw rounded rectangle
-        path = QPainterPath()
-        path.addRoundedRect(0, 0, size, size, 8, 8)
-        painter.drawPath(path)
-        
-        # Draw "A" letter
-        painter.setPen(QColor("#FFFFFF"))
-        font = QFont("Sans-serif", 20, QFont.Bold)
-        painter.setFont(font)
-        painter.drawText(0, 0, size, size, Qt.AlignCenter, "A")
-        
+
+        pen = QPen(QColor("#6a6d70"))
+        pen.setStyle(Qt.DashLine)
+        pen.setWidthF(1.25)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        margin = 2.5
+        painter.drawRoundedRect(
+            QRectF(margin, margin, size - 2 * margin, size - 2 * margin),
+            6.0,
+            6.0,
+        )
+
         painter.end()
         return pixmap
     
