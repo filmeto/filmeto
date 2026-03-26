@@ -89,24 +89,108 @@ class ComfyUiServerPlugin(BaseServerPlugin):
     def init_ui(self, workspace_path: str, server_config: Optional[Dict[str, Any]] = None):
         """
         Initialize custom UI widget for server configuration.
+        Uses QML configuration widget with workflow management.
 
         Args:
             workspace_path: Path to workspace directory
             server_config: Optional existing server configuration
 
         Returns:
-            QWidget: Custom configuration widget
+            QWidget or QQuickWidget: Custom configuration widget
         """
         try:
-            # Import the ComfyUI config widget
-            from server.plugins.comfy_ui_server.config.comfy_ui_config_widget import ComfyUIConfigWidget
+            # Import QML components
+            from PySide6.QtCore import QUrl
+            from PySide6.QtQuickWidgets import QQuickWidget
 
-            # Create and return the widget using the plugin info and config
-            widget = ComfyUIConfigWidget(workspace_path, server_config, None)
-            return widget
+            from server.plugins.comfy_ui_server.comfy_ui_config_qml_model import ComfyUIConfigQMLModel
+
+            # Load plugin info
+            plugin_yml = Path(__file__).parent / "plugin.yml"
+            plugin_info = {}
+            if plugin_yml.exists():
+                import yaml
+                with open(plugin_yml, 'r', encoding='utf-8') as f:
+                    plugin_info = yaml.safe_load(f) or {}
+
+            # Get config schema from plugin info
+            config_schema = plugin_info.get("config_schema", {"fields": []})
+
+            # Create the QML model with workspace path and server name for workflow management
+            server_name = server_config.get('name', '') if server_config else ''
+            self._qml_model = ComfyUIConfigQMLModel(
+                plugin_info=plugin_info,
+                config_schema=config_schema,
+                server_config=server_config,
+                workspace_path=workspace_path,
+                server_name=server_name
+            )
+
+            # Get QML file path
+            plugin_dir = Path(__file__).parent
+            qml_file = plugin_dir / "qml" / "config" / "ConfigWidget.qml"
+
+            if not qml_file.exists():
+                logger.error(f"QML config widget not found: {qml_file}")
+                return None
+
+            # Create QML widget
+            qml_widget = QQuickWidget()
+            qml_widget.setResizeMode(QQuickWidget.SizeRootObjectToView)
+
+            # Add import paths
+            engine = qml_widget.engine()
+            app_qml = Path(__file__).resolve().parents[3] / "app" / "ui" / "qml"
+            if app_qml.exists():
+                engine.addImportPath(str(app_qml))
+                engine.addImportPath(str(app_qml / "plugin"))
+
+            # Also add plugin qml directory
+            plugin_qml = plugin_dir / "qml" / "config"
+            if plugin_qml.exists():
+                engine.addImportPath(str(plugin_qml))
+
+            # Set context properties
+            ctx = qml_widget.rootContext()
+            ctx.setContextProperty("configModel", self._qml_model)
+
+            # Load QML file
+            qml_widget.setSource(QUrl.fromLocalFile(str(qml_file)))
+
+            if qml_widget.status() == QQuickWidget.Error:
+                for err in qml_widget.errors():
+                    logger.error("QML error: %s", err.toString())
+                return None
+
+            # Store reference for config retrieval
+            self._qml_widget = qml_widget
+            return qml_widget
+
         except Exception as e:
-            logger.error(f"Failed to create ComfyUI config widget: {e}", exc_info=True)
+            logger.error(f"Failed to create ComfyUI QML config widget: {e}", exc_info=True)
             return None
+
+    def get_config(self) -> Dict[str, Any]:
+        """
+        Get configuration from the QML model.
+
+        Returns:
+            Dict containing all configuration values
+        """
+        if hasattr(self, '_qml_model') and self._qml_model:
+            return self._qml_model.get_config_dict()
+        return {}
+
+    def validate_config(self) -> bool:
+        """
+        Validate the current configuration.
+
+        Returns:
+            True if configuration is valid
+        """
+        if hasattr(self, '_qml_model') and self._qml_model:
+            return self._qml_model.validate()
+        return True
 
     async def execute_task(
         self,

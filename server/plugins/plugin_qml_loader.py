@@ -418,6 +418,16 @@ class PluginQMLLoader:
                 )
             except Exception as e:
                 logger.warning(f"Failed to create BailianConfigQMLModel: {e}")
+        elif "comfyui" in plugin_name or "comfy" in plugin_name:
+            try:
+                from server.plugins.plugin_config_qml_model import ComfyUIConfigQMLModel
+                return ComfyUIConfigQMLModel(
+                    plugin_info,
+                    config_schema,
+                    server_config
+                )
+            except Exception as e:
+                logger.warning(f"Failed to create ComfyUIConfigQMLModel: {e}")
 
         # Default model
         from server.plugins.plugin_config_qml_model import PluginConfigQMLModel

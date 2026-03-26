@@ -472,3 +472,284 @@ class BailianConfigQMLModel(PluginConfigQMLModel):
                 pass
 
         return result
+
+
+class ComfyUIConfigQMLModel(PluginConfigQMLModel):
+    """
+    Specialized QML model for ComfyUI Server configuration.
+
+    Adds support for:
+    - Workflow management (list, add, edit, configure)
+    - ToolType to workflow mapping
+    - Workflow JSON data handling
+    """
+
+    # Signals
+    workflows_changed = Signal()
+    workflow_saved = Signal(str)  # workflow_type
+    workflow_error = Signal(str)  # error_message
+
+    def __init__(
+        self,
+        plugin_info: Dict[str, Any],
+        config_schema: Optional[Dict[str, Any]] = None,
+        server_config: Optional[Dict[str, Any]] = None,
+        parent=None
+    ):
+        super().__init__(plugin_info, config_schema, server_config, parent)
+        self._workflows: List[Dict[str, Any]] = []
+        self._workspace_path: Optional[Path] = None
+        self._server_name: str = server_config.get("name", "") if server_config else ""
+        self._init_workspace_path()
+        self._init_workflows()
+
+    def _init_workspace_path(self):
+        """Initialize workspace path from server config."""
+        config = self._server_config.get("config", {}) if self._server_config else {}
+        workspace = config.get("workspace_path")
+        if workspace:
+            self._workspace_path = Path(workspace)
+        else:
+            # Fallback to default workspace
+            self._workspace_path = Path.home() / ".filmeto" / "workspace"
+
+    def _init_workflows(self):
+        """Initialize workflows from ability_models_catalog."""
+        catalog = self._build_ability_models_catalog()
+        self._workflows = []
+        for item in catalog:
+            ability = item.get("ability", "")
+            model_id = item.get("model_id", "")
+            label = item.get("label", "")
+            self._workflows.append({
+                "name": label or model_id.replace("_", " ").title(),
+                "type": model_id,
+                "ability": ability,
+                "description": f"Workflow for {ability}",
+                "enabled": True,
+                "node_mapping": {},
+            })
+        self.workflows_changed.emit()
+
+    def _get_workflow_file_path(self, workflow_type: str) -> Optional[Path]:
+        """Get the file path for a workflow."""
+        if not self._workspace_path or not self._server_name:
+            return None
+        workflows_dir = self._workspace_path / "servers" / self._server_name / "workflows"
+        return workflows_dir / f"{workflow_type}.json"
+
+    @Property("QVariant", notify=workflows_changed)
+    def workflows(self) -> List[Dict[str, Any]]:
+        """Get list of workflows."""
+        return self._workflows
+
+    @Slot(result="QVariant")
+    def get_workflows(self) -> List[Dict[str, Any]]:
+        """Get list of workflows (callable from QML)."""
+        return self._workflows
+
+    @Slot(str, result="QVariant")
+    def get_workflow_by_type(self, workflow_type: str) -> Optional[Dict[str, Any]]:
+        """Get workflow by type."""
+        for workflow in self._workflows:
+            if workflow.get("type") == workflow_type:
+                return workflow
+        return None
+
+    @Slot(int, result="QVariant")
+    def get_workflow_at(self, index: int) -> Optional[Dict[str, Any]]:
+        """Get workflow at index."""
+        if 0 <= index < len(self._workflows):
+            return self._workflows[index]
+        return None
+
+    @Slot(str, bool)
+    def set_workflow_enabled(self, workflow_type: str, enabled: bool):
+        """Enable/disable a workflow."""
+        for workflow in self._workflows:
+            if workflow.get("type") == workflow_type:
+                workflow["enabled"] = enabled
+                self.workflows_changed.emit()
+                self.config_changed.emit()
+                break
+
+    @Slot(str, str, str)
+    def update_workflow(self, workflow_type: str, name: str, description: str):
+        """Update workflow metadata."""
+        for workflow in self._workflows:
+            if workflow.get("type") == workflow_type:
+                workflow["name"] = name
+                workflow["description"] = description
+                self.workflows_changed.emit()
+                self.config_changed.emit()
+                break
+
+    @Slot(str, result="QVariant")
+    def get_workflow_json(self, workflow_type: str) -> Dict[str, Any]:
+        """
+        Get workflow JSON content.
+        Returns dict with 'content' (str) and 'exists' (bool).
+        """
+        workflow_file = self._get_workflow_file_path(workflow_type)
+        result = {"content": "", "exists": False}
+
+        if workflow_file and workflow_file.exists():
+            try:
+                with open(workflow_file, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                result["content"] = content
+                result["exists"] = True
+            except Exception as e:
+                logger.error(f"Failed to read workflow {workflow_type}: {e}")
+                result["content"] = f"{{\"error\": \"{str(e)}\"}}"
+        else:
+            # Return empty workflow template
+            workflow = self.get_workflow_by_type(workflow_type)
+            name = workflow.get("name", workflow_type.replace("_", " ").title()) if workflow else workflow_type
+            template = {
+                "prompt": {},
+                "extra": {},
+                "filmeto": {
+                    "name": name,
+                    "type": workflow_type,
+                    "description": f"Workflow for {workflow_type}",
+                    "node_mapping": {}
+                }
+            }
+            result["content"] = json.dumps(template, indent=2, ensure_ascii=False)
+
+        return result
+
+    @Slot(str, str, result=bool)
+    def save_workflow_json(self, workflow_type: str, json_content: str) -> bool:
+        """Save workflow JSON content."""
+        workflow_file = self._get_workflow_file_path(workflow_type)
+        if not workflow_file:
+            self.workflow_error.emit("Workspace path not configured")
+            return False
+
+        try:
+            workflow_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(workflow_file, 'w', encoding='utf-8') as f:
+                f.write(json_content)
+            self.workflow_saved.emit(workflow_type)
+            self.config_changed.emit()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save workflow {workflow_type}: {e}")
+            self.workflow_error.emit(str(e))
+            return False
+
+    @Slot(str, result="QVariant")
+    def get_workflow_nodes(self, workflow_type: str) -> List[Dict[str, Any]]:
+        """
+        Get list of nodes from a workflow for configuration.
+        Returns list of node info dicts with id, type, and title.
+        """
+        result = self.get_workflow_json(workflow_type)
+        content = result.get("content", "")
+        nodes = []
+
+        if not content:
+            return nodes
+
+        try:
+            workflow_data = json.loads(content)
+            prompt = workflow_data.get("prompt", {})
+
+            for node_id, node_data in prompt.items():
+                if isinstance(node_data, dict):
+                    node_type = node_data.get("class_type", "")
+                    node_inputs = node_data.get("inputs", {})
+                    # Only include nodes with configurable inputs
+                    if node_type and node_type not in ["Reroute", "Note"]:
+                        nodes.append({
+                            "id": str(node_id),
+                            "type": node_type,
+                            "title": node_inputs.get("title", node_type) if isinstance(node_inputs, dict) else node_type,
+                        })
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse workflow JSON: {e}")
+        except Exception as e:
+            logger.error(f"Error extracting workflow nodes: {e}")
+
+        return nodes
+
+    @Slot(str, str, str, result=bool)
+    def save_workflow_config(self, workflow_type: str, name: str, mapping_json: str) -> bool:
+        """
+        Save workflow configuration (node mapping).
+        mapping_json is a JSON string with node mappings.
+        """
+        result = self.get_workflow_json(workflow_type)
+        content = result.get("content", "")
+
+        try:
+            if content:
+                workflow_data = json.loads(content)
+            else:
+                workflow_data = {
+                    "prompt": {},
+                    "extra": {},
+                    "filmeto": {}
+                }
+
+            # Parse the mapping
+            node_mapping = json.loads(mapping_json)
+
+            # Update filmeto section
+            if "filmeto" not in workflow_data:
+                workflow_data["filmeto"] = {}
+            workflow_data["filmeto"]["name"] = name
+            workflow_data["filmeto"]["type"] = workflow_type
+            workflow_data["filmeto"]["node_mapping"] = node_mapping
+
+            # Update the workflow data
+            new_content = json.dumps(workflow_data, indent=2, ensure_ascii=False)
+            return self.save_workflow_json(workflow_type, new_content)
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse node mapping JSON: {e}")
+            self.workflow_error.emit(f"Invalid node mapping: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to save workflow config: {e}")
+            self.workflow_error.emit(str(e))
+            return False
+
+    @Slot(result="QVariant")
+    def get_tooltype_workflow_map(self) -> Dict[str, str]:
+        """Get mapping of ToolType to workflow names."""
+        return {
+            "text2image": "text2image",
+            "image2image": "image2image",
+            "image2video": "image2video",
+            "text2video": "text2video",
+            "speak2video": "speak2video",
+            "text2speak": "text2speak",
+            "text2music": "text2music",
+            "inpainting": "inpainting",
+        }
+
+    @Slot(str, result=str)
+    def get_workflow_display_name(self, workflow_type: str) -> str:
+        """Get display name for a workflow type."""
+        workflow = self.get_workflow_by_type(workflow_type)
+        if workflow:
+            return workflow.get("name", workflow_type)
+        return workflow_type.replace("_", " ").title()
+
+    @Slot(result="QVariant")
+    def get_config_dict(self) -> Dict[str, Any]:
+        """
+        Override to add workflow configuration.
+        """
+        result = super().get_config_dict()
+
+        # Add workflow enabled states
+        result["workflows"] = {
+            workflow["type"]: workflow.get("enabled", True)
+            for workflow in self._workflows
+        }
+
+        return result
