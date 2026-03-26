@@ -82,26 +82,27 @@ class BailianConfigWidget(QWidget):
                 border: 1px solid #3a3a3a;
                 background-color: #1e1e1e;
                 border-top: none;
+                margin-top: -1px;
             }
             QTabBar::tab {
-                background-color: #2d2d2d;
-                color: #cccccc;
-                padding: 8px 16px;
+                background-color: #252525;
+                color: #888888;
+                padding: 8px 20px;
                 border: 1px solid #3a3a3a;
-                border-bottom: none;
+                border-bottom: 1px solid #3a3a3a;
                 border-top-left-radius: 4px;
                 border-top-right-radius: 4px;
                 margin-right: 2px;
-                min-width: 100px;
-                text-align: left;
+                min-width: 120px;
             }
             QTabBar::tab:selected {
-                background-color: #3a3a3a;
+                background-color: #1e1e1e;
                 color: #ffffff;
-                border-bottom: 2px solid #1e1e1e;
+                border-bottom: 1px solid #1e1e1e;
             }
             QTabBar::tab:hover:!selected {
-                background-color: #3a3a3a;
+                background-color: #2d2d2d;
+                color: #cccccc;
             }
         """)
         self.tab_widget.tabBar().setExpanding(False)

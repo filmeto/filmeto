@@ -76,25 +76,31 @@ QtObject {
     // Current Theme Colors (computed)
     // ─────────────────────────────────────────────────────────────
 
-    readonly property var colors: currentTheme === "dark" ? darkTheme : lightTheme
+    // Background colors
+    readonly property color backgroundColor: currentTheme === "dark" ? darkTheme.backgroundColor : lightTheme.backgroundColor
+    readonly property color cardBackground: currentTheme === "dark" ? darkTheme.cardBackground : lightTheme.cardBackground
+    readonly property color inputBackground: currentTheme === "dark" ? darkTheme.inputBackground : lightTheme.inputBackground
 
-    // Convenience accessors
-    readonly property color backgroundColor: colors.backgroundColor
-    readonly property color cardBackground: colors.cardBackground
-    readonly property color inputBackground: colors.inputBackground
-    readonly property color textPrimary: colors.textPrimary
-    readonly property color textSecondary: colors.textSecondary
-    readonly property color textTertiary: colors.textTertiary
-    readonly property color textLabel: colors.textLabel
-    readonly property color border: colors.border
-    readonly property color borderFocus: colors.borderFocus
-    readonly property color borderError: colors.borderError
-    readonly property color accent: colors.accent
-    readonly property color accentHover: colors.accentHover
-    readonly property color statusSuccess: colors.statusSuccess
-    readonly property color statusWarning: colors.statusWarning
-    readonly property color statusError: colors.statusError
-    readonly property color statusInfo: colors.statusInfo
+    // Text colors
+    readonly property color textPrimary: currentTheme === "dark" ? darkTheme.textPrimary : lightTheme.textPrimary
+    readonly property color textSecondary: currentTheme === "dark" ? darkTheme.textSecondary : lightTheme.textSecondary
+    readonly property color textTertiary: currentTheme === "dark" ? darkTheme.textTertiary : lightTheme.textTertiary
+    readonly property color textLabel: currentTheme === "dark" ? darkTheme.textLabel : lightTheme.textLabel
+
+    // Border colors
+    readonly property color border: currentTheme === "dark" ? darkTheme.border : lightTheme.border
+    readonly property color borderFocus: currentTheme === "dark" ? darkTheme.borderFocus : lightTheme.borderFocus
+    readonly property color borderError: currentTheme === "dark" ? darkTheme.borderError : lightTheme.borderError
+
+    // Accent colors
+    readonly property color accent: currentTheme === "dark" ? darkTheme.accent : lightTheme.accent
+    readonly property color accentHover: currentTheme === "dark" ? darkTheme.accentHover : lightTheme.accentHover
+
+    // Status colors
+    readonly property color statusSuccess: currentTheme === "dark" ? darkTheme.statusSuccess : lightTheme.statusSuccess
+    readonly property color statusWarning: currentTheme === "dark" ? darkTheme.statusWarning : lightTheme.statusWarning
+    readonly property color statusError: currentTheme === "dark" ? darkTheme.statusError : lightTheme.statusError
+    readonly property color statusInfo: currentTheme === "dark" ? darkTheme.statusInfo : lightTheme.statusInfo
 
     // Function to switch theme
     function setTheme(theme) {

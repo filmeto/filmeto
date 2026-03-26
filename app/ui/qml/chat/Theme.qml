@@ -102,16 +102,44 @@ QtObject {
     // Current Theme Colors (computed)
     // ─────────────────────────────────────────────────────────────
 
-    readonly property var colors: currentTheme === "dark" ? darkTheme : lightTheme
+    // Background colors
+    readonly property color backgroundColor: currentTheme === "dark" ? darkTheme.backgroundColor : lightTheme.backgroundColor
+    readonly property color messageBubbleUser: currentTheme === "dark" ? darkTheme.messageBubbleUser : lightTheme.messageBubbleUser
+    readonly property color messageBubbleAgent: currentTheme === "dark" ? darkTheme.messageBubbleAgent : lightTheme.messageBubbleAgent
+    readonly property color messageBubbleThinking: currentTheme === "dark" ? darkTheme.messageBubbleThinking : lightTheme.messageBubbleThinking
+    readonly property color messageBubbleError: currentTheme === "dark" ? darkTheme.messageBubbleError : lightTheme.messageBubbleError
 
-    // Convenience accessors
-    readonly property color backgroundColor: colors.backgroundColor
-    readonly property color messageBubbleUser: colors.messageBubbleUser
-    readonly property color messageBubbleAgent: colors.messageBubbleAgent
-    readonly property color textPrimary: colors.textPrimary
-    readonly property color textSecondary: colors.textSecondary
-    readonly property color scrollbarHandle: colors.scrollbarHandle
-    readonly property color accent: colors.accent
+    // Text colors
+    readonly property color textPrimary: currentTheme === "dark" ? darkTheme.textPrimary : lightTheme.textPrimary
+    readonly property color textSecondary: currentTheme === "dark" ? darkTheme.textSecondary : lightTheme.textSecondary
+    readonly property color textTertiary: currentTheme === "dark" ? darkTheme.textTertiary : lightTheme.textTertiary
+    readonly property color textOnDark: currentTheme === "dark" ? darkTheme.textOnDark : lightTheme.textOnDark
+    readonly property color textOnError: currentTheme === "dark" ? darkTheme.textOnError : lightTheme.textOnError
+
+    // Scrollbar colors
+    readonly property color scrollbarBackground: currentTheme === "dark" ? darkTheme.scrollbarBackground : lightTheme.scrollbarBackground
+    readonly property color scrollbarHandle: currentTheme === "dark" ? darkTheme.scrollbarHandle : lightTheme.scrollbarHandle
+    readonly property color scrollbarHandleHover: currentTheme === "dark" ? darkTheme.scrollbarHandleHover : lightTheme.scrollbarHandleHover
+
+    // Border colors
+    readonly property color border: currentTheme === "dark" ? darkTheme.border : lightTheme.border
+    readonly property color borderSubtle: currentTheme === "dark" ? darkTheme.borderSubtle : lightTheme.borderSubtle
+    readonly property color borderError: currentTheme === "dark" ? darkTheme.borderError : lightTheme.borderError
+
+    // Status colors
+    readonly property color statusSuccess: currentTheme === "dark" ? darkTheme.statusSuccess : lightTheme.statusSuccess
+    readonly property color statusWarning: currentTheme === "dark" ? darkTheme.statusWarning : lightTheme.statusWarning
+    readonly property color statusError: currentTheme === "dark" ? darkTheme.statusError : lightTheme.statusError
+    readonly property color statusInfo: currentTheme === "dark" ? darkTheme.statusInfo : lightTheme.statusInfo
+
+    // Syntax highlighting
+    readonly property color codeBackground: currentTheme === "dark" ? darkTheme.codeBackground : lightTheme.codeBackground
+    readonly property color codeHeader: currentTheme === "dark" ? darkTheme.codeHeader : lightTheme.codeHeader
+    readonly property color codeText: currentTheme === "dark" ? darkTheme.codeText : lightTheme.codeText
+
+    // Accent
+    readonly property color accent: currentTheme === "dark" ? darkTheme.accent : lightTheme.accent
+    readonly property color accentHover: currentTheme === "dark" ? darkTheme.accentHover : lightTheme.accentHover
 
     // Function to switch theme
     function setTheme(theme) {
