@@ -116,7 +116,9 @@ def is_model_enabled_for_ability(
     default: bool = True,
 ) -> bool:
     """
-    Runtime helper: if no ability_models config, all models stay enabled (default=True).
+    Runtime helper: if ``ability_models`` is missing or empty, all models stay enabled
+    (``default``). A non-empty list controls only listed (ability, model_id) pairs;
+    ids not present in the list still use ``default`` (not a strict whitelist).
     """
     raw = parameters.get(ABILITY_MODELS_KEY)
     if not raw:
