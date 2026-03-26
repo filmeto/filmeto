@@ -4,13 +4,23 @@ import QtQuick.Layouts 1.15
 
 Rectangle {
     id: root
-    color: "#2b2d30"
-    border.color: "#505254"
+    color: "#26282b"
+    border.color: root.editingActive ? "#4a90e2" : "#505254"
     border.width: 1
     radius: 8
     implicitHeight: 136
 
     property var bridge: agentPromptBridge
+    property bool editingActive: inputArea.activeFocus
+
+    MouseArea {
+        anchors.fill: parent
+        acceptedButtons: Qt.LeftButton
+        onPressed: {
+            inputArea.forceActiveFocus()
+            mouse.accepted = false
+        }
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -28,7 +38,7 @@ Rectangle {
                 implicitWidth: 28
                 implicitHeight: 28
                 radius: 6
-                color: addContextMouseArea.containsPress ? "#2c2f31" : (addContextMouseArea.containsMouse ? "#4c5052" : "#3c3f41")
+                color: addContextMouseArea.containsPress ? "#2d3034" : (addContextMouseArea.containsMouse ? "#34383d" : "#2b2f33")
                 border.color: "#555555"
                 border.width: 1
                 enabled: bridge ? bridge.enabled : true
@@ -67,7 +77,7 @@ Rectangle {
 
                     Rectangle {
                         radius: 10
-                        color: "#3a3d45"
+                        color: "#30343a"
                         border.color: "#525764"
                         border.width: 1
                         height: 22
@@ -119,8 +129,8 @@ Rectangle {
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            color: "#1e1e1e"
-            border.color: inputArea.activeFocus ? "#4a90e2" : "#40444b"
+            color: "#26282b"
+            border.color: "transparent"
             border.width: 1
             radius: 4
 
@@ -170,7 +180,7 @@ Rectangle {
             Rectangle {
                 implicitWidth: 160
                 implicitHeight: 28
-                color: agentComboMouseArea.containsPress ? "#2c2f31" : (agentComboMouseArea.containsHover ? "#4c5052" : "#3c3f41")
+                color: agentComboMouseArea.containsPress ? "#2d3034" : (agentComboMouseArea.containsHover ? "#34383d" : "#2b2f33")
                 border.color: "#555555"
                 border.width: 1
                 radius: 4
