@@ -51,3 +51,15 @@ def build_bailian_ability_catalog() -> List[Dict[str, Any]]:
         )
 
     return rows
+
+
+def build_default_bailian_ability_models() -> List[Dict[str, Any]]:
+    """
+    Initial ``parameters.ability_models`` payload for Bailian: every catalog
+    ( DashScope chat, coding-plan chat, T2I, I2I ) model entry with enabled=True.
+    Used when no ``ability_models`` key exists yet (e.g. new server / legacy yml).
+    """
+    return [
+        {"ability": r["ability"], "model_id": r["model_id"], "enabled": True}
+        for r in build_bailian_ability_catalog()
+    ]
