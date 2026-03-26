@@ -72,8 +72,9 @@ def _is_chat_capable(cfg: ServerConfig) -> bool:
     """Check whether a ServerConfig supports chat completions.
 
     A server is chat-capable if:
-      - its server_type is one of "openai", "chat", "llm", OR
-      - it explicitly sets ``parameters.chat_enabled: true``
+      - its server_type is one of "openai", "chat", "llm", "bailian", OR
+      - ``parameters.provider`` is "dashscope", OR
+      - ``parameters.chat_enabled`` is true
     """
     if cfg.server_type in CHAT_SERVER_TYPES:
         return True
@@ -197,24 +198,26 @@ class ChatService:
 
         model = request.model
 
-        # Try to match by model name
+        any_server_advertises_models = False
         for server in self._server_manager.list_servers():
             cfg = server.config
             if not cfg.enabled or not _is_chat_capable(cfg):
                 continue
-            advertised = set(_advertised_chat_model_ids(cfg))
+            advertised = _advertised_chat_model_ids(cfg)
+            if advertised:
+                any_server_advertises_models = True
             if model in advertised:
                 return cfg
 
-        # Fallback: first chat-capable server
-        for server in self._server_manager.list_servers():
-            cfg = server.config
-            if cfg.enabled and _is_chat_capable(cfg):
-                return cfg
+        if not any_server_advertises_models:
+            for server in self._server_manager.list_servers():
+                cfg = server.config
+                if cfg.enabled and _is_chat_capable(cfg):
+                    return cfg
 
         raise ValueError(
-            f"No chat-capable server configured for model '{model}'. "
-            "Add a server with server_type 'openai', 'chat', or 'llm'."
+            f"No chat-capable server advertises model '{model}' "
+            f"(check parameters.models / default_model and ability_models)."
         )
 
     @staticmethod
