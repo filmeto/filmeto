@@ -82,6 +82,11 @@ class PluginConfigQMLModel(QObject):
             if value is not None:
                 self._config_values[key] = value
 
+        # Legacy YAML may store api_key only on ServerConfig (top-level), not inside parameters.
+        legacy_api_key = self._server_config.get("api_key")
+        if legacy_api_key and not self._config_values.get("api_key"):
+            self._config_values["api_key"] = legacy_api_key
+
     # ─────────────────────────────────────────────────────────────
     # Properties (exposed to QML)
     # ─────────────────────────────────────────────────────────────

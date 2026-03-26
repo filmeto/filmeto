@@ -32,11 +32,11 @@ Item {
     Rectangle {
         id: bg
         anchors.fill: parent
-        radius: 6
-        // Match settings button style: transparent normally, rgba(255,255,255,0.1) on hover
-        color: mouseArea.containsMouse ? Qt.rgba(1, 1, 1, 0.1) : "transparent"
-        // No border (match settings button)
-        border.width: 0
+        radius: 4
+        // Match settings button style
+        color: mouseArea.pressed ? "#2c2f31" : (mouseArea.containsMouse ? "#4c5052" : "#3c3f41")
+        border.width: 1
+        border.color: mouseArea.containsMouse ? "#666666" : "#555555"
     }
 
     RowLayout {
@@ -48,17 +48,17 @@ Item {
         Text {
             text: "\ue66e"
             font.family: root.iconFamily
-            font.pixelSize: 18
-            // Match settings button: #888888 normal, #E1E1E1 hover
-            color: mouseArea.containsMouse ? "#E1E1E1" : "#888888"
+            font.pixelSize: 14
+            // Match settings button: white color
+            color: "#ffffff"
             Layout.alignment: Qt.AlignVCenter
         }
 
         Text {
             text: "Server"
             font.pixelSize: 12
-            // Match settings button: #888888 normal, #E1E1E1 hover
-            color: mouseArea.containsMouse ? "#E1E1E1" : "#888888"
+            // Match settings button: white color
+            color: "#ffffff"
             Layout.alignment: Qt.AlignVCenter
         }
 

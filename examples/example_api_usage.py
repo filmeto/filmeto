@@ -183,7 +183,10 @@ async def example_list_capabilities():
     plugins = api.list_plugins()
     for plugin in plugins:
         print(f"  • {plugin['name']} v{plugin['version']}")
-        print(f"    Type: {plugin['tool_type']}")
+        primary = plugin.get("ability") or (
+            ", ".join(a["name"] for a in plugin.get("abilities", [])) or "—"
+        )
+        print(f"    Abilities: {primary}")
         print(f"    Engine: {plugin['engine']}")
         print(f"    Description: {plugin['description']}")
     

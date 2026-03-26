@@ -470,7 +470,8 @@ class ServerConfigView(BaseWidget):
                     'name': self.server_config.name,
                     'description': self.server_config.description,
                     'enabled': self.server_config.enabled,
-                    'config': self.server_config.parameters
+                    'config': self.server_config.parameters,
+                    'api_key': self.server_config.api_key,
                 }
 
             # Call the ServerManager method to get the custom widget
@@ -626,6 +627,8 @@ class ServerConfigView(BaseWidget):
             config.description = config_data.get('description', config.description)
             config.enabled = config_data.get('enabled', config.enabled)
             config.endpoint = config_data.get('server_url', config.endpoint)
+            if 'api_key' in config_data:
+                config.api_key = config_data.get('api_key')
             config.parameters = config_data
             config.updated_at = datetime.now()
         else:

@@ -410,25 +410,43 @@ class FilmetoService:
             List of plugin info dictionaries
         """
         plugins = self.plugin_manager.list_plugins()
-        return [
-            {
+        result = []
+        for p in plugins:
+            abilities = [
+                {
+                    "name": cap.name,
+                    "description": cap.description,
+                    "parameters": cap.parameters,
+                }
+                for cap in p.capabilities
+            ]
+            entry = {
                 "name": p.name,
                 "version": p.version,
                 "description": p.description,
                 "engine": p.engine,
                 "author": p.author,
-                "tools": [
-                    {
-                        "name": tool.name,
-                        "description": tool.description,
-                        "parameters": tool.parameters
-                    }
-                    for tool in p.tools
-                ]
+                "abilities": abilities,
+                "tools": abilities,
             }
-            for p in plugins
+            if len(abilities) == 1:
+                entry["ability"] = abilities[0]["name"]
+            result.append(entry)
+        return result
+
+    def get_plugins_by_tool(self, tool_name) -> list:
+        """
+        Return plugin info dicts that declare the given ability name (e.g. ``text2image``).
+
+        Accepts a string or an Enum-like value with ``.value``.
+        """
+        key = tool_name.value if hasattr(tool_name, "value") else str(tool_name)
+        return [
+            p
+            for p in self.list_plugins()
+            if any(a.get("name") == key for a in p.get("abilities", []))
         ]
-    
+
     def list_tools(self) -> list:
         """
         List all available tools across plugins.

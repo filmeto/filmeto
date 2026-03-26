@@ -126,6 +126,14 @@ class FilmetoApi:
         """
         return await self.service.get_task_status(task_id)
 
+    def list_plugins(self) -> List[Dict[str, Any]]:
+        """List discovered server plugins and their declared abilities."""
+        return self.service.list_plugins()
+
+    def get_plugins_by_tool(self, tool_name) -> List[Dict[str, Any]]:
+        """Plugins that expose a given ability name (e.g. ``text2image``)."""
+        return self.service.get_plugins_by_tool(tool_name)
+
     def list_capabilities(self, capability_type: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         List all capability instances, optionally filtered by type.
