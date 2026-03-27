@@ -159,16 +159,8 @@ class CustomDialogTitleBarViewModel(QObject):
             self.forward_clicked.emit()
 
 
-# Backward compatibility aliases
-MacWindowActions = MacWindowControlsViewModel
-DialogTitleDragBridge = DialogTitleDragViewModel
-CustomDialogTitleBarBridge = CustomDialogTitleBarViewModel
-
 __all__ = [
     "MacWindowControlsViewModel",
     "DialogTitleDragViewModel",
     "CustomDialogTitleBarViewModel",
-    "MacWindowActions",
-    "DialogTitleDragBridge",
-    "CustomDialogTitleBarBridge",
 ]

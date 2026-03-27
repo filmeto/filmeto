@@ -115,6 +115,84 @@ The docs directory should contain:
 
 Following these guidelines ensures a maintainable, scalable, and well-documented codebase.
 
+## QML Naming Conventions
+
+When working with QML and Python integration, follow these naming conventions strictly:
+
+### File Naming
+
+| Type | File Naming | Class Name | Example |
+|------|-------------|------------|---------|
+| **QML Component** | `<Feature><Type>.qml` | N/A | `ServerStatusButton.qml`, `SettingsPanel.qml` |
+| **Python Container** | `<feature>_<type>.py` | `<Feature><Type>` | `server_status_button.py` → `ServerStatusButton` |
+| **ViewModel** | `<feature>_view_model.py` | `<Feature>ViewModel` | `server_status_view_model.py` → `ServerStatusViewModel` |
+| **QAbstractModel** | `<feature>_model.py` | `<Feature>Model` | `agent_chat_list_model.py` → `AgentChatListModel` |
+
+### Component Type Suffixes
+
+| Suffix | Usage | Example |
+|--------|-------|---------|
+| `Widget` | Reusable UI components | `PlanWidget.qml`, `plan_widget.py` |
+| `Panel` | Sidebar/panel components | `ActorPanel.qml`, `actor_panel.py` |
+| `Dialog` | Dialog components | `ActorEditDialog.qml`, `actor_edit_dialog.py` |
+| `Button` | Button controls | `ServerStatusButton.qml`, `server_status_button.py` |
+| `Bar` | Toolbar/input bar | `ChatInputBar.qml`, `chat_input_bar.py` |
+| `View` | View/list view | `ServerListView.qml`, `server_list_view.py` |
+| `Field` | Form fields | `StringField.qml`, `string_field.py` |
+| `Card` | Card components | `ActorCard.qml`, `actor_card.py` |
+| `Delegate` | List item delegates | `TaskItemDelegate.qml`, `task_item_delegate.py` |
+
+### Directory Structure
+
+```
+app/ui/<feature>/
+├── __init__.py
+├── <feature>_<type>.py           # Python container class
+├── <feature>_view_model.py       # ViewModel class (for QML binding)
+└── <feature>_dialog.py           # Dialog class (optional)
+
+app/ui/qml/<feature>/
+├── <Feature><Type>.qml           # Main QML component
+├── components/                    # Sub-components
+│   └── <SubComponent>.qml
+└── widgets/                       # Internal widgets
+    └── <Widget>.qml
+```
+
+### One-to-One Mapping
+
+```
+QML:    <Feature><Type>.qml
+          ↓
+Python: <feature>_<type>.py (container class, loads QML)
+          ↓
+ViewModel: <feature>_view_model.py (data binding)
+```
+
+### Naming Rules
+
+1. **QML files**: PascalCase with descriptive suffix (e.g., `ServerStatusButton.qml`)
+2. **Python files**: snake_case matching QML name (e.g., `server_status_button.py`)
+3. **Python classes**: PascalCase matching QML name (e.g., `ServerStatusButton`)
+4. **ViewModel files**: Always use `_view_model.py` suffix
+5. **ViewModel classes**: Always use `ViewModel` suffix (not `QMLModel`, `QmlState`, `Bridge`)
+6. **QAbstractModel files**: Use `_model.py` suffix (different from ViewModel)
+7. **No backward compatibility aliases**: Do not create aliases like `OldName = NewName`
+
+### Examples
+
+```python
+# ✅ Correct ViewModel naming
+# File: server_status_view_model.py
+class ServerStatusViewModel(QObject):
+    pass
+
+# ❌ Wrong - avoid these patterns
+class ServerStatusQMLModel(QObject):    # Don't use QMLModel suffix
+class ServerStatusQmlState(QObject):    # Don't use QmlState suffix
+class ServerStatusBridge(QObject):      # Don't use Bridge suffix
+```
+
 ## QML Bridge Principles
 
 When implementing QML-to-Python integration, follow these rules:

@@ -42,7 +42,4 @@ class ServerStatusViewModel(QObject):
         return self._inactive
 
 
-# Backward compatibility alias
-ServerStatusQmlState = ServerStatusViewModel
-
-__all__ = ["ServerStatusViewModel", "ServerStatusQmlState"]
+__all__ = ["ServerStatusViewModel"]

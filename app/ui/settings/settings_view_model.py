@@ -1,7 +1,7 @@
 """
-Settings QML Model
+Settings View Model
 
-Provides a QML data model for application settings.
+Provides a ViewModel for application settings.
 Exposes settings groups, fields, and operations to QML.
 """
 
@@ -13,9 +13,9 @@ from PySide6.QtCore import QObject, Signal, Slot, Property
 logger = logging.getLogger(__name__)
 
 
-class SettingsQMLModel(QObject):
+class SettingsViewModel(QObject):
     """
-    QML data model for application settings.
+    ViewModel for application settings.
 
     Provides settings data binding between Python and QML.
     This model exposes:

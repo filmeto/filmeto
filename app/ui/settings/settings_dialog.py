@@ -8,7 +8,7 @@ from PySide6.QtQuickWidgets import QQuickWidget
 
 from app.data.workspace import Workspace
 from app.ui.dialog.custom_dialog import CustomDialog
-from app.ui.settings.settings_qml_model import SettingsQMLModel
+from app.ui.settings.settings_view_model import SettingsViewModel
 from utils.i18n_utils import tr
 
 
@@ -35,12 +35,12 @@ class SettingsDialog(CustomDialog):
         if hasattr(workspace, 'bot') and hasattr(workspace.bot, 'plugins'):
             service_registry = workspace.bot.plugins.get_service_registry()
 
-        # Create QML model
-        self._qml_model = SettingsQMLModel(
+        # Create ViewModel
+        self._view_model = SettingsViewModel(
             settings=settings,
             service_registry=service_registry
         )
-        self._qml_model.settings_changed.connect(self.settings_changed.emit)
+        self._view_model.settings_changed.connect(self.settings_changed.emit)
 
         # Get QML file path
         qml_file = Path(__file__).resolve().parents[1] / "ui" / "qml" / "settings" / "SettingsWidget.qml"
@@ -62,7 +62,7 @@ class SettingsDialog(CustomDialog):
 
             # Set context properties
             ctx = self._qml_widget.rootContext()
-            ctx.setContextProperty("settingsModel", self._qml_model)
+            ctx.setContextProperty("settingsModel", self._view_model)
 
             # Load QML file
             self._qml_widget.setSource(QUrl.fromLocalFile(str(qml_file)))
@@ -90,6 +90,6 @@ class SettingsDialog(CustomDialog):
 
     def save(self) -> bool:
         """Save settings."""
-        if hasattr(self, '_qml_model'):
-            return self._qml_model.save()
+        if hasattr(self, '_view_model'):
+            return self._view_model.save()
         return False
