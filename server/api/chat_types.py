@@ -41,7 +41,7 @@ class ToolDefinition(BaseModel):
 
 class ChatCompletionRequest(BaseModel):
     """OpenAI-compatible chat completion request."""
-    model: str
+    model: Optional[str] = None  # Now optional for AUTO selection mode
     messages: List[ChatMessage]
     temperature: Optional[float] = None
     top_p: Optional[float] = None
@@ -59,6 +59,37 @@ class ChatCompletionRequest(BaseModel):
         None,
         description="Filmeto extension: explicit target server name for routing"
     )
+
+    selection: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Filmeto extension: selection configuration for auto server/model selection"
+    )
+
+    def to_selection_config(self) -> 'SelectionConfig':
+        """
+        Convert request to SelectionConfig.
+
+        Backward compatibility:
+        - server + model -> EXACT mode
+        - server only -> SERVER_ONLY mode
+        - model only -> AUTO mode (search by model)
+        - neither -> AUTO mode
+        """
+        from server.api.types import SelectionConfig, SelectionMode
+
+        if self.selection:
+            return SelectionConfig.from_dict(self.selection)
+
+        # Backward compatibility: infer mode from server/model
+        if self.server and self.model:
+            return SelectionConfig.exact(self.server, self.model)
+        elif self.server:
+            return SelectionConfig.server_only(self.server, self.model)
+        elif self.model:
+            # Model specified but no server - use AUTO with model preference
+            return SelectionConfig(mode=SelectionMode.AUTO, model=self.model)
+        else:
+            return SelectionConfig.auto()
 
 
 # ---------------------------------------------------------------------------

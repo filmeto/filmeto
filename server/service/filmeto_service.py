@@ -17,7 +17,8 @@ import structlog
 
 from server.api.types import (
     FilmetoTask, TaskProgress, TaskResult, ProgressType,
-    ValidationError, ServerNotFoundError, ServerExecutionError, TimeoutError as TaskTimeoutError
+    ValidationError, ServerNotFoundError, ServerExecutionError,
+    TimeoutError as TaskTimeoutError, Capability
 )
 from server.api.resource_processor import ResourceProcessor
 from server.plugins.plugin_manager import PluginManager
@@ -103,12 +104,12 @@ class FilmetoService:
     """
     Service layer managing plugin lifecycle and task execution.
     """
-    
+
     def __init__(self, plugins_dir: str = None, cache_dir: str = None,
                  workspace_path: str = None, max_concurrent_tasks: int = 5):
         """
         Initialize Filmeto service.
-        
+
         Args:
             plugins_dir: Directory containing plugins
             cache_dir: Directory for resource caching
@@ -121,9 +122,9 @@ class FilmetoService:
         else:
             project_root = Path(__file__).parent.parent.parent
             self.workspace_path = project_root / "workspace"
-        
+
         self.workspace_path.mkdir(parents=True, exist_ok=True)
-        
+
         # Initialize components
         from server.server import ServerManager
         self.plugin_manager = PluginManager(plugins_dir)
@@ -133,24 +134,35 @@ class FilmetoService:
         self._task_store = TaskStatusStore()
         self._task_queue = TaskQueue(max_concurrent=max_concurrent_tasks)
         self._background_tasks: Dict[str, asyncio.Task] = {}
-        
+
+        # Lazy initialization for selection service to avoid circular import
+        self._selection_service = None
+
         # Discover plugins on initialization
         self.plugin_manager.discover_plugins()
-    
+
+    @property
+    def selection_service(self):
+        """Get selection service (lazy initialization)."""
+        if self._selection_service is None:
+            from server.service.ability_selection_service import AbilitySelectionService
+            self._selection_service = AbilitySelectionService(self.server_manager)
+        return self._selection_service
+
     async def execute_task_stream(
-        self, 
+        self,
         task: FilmetoTask
     ) -> AsyncIterator[Union[TaskProgress, TaskResult]]:
         """
         Execute task through appropriate server with streaming.
-        
+
         Args:
             task: Task to execute
-            
+
         Yields:
             TaskProgress: Progress updates during execution
             TaskResult: Final result (last item)
-            
+
         Raises:
             ValidationError: If task validation fails
             ServerNotFoundError: If server not found
@@ -158,19 +170,24 @@ class FilmetoService:
             TaskTimeoutError: If task exceeds timeout
         """
         start_time = datetime.now()
+
+        # Resolve selection if server_name not provided
+        if not task.server_name:
+            self._resolve_task_selection(task)
+
         log = logger.bind(task_id=task.task_id, capability=task.capability.value,
                           server=task.server_name)
         metrics = TaskMetrics(task_id=task.task_id,
                               capability=task.capability.value,
                               server=task.server_name)
-        
+
         # Validate task
         is_valid, error_msg = task.validate()
         if not is_valid:
             self._task_store.set(task.task_id, "error", error_message=error_msg)
             log.warning("task_validation_failed", error=error_msg)
             raise ValidationError(error_msg, {"task_id": task.task_id})
-        
+
         log.info("task_accepted")
 
         # Wait for a concurrency slot
@@ -334,7 +351,7 @@ class FilmetoService:
     async def _send_heartbeats(self, task_id: str, plugin):
         """
         Send periodic heartbeats while task is executing.
-        
+
         Args:
             task_id: Task identifier
             plugin: Plugin process
@@ -346,7 +363,43 @@ class FilmetoService:
                 # This is just to keep the connection alive on the service side
         except asyncio.CancelledError:
             pass
-    
+
+    def _resolve_task_selection(self, task: FilmetoTask) -> None:
+        """
+        Resolve selection for task if server_name is not provided.
+
+        Uses the unified AbilitySelectionService to find the best
+        server:model combination based on task.selection config.
+
+        Args:
+            task: Task to resolve selection for
+
+        Raises:
+            ValidationError: If no suitable server/model found
+        """
+        from server.service.ability_selection_service import SelectionError
+
+        try:
+            config = task.get_selection_config()
+            result = self.selection_service.select(task.capability, config)
+
+            # Update task with resolved selection
+            task.resolve_selection(result)
+
+            logger.info(
+                "task_selection_resolved task_id=%s server=%s model=%s mode=%s",
+                task.task_id,
+                result.server_name,
+                result.model_name,
+                result.mode_used.value,
+            )
+
+        except SelectionError as e:
+            raise ValidationError(
+                f"Failed to resolve selection for capability '{task.capability.value}': {e}",
+                {"task_id": task.task_id, "capability": task.capability.value}
+            )
+
     async def enqueue_task(self, task: FilmetoTask, priority: int = 0) -> str:
         """
         Enqueue a task for background execution (non-streaming).

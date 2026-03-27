@@ -129,48 +129,98 @@ class FilmetoTask:
     Attributes:
         task_id: Unique task identifier
         capability: AI capability to execute
-        server_name: Server instance name to use
+        server_name: Server instance name to use (optional if selection provided)
+        model_name: Model name to use (optional)
         parameters: Capability-specific parameters
         resources: Input resources (images, videos, etc.)
         created_at: Task creation timestamp
         timeout: Timeout in seconds
         metadata: Additional metadata
+        selection: Selection configuration for auto server/model selection
     """
     capability: Capability
-    server_name: str
     parameters: Dict[str, Any]
+    server_name: Optional[str] = None
+    model_name: Optional[str] = None
     task_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     resources: List[ResourceInput] = field(default_factory=list)
     created_at: datetime = field(default_factory=datetime.now)
     timeout: int = 300
     metadata: Dict[str, Any] = field(default_factory=dict)
+    selection: Optional[SelectionConfig] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
-        return {
+        result = {
             "task_id": self.task_id,
             "capability": self.capability.value,
-            "server_name": self.server_name,
             "parameters": self.parameters,
             "resources": [r.to_dict() for r in self.resources],
             "created_at": self.created_at.isoformat(),
             "timeout": self.timeout,
             "metadata": self.metadata
         }
+        if self.server_name:
+            result["server_name"] = self.server_name
+        if self.model_name:
+            result["model_name"] = self.model_name
+        if self.selection:
+            result["selection"] = {
+                "mode": self.selection.mode.value,
+                "server": self.selection.server,
+                "model": self.selection.model,
+                "tags": self.selection.tags,
+                "min_priority": self.selection.min_priority,
+            }
+        return result
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'FilmetoTask':
         """Create from dictionary"""
+        selection = None
+        if data.get("selection"):
+            selection = SelectionConfig.from_dict(data["selection"])
+
         return cls(
             task_id=data.get("task_id", str(uuid.uuid4())),
             capability=Capability(data["capability"]),
-            server_name=data["server_name"],
+            server_name=data.get("server_name"),
+            model_name=data.get("model_name"),
             parameters=data["parameters"],
             resources=[ResourceInput.from_dict(r) for r in data.get("resources", [])],
             created_at=datetime.fromisoformat(data["created_at"]) if "created_at" in data else datetime.now(),
             timeout=data.get("timeout", 300),
-            metadata=data.get("metadata", {})
+            metadata=data.get("metadata", {}),
+            selection=selection,
         )
+
+    def get_selection_config(self) -> SelectionConfig:
+        """
+        Get selection configuration.
+
+        If selection is explicitly set, return it.
+        Otherwise, infer from server_name and model_name for backward compatibility.
+        """
+        if self.selection:
+            return self.selection
+
+        # Backward compatibility: infer mode from server_name/model_name
+        if self.server_name and self.model_name:
+            return SelectionConfig.exact(self.server_name, self.model_name)
+        elif self.server_name:
+            return SelectionConfig.server_only(self.server_name)
+        else:
+            return SelectionConfig.auto()
+
+    def resolve_selection(self, result: 'SelectionResult') -> None:
+        """
+        Resolve selection by updating server_name and model_name from result.
+
+        Args:
+            result: Selection result from AbilitySelectionService
+        """
+        self.server_name = result.server_name
+        self.model_name = result.model_name
 
     def validate(self) -> tuple[bool, Optional[str]]:
         """
@@ -179,8 +229,10 @@ class FilmetoTask:
         Returns:
             Tuple of (is_valid, error_message)
         """
-        if not self.server_name:
-            return False, "Server name is required"
+        # server_name is now optional - can be resolved via selection
+        # Only validate if explicitly set to empty string
+        if self.server_name is not None and self.server_name == "":
+            return False, "Server name cannot be empty string"
 
         if not self.parameters:
             return False, "Parameters are required"
@@ -454,6 +506,129 @@ class TimeoutError(TaskError):
             "TIMEOUT_ERROR",
             f"Task '{task_id}' exceeded timeout of {timeout} seconds",
             {"task_id": task_id, "timeout": timeout}
+        )
+
+
+# --- Selection Types --------------------------------------------------------
+
+class SelectionMode(str, Enum):
+    """Service/model selection mode."""
+    AUTO = "auto"                  # Auto select both server and model
+    SERVER_ONLY = "server_only"   # Specify server, auto select model
+    EXACT = "exact"               # Exact server:model specification
+
+
+@dataclass
+class SelectionConfig:
+    """
+    Unified selection configuration.
+
+    Attributes:
+        mode: Selection mode (AUTO, SERVER_ONLY, EXACT)
+        server: Server name (required for SERVER_ONLY and EXACT modes)
+        model: Model name (required for EXACT mode, optional for AUTO/SERVER_ONLY)
+        tags: Tag filters for model selection
+        min_priority: Minimum priority threshold
+    """
+    mode: SelectionMode = SelectionMode.AUTO
+    server: Optional[str] = None
+    model: Optional[str] = None
+    tags: Optional[List[str]] = None
+    min_priority: Optional[int] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary."""
+        result = {"mode": self.mode.value}
+        if self.server is not None:
+            result["server"] = self.server
+        if self.model is not None:
+            result["model"] = self.model
+        if self.tags is not None:
+            result["tags"] = self.tags
+        if self.min_priority is not None:
+            result["min_priority"] = self.min_priority
+        return result
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'SelectionConfig':
+        """Create from dictionary."""
+        mode_str = data.get("mode", "auto")
+        return cls(
+            mode=SelectionMode(mode_str),
+            server=data.get("server"),
+            model=data.get("model"),
+            tags=data.get("tags"),
+            min_priority=data.get("min_priority"),
+        )
+
+    @classmethod
+    def auto(cls, tags: Optional[List[str]] = None, min_priority: Optional[int] = None) -> 'SelectionConfig':
+        """Create AUTO mode config."""
+        return cls(mode=SelectionMode.AUTO, tags=tags, min_priority=min_priority)
+
+    @classmethod
+    def server_only(cls, server: str, model: Optional[str] = None,
+                    tags: Optional[List[str]] = None) -> 'SelectionConfig':
+        """Create SERVER_ONLY mode config."""
+        return cls(mode=SelectionMode.SERVER_ONLY, server=server, model=model, tags=tags)
+
+    @classmethod
+    def exact(cls, server: str, model: str) -> 'SelectionConfig':
+        """Create EXACT mode config."""
+        return cls(mode=SelectionMode.EXACT, server=server, model=model)
+
+
+@dataclass
+class SelectionResult:
+    """
+    Selection result.
+
+    Attributes:
+        server_name: Selected server name
+        model_name: Selected model name
+        capability_type: Capability type
+        key: Combined key in "server:model" format
+        mode_used: Selection mode that was used
+        instance: The selected CapabilityInstance
+        candidates_count: Number of candidates considered
+        selection_reason: Human-readable reason for selection
+    """
+    server_name: str
+    model_name: str
+    capability_type: 'Capability'
+    key: str
+    mode_used: SelectionMode
+    instance: 'CapabilityInstance'
+    candidates_count: int = 0
+    selection_reason: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "server_name": self.server_name,
+            "model_name": self.model_name,
+            "capability_type": self.capability_type.value,
+            "key": self.key,
+            "mode_used": self.mode_used.value,
+            "candidates_count": self.candidates_count,
+            "selection_reason": self.selection_reason,
+            "instance": self.instance.to_dict() if self.instance else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'SelectionResult':
+        """Create from dictionary."""
+        instance_data = data.get("instance")
+        instance = CapabilityInstance.from_dict(instance_data) if instance_data else None
+        return cls(
+            server_name=data["server_name"],
+            model_name=data["model_name"],
+            capability_type=Capability(data["capability_type"]),
+            key=data["key"],
+            mode_used=SelectionMode(data["mode_used"]),
+            instance=instance,
+            candidates_count=data.get("candidates_count", 0),
+            selection_reason=data.get("selection_reason", ""),
         )
 
 

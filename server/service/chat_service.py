@@ -29,11 +29,12 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from typing import TYPE_CHECKING, AsyncIterator, List
+from typing import TYPE_CHECKING, AsyncIterator, List, Optional
 
 import litellm
 
 from server.plugins.ability_model_config import is_model_enabled_for_ability
+from server.service.ability_selection_service import AbilitySelectionService, SelectionError
 
 from server.api.chat_types import (
     ChatCompletionChunk,
@@ -46,6 +47,7 @@ from server.api.chat_types import (
     ModelInfo,
     UsageInfo,
 )
+from server.api.types import Capability, SelectionConfig, SelectionMode
 
 if TYPE_CHECKING:
     from server.server import ServerConfig, ServerManager
@@ -88,6 +90,16 @@ class ChatService:
 
     def __init__(self, server_manager: ServerManager):
         self._server_manager = server_manager
+        # Lazy import to avoid circular dependency
+        self._selection_service = None
+
+    @property
+    def selection_service(self):
+        """Get selection service (lazy initialization)."""
+        if self._selection_service is None:
+            from server.service.ability_selection_service import AbilitySelectionService
+            self._selection_service = AbilitySelectionService(self._server_manager)
+        return self._selection_service
 
     # ------------------------------------------------------------------
     # Public API
@@ -97,29 +109,29 @@ class ChatService:
         self, request: ChatCompletionRequest
     ) -> ChatCompletionResponse:
         """Execute a non-streaming chat completion."""
-        server_cfg = self._resolve_server(request)
+        server_cfg, model_name = self._resolve_server_and_model(request)
         messages = [m.model_dump(exclude_none=True) for m in request.messages]
-        params = self._build_litellm_params(server_cfg, request, stream=False)
+        params = self._build_litellm_params(server_cfg, request, model_name, stream=False)
 
         logger.info(
             "chat_completion model=%s server=%s",
-            request.model, server_cfg.name,
+            model_name, server_cfg.name,
         )
 
         response = await litellm.acompletion(messages=messages, **params)
-        return self._to_response(response, request.model)
+        return self._to_response(response, model_name)
 
     async def chat_completion_stream(
         self, request: ChatCompletionRequest
     ) -> AsyncIterator[ChatCompletionChunk]:
         """Execute a streaming chat completion, yielding SSE-ready chunks."""
-        server_cfg = self._resolve_server(request)
+        server_cfg, model_name = self._resolve_server_and_model(request)
         messages = [m.model_dump(exclude_none=True) for m in request.messages]
-        params = self._build_litellm_params(server_cfg, request, stream=True)
+        params = self._build_litellm_params(server_cfg, request, model_name, stream=True)
 
         logger.info(
             "chat_completion_stream model=%s server=%s",
-            request.model, server_cfg.name,
+            model_name, server_cfg.name,
         )
 
         response = await litellm.acompletion(messages=messages, **params)
@@ -149,7 +161,7 @@ class ChatService:
             yield ChatCompletionChunk(
                 id=completion_id,
                 created=created,
-                model=request.model,
+                model=model_name,
                 choices=[
                     ChatCompletionChunkChoice(
                         index=0,
@@ -182,54 +194,63 @@ class ChatService:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _resolve_server(self, request: ChatCompletionRequest) -> ServerConfig:
-        """Find the ServerConfig that should handle *request*.
-
-        Resolution order:
-        1. Explicit ``request.server`` field
-        2. Server whose ``models`` or ``default_model`` list contains the model
-        3. First chat-capable server (fallback)
+    def _resolve_server_and_model(
+        self, request: ChatCompletionRequest
+    ) -> tuple[ServerConfig, str]:
         """
-        if request.server:
-            srv = self._server_manager.get_server(request.server)
-            if srv and srv.is_enabled:
-                return srv.config
-            raise ValueError(f"Server '{request.server}' not found or disabled")
+        Resolve server and model using AbilitySelectionService.
 
-        model = request.model
+        Uses the unified selection system to find the best server:model
+        combination based on request.selection or backward-compatible mode.
 
-        any_server_advertises_models = False
-        for server in self._server_manager.list_servers():
-            cfg = server.config
-            if not cfg.enabled or not _is_chat_capable(cfg):
-                continue
-            advertised = _advertised_chat_model_ids(cfg)
-            if advertised:
-                any_server_advertises_models = True
-            if model in advertised:
-                return cfg
+        Returns:
+            Tuple of (ServerConfig, model_name)
 
-        if not any_server_advertises_models:
-            for server in self._server_manager.list_servers():
-                cfg = server.config
-                if cfg.enabled and _is_chat_capable(cfg):
-                    return cfg
+        Raises:
+            ValueError: If no suitable server/model found
+        """
+        from server.service.ability_selection_service import SelectionError
 
-        raise ValueError(
-            f"No chat-capable server advertises model '{model}' "
-            f"(check parameters.models / default_model and ability_models)."
-        )
+        config = request.to_selection_config()
+
+        try:
+            result = self.selection_service.select(Capability.CHAT_COMPLETION, config)
+
+            server = self._server_manager.get_server(result.server_name)
+            if not server or not server.is_enabled:
+                raise ValueError(
+                    f"Server '{result.server_name}' not found or disabled"
+                )
+
+            logger.info(
+                "Resolved selection: server=%s model=%s mode=%s reason=%s",
+                result.server_name,
+                result.model_name,
+                result.mode_used.value,
+                result.selection_reason,
+            )
+
+            return server.config, result.model_name
+
+        except SelectionError as e:
+            raise ValueError(str(e)) from e
+
+    def _resolve_server(self, request: ChatCompletionRequest) -> ServerConfig:
+        """Legacy method for backward compatibility."""
+        server_cfg, _ = self._resolve_server_and_model(request)
+        return server_cfg
 
     @staticmethod
     def _build_litellm_params(
         server_cfg: ServerConfig,
         request: ChatCompletionRequest,
+        model_name: str,
         *,
         stream: bool = False,
     ) -> dict:
         """Translate ServerConfig + request into litellm.acompletion kwargs."""
         sp = server_cfg.parameters
-        params: dict = {"model": request.model, "stream": stream}
+        params: dict = {"model": model_name, "stream": stream}
 
         # API key: prefer plugin-specific key (e.g. dashscope_api_key),
         # fall back to server-level api_key.
@@ -246,9 +267,8 @@ class ChatService:
 
         provider = sp.get("provider")
         if provider and provider != "openai":
-            model = request.model
-            if not model.startswith(f"{provider}/"):
-                params["model"] = f"{provider}/{model}"
+            if not model_name.startswith(f"{provider}/"):
+                params["model"] = f"{provider}/{model_name}"
 
         if request.temperature is not None:
             params["temperature"] = request.temperature
