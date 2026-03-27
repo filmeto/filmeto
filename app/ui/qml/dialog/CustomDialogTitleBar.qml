@@ -8,25 +8,27 @@ Item {
     id: root
     height: 36
 
-    // 使用两个矩形拼接：顶部带圆角 + 底部平直
-    // 顶部矩形只显示顶部圆角，通过负y值和足够高度来实现
-    Rectangle {
-        x: 0
-        y: -10
-        width: parent.width
-        height: 20 + 10  // radius + extra
-        color: "#3d3f4e"
-        radius: 10
-    }
+    // Theme colors - match CustomDialog.qml theme
+    readonly property color titleBarBackground: "#3d3f4e"
+    readonly property color navButtonHover: "#4c4f52"
+    readonly property color navButtonEnabled: "#888888"
+    readonly property color navButtonDisabled: "#444444"
+    readonly property color titleTextColor: "#E1E1E1"
 
-    // 底部填充矩形，与content container背景色一致
+    // Background with top rounded corners using clip approach
     Rectangle {
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        anchors.top: parent.top
-        anchors.topMargin: 15  // 稍微超过圆角起始位置确保无缝
-        color: "#3d3f4e"
+        anchors.fill: parent
+        color: root.titleBarBackground
+        // Top rounded corners only
+        radius: 10
+        // Clip bottom corners to be square
+        Rectangle {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            height: parent.radius
+            color: parent.color
+        }
     }
 
     RowLayout {
@@ -61,12 +63,12 @@ Item {
                 enabled: chromeTitleModel && chromeTitleModel.backEnabled
                 flat: true
                 background: Rectangle {
-                    color: parent.hovered ? "#4c4f52" : "transparent"
+                    color: parent.hovered ? root.navButtonHover : "transparent"
                     radius: 4
                 }
                 contentItem: Label {
                     text: parent.text
-                    color: parent.enabled ? "#888888" : "#444444"
+                    color: parent.enabled ? root.navButtonEnabled : root.navButtonDisabled
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                     font.pixelSize: 14
@@ -81,12 +83,12 @@ Item {
                 enabled: chromeTitleModel && chromeTitleModel.forwardEnabled
                 flat: true
                 background: Rectangle {
-                    color: parent.hovered ? "#4c4f52" : "transparent"
+                    color: parent.hovered ? root.navButtonHover : "transparent"
                     radius: 4
                 }
                 contentItem: Label {
                     text: parent.text
-                    color: parent.enabled ? "#888888" : "#444444"
+                    color: parent.enabled ? root.navButtonEnabled : root.navButtonDisabled
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                     font.pixelSize: 14
@@ -107,7 +109,7 @@ Item {
                 anchors.left: parent.left
                 anchors.leftMargin: 4
                 text: chromeTitleModel ? chromeTitleModel.title : ""
-                color: "#E1E1E1"
+                color: root.titleTextColor
                 font.pixelSize: 14
                 font.bold: true
                 elide: Text.ElideRight

@@ -15,6 +15,9 @@ from app.ui.dialog.dialog_view_model import MacWindowControlsViewModel
 
 logger = logging.getLogger(__name__)
 
+# Default width when QML implicitWidth is not available
+DEFAULT_MAC_BUTTONS_WIDTH = 68
+
 
 class MacTitleBar(QWidget):
     """macOS-style window controls for dialogs or main windows (QML)."""
@@ -31,7 +34,21 @@ class MacTitleBar(QWidget):
         self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
         self._actions = MacWindowControlsViewModel(window, self)
+        self._quick = None
 
+        self._setup_layout()
+        self._load_qml_controls()
+
+        window.installEventFilter(self)
+
+    def _setup_layout(self) -> None:
+        """Initialize the layout."""
+        self._layout = QHBoxLayout(self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setSpacing(0)
+
+    def _load_qml_controls(self) -> None:
+        """Load QML-based Mac window controls."""
         self._quick = QQuickWidget(self)
         self._quick.setResizeMode(QQuickWidget.SizeRootObjectToView)
         self._quick.setClearColor(Qt.transparent)
@@ -41,6 +58,7 @@ class MacTitleBar(QWidget):
         qml_dir = Path(__file__).resolve().parent.parent / "qml" / "dialog"
         self._quick.engine().addImportPath(str(qml_dir.parent))
 
+        # Set context property for QML binding
         rc = self._quick.rootContext()
         rc.setContextProperty("macActions", self._actions)
 
@@ -50,21 +68,19 @@ class MacTitleBar(QWidget):
         if self._quick.status() == QQuickWidget.Error:
             for err in self._quick.errors():
                 logger.error("MacWindowControls QML: %s", err.toString())
+            return
 
         ro = self._quick.rootObject()
         if ro is not None:
-            ro.setProperty("macActions", self._actions)
             ro.setProperty("dialogMode", self.is_dialog)
             self._sync_quick_width()
 
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        layout.addWidget(self._quick)
-
-        window.installEventFilter(self)
+        self._layout.addWidget(self._quick)
 
     def _sync_quick_width(self) -> None:
+        """Synchronize widget width with QML implicit width."""
+        if self._quick is None:
+            return
         ro = self._quick.rootObject()
         if ro is None:
             return
@@ -72,22 +88,40 @@ class MacTitleBar(QWidget):
         if w and float(w) > 0:
             self._quick.setFixedWidth(int(w))
         else:
-            self._quick.setFixedWidth(68)
+            self._quick.setFixedWidth(DEFAULT_MAC_BUTTONS_WIDTH)
 
     def set_for_dialog(self) -> None:
+        """Configure the title bar for dialog mode (no maximize functionality)."""
         self.is_dialog = True
         self._actions.set_dialog_mode(True)
+        if self._quick is None:
+            return
         ro = self._quick.rootObject()
         if ro is not None:
             ro.setProperty("dialogMode", True)
 
     def show_navigation_buttons(self, show: bool = True) -> None:
-        """Kept for API compatibility; nav lives in CustomDialogTitleBar when used."""
+        """
+        Show or hide navigation buttons.
+
+        NOTE: This method is kept for API backward compatibility only.
+        Navigation buttons are handled by CustomDialogTitleBar when used.
+        This implementation does nothing as MacTitleBar only handles
+        window control buttons (close/minimize/maximize).
+        """
+        # Intentionally empty - navigation handled by CustomDialogTitleBar
 
     def set_navigation_enabled(self, back_enabled: bool, forward_enabled: bool) -> None:
-        """Kept for API compatibility."""
+        """
+        Enable or disable navigation buttons.
+
+        NOTE: This method is kept for API backward compatibility only.
+        Navigation state is managed by CustomDialogTitleBar's ViewModel.
+        """
+        # Intentionally empty - navigation handled by CustomDialogTitleBar
 
     def eventFilter(self, obj: QWidget, event: QEvent) -> bool:
+        """Handle window state changes to update maximize button state."""
         if obj is self.window and event.type() == QEvent.WindowStateChange:
             self._actions.refresh_maximized_state()
         return super().eventFilter(obj, event)
