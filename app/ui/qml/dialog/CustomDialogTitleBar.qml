@@ -42,7 +42,7 @@ Item {
                 if (item) {
                     item.macActions = chromeMacActions
                     item.dialogMode = true
-                    item.backgroundColor = "transparent"
+                    // backgroundColor会在MacWindowControls中根据dialogMode自动处理
                 }
             }
         }

@@ -6,14 +6,14 @@ Item {
     height: 36
     implicitWidth: row.width + 16
 
-    property bool dialogMode: true
+    property bool dialogMode: false
     property var macActions: null
-    property color backgroundColor: "transparent"  // dialog模式下默认透明
+    property color backgroundColor: "#3d3f4e"  // 非dialog模式下的背景色
 
     Rectangle {
         anchors.fill: parent
         color: root.backgroundColor
-        visible: !root.dialogMode  // dialog模式下隐藏背景
+        visible: !root.dialogMode  // dialog模式下隐藏背景（由父级提供）
     }
 
     MouseArea {
