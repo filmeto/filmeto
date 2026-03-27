@@ -25,7 +25,9 @@ class MacWindowControlsViewModel(QObject):
     def windowMaximized(self) -> bool:
         try:
             return bool(self._window.isMaximized())
-        except Exception:
+        except (AttributeError, RuntimeError) as e:
+            # AttributeError: window对象可能没有isMaximized方法
+            # RuntimeError: widget可能已被销毁
             return False
 
     @Slot()
@@ -44,7 +46,9 @@ class MacWindowControlsViewModel(QObject):
     def green_window(self) -> None:
         w = self._window
         if self._dialog_mode:
-            w.showMinimized()
+            # Dialog模式: 绿色按钮不执行操作(对话框通常不支持最大化)
+            # 可选行为: 1) 无操作 2) emit信号让调用方决定
+            return
         else:
             if w.isMaximized():
                 w.showNormal()

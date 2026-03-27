@@ -129,3 +129,48 @@ When implementing QML-to-Python integration, follow these rules:
 12. Principle 13: Follow naming/modularization conventions; prefer names like `XXXViewModel`.
 13. Principle 14: Minimize global singleton bridge objects; use singleton only with clear justification.
 14. Principle 15: Cross-page behaviors (navigation, dialogs, notifications) must be abstracted centrally, not scattered in QML.
+15. Principle 16: **Transparent Background Consistency** - When a parent widget has `WA_TranslucentBackground` and embeds a `QQuickWidget` with transparent clear color, the QML component MUST provide its own opaque background. Never conditionally hide QML backgrounds based on mode flags (e.g., `dialogMode`), as this causes visual transparency to pierce through to the desktop instead of showing the intended parent background.
+
+## QML Widget Transparency Rules
+
+When working with `QQuickWidget` embedded in transparent windows:
+
+### The Problem
+```
+Window (WA_TranslucentBackground)
+└── QQuickWidget (setClearColor(transparent))
+    └── QML Component
+        └── Rectangle { visible: !dialogMode }  ❌ WRONG
+```
+This creates a "transparency pierce" - the area becomes transparent to the desktop.
+
+### The Solution
+```
+Window (WA_TranslucentBackground)
+└── QQuickWidget (setClearColor(transparent))
+    └── QML Component
+        └── Rectangle { color: backgroundColor }  ✓ CORRECT
+```
+Always provide an opaque background that matches the parent container's intended color.
+
+### Files Affected
+- `MacWindowControls.qml` - Always show background
+- `CustomDialogTitleBar.qml` - Always show background
+- Any QML component embedded via `QQuickWidget` in a frameless window
+
+### Code Pattern to Avoid
+```qml
+// ❌ WRONG - Conditional visibility causes transparency pierce
+Rectangle {
+    color: backgroundColor
+    visible: !dialogMode
+}
+```
+
+### Correct Pattern
+```qml
+// ✓ CORRECT - Always provide background
+Rectangle {
+    color: backgroundColor
+}
+```
