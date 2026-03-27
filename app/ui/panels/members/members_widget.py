@@ -18,7 +18,7 @@ from utils.i18n_utils import tr
 logger = logging.getLogger(__name__)
 
 
-class QmlAgentChatMembersWidget(BaseWidget):
+class MembersWidget(BaseWidget):
     """Members component API-compatible with legacy AgentChatMembersWidget."""
 
     member_selected = Signal(CrewMember)

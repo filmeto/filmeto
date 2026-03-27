@@ -5,7 +5,7 @@ This module implements a panel for displaying agent chat members that can be use
 in both startup and edit windows.
 """
 from app.ui.panels.base_panel import BasePanel
-from app.ui.panels.members.qml_members_widget import QmlAgentChatMembersWidget
+from app.ui.panels.members.members_widget import MembersWidget
 from utils.i18n_utils import tr, translation_manager
 
 
@@ -18,7 +18,7 @@ class MembersPanel(BasePanel):
         self.set_panel_title(tr("Crew Members"))
 
         # Create the agent chat members component
-        self.agent_chat_members_component = QmlAgentChatMembersWidget(self.workspace)
+        self.agent_chat_members_component = MembersWidget(self.workspace)
 
         # Add it to the content layout
         self.content_layout.addWidget(self.agent_chat_members_component)

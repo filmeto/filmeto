@@ -1,6 +1,6 @@
 """MessageConverter – pure-Python ChatListItem → QML dict conversion.
 
-Extracted from QmlAgentChatListModel so that background threads can call
+Extracted from AgentChatListModel so that background threads can call
 the conversion without touching any Qt object.  All role-name constants are
 duplicated here as class attributes so this module has zero dependency on
 PySide6 at import time.
@@ -22,11 +22,11 @@ class MessageConverter:
     """Stateless converter: ChatListItem / AgentMessage → QML-compatible dict.
 
     All methods are static so the class can be used without instantiation.
-    Constants mirror QmlAgentChatListModel role names exactly; if you rename a
+    Constants mirror AgentChatListModel role names exactly; if you rename a
     role there, rename it here too.
     """
 
-    # ── Role name constants (kept in sync with QmlAgentChatListModel) ──────
+    # ── Role name constants (kept in sync with AgentChatListModel) ─────────
     MESSAGE_ID = "messageId"
     SENDER_ID = "senderId"
     SENDER_NAME = "senderName"

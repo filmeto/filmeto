@@ -17,7 +17,7 @@ from PySide6.QtQuickWidgets import QQuickWidget
 
 from app.ui.base_widget import BaseWidget
 from app.data.workspace import Workspace
-from app.ui.chat.list import QmlAgentChatListWidget
+from app.ui.chat.list import AgentChatListWidget
 from app.ui.chat.plan import AgentChatPlanWidget
 from app.ui.prompt.agent_prompt_widget import AgentPromptWidget
 from utils.i18n_utils import tr
@@ -90,7 +90,7 @@ class AgentChatWidget(BaseWidget):
         self.splitter.setObjectName("agent_chat_splitter")
         self.splitter.setHandleWidth(0)
 
-        self.chat_history_widget = QmlAgentChatListWidget(self.workspace, self)
+        self.chat_history_widget = AgentChatListWidget(self.workspace, self)
         self.chat_history_widget.setObjectName("agent_chat_history_widget")
         self.splitter.addWidget(self.chat_history_widget)
 

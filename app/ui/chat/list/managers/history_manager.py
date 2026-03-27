@@ -21,7 +21,7 @@ from app.ui.worker.worker import run_in_background, BackgroundWorker
 if TYPE_CHECKING:
     from app.data.workspace import Workspace
     from app.ui.chat.list.builders.message_builder import MessageBuilder
-    from app.ui.chat.list.agent_chat_list_model import QmlAgentChatListModel
+    from app.ui.chat.list.agent_chat_list_model import AgentChatListModel
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ class HistoryManager:
     def __init__(
         self,
         workspace: "Workspace",
-        model: "QmlAgentChatListModel",
+        model: "AgentChatListModel",
         message_builder: "MessageBuilder",
     ):
         """Initialize the history manager.

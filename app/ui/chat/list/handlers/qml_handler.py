@@ -10,7 +10,7 @@ from typing import Optional, TYPE_CHECKING, Callable
 from PySide6.QtCore import QTimer
 
 if TYPE_CHECKING:
-    from app.ui.chat.list.agent_chat_list_model import QmlAgentChatListModel
+    from app.ui.chat.list.agent_chat_list_model import AgentChatListModel
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ class QmlHandler:
 
     def __init__(
         self,
-        model: "QmlAgentChatListModel",
+        model: "AgentChatListModel",
         load_more_debounce_ms: int = DEFAULT_LOAD_MORE_DEBOUNCE_MS
     ):
         """Initialize the QML handler.

@@ -16,7 +16,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 
 from app.ui.base_widget import BaseWidget
-from app.ui.server_list.qml_server_list_view import ServerListView
+from app.ui.server_list.server_list_view import ServerListView
 
 from utils.i18n_utils import tr
 
