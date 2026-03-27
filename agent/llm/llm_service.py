@@ -3,9 +3,13 @@ LLM Service Module
 
 Implements the LlmService class to wrap LiteLLM functionality and integrate with
 the system settings service to manage AI model configurations.
+
+This service can use either:
+1. Server's ChatService (recommended) - Uses the unified selection system
+2. Direct LiteLLM calls - For backward compatibility
 """
 import os
-from typing import Optional, Dict, Any, AsyncIterator
+from typing import Optional, Dict, Any, AsyncIterator, List, Union
 import litellm
 from app.data.settings import Settings
 from utils.i18n_utils import translation_manager
@@ -72,14 +76,20 @@ class LlmService:
     - Initializing LiteLLM with the retrieved settings
     - Providing a clean interface to LiteLLM's functionality
     - Supporting special handling for different AI service providers like DashScope
+    - Optionally using server's ChatService for unified model selection
     """
-    
-    def __init__(self, workspace=None):
+
+    # Class-level cache for ChatService instance
+    _chat_service = None
+    _server_manager = None
+
+    def __init__(self, workspace=None, use_server_chat: bool = True):
         """
         Initialize the LlmService.
 
         Args:
             workspace: Workspace instance containing settings. If not provided, will use environment variables.
+            use_server_chat: If True, prefer using server's ChatService for completions (default: True)
         """
         self.workspace = workspace
         self.settings = getattr(workspace, 'settings', None) if workspace else None
@@ -87,6 +97,7 @@ class LlmService:
         self.api_base = None
         self.default_model = 'qwen3.5-flash'
         self.temperature = 0.7
+        self.use_server_chat = use_server_chat
         self.language_prompts = {
             'zh_CN': '请使用中文回答。',
             'en_US': 'Please respond in English.',
@@ -99,6 +110,49 @@ class LlmService:
 
         # Initialize the service
         self._initialize_from_settings()
+
+    @classmethod
+    def get_chat_service(cls):
+        """
+        Get or create the server's ChatService instance.
+
+        Uses lazy initialization to avoid circular imports.
+        Returns None if server is not available.
+        """
+        if cls._chat_service is None:
+            try:
+                from server.server import ServerManager
+                from server.service.chat_service import ChatService
+                from server.plugins.plugin_manager import PluginManager
+                from pathlib import Path
+
+                # Get workspace path
+                project_root = Path(__file__).parent.parent.parent
+                workspace_path = project_root / "workspace"
+
+                # Create plugin manager and server manager
+                plugin_manager = PluginManager()
+                plugin_manager.discover_plugins()
+                cls._server_manager = ServerManager(str(workspace_path), plugin_manager)
+
+                # Create chat service
+                cls._chat_service = ChatService(cls._server_manager)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Failed to initialize ChatService: {e}")
+                return None
+
+        return cls._chat_service
+
+    @classmethod
+    def set_chat_service(cls, chat_service, server_manager=None):
+        """
+        Set the ChatService instance externally.
+
+        This is useful when the server is already initialized elsewhere.
+        """
+        cls._chat_service = chat_service
+        cls._server_manager = server_manager
     
     def _detect_provider_from_base_url(self, base_url: str) -> str:
         """Detect the provider type from the base URL."""
@@ -319,19 +373,27 @@ class LlmService:
                          messages: Optional[list] = None,
                          temperature: Optional[float] = None,
                          stream: bool = False,
+                         server: Optional[str] = None,
+                         selection: Optional[Dict[str, Any]] = None,
                          **kwargs) -> Any:
         """
-        Async completion method that wraps LiteLLM's acompletion function.
+        Async completion method that can use either server's ChatService or LiteLLM directly.
+
+        When use_server_chat is True (default), this method will:
+        1. Try to use the server's ChatService with the unified selection system
+        2. Fall back to direct LiteLLM calls if server is not available
 
         Args:
             model: Model to use for completion (defaults to self.default_model)
             messages: List of messages for the conversation
             temperature: Temperature setting (defaults to self.temperature)
             stream: Whether to stream the response
+            server: Optional server name for SERVER_ONLY selection mode
+            selection: Optional selection configuration dict (e.g., {"mode": "auto", "tags": ["fast"]})
             **kwargs: Additional arguments to pass to LiteLLM
 
         Returns:
-            Completion response from LiteLLM
+            Completion response from LiteLLM or ChatService
         """
         # Use defaults if not provided
         if model is None:
@@ -344,6 +406,174 @@ class LlmService:
         # Inject language prompt based on current language setting
         messages = self._inject_language_prompt(messages)
 
+        # Try to use server's ChatService if enabled
+        if self.use_server_chat:
+            chat_service = self.get_chat_service()
+            if chat_service is not None:
+                return await self._acompletion_via_server(
+                    chat_service=chat_service,
+                    model=model,
+                    messages=messages,
+                    temperature=temperature,
+                    stream=stream,
+                    server=server,
+                    selection=selection,
+                    **kwargs
+                )
+
+        # Fall back to direct LiteLLM call
+        return await self._acompletion_via_litellm(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            stream=stream,
+            **kwargs
+        )
+
+    async def _acompletion_via_server(self,
+                                       chat_service,
+                                       model: Optional[str],
+                                       messages: list,
+                                       temperature: float,
+                                       stream: bool,
+                                       server: Optional[str] = None,
+                                       selection: Optional[Dict[str, Any]] = None,
+                                       **kwargs) -> Any:
+        """
+        Execute completion via server's ChatService.
+
+        This method uses the unified selection system for model/server selection.
+        """
+        from server.api.chat_types import ChatCompletionRequest, ChatMessage
+
+        # Convert messages to ChatMessage format
+        chat_messages = []
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            if isinstance(content, list):
+                # Handle multi-modal content
+                chat_messages.append(ChatMessage(role=role, content=content))
+            else:
+                chat_messages.append(ChatMessage(role=role, content=content))
+
+        # Build selection config
+        selection_config = None
+        if selection:
+            selection_config = selection
+        elif server:
+            # If server is specified, use SERVER_ONLY mode
+            selection_config = {"mode": "server_only", "server": server}
+
+        # Create request
+        request = ChatCompletionRequest(
+            model=model,  # Can be None for AUTO mode
+            messages=chat_messages,
+            temperature=temperature,
+            stream=stream,
+            server=server,
+            selection=selection_config,
+        )
+
+        # Add any additional kwargs that ChatCompletionRequest supports
+        if "max_tokens" in kwargs:
+            request.max_tokens = kwargs["max_tokens"]
+        if "top_p" in kwargs:
+            request.top_p = kwargs["top_p"]
+        if "stop" in kwargs:
+            request.stop = kwargs["stop"]
+        if "tools" in kwargs:
+            request.tools = kwargs["tools"]
+        if "tool_choice" in kwargs:
+            request.tool_choice = kwargs["tool_choice"]
+
+        if stream:
+            # Return async generator for streaming
+            return self._stream_via_server(chat_service, request)
+        else:
+            # Non-streaming call
+            response = await chat_service.chat_completion(request)
+            # Convert to litellm-compatible format
+            return self._convert_server_response(response)
+
+    async def _stream_via_server(self, chat_service, request):
+        """
+        Stream response from server's ChatService.
+        Yields litellm-compatible streaming chunks.
+        """
+        async for chunk in chat_service.chat_completion_stream(request):
+            # Convert ChatCompletionChunk to litellm-compatible format
+            yield self._convert_server_chunk(chunk)
+
+    def _convert_server_response(self, response) -> Any:
+        """
+        Convert ChatCompletionResponse to litellm-compatible format.
+        """
+        from litellm import ModelResponse
+
+        # Create a ModelResponse that mimics litellm's response structure
+        choices = []
+        for choice in response.choices:
+            from litellm.utils import Choices, Message
+            msg = Message(
+                role=choice.message.role,
+                content=choice.message.content,
+            )
+            if choice.message.tool_calls:
+                msg.tool_calls = choice.message.tool_calls
+            choices.append(Choices(
+                finish_reason=choice.finish_reason,
+                index=choice.index,
+                message=msg,
+            ))
+
+        return ModelResponse(
+            id=response.id,
+            choices=choices,
+            created=response.created,
+            model=response.model,
+            usage={
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens,
+                "total_tokens": response.usage.total_tokens,
+            },
+        )
+
+    def _convert_server_chunk(self, chunk) -> Any:
+        """
+        Convert ChatCompletionChunk to litellm-compatible streaming chunk.
+        """
+        from litellm.utils import StreamingChoices
+
+        choices = []
+        for choice in chunk.choices:
+            from litellm.utils import Delta
+            delta = Delta(
+                role=choice.delta.role if choice.delta.role else None,
+                content=choice.delta.content if choice.delta.content else None,
+            )
+            choices.append(StreamingChoices(
+                finish_reason=choice.finish_reason,
+                index=choice.index,
+                delta=delta,
+            ))
+
+        return type('StreamingChunk', (), {
+            'id': chunk.id,
+            'choices': choices,
+            'created': chunk.created,
+            'model': chunk.model,
+        })()
+
+    async def _acompletion_via_litellm(self,
+                                        model: str,
+                                        messages: list,
+                                        temperature: float,
+                                        stream: bool,
+                                        **kwargs) -> Any:
+        """
+        Execute completion directly via LiteLLM (fallback method).
+        """
         # Add any additional configuration from settings
         kwargs.setdefault('temperature', temperature)
 
