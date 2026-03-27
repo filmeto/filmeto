@@ -22,6 +22,55 @@ Applies to all QML + Python bridge code (ViewModel/bridge/model/state objects).
 13. Principle 14: Minimize global singleton bridge objects; use singleton only when clearly justified.
 14. Principle 15: Cross-page concerns (navigation, dialog, notification) must be abstracted and centralized, not scattered in QML.
 
+## QML Naming Conventions
+
+### File Naming
+
+| Type | File Naming | Class Name | Example |
+|------|-------------|------------|---------|
+| **QML Component** | `<Feature><Type>.qml` | N/A | `ServerStatusButton.qml` |
+| **Python Container** | `<feature>_<type>.py` | `<Feature><Type>` | `server_status_button.py` |
+| **ViewModel** | `<feature>_view_model.py` | `<Feature>ViewModel` | `server_status_view_model.py` |
+| **QAbstractModel** | `<feature>_model.py` | `<Feature>Model` | `agent_chat_list_model.py` |
+
+### Component Type Suffixes
+
+| Suffix | Usage |
+|--------|-------|
+| `Widget` | Reusable UI components |
+| `Panel` | Sidebar/panel components |
+| `Dialog` | Dialog components |
+| `Button` | Button controls |
+| `Bar` | Toolbar/input bar |
+| `View` | View/list view |
+| `Field` | Form fields |
+| `Card` | Card components |
+| `Delegate` | List item delegates |
+
+### Naming Rules
+
+1. **QML files**: PascalCase with descriptive suffix
+2. **Python files**: snake_case matching QML name
+3. **Python classes**: PascalCase matching QML name
+4. **ViewModel files**: Always use `_view_model.py` suffix
+5. **ViewModel classes**: Always use `ViewModel` suffix (NOT `QMLModel`, `QmlState`, `Bridge`)
+6. **QAbstractModel files**: Use `_model.py` suffix
+7. **No backward compatibility aliases**: Do not create `OldName = NewName`
+
+### Examples
+
+```python
+# ✅ Correct
+# File: server_status_view_model.py
+class ServerStatusViewModel(QObject):
+    pass
+
+# ❌ Wrong
+class ServerStatusQMLModel(QObject):    # Don't use QMLModel
+class ServerStatusQmlState(QObject):    # Don't use QmlState
+class ServerStatusBridge(QObject):      # Don't use Bridge
+```
+
 ## Additional Constraints
 
 - Prefer unidirectional flow: QML action -> bridge/viewmodel -> service/domain -> bridge state update -> QML re-render.
