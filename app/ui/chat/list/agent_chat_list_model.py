@@ -182,7 +182,7 @@ def _format_duration(start_timestamp, end_timestamp=None) -> str:
     return result
 
 
-class QmlAgentChatListModel(QAbstractListModel):
+class AgentChatListModel(QAbstractListModel):
     """QML-compatible model for chat messages.
 
     This model exposes chat message data to QML with proper role names

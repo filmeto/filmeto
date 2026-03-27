@@ -8,10 +8,10 @@ from PySide6.QtCore import Signal
 
 from agent.crew import CrewMember
 from app.data.workspace import Workspace
-from app.ui.panels.members.qml_members_widget import QmlAgentChatMembersWidget
+from app.ui.panels.members.members_widget import MembersWidget
 
 
-class AgentChatMembersWidget(QmlAgentChatMembersWidget):
+class AgentChatMembersWidget(MembersWidget):
     """Backward-compatible alias using the QML members implementation."""
 
     member_selected = Signal(CrewMember)

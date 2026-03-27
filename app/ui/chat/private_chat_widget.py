@@ -23,7 +23,7 @@ from agent.crew import CrewMember
 from agent.crew.crew_member_history_service import crew_member_message_saved
 from app.data.workspace import Workspace
 from app.ui.base_widget import BaseWidget
-from app.ui.chat.list import QmlAgentChatListWidget
+from app.ui.chat.list import AgentChatListWidget
 from app.ui.chat.list.builders.message_builder import MessageBuilder
 from app.ui.chat.list.builders.message_converter import MessageConverter
 from app.ui.chat.list.managers.metadata_resolver import MetadataResolver
@@ -73,7 +73,7 @@ class PrivateChatWidget(BaseWidget):
         self.splitter.setObjectName("private_chat_splitter")
         self.splitter.setHandleWidth(0)
 
-        self.chat_list_widget = QmlAgentChatListWidget(self.workspace, self)
+        self.chat_list_widget = AgentChatListWidget(self.workspace, self)
         self.chat_list_widget.setObjectName("private_chat_list_widget")
         self.splitter.addWidget(self.chat_list_widget)
 

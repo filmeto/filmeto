@@ -32,8 +32,8 @@ from app.ui.chat.list.agent_chat_list_items import (
 )
 
 # QML-based implementation
-from app.ui.chat.list.agent_chat_list_model import QmlAgentChatListModel
-from app.ui.chat.list.agent_chat_list_widget import QmlAgentChatListWidget
+from app.ui.chat.list.agent_chat_list_model import AgentChatListModel
+from app.ui.chat.list.agent_chat_list_widget import AgentChatListWidget
 
 # Refactored components (available for direct use if needed)
 from app.ui.chat.list.handlers import QmlHandler, StreamEventHandler
@@ -50,8 +50,8 @@ __all__ = [
     "ChatListItem",
     "LoadState",
     # QML-based
-    "QmlAgentChatListModel",
-    "QmlAgentChatListWidget",
+    "AgentChatListModel",
+    "AgentChatListWidget",
     # Components (for advanced usage)
     "QmlHandler",
     "StreamEventHandler",

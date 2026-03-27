@@ -20,7 +20,7 @@ from agent.chat.content import (
 if TYPE_CHECKING:
     from app.ui.chat.list.managers.metadata_resolver import MetadataResolver
     from app.ui.chat.list.managers.scroll_manager import ScrollManager
-    from app.ui.chat.list.agent_chat_list_model import QmlAgentChatListModel
+    from app.ui.chat.list.agent_chat_list_model import AgentChatListModel
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ class SkillManager:
 
     def __init__(
         self,
-        model: "QmlAgentChatListModel",
+        model: "AgentChatListModel",
         metadata_resolver: "MetadataResolver",
         scroll_manager: "ScrollManager",
     ):

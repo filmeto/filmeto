@@ -20,7 +20,7 @@ from agent.chat.content import StructureContent
 from agent.chat.history.agent_chat_history_service import message_saved
 from app.ui.base_widget import BaseWidget
 from app.ui.chat.list.agent_chat_list_items import ChatListItem
-from app.ui.chat.list.agent_chat_list_model import QmlAgentChatListModel
+from app.ui.chat.list.agent_chat_list_model import AgentChatListModel
 from app.ui.chat.list.managers.history_manager import HistoryManager
 from app.ui.chat.list.managers.metadata_resolver import MetadataResolver
 from app.ui.chat.list.managers.scroll_manager import ScrollManager
@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     from app.data.workspace import Workspace
 
 
-class QmlAgentChatListWidget(BaseWidget):
+class AgentChatListWidget(BaseWidget):
     """QML-based chat list widget with hardware-accelerated rendering.
 
     This refactored version uses composition with focused components:
@@ -86,7 +86,7 @@ class QmlAgentChatListWidget(BaseWidget):
             self.setParent(parent)
 
         # Initialize QML Model
-        self._model = QmlAgentChatListModel(self)
+        self._model = AgentChatListModel(self)
 
         # Initialize QML View widget
         self._quick_widget = QQuickWidget(self)
@@ -324,8 +324,8 @@ class QmlAgentChatListWidget(BaseWidget):
             The message ID
         """
         message_id = str(uuid.uuid4())
-        start_time = QmlAgentChatListModel._format_start_time(timestamp) if timestamp else ""
-        date_group = QmlAgentChatListModel._get_date_group(timestamp) if timestamp else ""
+        start_time = AgentChatListModel._format_start_time(timestamp) if timestamp else ""
+        date_group = AgentChatListModel._get_date_group(timestamp) if timestamp else ""
 
         item = {
             self._model.MESSAGE_ID: message_id,
@@ -384,8 +384,8 @@ class QmlAgentChatListWidget(BaseWidget):
             return message_id
 
         agent_color, agent_icon, crew_member_data = self._metadata_resolver.resolve_agent_metadata(sender)
-        start_time = QmlAgentChatListModel._format_start_time(timestamp) if timestamp else ""
-        date_group = QmlAgentChatListModel._get_date_group(timestamp) if timestamp else ""
+        start_time = AgentChatListModel._format_start_time(timestamp) if timestamp else ""
+        date_group = AgentChatListModel._get_date_group(timestamp) if timestamp else ""
 
         item = {
             self._model.MESSAGE_ID: message_id,
