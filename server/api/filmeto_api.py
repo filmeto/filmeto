@@ -37,10 +37,12 @@ class FilmetoApi:
         from server.service.filmeto_service import FilmetoService
         from server.service.chat_service import ChatService
         from server.service.capability_service import CapabilityService
+        from server.service.ability_selection_service import AbilitySelectionService
 
         self.service = FilmetoService(plugins_dir, cache_dir, workspace_path)
         self.chat_service = ChatService(self.service.server_manager)
         self.capability_service = CapabilityService(self.service.server_manager)
+        self.selection_service = AbilitySelectionService(self.service.server_manager)
 
     async def execute_task_stream(
         self,
@@ -237,8 +239,12 @@ class FilmetoApi:
         Refresh the capability cache.
 
         Call this method when server configurations change.
+        Also refreshes the selection service cache to stay consistent.
         """
         self.capability_service.refresh_capabilities()
+        # Also refresh selection service to keep caches consistent
+        if hasattr(self, 'selection_service') and self.selection_service is not None:
+            self.selection_service.refresh_capabilities()
 
     # ------------------------------------------------------------------
     # Chat Completion API (OpenAI-compatible)

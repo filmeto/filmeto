@@ -29,13 +29,30 @@ def normalize_ability_models_raw(raw: Any) -> List[Dict[str, Any]]:
         mid = item.get("model_id") or item.get("model") or item.get("name")
         if not ability or not mid:
             continue
+
+        # Safely parse priority (default to 0 on any error)
+        try:
+            priority_val = item.get("priority", 0)
+            priority = int(priority_val) if priority_val is not None else 0
+        except (ValueError, TypeError):
+            priority = 0
+
+        # Safely parse tags (ensure it's a list of strings)
+        tags_val = item.get("tags", [])
+        if isinstance(tags_val, list):
+            tags = [str(t) for t in tags_val if t is not None]
+        else:
+            tags = []
+
         row: Dict[str, Any] = {
             "ability": str(ability),
             "model_id": str(mid),
             "enabled": bool(item.get("enabled", True)),
+            "priority": priority,
+            "tags": tags,
         }
         for k, v in item.items():
-            if k in ("ability", "capability", "model_id", "model", "name", "enabled"):
+            if k in ("ability", "capability", "model_id", "model", "name", "enabled", "priority", "tags"):
                 continue
             row[k] = v
         out.append(row)
@@ -127,3 +144,126 @@ def is_model_enabled_for_ability(
         if item["ability"] == ability and item["model_id"] == model_id:
             return bool(item.get("enabled", True))
     return default
+
+
+def get_model_priority(
+    parameters: Dict[str, Any],
+    ability: str,
+    model_id: str,
+    *,
+    default: int = 0,
+) -> int:
+    """
+    Get priority for a specific (ability, model_id) pair.
+
+    Priority determines selection order when multiple models are available.
+    Higher priority values are preferred.
+
+    Args:
+        parameters: ServerConfig.parameters dict
+        ability: Ability/capability name (e.g., "text2image")
+        model_id: Model identifier
+        default: Default priority if not configured (default: 0)
+
+    Returns:
+        Priority value (higher = more preferred)
+    """
+    raw = parameters.get(ABILITY_MODELS_KEY)
+    if not raw:
+        return default
+    for item in normalize_ability_models_raw(raw):
+        if item["ability"] == ability and item["model_id"] == model_id:
+            return int(item.get("priority", default))
+    return default
+
+
+def get_model_tags(
+    parameters: Dict[str, Any],
+    ability: str,
+    model_id: str,
+) -> List[str]:
+    """
+    Get tags for a specific (ability, model_id) pair.
+
+    Tags can be used for filtering models during selection.
+
+    Args:
+        parameters: ServerConfig.parameters dict
+        ability: Ability/capability name (e.g., "text2image")
+        model_id: Model identifier
+
+    Returns:
+        List of tags (empty list if not configured)
+    """
+    raw = parameters.get(ABILITY_MODELS_KEY)
+    if not raw:
+        return []
+    for item in normalize_ability_models_raw(raw):
+        if item["ability"] == ability and item["model_id"] == model_id:
+            tags = item.get("tags", [])
+            return list(tags) if isinstance(tags, list) else []
+    return []
+
+
+def set_model_config(
+    parameters: Dict[str, Any],
+    ability: str,
+    model_id: str,
+    *,
+    enabled: Optional[bool] = None,
+    priority: Optional[int] = None,
+    tags: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """
+    Set configuration for a specific (ability, model_id) pair.
+
+    Creates or updates the ability_models configuration in parameters.
+    Returns updated parameters dict (does not mutate original).
+
+    Args:
+        parameters: Original parameters dict
+        ability: Ability/capability name
+        model_id: Model identifier
+        enabled: Whether the model is enabled (None = don't change)
+        priority: Priority value (None = don't change)
+        tags: Tags list (None = don't change)
+
+    Returns:
+        Updated parameters dict
+    """
+    # Deep copy to avoid mutation
+    result = {k: v for k, v in parameters.items() if k != ABILITY_MODELS_KEY}
+
+    # Get existing entries
+    raw = parameters.get(ABILITY_MODELS_KEY, [])
+    entries = normalize_ability_models_raw(raw)
+
+    # Find and update existing entry, or create new one
+    found = False
+    new_entries = []
+    for entry in entries:
+        if entry["ability"] == ability and entry["model_id"] == model_id:
+            found = True
+            updated = dict(entry)
+            if enabled is not None:
+                updated["enabled"] = enabled
+            if priority is not None:
+                updated["priority"] = priority
+            if tags is not None:
+                updated["tags"] = tags
+            new_entries.append(updated)
+        else:
+            new_entries.append(entry)
+
+    if not found:
+        new_entry = {
+            "ability": ability,
+            "model_id": model_id,
+            "enabled": enabled if enabled is not None else True,
+            "priority": priority if priority is not None else 0,
+            "tags": tags if tags is not None else [],
+        }
+        new_entries.append(new_entry)
+
+    result[ABILITY_MODELS_KEY] = new_entries
+    return result
