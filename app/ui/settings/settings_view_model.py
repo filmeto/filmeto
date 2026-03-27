@@ -9,6 +9,9 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from PySide6.QtCore import QObject, Signal, Slot, Property
+from PySide6.QtWidgets import QMessageBox
+
+from app.ui.settings.plugin_detail_dialog import PluginDetailDialog
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +36,7 @@ class SettingsViewModel(QObject):
     error_occurred = Signal(str)
     success_message = Signal(str)
     model_options_changed = Signal(str)  # field_key
+    services_changed = Signal()
 
     def __init__(
         self,
@@ -57,6 +61,7 @@ class SettingsViewModel(QObject):
         self._original_values: Dict[str, Any] = {}  # key -> original value
         self._search_text = ""
         self._field_options: Dict[str, List[Dict]] = {}  # key -> options list
+        self._services_revision = 0
 
         self._init_values()
 
@@ -133,6 +138,11 @@ class SettingsViewModel(QObject):
     def hasServicesTab(self) -> bool:
         """Check if Services tab should be shown."""
         return self._service_registry is not None
+
+    @Property(int, notify=services_changed)
+    def servicesRevision(self) -> int:
+        """Incrementing value used by QML to refresh services list bindings."""
+        return self._services_revision
 
     # ─────────────────────────────────────────────────────────────
     # Slots (callable from QML)
@@ -327,13 +337,41 @@ class SettingsViewModel(QObject):
         result = []
         for service in services:
             result.append({
-                "id": service.get("id", ""),
-                "name": service.get("name", ""),
-                "description": service.get("description", ""),
-                "enabled": service.get("enabled", True),
-                "icon": service.get("icon", "")
+                "id": service.service_id,
+                "name": service.name,
+                "description": service.description,
+                "enabled": service.enabled,
+                "icon": service.icon
             })
         return result
+
+    @Slot(str, result=bool)
+    def open_service_config(self, service_id: str) -> bool:
+        """Open service configuration dialog and refresh service list on save."""
+        if not self._service_registry:
+            self.error_occurred.emit("Service registry is not available")
+            return False
+
+        if not service_id:
+            self.error_occurred.emit("Invalid service id")
+            return False
+
+        try:
+            dialog = PluginDetailDialog(service_id, self._service_registry)
+            if dialog.exec():
+                self._service_registry.reload_service(service_id)
+                self._services_revision += 1
+                self.services_changed.emit()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to open service configuration: {e}")
+            self.error_occurred.emit(str(e))
+            QMessageBox.critical(
+                None,
+                "Error",
+                f"Failed to open plugin configuration: {e}"
+            )
+            return False
 
     @Slot(str, result="QVariant")
     def get_filtered_fields(self, group_name: str) -> List[Dict[str, Any]]:

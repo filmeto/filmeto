@@ -78,7 +78,6 @@ class SettingsDialog(CustomDialog):
             # Fallback to Python widget
             self._use_python_widget(workspace)
 
-        self.add_button(tr("关闭"), self.reject, role="reject")
 
     def _use_python_widget(self, workspace: Workspace):
         """Fallback to Python-based settings widget."""

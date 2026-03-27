@@ -52,7 +52,83 @@ Item {
         anchors.fill: parent
         spacing: 0
 
-        // Header with TabBar and SearchBox in same row
+        // Tab Bar (aligned with ComfyUI config dialog style)
+        TabBar {
+            id: tabBar
+            Layout.fillWidth: true
+            spacing: 2
+
+            background: Rectangle {
+                color: "#252525"
+            }
+
+            // Dynamically create tabs from groups
+            Repeater {
+                model: settingsModel ? settingsModel.groups : []
+
+                TabButton {
+                    text: modelData.label || modelData.name
+                    width: implicitWidth
+                    leftPadding: 20
+                    rightPadding: 20
+
+                    background: Rectangle {
+                        color: tabBar.currentIndex === index ? "#1e1e1e" : (parent.hovered ? "#2d2d2d" : "#252525")
+                        border.color: "#3a3a3a"
+                        border.width: 1
+                        radius: 4
+
+                        Rectangle {
+                            anchors.bottom: parent.bottom
+                            width: parent.width
+                            height: 1
+                            color: tabBar.currentIndex === index ? "#1e1e1e" : "#3a3a3a"
+                        }
+                    }
+
+                    contentItem: Text {
+                        text: parent.text
+                        font.pixelSize: 12
+                        color: tabBar.currentIndex === index ? "#ffffff" : "#888888"
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+            }
+
+            // Services Tab (if available)
+            TabButton {
+                visible: settingsModel ? settingsModel.hasServicesTab : false
+                text: qsTr("Services")
+                width: implicitWidth
+                leftPadding: 20
+                rightPadding: 20
+
+                background: Rectangle {
+                    color: tabBar.currentIndex === servicesTabIndex ? "#1e1e1e" : (parent.hovered ? "#2d2d2d" : "#252525")
+                    border.color: "#3a3a3a"
+                    border.width: 1
+                    radius: 4
+
+                    Rectangle {
+                        anchors.bottom: parent.bottom
+                        width: parent.width
+                        height: 1
+                        color: tabBar.currentIndex === servicesTabIndex ? "#1e1e1e" : "#3a3a3a"
+                    }
+                }
+
+                contentItem: Text {
+                    text: parent.text
+                    font.pixelSize: 12
+                    color: tabBar.currentIndex === servicesTabIndex ? "#ffffff" : "#888888"
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+            }
+        }
+
+        // Search row below tabs (keeps tabs visually consistent with ComfyUI)
         Rectangle {
             Layout.fillWidth: true
             implicitHeight: 44
@@ -60,88 +136,11 @@ Item {
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 0
+                anchors.leftMargin: 16
                 anchors.rightMargin: 16
-                spacing: 0
 
-                // Tab Bar (left side)
-                TabBar {
-                    id: tabBar
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: parent.height
-                    spacing: 2
+                Item { Layout.fillWidth: true }
 
-                    background: Rectangle {
-                        color: "#252525"
-                    }
-
-                    // Dynamically create tabs from groups
-                    Repeater {
-                        model: settingsModel ? settingsModel.groups : []
-
-                        TabButton {
-                            text: modelData.label || modelData.name
-                            width: implicitWidth
-                            leftPadding: 20
-                            rightPadding: 20
-
-                            background: Rectangle {
-                                color: tabBar.currentIndex === index ? "#1e1e1e" : (parent.hovered ? "#2d2d2d" : "#252525")
-                                border.color: "#3a3a3a"
-                                border.width: 1
-                                radius: 4
-
-                                Rectangle {
-                                    anchors.bottom: parent.bottom
-                                    width: parent.width
-                                    height: 1
-                                    color: tabBar.currentIndex === index ? "#1e1e1e" : "#3a3a3a"
-                                }
-                            }
-
-                            contentItem: Text {
-                                text: parent.text
-                                font.pixelSize: 12
-                                color: tabBar.currentIndex === index ? "#ffffff" : "#888888"
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                        }
-                    }
-
-                    // Services Tab (if available)
-                    TabButton {
-                        visible: settingsModel ? settingsModel.hasServicesTab : false
-                        text: qsTr("Services")
-                        width: implicitWidth
-                        leftPadding: 20
-                        rightPadding: 20
-
-                        background: Rectangle {
-                            color: tabBar.currentIndex === servicesTabIndex ? "#1e1e1e" : (parent.hovered ? "#2d2d2d" : "#252525")
-                            border.color: "#3a3a3a"
-                            border.width: 1
-                            radius: 4
-
-                            Rectangle {
-                                anchors.bottom: parent.bottom
-                                width: parent.width
-                                height: 1
-                                color: tabBar.currentIndex === servicesTabIndex ? "#1e1e1e" : "#3a3a3a"
-                            }
-                        }
-
-                        contentItem: Text {
-                            text: parent.text
-                            font.pixelSize: 12
-                            color: tabBar.currentIndex === servicesTabIndex ? "#ffffff" : "#888888"
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                    }
-                }
-
-                // Search Box (right side, aligned with tabs)
                 TextField {
                     id: searchField
                     Layout.preferredWidth: 220
@@ -169,12 +168,11 @@ Item {
                     leftPadding: 10
                     rightPadding: 30
 
-                    // Search icon
                     Text {
                         anchors.right: parent.right
                         anchors.rightMargin: 8
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "\u{1F50D}"  // magnifying glass
+                        text: "\u{1F50D}"
                         font.pixelSize: 12
                         color: "#606060"
                     }
@@ -270,9 +268,10 @@ Item {
                                             Layout.fillWidth: true
                                             sourceComponent: {
                                                 var type = fieldData.type
-                                                if (type === "text" || type === "combo") return textFieldComponent
+                                                if (type === "text") return textFieldComponent
                                                 if (type === "number") return numberFieldComponent
                                                 if (type === "boolean") return booleanFieldComponent
+                                                if (type === "combo") return comboFieldComponent
                                                 if (type === "select") return selectFieldComponent
                                                 if (type === "slider") return sliderFieldComponent
                                                 if (type === "color") return colorFieldComponent
@@ -310,12 +309,137 @@ Item {
             Item {
                 id: servicesTab
                 visible: settingsModel ? settingsModel.hasServicesTab : false
+                property int servicesRevision: settingsModel ? settingsModel.servicesRevision : 0
 
-                Label {
-                    anchors.centerIn: parent
-                    text: qsTr("Services management coming soon...")
-                    font.pixelSize: 14
-                    color: "#808080"
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 16
+                    spacing: 12
+
+                    Label {
+                        text: qsTr("Service Plugins")
+                        font.bold: true
+                        font.pixelSize: 16
+                        color: "#e0e0e0"
+                        Layout.fillWidth: true
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        color: "#1e1e1e"
+                        border.color: "#3a3a3a"
+                        border.width: 1
+                        radius: 4
+
+                        ListView {
+                            id: servicesList
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            clip: true
+                            spacing: 8
+                            model: {
+                                if (!settingsModel) {
+                                    return []
+                                }
+                                servicesTab.servicesRevision
+                                return settingsModel.get_services()
+                            }
+
+                            delegate: Rectangle {
+                                width: servicesList.width
+                                implicitHeight: 72
+                                radius: 4
+                                color: rowMouse.containsMouse ? "#303030" : "#252525"
+                                border.color: "#3a3a3a"
+                                border.width: 1
+                                property var serviceData: modelData
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 12
+                                    anchors.rightMargin: 12
+                                    spacing: 12
+
+                                    Label {
+                                        text: (serviceData.icon || "")
+                                        font.pixelSize: 18
+                                        color: "#3498db"
+                                    }
+
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 2
+
+                                        Label {
+                                            text: serviceData.name || serviceData.id
+                                            font.bold: true
+                                            font.pixelSize: 12
+                                            color: "#ffffff"
+                                            elide: Text.ElideRight
+                                            Layout.fillWidth: true
+                                        }
+
+                                        Label {
+                                            text: serviceData.description || ""
+                                            font.pixelSize: 10
+                                            color: "#888888"
+                                            elide: Text.ElideRight
+                                            Layout.fillWidth: true
+                                        }
+                                    }
+
+                                    Rectangle {
+                                        radius: 10
+                                        color: serviceData.enabled ? "#27ae60" : "#7f8c8d"
+                                        implicitHeight: 22
+                                        implicitWidth: statusText.implicitWidth + 14
+
+                                        Text {
+                                            id: statusText
+                                            anchors.centerIn: parent
+                                            text: serviceData.enabled ? qsTr("Active") : qsTr("Disabled")
+                                            font.pixelSize: 10
+                                            color: "#ffffff"
+                                        }
+                                    }
+
+                                    Button {
+                                        text: qsTr("Config")
+                                        implicitWidth: 70
+                                        implicitHeight: 30
+
+                                        background: Rectangle {
+                                            color: parent.hovered ? "#5dade2" : "#3498db"
+                                            radius: 4
+                                        }
+
+                                        contentItem: Text {
+                                            text: parent.text
+                                            font.pixelSize: 11
+                                            font.bold: true
+                                            color: "#ffffff"
+                                            horizontalAlignment: Text.AlignHCenter
+                                            verticalAlignment: Text.AlignVCenter
+                                        }
+
+                                        onClicked: {
+                                            if (settingsModel) {
+                                                settingsModel.open_service_config(serviceData.id || "")
+                                            }
+                                        }
+                                    }
+                                }
+
+                                MouseArea {
+                                    id: rowMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    acceptedButtons: Qt.NoButton
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -760,11 +884,125 @@ Item {
             }
 
             Label {
-                text: fieldData.description || ""
+                text: fieldItem.description || ""
                 font.pixelSize: 10
                 color: "#808080"
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
+            }
+        }
+    }
+
+    Component {
+        id: comboFieldComponent
+
+        ComboBox {
+            id: comboInput
+            implicitHeight: 32
+            editable: true
+            model: {
+                if (!settingsModel) return fieldItem.options || []
+                var dynamicOptions = settingsModel.get_model_options(fieldItem.key)
+                return dynamicOptions && dynamicOptions.length > 0 ? dynamicOptions : (fieldItem.options || [])
+            }
+            textRole: "label"
+            valueRole: "value"
+
+            property string currentValue: settingsModel ? (settingsModel.get_value(fieldItem.key) || "") : ""
+            property bool initializing: true
+
+            Component.onCompleted: {
+                var idx = indexOfValue(currentValue)
+                if (idx >= 0) {
+                    currentIndex = idx
+                } else if (currentValue !== "") {
+                    editText = currentValue
+                }
+                initializing = false
+            }
+
+            background: Rectangle {
+                color: "#1e1e1e"
+                border.color: comboInput.activeFocus ? "#3498db" : "#3a3a3a"
+                border.width: 1
+                radius: 3
+            }
+
+            contentItem: TextInput {
+                text: comboInput.editText
+                font.pixelSize: 12
+                color: "#ffffff"
+                selectionColor: "#3498db"
+                selectedTextColor: "#ffffff"
+                verticalAlignment: Text.AlignVCenter
+                leftPadding: 10
+                rightPadding: 8
+                onTextChanged: {
+                    if (!comboInput.initializing && settingsModel) {
+                        settingsModel.set_value(fieldItem.key, text)
+                    }
+                }
+            }
+
+            delegate: ItemDelegate {
+                width: comboInput.width
+                height: 30
+
+                contentItem: Text {
+                    text: modelData.label || modelData.value || modelData
+                    font.pixelSize: 12
+                    color: highlighted ? "#ffffff" : "#cccccc"
+                    verticalAlignment: Text.AlignVCenter
+                }
+
+                background: Rectangle {
+                    color: highlighted ? "#3498db" : "#2d2d2d"
+                }
+
+                highlighted: comboInput.highlightedIndex === index
+            }
+
+            popup: Popup {
+                y: comboInput.height
+                width: comboInput.width
+                implicitHeight: Math.min(contentItem.implicitHeight, 300)
+                padding: 1
+
+                contentItem: ListView {
+                    clip: true
+                    implicitHeight: contentHeight
+                    model: comboInput.popup.visible ? comboInput.delegateModel : null
+                    currentIndex: comboInput.highlightedIndex
+                }
+
+                background: Rectangle {
+                    color: "#2d2d2d"
+                    border.color: "#3a3a3a"
+                    border.width: 1
+                    radius: 3
+                }
+            }
+
+            onActivated: {
+                if (settingsModel) {
+                    settingsModel.set_value(fieldItem.key, currentValue || editText)
+                }
+            }
+
+            Connections {
+                target: settingsModel
+                function onModelOptionsChanged(fieldKey) {
+                    if (fieldKey !== fieldItem.key) {
+                        return
+                    }
+                    var latestValue = settingsModel.get_value(fieldItem.key) || ""
+                    var idx = comboInput.indexOfValue(latestValue)
+                    if (idx >= 0) {
+                        comboInput.currentIndex = idx
+                    } else {
+                        comboInput.editText = latestValue
+                    }
+                }
             }
         }
     }
