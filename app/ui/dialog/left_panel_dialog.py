@@ -138,24 +138,18 @@ class LeftPanelDialog(QDialog):
             click_pos = event.position().toPoint()
             mac_buttons_rect = self.mac_control_buttons.geometry()
 
-            # 如果点击在MacTitleBar区域内，检查是否点击在按钮上
+            # 如果点击在MacTitleBar区域内，检查是否点击在QML按钮上
             if mac_buttons_rect.contains(click_pos):
-                # 检查是否点击在具体的按钮上
-                mac_buttons = self.mac_control_buttons.findChildren(QWidget)
-                clicked_on_button = False
-                for button in mac_buttons:
-                    # 将按钮的全局坐标转换为相对于对话框的坐标
-                    button_global_pos = button.mapTo(self, QPoint(0, 0))
-                    button_rect = button.geometry()
-                    button_rect.moveTopLeft(button_global_pos)
-                    if button_rect.contains(click_pos):
-                        clicked_on_button = True
-                        break
-
-                # 如果点击在按钮上，不处理拖拽，让按钮处理点击事件
-                if clicked_on_button:
-                    super().mousePressEvent(event)
-                    return
+                # MacTitleBar现在使用QQuickWidget，其中的按钮是QML元素
+                # 检查是否有_quick属性（QQuickWidget），如果有则让QML处理点击
+                quick_widget = getattr(self.mac_control_buttons, '_quick', None)
+                if quick_widget is not None:
+                    # 检查点击是否在QQuickWidget区域内
+                    quick_rect = quick_widget.geometry()
+                    if quick_rect.contains(click_pos - mac_buttons_rect.topLeft()):
+                        # 让QML处理点击事件，不进行拖拽
+                        super().mousePressEvent(event)
+                        return
 
             # 其他区域允许拖拽（包括左边栏和右边标题条）
             self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
