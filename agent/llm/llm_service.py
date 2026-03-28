@@ -79,10 +79,6 @@ class LlmService:
     - Using server's ChatService for unified model selection (always enabled)
     """
 
-    # Class-level cache for ChatService instance
-    _chat_service = None
-    _server_manager = None
-
     def __init__(self, workspace=None):
         """
         Initialize the LlmService.
@@ -96,6 +92,9 @@ class LlmService:
         self.api_base = None
         self.default_model = 'qwen3.5-flash'
         self.temperature = 0.7
+        # Instance-level cache for ChatService
+        self._chat_service = None
+        self._server_manager = None
         self.language_prompts = {
             'zh_CN': '请使用中文回答。',
             'en_US': 'Please respond in English.',
@@ -109,48 +108,54 @@ class LlmService:
         # Initialize the service
         self._initialize_from_settings()
 
-    @classmethod
-    def get_chat_service(cls):
+    def get_chat_service(self):
         """
         Get or create the server's ChatService instance.
 
         Uses lazy initialization to avoid circular imports.
         Returns None if server is not available.
         """
-        if cls._chat_service is None:
+        if self._chat_service is None:
             try:
                 from server.server import ServerManager
                 from server.service.chat_service import ChatService
                 from server.plugins.plugin_manager import PluginManager
                 from pathlib import Path
 
-                # Get workspace path
-                project_root = Path(__file__).parent.parent.parent
-                workspace_path = project_root / "workspace"
+                # Get workspace path - use instance workspace if available
+                workspace_path = None
+                if self.workspace and hasattr(self.workspace, 'get_path'):
+                    workspace_path = self.workspace.get_path()
+                elif self.workspace and hasattr(self.workspace, 'workspace_path'):
+                    workspace_path = self.workspace.workspace_path
+
+                # Fallback to default workspace if not available
+                if not workspace_path:
+                    project_root = Path(__file__).parent.parent.parent
+                    workspace_path = str(project_root / "workspace")
 
                 # Create plugin manager and server manager
                 plugin_manager = PluginManager()
                 plugin_manager.discover_plugins()
-                cls._server_manager = ServerManager(str(workspace_path), plugin_manager)
+                self._server_manager = ServerManager(workspace_path, plugin_manager)
 
                 # Create chat service
-                cls._chat_service = ChatService(cls._server_manager)
+                self._chat_service = ChatService(self._server_manager)
             except Exception as e:
                 import logging
                 logging.getLogger(__name__).warning(f"Failed to initialize ChatService: {e}")
                 return None
 
-        return cls._chat_service
+        return self._chat_service
 
-    @classmethod
-    def set_chat_service(cls, chat_service, server_manager=None):
+    def set_chat_service(self, chat_service, server_manager=None):
         """
         Set the ChatService instance externally.
 
         This is useful when the server is already initialized elsewhere.
         """
-        cls._chat_service = chat_service
-        cls._server_manager = server_manager
+        self._chat_service = chat_service
+        self._server_manager = server_manager
     
     def _detect_provider_from_base_url(self, base_url: str) -> str:
         """Detect the provider type from the base URL."""
@@ -228,55 +233,100 @@ class LlmService:
             return model
 
     def _initialize_from_settings(self):
-        """Initialize the service by retrieving settings from the system settings service."""
-        if self.settings:
-            # Retrieve settings from environment variables (AI service settings removed from UI)
-            self.api_key = os.getenv('OPENAI_API_KEY') or os.getenv('DASHSCOPE_API_KEY')
-            self.api_base = os.getenv('OPENAI_BASE_URL') or os.getenv('OPENAI_HOST')
-            self.default_model = os.getenv('DEFAULT_MODEL', 'qwen3.5-flash')
+        """Initialize the service by retrieving settings from environment or Bailian plugin config."""
+        # First try environment variables
+        self.api_key = os.getenv('OPENAI_API_KEY') or os.getenv('DASHSCOPE_API_KEY')
+        self.api_base = os.getenv('OPENAI_BASE_URL') or os.getenv('OPENAI_HOST')
+        self.default_model = os.getenv('DEFAULT_MODEL', 'qwen3.5-flash')
 
-            # Detect provider from base URL
-            self.provider = self._detect_provider_from_base_url(self.api_base)
+        # If no API key from environment, try to get from Bailian plugin config
+        if not self.api_key and self.workspace:
+            bailian_config = self._get_bailian_config()
+            if bailian_config:
+                self.api_key = bailian_config.get('api_key', '')
+                self.api_base = bailian_config.get('api_base', '')
+                # Use default_model from config if set
+                if bailian_config.get('default_model'):
+                    self.default_model = bailian_config.get('default_model')
 
-            # Map the default model to provider-specific model if needed
-            self.default_model = self._map_model_for_provider(self.default_model, self.provider)
+        # Detect provider from base URL
+        self.provider = self._detect_provider_from_base_url(self.api_base)
 
-            # Set LiteLLM configurations
-            if self.api_key:
-                litellm.api_key = self.api_key
-            if self.api_base:
-                # Set the API base for the detected provider
-                if self.provider == "dashscope":
-                    # For DashScope, use the compatible mode endpoint with proper provider prefix
-                    litellm.custom_api_base = self.api_base
-                    # Set headers for DashScope if needed
-                    litellm.default_headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
-                else:
-                    litellm.api_base = self.api_base
-        else:
-            # Fallback to environment variables if no settings service is provided
-            self.api_key = os.getenv('OPENAI_API_KEY') or os.getenv('DASHSCOPE_API_KEY')
-            self.api_base = os.getenv('OPENAI_BASE_URL', os.getenv('OPENAI_HOST'))
-            self.default_model = os.getenv('DEFAULT_MODEL', 'qwen3.5-flash')
+        # Map the default model to provider-specific model if needed
+        self.default_model = self._map_model_for_provider(self.default_model, self.provider)
 
-            # Detect provider from base URL
-            self.provider = self._detect_provider_from_base_url(self.api_base)
+        # Set LiteLLM configurations
+        if self.api_key:
+            litellm.api_key = self.api_key
+        if self.api_base:
+            # Set the API base for the detected provider
+            if self.provider == "dashscope":
+                # For DashScope, use the compatible mode endpoint with proper provider prefix
+                litellm.custom_api_base = self.api_base
+                # Set headers for DashScope if needed
+                litellm.default_headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+            else:
+                litellm.api_base = self.api_base
 
-            # Map the default model to provider-specific model if needed
-            self.default_model = self._map_model_for_provider(self.default_model, self.provider)
+    def _get_bailian_config(self) -> Optional[Dict[str, Any]]:
+        """Get Bailian plugin configuration from workspace servers directory."""
+        try:
+            if not self.workspace:
+                return None
 
-            # Set LiteLLM configurations
-            if self.api_key:
-                litellm.api_key = self.api_key
-            if self.api_base:
-                # Set the API base for the detected provider
-                if self.provider == "dashscope":
-                    # For DashScope, use the compatible mode endpoint with proper provider prefix
-                    litellm.custom_api_base = self.api_base
-                    # Set headers for DashScope if needed
-                    litellm.default_headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
-                else:
-                    litellm.api_base = self.api_base
+            # Get workspace path
+            workspace_path = self.workspace.get_path() if hasattr(self.workspace, 'get_path') else None
+            if not workspace_path:
+                return None
+
+            # Check for Bailian server config in servers directory
+            import yaml
+            from pathlib import Path
+
+            servers_dir = Path(workspace_path) / "servers"
+            bailian_server_dir = servers_dir / "bailian"
+
+            if not bailian_server_dir.exists():
+                return None
+
+            config_path = bailian_server_dir / "server.yml"
+            if not config_path.exists():
+                return None
+
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = yaml.safe_load(f)
+
+            if not config:
+                return None
+
+            # ServerConfig has api_key at top level, and plugin-specific config in parameters
+            bailian_config = {}
+
+            # Get api_key from top level
+            api_key = config.get('api_key', '')
+            if api_key:
+                bailian_config['api_key'] = api_key
+
+            # Get plugin-specific config from parameters
+            parameters = config.get('parameters', {}) or {}
+
+            # Merge parameters into bailian_config
+            bailian_config.update(parameters)
+
+            # Build API base from endpoint if not explicitly set
+            api_base = bailian_config.get('api_base')
+            if not api_base:
+                # Default to DashScope chat endpoint
+                from server.plugins.bailian_server.models_config import models_config
+                api_base = models_config.get_dashscope_chat_endpoint()
+
+            bailian_config['api_base'] = api_base
+
+            return bailian_config
+
+        except Exception as e:
+            # Silently fail - configuration might not exist yet
+            return None
 
     def get_current_language(self) -> str:
         """
@@ -741,7 +791,7 @@ class LlmService:
             List of available models
         """
         return litellm.model_list
-    
+
     def validate_config(self) -> bool:
         """
         Validate if the LLM service is properly configured.
@@ -749,9 +799,20 @@ class LlmService:
         Returns:
             True if properly configured, False otherwise
         """
-        # Check if either API key is set OR API base is set (for custom endpoints)
-        # This allows for services that might use different authentication methods
-        return bool(self.api_key) or bool(self.api_base)
+        # Check if either API key is set OR API base is set
+        if self.api_key or self.api_base:
+            return True
+
+        # If no API key/base in LlmService, check if ChatService can be initialized
+        # This allows configuration to come from server-side (e.g., Bailian plugin config)
+        try:
+            chat_service = self.get_chat_service()
+            if chat_service is not None:
+                return True
+        except Exception:
+            pass
+
+        return False
     
     def get_current_config(self) -> Dict[str, Any]:
         """

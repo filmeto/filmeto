@@ -386,16 +386,28 @@ class BailianConfigWidget(QWidget):
         default_model = result.get("default_model", "qwen-max")
 
         # Get DashScope models from config
-        models = models_config.get_dashscope_models()
+        # If api_key is not configured, only return basic models (require API key for full access)
+        api_key = result.get("api_key", "").strip()
+        if api_key:
+            models = models_config.get_dashscope_models()
+        else:
+            # No API key configured - only show basic/free tier models
+            # These models still require API key but are commonly used
+            models = ["qwen-flash", "qwen-turbo"]
+
         if default_model and default_model not in models:
             models.insert(0, default_model)
         result["models"] = models
 
-        # Add Coding Plan models if enabled (with prefix for UI)
+        # Add Coding Plan models only if both enabled AND api_key is configured
+        # Note: Coding Plan requires its own separate api_key
         if result.get("coding_plan_enabled") and result.get("coding_plan_api_key"):
             result["coding_plan_endpoint"] = models_config.get_coding_plan_endpoint()
             # Models with prefix for UI display
             result["coding_plan_models"] = models_config.get_coding_plan_models(with_prefix=True)
+        else:
+            # Coding Plan disabled or no API key - don't add models
+            result["coding_plan_models"] = []
 
         # Add ability models configuration from the QML panel
         if self._ability_model:
@@ -404,17 +416,8 @@ class BailianConfigWidget(QWidget):
         return result
 
     def validate_config(self) -> bool:
-        config = self.get_config()
-        # API Key is optional - only validate if user wants to use standard models
-        # Coding Plan API Key is required only if Coding Plan is enabled
-        if config.get("coding_plan_enabled") and not config.get("coding_plan_api_key"):
-            QMessageBox.warning(
-                self, "Validation Error",
-                "Coding Plan API Key is required when Coding Plan is enabled.\n\n"
-                "Get your Coding Plan API Key from:\n"
-                "阿里云控制台 → Coding Plan → API-KEY管理"
-            )
-            return False
+        # No longer validate API keys - user can configure later
+        # Models will be limited if API key is not configured
         return True
 
     def cleanup(self):

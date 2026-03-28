@@ -445,9 +445,17 @@ class BailianConfigQMLModel(PluginConfigQMLModel):
         try:
             from server.plugins.bailian_server.models_config import models_config
 
+            # Check if api_key is configured
+            api_key = result.get("api_key", "").strip()
+            if api_key:
+                all_models = models_config.get_dashscope_models()
+            else:
+                # No API key - only show basic models
+                all_models = ["qwen-flash", "qwen-turbo"]
+
             models = [
                 m
-                for m in models_config.get_dashscope_models()
+                for m in all_models
                 if is_model_enabled_for_ability(result, "chat_completion", m)
             ]
             if default_model and default_model not in models:
@@ -456,7 +464,8 @@ class BailianConfigQMLModel(PluginConfigQMLModel):
         except ImportError:
             result["models"] = [default_model] if default_model else []
 
-        # Add Coding Plan config if enabled
+        # Add Coding Plan config if enabled and api_key is configured
+        # Note: Coding Plan requires its own separate api_key
         if result.get("coding_plan_enabled") and result.get("coding_plan_api_key"):
             try:
                 from server.plugins.bailian_server.models_config import models_config
@@ -470,6 +479,8 @@ class BailianConfigQMLModel(PluginConfigQMLModel):
                 ]
             except ImportError:
                 pass
+        else:
+            result["coding_plan_models"] = []
 
         return result
 
