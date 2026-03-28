@@ -608,9 +608,9 @@ class BailianServerPlugin(BaseServerPlugin):
         self, task_id, api_key, parameters, default_model,
         coding_plan_enabled, coding_plan_api_key, progress_callback
     ):
-        """Execute chat completion via DashScope OpenAI-compatible API."""
-        if not LITELLM_AVAILABLE:
-            raise RuntimeError("litellm is required for chat_completion. Install with: pip install litellm")
+        """Execute chat completion via DashScope SDK directly (no LiteLLM)."""
+        if not DASHSCOPE_SDK_AVAILABLE:
+            raise RuntimeError("dashscope SDK is required for chat_completion. Install with: pip install dashscope")
 
         model = parameters.get("model", default_model)
         messages = parameters.get("messages", [])
@@ -637,51 +637,65 @@ class BailianServerPlugin(BaseServerPlugin):
                                       f"Please enable Coding Plan and configure the API Key.",
                     "output_files": []
                 }
-            # Use Coding Plan endpoint and API key
-            endpoint = models_config.get_coding_plan_endpoint()
+            # Use Coding Plan API key
             use_api_key = coding_plan_api_key
             progress_callback(10, f"Calling Coding Plan ({actual_model})...", {})
         else:
-            # Use standard DashScope endpoint and API key
-            endpoint = models_config.get_dashscope_chat_endpoint()
+            # Use standard DashScope API key
             use_api_key = api_key
             progress_callback(10, f"Calling DashScope LLM ({actual_model})...", {})
 
-        # For Coding Plan, use openai provider with custom base_url
-        if is_coding_plan_model:
-            litellm_model = f"openai/{actual_model}"
-        else:
-            # Use dashscope provider with litellm
-            litellm_model = f"dashscope/{actual_model}" if not actual_model.startswith("dashscope/") else actual_model
+        # Set API key for dashscope SDK
+        dashscope.api_key = use_api_key
 
-        params = {
-            "model": litellm_model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "stream": stream,
-            "api_key": use_api_key,
-            "base_url": endpoint,
-        }
+        # Use dashscope SDK directly
+        from dashscope import Generation
 
-        if stream:
-            response = await litellm.acompletion(**params)
-            full_content = []
-            async for chunk in response:
-                if hasattr(chunk, "choices") and chunk.choices:
-                    delta = getattr(chunk.choices[0], "delta", None)
-                    if delta and getattr(delta, "content", None):
-                        full_content.append(delta.content)
-                        progress_callback(
-                            50, f"Generating... ({len(full_content)} chunks)",
-                            {"partial_content": delta.content}
-                        )
+        def call_dashscope():
+            if stream:
+                # Streaming response
+                full_content = []
+                response = Generation.call(
+                    model=actual_model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    stream=True,
+                    result_format='message'
+                )
+                if response.status_code == 200:
+                    for chunk in response:
+                        if chunk.code is None and hasattr(chunk, 'choices') and chunk.choices:
+                            delta = chunk.choices[0].get('delta', {})
+                            content = delta.get('content', '')
+                            if content:
+                                full_content.append(content)
+                                progress_callback(
+                                    50, f"Generating... ({len(full_content)} chars)",
+                                    {"partial_content": content}
+                                )
+                    return {"content": "".join(full_content), "stream": True}
+                else:
+                    raise Exception(f"DashScope API error: {response.code} - {response.message}")
+            else:
+                # Non-streaming response
+                response = Generation.call(
+                    model=actual_model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    result_format='message'
+                )
+                if response.status_code == 200:
+                    content = response.output.choices[0].message.content
+                    return {"content": content, "stream": False}
+                else:
+                    raise Exception(f"DashScope API error: {response.code} - {response.message}")
 
-            result_text = "".join(full_content)
-        else:
-            response = await litellm.acompletion(**params)
-            choice = response.choices[0]
-            result_text = getattr(choice.message, "content", "") or ""
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, call_dashscope)
+
+        result_text = result["content"]
 
         progress_callback(90, "Chat completion done", {})
 
@@ -690,15 +704,8 @@ class BailianServerPlugin(BaseServerPlugin):
         with open(local_path, "w", encoding="utf-8") as f:
             f.write(result_text)
 
-        # Extract usage info
-        usage_obj = getattr(response, "usage", None) if not stream else None
+        # Extract usage info if available
         usage = {}
-        if usage_obj:
-            usage = {
-                "prompt_tokens": getattr(usage_obj, "prompt_tokens", 0),
-                "completion_tokens": getattr(usage_obj, "completion_tokens", 0),
-                "total_tokens": getattr(usage_obj, "total_tokens", 0),
-            }
 
         return {
             "task_id": task_id,
@@ -710,6 +717,7 @@ class BailianServerPlugin(BaseServerPlugin):
                 "usage": usage,
             }
         }
+
 
 
 if __name__ == "__main__":
