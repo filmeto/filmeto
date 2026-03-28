@@ -64,9 +64,6 @@ class SettingsWidget(BaseWidget):
         # Load current values
         self._load_values()
 
-        # Connect the API host change to update model options
-        self._connect_api_host_change_handler()
-
         # Apply styling
         self._apply_style()
     
@@ -318,116 +315,6 @@ class SettingsWidget(BaseWidget):
         layout.addWidget(self.save_btn)
         
         parent_layout.addWidget(footer)
-    
-    def _get_model_options_by_service(self, api_host: str) -> list:
-        """Get model options based on the API host"""
-        if 'dashscope.aliyuncs.com' in api_host:
-            # DashScope models
-            return [
-                {"value": "qwen3.5-flash", "label": "Qwen3.5 Flash"},
-                {"value": "qwen3.5-plus", "label": "Qwen3.5 Plus"},
-                {"value": "kimi-k2.5", "label": "Kimi K2.5"},
-                {"value": "kimi-k2-thinking", "label": "Kimi K2 Thinking"},
-                {"value": "glm-5", "label": "GLM-5"},
-                {"value": "glm-4.7", "label": "GLM-4.7"},
-                {"value": "qwen-turbo", "label": "Qwen Turbo"},
-                {"value": "qwen-plus", "label": "Qwen Plus"},
-                {"value": "qwen-max", "label": "Qwen Max"},
-                {"value": "qwen-max-longcontext", "label": "Qwen Max (Long Context)"},
-                {"value": "qwen-vl-plus", "label": "Qwen VL Plus (Vision)"},
-                {"value": "qwen-vl-max", "label": "Qwen VL Max (Vision)"},
-                {"value": "text-embedding-v1", "label": "Text Embedding (v1)"}
-            ]
-        elif 'openai.azure.com' in api_host or 'openai.azure' in api_host:
-            # Azure OpenAI models
-            return [
-                {"value": "gpt-4", "label": "GPT-4"},
-                {"value": "gpt-4o", "label": "GPT-4o"},
-                {"value": "gpt-4o-mini", "label": "GPT-4o Mini"},
-                {"value": "gpt-35-turbo", "label": "GPT-3.5 Turbo"},
-                {"value": "text-embedding-ada-002", "label": "Text Embedding Ada 002"}
-            ]
-        elif 'openai.com' in api_host:
-            # Standard OpenAI models
-            return [
-                {"value": "gpt-4o", "label": "GPT-4o"},
-                {"value": "gpt-4o-mini", "label": "GPT-4o Mini"},
-                {"value": "gpt-4-turbo", "label": "GPT-4 Turbo"},
-                {"value": "gpt-4", "label": "GPT-4"},
-                {"value": "gpt-3.5-turbo", "label": "GPT-3.5 Turbo"},
-                {"value": "text-embedding-3-small", "label": "Text Embedding 3 Small"},
-                {"value": "text-embedding-3-large", "label": "Text Embedding 3 Large"}
-            ]
-        elif 'anthropic' in api_host:
-            # Anthropic models
-            return [
-                {"value": "claude-3-opus", "label": "Claude 3 Opus"},
-                {"value": "claude-3-sonnet", "label": "Claude 3 Sonnet"},
-                {"value": "claude-3-haiku", "label": "Claude 3 Haiku"},
-                {"value": "claude-2.1", "label": "Claude 2.1"}
-            ]
-        elif 'googleapis.com' in api_host:
-            # Google models
-            return [
-                {"value": "gemini-pro", "label": "Gemini Pro"},
-                {"value": "gemini-1.5-pro", "label": "Gemini 1.5 Pro"},
-                {"value": "gemini-1.5-flash", "label": "Gemini 1.5 Flash"},
-                {"value": "text-embedding-005", "label": "Text Embedding 005"}
-            ]
-        else:
-            # Default models (OpenAI-compatible)
-            return [
-                {"value": "gpt-4o", "label": "GPT-4o"},
-                {"value": "gpt-4o-mini", "label": "GPT-4o Mini"},
-                {"value": "gpt-4-turbo", "label": "GPT-4 Turbo"},
-                {"value": "gpt-4", "label": "GPT-4"},
-                {"value": "gpt-3.5-turbo", "label": "GPT-3.5 Turbo"},
-                {"value": "claude-3-haiku", "label": "Claude 3 Haiku"},
-                {"value": "claude-3-sonnet", "label": "Claude 3 Sonnet"},
-                {"value": "gemini-pro", "label": "Gemini Pro"},
-                {"value": "gemini-1.5-pro", "label": "Gemini 1.5 Pro"}
-            ]
-
-    def _update_model_options(self):
-        """Update the model options based on the selected API host"""
-        # Get the current API host
-        api_host_widget = self.field_widgets.get('ai_services.openai_host')
-        if not api_host_widget:
-            return
-
-        api_host = api_host_widget.text()
-
-        # Get the model widget
-        model_widget = self.field_widgets.get('ai_services.default_model')
-        if not model_widget:
-            return
-
-        # Get the current value before clearing
-        current_value = model_widget.currentText()
-
-        # Clear existing items
-        model_widget.clear()
-
-        # Get new options based on the API host
-        model_options = self._get_model_options_by_service(api_host)
-
-        # Add new options
-        for option in model_options:
-            model_widget.addItem(option.get('label', ''), option.get('value'))
-
-        # Try to restore the current value if it exists in the new options
-        index = model_widget.findData(current_value)
-        if index >= 0:
-            model_widget.setCurrentIndex(index)
-        else:
-            # If the current value is not in the new options, set it as text
-            model_widget.setEditText(current_value)
-
-    def _connect_api_host_change_handler(self):
-        """Connect the API host change event to update model options"""
-        api_host_widget = self.field_widgets.get('ai_services.openai_host')
-        if api_host_widget:
-            api_host_widget.textChanged.connect(self._update_model_options)
 
     def _apply_style(self):
         """Apply overall widget style"""
@@ -457,9 +344,6 @@ class SettingsWidget(BaseWidget):
             self._set_widget_value(widget, field.type, current_value)
             self.original_values[key] = current_value
 
-        # Update model options based on the loaded API host
-        self._update_model_options()
-    
     def _set_widget_value(self, widget: QWidget, field_type: str, value: Any):
         """Set widget value based on field type"""
         if field_type == 'text':

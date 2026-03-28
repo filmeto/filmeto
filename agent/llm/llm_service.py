@@ -76,20 +76,19 @@ class LlmService:
     - Initializing LiteLLM with the retrieved settings
     - Providing a clean interface to LiteLLM's functionality
     - Supporting special handling for different AI service providers like DashScope
-    - Optionally using server's ChatService for unified model selection
+    - Using server's ChatService for unified model selection (always enabled)
     """
 
     # Class-level cache for ChatService instance
     _chat_service = None
     _server_manager = None
 
-    def __init__(self, workspace=None, use_server_chat: bool = True):
+    def __init__(self, workspace=None):
         """
         Initialize the LlmService.
 
         Args:
             workspace: Workspace instance containing settings. If not provided, will use environment variables.
-            use_server_chat: If True, prefer using server's ChatService for completions (default: True)
         """
         self.workspace = workspace
         self.settings = getattr(workspace, 'settings', None) if workspace else None
@@ -97,7 +96,6 @@ class LlmService:
         self.api_base = None
         self.default_model = 'qwen3.5-flash'
         self.temperature = 0.7
-        self.use_server_chat = use_server_chat
         self.language_prompts = {
             'zh_CN': '请使用中文回答。',
             'en_US': 'Please respond in English.',
@@ -232,13 +230,10 @@ class LlmService:
     def _initialize_from_settings(self):
         """Initialize the service by retrieving settings from the system settings service."""
         if self.settings:
-            # Retrieve OpenAI settings from the system settings service
-            self.api_key = (self.settings.get('ai_services.openai_api_key') or
-                           self.settings.get('ai_services.openai_ak_sk') or
-                           os.getenv('OPENAI_API_KEY') or
-                           os.getenv('DASHSCOPE_API_KEY'))
-            self.api_base = self.settings.get('ai_services.openai_host', os.getenv('OPENAI_BASE_URL'))
-            self.default_model = self.settings.get('ai_services.default_model', 'qwen3.5-flash')
+            # Retrieve settings from environment variables (AI service settings removed from UI)
+            self.api_key = os.getenv('OPENAI_API_KEY') or os.getenv('DASHSCOPE_API_KEY')
+            self.api_base = os.getenv('OPENAI_BASE_URL') or os.getenv('OPENAI_HOST')
+            self.default_model = os.getenv('DEFAULT_MODEL', 'qwen3.5-flash')
 
             # Detect provider from base URL
             self.provider = self._detect_provider_from_base_url(self.api_base)
@@ -377,11 +372,9 @@ class LlmService:
                          selection: Optional[Dict[str, Any]] = None,
                          **kwargs) -> Any:
         """
-        Async completion method that can use either server's ChatService or LiteLLM directly.
+        Async completion method that uses server's ChatService.
 
-        When use_server_chat is True (default), this method will:
-        1. Try to use the server's ChatService with the unified selection system
-        2. Fall back to direct LiteLLM calls if server is not available
+        This method always uses the server's ChatService with the unified selection system.
 
         Args:
             model: Model to use for completion (defaults to self.default_model)
@@ -393,7 +386,7 @@ class LlmService:
             **kwargs: Additional arguments to pass to LiteLLM
 
         Returns:
-            Completion response from LiteLLM or ChatService
+            Completion response from ChatService
         """
         # Use defaults if not provided
         if model is None:
@@ -406,22 +399,21 @@ class LlmService:
         # Inject language prompt based on current language setting
         messages = self._inject_language_prompt(messages)
 
-        # Try to use server's ChatService if enabled
-        if self.use_server_chat:
-            chat_service = self.get_chat_service()
-            if chat_service is not None:
-                return await self._acompletion_via_server(
-                    chat_service=chat_service,
-                    model=model,
-                    messages=messages,
-                    temperature=temperature,
-                    stream=stream,
-                    server=server,
-                    selection=selection,
-                    **kwargs
-                )
+        # Always use server's ChatService
+        chat_service = self.get_chat_service()
+        if chat_service is not None:
+            return await self._acompletion_via_server(
+                chat_service=chat_service,
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                stream=stream,
+                server=server,
+                selection=selection,
+                **kwargs
+            )
 
-        # Fall back to direct LiteLLM call
+        # Fallback to direct LiteLLM call only if server is not available
         return await self._acompletion_via_litellm(
             model=model,
             messages=messages,

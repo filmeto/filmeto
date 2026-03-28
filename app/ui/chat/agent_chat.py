@@ -289,8 +289,8 @@ class AgentChatWidget(BaseWidget):
         return "default"
 
     def _get_model_config(self) -> tuple:
-        settings = self.workspace.get_settings()
-        model = settings.get('ai_services.default_model', 'gpt-4o-mini') if settings else 'gpt-4o-mini'
+        # Use default model configuration without relying on settings
+        model = 'qwen3.5-flash'
         temperature = 0.7
         return model, temperature
 

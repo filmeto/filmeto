@@ -240,24 +240,23 @@ async def example_settings_configuration():
     if not project:
         print("No project found.")
         return
-    
-    # Configure settings for LangGraph initialization
-    print("\nConfiguring AI settings...")
-    workspace.settings.set("ai_services.openai_api_key", "sk-your-api-key-here")
-    workspace.settings.set("ai_services.openai_host", "https://api.openai.com/v1")
-    workspace.settings.set("ai_services.default_model", "gpt-4o-mini")
-    workspace.settings.save()
-    
-    print("✅ Settings configured:")
-    print(f"   API Key: {workspace.settings.get('ai_services.openai_api_key', 'Not set')}")
-    print(f"   API Host: {workspace.settings.get('ai_services.openai_host', 'Not set')}")
-    print(f"   Default Model: {workspace.settings.get('ai_services.default_model', 'Not set')}")
-    
-    # Create agent - it will automatically use settings
+
+    # Configure settings for LangGraph initialization using environment variables
+    # AI Service settings have been removed from the UI. Use the following environment variables:
+    # - OPENAI_API_KEY or DASHSCOPE_API_KEY for API key
+    # - OPENAI_BASE_URL or OPENAI_HOST for API host
+    # - DEFAULT_MODEL for default model
+    print("\nAI Service settings are now configured via environment variables.")
+    print("Set the following environment variables before running:")
+    print("   export OPENAI_API_KEY=your-api-key")
+    print("   export OPENAI_BASE_URL=https://api.openai.com/v1")
+    print("   export DEFAULT_MODEL=gpt-4o-mini")
+
+    # Create agent - it will automatically use environment variables
     agent = FilmetoAgent(
         workspace=workspace,
         project=project,
-        # API key and base_url will be read from settings automatically
+        # API key and base_url will be read from environment variables automatically
     )
     
     if agent.llm:
