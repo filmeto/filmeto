@@ -116,6 +116,14 @@ class StartupWindow(LeftPanelDialog):
         from PySide6.QtWidgets import QApplication
         QApplication.instance().quit()
         event.accept()
+
+    def reject(self):
+        """Handle close button click (from MacTitleBar)."""
+        self._save_window_sizes()
+        # Closing startup window should close the application
+        from PySide6.QtWidgets import QApplication
+        QApplication.instance().quit()
+        super().reject()
     
     def _setup_ui(self):
         """Set up the UI with left panel and right work area."""
