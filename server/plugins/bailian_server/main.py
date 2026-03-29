@@ -697,10 +697,8 @@ class BailianServerPlugin(BaseServerPlugin):
 
         progress_callback(90, "Chat completion done", {})
 
-        # Save result
-        local_path = self.output_dir / f"{task_id}_chat.txt"
-        with open(local_path, "w", encoding="utf-8") as f:
-            f.write(result_text)
+        # Note: Don't save chat results to file - text is returned directly in metadata
+        # This avoids accumulating chat log files that are not needed for chat completion
 
         # Extract usage info if available
         usage = {}
@@ -708,7 +706,7 @@ class BailianServerPlugin(BaseServerPlugin):
         return {
             "task_id": task_id,
             "status": "success",
-            "output_files": [str(local_path)],
+            "output_files": [],
             "metadata": {
                 "text": result_text,
                 "model": model,
