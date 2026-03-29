@@ -241,6 +241,17 @@ class ChatService:
         if not server:
             raise ValueError(f"Server '{server_cfg.name}' not found")
 
+        # For bailian server, call directly instead of via plugin process
+        if server_cfg.server_type == "bailian":
+            return await self._execute_bailian_direct(
+                server_cfg=server_cfg,
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stream=stream,
+            )
+
         # Build task parameters
         task_params = {
             "model": model,
@@ -284,6 +295,67 @@ class ChatService:
             raise RuntimeError(f"Chat completion failed: {result.error_message}")
 
         return result
+
+    async def _execute_bailian_direct(
+        self,
+        server_cfg: ServerConfig,
+        model: str,
+        messages: List[ChatMessage],
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        stream: bool = False,
+    ) -> TaskResult:
+        """Execute chat completion directly via BailianServerPlugin (in-process)."""
+        try:
+            from server.plugins.bailian_server.main import BailianServerPlugin
+
+            # Build parameters
+            parameters = {
+                "model": model,
+                "messages": [m.model_dump(exclude_none=True) for m in messages],
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "stream": stream,
+            }
+
+            # Build server config for plugin
+            server_config = {
+                "api_key": server_cfg.api_key,
+                **server_cfg.parameters,
+            }
+
+            # Create plugin and execute
+            plugin = BailianServerPlugin()
+
+            # Define a simple progress callback
+            progress_updates = []
+
+            def progress_callback(progress: float, message: str, metadata: dict):
+                progress_updates.append({"progress": progress, "message": message, "metadata": metadata})
+
+            task_data = {
+                "task_id": f"chat_{uuid.uuid4().hex[:12]}",
+                "capability": "chat_completion",
+                "parameters": parameters,
+                "metadata": {"server_config": server_config},
+            }
+
+            result = await plugin.execute_task(task_data, progress_callback)
+
+            if result.get("status") == "error":
+                raise RuntimeError(f"Chat completion failed: {result.get('error_message')}")
+
+            return TaskResult(
+                task_id=result.get("task_id", ""),
+                status=result.get("status", "success"),
+                output_files=result.get("output_files", []),
+                metadata={
+                    "text": result.get("metadata", {}).get("text", ""),
+                    "model": result.get("metadata", {}).get("model", model),
+                },
+            )
+        except ImportError as e:
+            raise RuntimeError(f"Bailian plugin not available: {e}")
 
     async def _execute_stream_via_server(
         self,
