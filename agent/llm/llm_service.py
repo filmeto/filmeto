@@ -488,6 +488,14 @@ class LlmService:
         """
         from server.api.chat_types import ChatCompletionRequest, ChatMessage
 
+        # Refresh capabilities to get latest server status (e.g., enabled/disabled)
+        try:
+            selection_svc = chat_service.selection_service
+            if selection_svc and hasattr(selection_svc, '_capability_service'):
+                selection_svc._capability_service.refresh_capabilities()
+        except Exception:
+            pass  # Ignore refresh errors
+
         # Convert messages to ChatMessage format
         chat_messages = []
         for msg in messages:
@@ -808,7 +816,16 @@ class LlmService:
         try:
             chat_service = self.get_chat_service()
             if chat_service is not None:
-                return True
+                # Refresh capabilities to get latest server status
+                selection_svc = chat_service.selection_service
+                if selection_svc and hasattr(selection_svc, '_capability_service'):
+                    selection_svc._capability_service.refresh_capabilities()
+
+                # Check if there are any available chat capabilities
+                from server.api.types import Capability
+                capabilities = selection_svc._capability_service.get_capabilities_by_type(Capability.CHAT_COMPLETION)
+                if capabilities:
+                    return True
         except Exception:
             pass
 
