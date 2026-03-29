@@ -38,13 +38,6 @@ except ImportError:
     DASHSCOPE_SDK_AVAILABLE = False
     logger.warning("dashscope SDK not found, using HTTP API")
 
-try:
-    import litellm
-    LITELLM_AVAILABLE = True
-except ImportError:
-    LITELLM_AVAILABLE = False
-    logger.warning("litellm not found, chat_completion tool unavailable")
-
 
 class BailianServerPlugin(BaseServerPlugin):
     """

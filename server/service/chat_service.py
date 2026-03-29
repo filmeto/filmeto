@@ -3,9 +3,8 @@ Chat Completion Service
 
 Routes OpenAI-compatible chat completion requests to configured LLM backends.
 Each backend is represented as a Server with server_type set to one of
-"openai", "chat", or "llm".  The actual LLM call is delegated to LiteLLM,
-which handles provider-specific differences (OpenAI, DashScope, Anthropic,
-Azure, Ollama, etc.) transparently.
+"openai", "chat", or "llm". The actual LLM call is delegated to the server's
+plugin via ServerManager.execute_task().
 
 Server configuration example (server.yml):
     name: my-openai
@@ -31,8 +30,6 @@ import time
 import uuid
 from typing import TYPE_CHECKING, AsyncIterator, List, Optional
 
-import litellm
-
 from server.plugins.ability_model_config import is_model_enabled_for_ability
 from server.service.ability_selection_service import AbilitySelectionService, SelectionError
 
@@ -47,7 +44,7 @@ from server.api.chat_types import (
     ModelInfo,
     UsageInfo,
 )
-from server.api.types import Capability, SelectionConfig, SelectionMode
+from server.api.types import Capability, FilmetoTask, SelectionConfig, SelectionMode, TaskProgress, TaskResult
 
 if TYPE_CHECKING:
     from server.server import ServerConfig, ServerManager
@@ -110,66 +107,48 @@ class ChatService:
     ) -> ChatCompletionResponse:
         """Execute a non-streaming chat completion."""
         server_cfg, model_name = self._resolve_server_and_model(request)
-        messages = [m.model_dump(exclude_none=True) for m in request.messages]
-        params = self._build_litellm_params(server_cfg, request, model_name, stream=False)
 
         logger.info(
             "chat_completion model=%s server=%s",
             model_name, server_cfg.name,
         )
 
-        response = await litellm.acompletion(messages=messages, **params)
-        return self._to_response(response, model_name)
+        # Execute via server plugin
+        result = await self._execute_via_server(
+            server_cfg=server_cfg,
+            model=model_name,
+            messages=request.messages,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
+            top_p=request.top_p,
+            stop=request.stop,
+            stream=False,
+        )
+
+        return self._convert_to_response(result, model_name)
 
     async def chat_completion_stream(
         self, request: ChatCompletionRequest
     ) -> AsyncIterator[ChatCompletionChunk]:
         """Execute a streaming chat completion, yielding SSE-ready chunks."""
         server_cfg, model_name = self._resolve_server_and_model(request)
-        messages = [m.model_dump(exclude_none=True) for m in request.messages]
-        params = self._build_litellm_params(server_cfg, request, model_name, stream=True)
 
         logger.info(
             "chat_completion_stream model=%s server=%s",
             model_name, server_cfg.name,
         )
 
-        response = await litellm.acompletion(messages=messages, **params)
-
-        completion_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
-        created = int(time.time())
-
-        async for chunk in response:
-            delta_data: dict = {}
-            finish_reason = None
-
-            if hasattr(chunk, "choices") and chunk.choices:
-                choice = chunk.choices[0]
-                delta = getattr(choice, "delta", None)
-                if delta:
-                    if getattr(delta, "role", None):
-                        delta_data["role"] = delta.role
-                    if getattr(delta, "content", None) is not None:
-                        delta_data["content"] = delta.content
-                    if getattr(delta, "tool_calls", None):
-                        delta_data["tool_calls"] = [
-                            tc.model_dump() if hasattr(tc, "model_dump") else tc
-                            for tc in delta.tool_calls
-                        ]
-                finish_reason = getattr(choice, "finish_reason", None)
-
-            yield ChatCompletionChunk(
-                id=completion_id,
-                created=created,
-                model=model_name,
-                choices=[
-                    ChatCompletionChunkChoice(
-                        index=0,
-                        delta=DeltaMessage(**delta_data),
-                        finish_reason=finish_reason,
-                    )
-                ],
-            )
+        # Execute via server plugin and yield chunks
+        async for chunk in self._execute_stream_via_server(
+            server_cfg=server_cfg,
+            model=model_name,
+            messages=request.messages,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
+            top_p=request.top_p,
+            stop=request.stop,
+        ):
+            yield chunk
 
     def list_models(self) -> List[ModelInfo]:
         """Collect advertised models from all chat-capable servers."""
@@ -240,109 +219,214 @@ class ChatService:
         server_cfg, _ = self._resolve_server_and_model(request)
         return server_cfg
 
-    @staticmethod
-    def _build_litellm_params(
+    async def _execute_via_server(
+        self,
         server_cfg: ServerConfig,
-        request: ChatCompletionRequest,
-        model_name: str,
-        *,
+        model: str,
+        messages: List[ChatMessage],
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        top_p: Optional[float] = None,
+        stop: Optional[List[str]] = None,
         stream: bool = False,
-    ) -> dict:
-        """Translate ServerConfig + request into litellm.acompletion kwargs."""
-        sp = server_cfg.parameters
-        params: dict = {"model": model_name, "stream": stream}
+    ) -> TaskResult:
+        """
+        Execute chat completion via Server's plugin.
 
-        # API key: prefer plugin-specific key (e.g. dashscope_api_key),
-        # fall back to server-level api_key.
-        api_key = sp.get("dashscope_api_key") or server_cfg.api_key
-        if api_key:
-            params["api_key"] = api_key
+        Returns:
+            TaskResult with the completion result in metadata
+        """
+        # Get the server from ServerManager
+        server = self._server_manager.get_server(server_cfg.name)
+        if not server:
+            raise ValueError(f"Server '{server_cfg.name}' not found")
 
-        # Endpoint: prefer plugin-specific chat endpoint,
-        # fall back to server-level endpoint.
-        endpoint = sp.get("dashscope_endpoint") or server_cfg.endpoint
-        if endpoint:
-            params["base_url"] = endpoint
-            params["api_base"] = endpoint
+        # Build task parameters
+        task_params = {
+            "model": model,
+            "messages": [m.model_dump(exclude_none=True) for m in messages],
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": stream,
+        }
+        if top_p is not None:
+            task_params["top_p"] = top_p
+        if stop is not None:
+            task_params["stop"] = stop
 
-        provider = sp.get("provider")
-        if provider and provider != "openai":
-            if not model_name.startswith(f"{provider}/"):
-                params["model"] = f"{provider}/{model_name}"
+        # Build metadata with server config
+        task_metadata = {
+            "server_config": {
+                "api_key": server_cfg.api_key,
+                **server_cfg.parameters,
+            }
+        }
 
-        if request.temperature is not None:
-            params["temperature"] = request.temperature
-        elif "temperature" in sp:
-            params["temperature"] = sp["temperature"]
+        # Create FilmetoTask
+        task = FilmetoTask(
+            task_id=f"chat_{uuid.uuid4().hex[:12]}",
+            capability=Capability.CHAT_COMPLETION,
+            parameters=task_params,
+            metadata=task_metadata,
+        )
 
-        if request.top_p is not None:
-            params["top_p"] = request.top_p
-        if request.max_tokens is not None:
-            params["max_tokens"] = request.max_tokens
-        if request.stop:
-            params["stop"] = request.stop
-        if request.n != 1:
-            params["n"] = request.n
-        if request.presence_penalty:
-            params["presence_penalty"] = request.presence_penalty
-        if request.frequency_penalty:
-            params["frequency_penalty"] = request.frequency_penalty
-        if request.user:
-            params["user"] = request.user
+        # Execute via server
+        result = None
+        async for msg in server.execute_task(task):
+            if isinstance(msg, TaskResult):
+                result = msg
+                break
 
-        if request.tools:
-            params["tools"] = [t.model_dump() for t in request.tools]
-        if request.tool_choice is not None:
-            params["tool_choice"] = request.tool_choice
+        if result is None:
+            raise RuntimeError("No result received from server")
 
-        extra = sp.get("litellm_params")
-        if isinstance(extra, dict):
-            params.update(extra)
+        if result.status == "error":
+            raise RuntimeError(f"Chat completion failed: {result.error_message}")
 
-        return params
+        return result
 
-    @staticmethod
-    def _to_response(
-        litellm_response, model: str
+    async def _execute_stream_via_server(
+        self,
+        server_cfg: ServerConfig,
+        model: str,
+        messages: List[ChatMessage],
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        top_p: Optional[float] = None,
+        stop: Optional[List[str]] = None,
+    ) -> AsyncIterator[ChatCompletionChunk]:
+        """
+        Execute streaming chat completion via Server's plugin.
+
+        Yields ChatCompletionChunk objects.
+        """
+        # Get the server from ServerManager
+        server = self._server_manager.get_server(server_cfg.name)
+        if not server:
+            raise ValueError(f"Server '{server_cfg.name}' not found")
+
+        # Build task parameters
+        task_params = {
+            "model": model,
+            "messages": [m.model_dump(exclude_none=True) for m in messages],
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": True,
+        }
+        if top_p is not None:
+            task_params["top_p"] = top_p
+        if stop is not None:
+            task_params["stop"] = stop
+
+        # Build metadata with server config
+        task_metadata = {
+            "server_config": {
+                "api_key": server_cfg.api_key,
+                **server_cfg.parameters,
+            }
+        }
+
+        # Create FilmetoTask
+        task = FilmetoTask(
+            task_id=f"chat_{uuid.uuid4().hex[:12]}",
+            capability=Capability.CHAT_COMPLETION,
+            parameters=task_params,
+            metadata=task_metadata,
+        )
+
+        # Execute via server and yield chunks
+        completion_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
+        created = int(time.time())
+        accumulated_content = ""
+
+        async for msg in server.execute_task(task):
+            if isinstance(msg, TaskProgress):
+                # Extract partial content from progress
+                partial = msg.metadata or {}
+                if "partial_content" in partial:
+                    new_content = partial["partial_content"]
+                    # Calculate delta
+                    delta_content = new_content[len(accumulated_content):] if accumulated_content else new_content
+                    accumulated_content = new_content
+
+                    if delta_content:
+                        yield ChatCompletionChunk(
+                            id=completion_id,
+                            created=created,
+                            model=model,
+                            choices=[
+                                ChatCompletionChunkChoice(
+                                    index=0,
+                                    delta=DeltaMessage(content=delta_content),
+                                    finish_reason=None,
+                                )
+                            ],
+                        )
+            elif isinstance(msg, TaskResult):
+                # Final result
+                if msg.status == "error":
+                    raise RuntimeError(f"Chat completion failed: {msg.error_message}")
+
+                # Check if there's remaining content in the result
+                final_text = msg.metadata.get("text", "")
+                delta_content = final_text[len(accumulated_content):] if accumulated_content else final_text
+
+                if delta_content:
+                    yield ChatCompletionChunk(
+                        id=completion_id,
+                        created=created,
+                        model=model,
+                        choices=[
+                            ChatCompletionChunkChoice(
+                                index=0,
+                                delta=DeltaMessage(content=delta_content),
+                                finish_reason="stop",
+                            )
+                        ],
+                    )
+                else:
+                    # Send final chunk with finish_reason
+                    yield ChatCompletionChunk(
+                        id=completion_id,
+                        created=created,
+                        model=model,
+                        choices=[
+                            ChatCompletionChunkChoice(
+                                index=0,
+                                delta=DeltaMessage(),
+                                finish_reason="stop",
+                            )
+                        ],
+                    )
+
+    def _convert_to_response(
+        self, result: TaskResult, model: str
     ) -> ChatCompletionResponse:
-        """Convert a litellm ModelResponse to an OpenAI-compatible response."""
-        choices = []
-        for i, c in enumerate(litellm_response.choices):
-            msg = c.message
-            tool_calls_raw = getattr(msg, "tool_calls", None)
-            tool_calls = None
-            if tool_calls_raw:
-                tool_calls = [
-                    tc.model_dump() if hasattr(tc, "model_dump") else tc
-                    for tc in tool_calls_raw
-                ]
+        """Convert TaskResult to ChatCompletionResponse."""
+        # Extract text from metadata
+        text = result.metadata.get("text", "") if result.metadata else ""
 
-            choices.append(
-                ChatCompletionChoice(
-                    index=i,
-                    message=ChatMessage(
-                        role=msg.role,
-                        content=getattr(msg, "content", None),
-                        tool_calls=tool_calls,
-                    ),
-                    finish_reason=c.finish_reason,
-                )
-            )
-
-        usage_obj = getattr(litellm_response, "usage", None)
+        # Extract usage if available
+        usage_dict = result.metadata.get("usage", {}) if result.metadata else {}
         usage = UsageInfo(
-            prompt_tokens=getattr(usage_obj, "prompt_tokens", 0),
-            completion_tokens=getattr(usage_obj, "completion_tokens", 0),
-            total_tokens=getattr(usage_obj, "total_tokens", 0),
-        ) if usage_obj else UsageInfo()
+            prompt_tokens=usage_dict.get("prompt_tokens", 0),
+            completion_tokens=usage_dict.get("completion_tokens", 0),
+            total_tokens=usage_dict.get("total_tokens", 0),
+        )
 
         return ChatCompletionResponse(
-            id=getattr(
-                litellm_response, "id",
-                f"chatcmpl-{uuid.uuid4().hex[:12]}"
-            ),
-            created=getattr(litellm_response, "created", int(time.time())),
+            id=result.task_id,
+            created=int(time.time()),
             model=model,
-            choices=choices,
+            choices=[
+                ChatCompletionChoice(
+                    index=0,
+                    message=ChatMessage(
+                        role="assistant",
+                        content=text,
+                    ),
+                    finish_reason="stop",
+                )
+            ],
             usage=usage,
         )
