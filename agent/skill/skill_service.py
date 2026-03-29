@@ -480,7 +480,7 @@ class SkillService:
         workspace: Any = None,
         project: Any = None,
         args: Optional[Dict[str, Any]] = None,
-        llm_service: Any = None,
+        chat_service=None,
         max_steps: int = 10,
         crew_member_name: Optional[str] = None,
         conversation_id: Optional[str] = None,
@@ -494,7 +494,7 @@ class SkillService:
             workspace: Any object (optional)
             project: Any object (optional)
             args: Arguments to pass to the skill
-            llm_service: Optional LLM service
+            chat_service: Optional ChatService instance
             max_steps: Maximum number of ReAct steps
             crew_member_name: Name of the crew member calling this skill (for react_type uniqueness)
             conversation_id: Unique conversation/session ID (for react_type uniqueness)
@@ -509,7 +509,7 @@ class SkillService:
             workspace=workspace,
             project=project,
             args=args,
-            llm_service=llm_service,
+            chat_service=chat_service,
             max_steps=max_steps,
             crew_member_name=crew_member_name,
             conversation_id=conversation_id,
