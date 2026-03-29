@@ -46,10 +46,15 @@ class BailianServerPlugin(BaseServerPlugin):
     Simplified configuration: Only requires a single API Key.
     """
 
-    def __init__(self):
+    def __init__(self, workspace_path: Optional[str] = None):
         super().__init__()
-        self.output_dir = Path(__file__).parent / "outputs"
-        self.output_dir.mkdir(exist_ok=True)
+        # Use workspace/project/plugins/bailian as output directory
+        if workspace_path:
+            self.output_dir = Path(workspace_path) / "plugins" / "bailian"
+        else:
+            # Fallback to plugin's outputs directory
+            self.output_dir = Path(__file__).parent / "outputs"
+        self.output_dir.mkdir(parents=True, exist_ok=True)
 
     def get_plugin_info(self) -> Dict[str, Any]:
         """Get plugin metadata"""

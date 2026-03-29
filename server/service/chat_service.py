@@ -309,6 +309,10 @@ class ChatService:
         try:
             from server.plugins.bailian_server.main import BailianServerPlugin
 
+            # Get workspace path from server
+            server = self._server_manager.get_server(server_cfg.name)
+            workspace_path = str(server.workspace_path) if server and server.workspace_path else None
+
             # Build parameters
             parameters = {
                 "model": model,
@@ -325,7 +329,7 @@ class ChatService:
             }
 
             # Create plugin and execute
-            plugin = BailianServerPlugin()
+            plugin = BailianServerPlugin(workspace_path=workspace_path)
 
             # Define a simple progress callback
             progress_updates = []
