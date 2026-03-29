@@ -4,7 +4,6 @@ import time
 import uuid
 from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 
-from agent.llm.llm_service import LlmService
 from agent.tool.tool_service import ToolService
 from agent.tool.tool_context import ToolContext
 from agent.chat.content import (
@@ -14,6 +13,8 @@ from agent.chat.content import (
     ErrorContent,
     TodoWriteContent,
 )
+from server.api.chat_types import ChatCompletionRequest, ChatMessage
+from utils.llm_utils import extract_content, get_chat_service, validate_llm_config
 
 
 logger = logging.getLogger(__name__)
@@ -45,7 +46,7 @@ class React:
         react_type: str,
         build_prompt_function: Callable[[str], str],
         available_tool_names: Optional[List[str]] = None,
-        llm_service: Optional[LlmService] = None,
+        chat_service=None,
         max_steps: int = 20,
         run_id: Optional[str] = None,
         message_id: Optional[str] = None,
@@ -55,7 +56,7 @@ class React:
         self.react_type = react_type
         self.build_prompt_function = build_prompt_function
         self.available_tool_names = available_tool_names or []
-        self.llm_service = llm_service or LlmService(workspace)
+        self.chat_service = chat_service
         self.max_steps = max_steps
         self.tool_service = ToolService()
         self.message_id = message_id or ""  # For UI event grouping
@@ -174,32 +175,38 @@ class React:
         Returns:
             The content of the LLM response message.
         """
-        if not self.llm_service.validate_config():
+        # Get chat service if not set
+        if self.chat_service is None:
+            self.chat_service = get_chat_service(self.workspace)
+
+        if not self.chat_service or not validate_llm_config(self.workspace):
             logger.warning("LLM service is not configured")
             return '{"type": "final", "final": "LLM service is not configured."}'
 
-        loop = asyncio.get_event_loop()
-        model_to_use = self.llm_service.default_model or "qwen-plus"
-        temperature_to_use = getattr(self.llm_service, "temperature", 0.7)
+        model_to_use = "qwen-plus"
+        temperature_to_use = 0.7
 
         start_time = time.time()
         try:
-            response = await loop.run_in_executor(
-                None,
-                lambda: self.llm_service.completion(
-                    model=model_to_use,
-                    messages=messages,
-                    temperature=temperature_to_use,
-                    stream=False,
-                ),
+            # Convert messages to ChatMessage format
+            chat_messages = []
+            for msg in messages:
+                chat_messages.append(ChatMessage(role=msg.get("role", "user"), content=msg.get("content", "")))
+
+            # Call ChatService
+            request = ChatCompletionRequest(
+                model=model_to_use,
+                messages=chat_messages,
+                temperature=temperature_to_use,
             )
+            response = await self.chat_service.chat_completion(request)
             duration_ms = (time.time() - start_time) * 1000
             self._total_llm_calls += 1
             self._llm_duration_ms += duration_ms
             logger.debug(f"LLM call completed in {duration_ms:.2f}ms")
 
-            # Extract content using LlmService's extract_content method
-            return self.llm_service.extract_content(response)
+            # Extract content using utility function
+            return extract_content(response)
         except Exception as exc:
             logger.error(f"LLM call failed: {exc}", exc_info=True)
             return f'{{"type": "final", "final": "LLM call failed: {str(exc)}"}}'
@@ -423,7 +430,7 @@ class React:
                 user_message=prompt,
                 workspace=workspace,
                 project=self.project_name,
-                llm_service=self.llm_service,
+                chat_service=self.chat_service,
                 max_steps=max_steps,
                 crew_member_name=self.react_type,
                 conversation_id=self.run_id,

@@ -16,7 +16,7 @@ requirements:
   python: ">=3.9"
   packages:
     - pillow>=9.0.0
-    - litellm>=1.0.0
+    - dashscope>=1.14.0
 
 # Abilities exposed by this plugin (alias: legacy key ``tools``)
 abilities:

@@ -18,12 +18,12 @@ from agent.chat.content import (
 from agent.chat.agent_chat_types import ContentType
 from agent.chat.agent_chat_signals import AgentChatSignals
 from agent.chat.history.agent_chat_history_listener import AgentChatHistoryListener
-from agent.llm.llm_service import LlmService
 from agent.plan.plan_service import PlanService
 from agent.crew.crew_member import CrewMember
 from agent.crew.crew_service import CrewService
 from agent.router.message_router_service import MessageRouterService
 from utils.path_utils import get_workspace_path
+from utils.llm_utils import get_chat_service
 
 # Import from core package
 from agent.core import (
@@ -117,7 +117,7 @@ class FilmetoAgent:
         model: str = DEFAULT_MODEL,
         temperature: float = DEFAULT_TEMPERATURE,
         streaming: bool = DEFAULT_STREAMING,
-        llm_service: Optional[LlmService] = None,
+        chat_service=None,
         crew_member_service: Optional[CrewService] = None,
         plan_service: Optional[PlanService] = None,
     ):
@@ -129,7 +129,7 @@ class FilmetoAgent:
         self.streaming = streaming
 
         # Core services
-        self.llm_service = llm_service or LlmService(workspace)
+        self.chat_service = chat_service if chat_service else get_chat_service(workspace)
         self.crew_member_service = crew_member_service or CrewService()
 
         # Get project name for PlanService instance management
@@ -144,7 +144,7 @@ class FilmetoAgent:
         # Core managers (initialized after self is ready)
         self._crew_manager = FilmetoCrewManager(self.crew_member_service)
         self._message_router = MessageRouterService(
-            llm_service=self.llm_service,
+            chat_service=self.chat_service,
             workspace=workspace
         )
         self._routing_manager = None  # Will be initialized after _crew_manager is ready

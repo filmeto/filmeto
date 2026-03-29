@@ -27,13 +27,17 @@ Rules:
 
 
 def _rewrite_content_with_llm(
-    llm_service: Any,
+    chat_service: Any,
     instruction: str,
     scene_id: str,
     current_content: str,
     current_title: str,
 ) -> Optional[str]:
     """Call LLM to rewrite scene content per instruction. Returns new content or None on failure."""
+    import asyncio
+    from server.api.chat_types import ChatCompletionRequest, ChatMessage
+    from utils.llm_utils import extract_content
+
     user_content = (
         f"Rewrite the following screenplay scene according to this instruction.\n\n"
         f"**Instruction:** {instruction}\n\n"
@@ -43,13 +47,22 @@ def _rewrite_content_with_llm(
         f"Output only the rewritten screenplay content, nothing else."
     )
     messages = [
-        {"role": "system", "content": REWRITE_SYSTEM},
-        {"role": "user", "content": user_content},
+        ChatMessage(role="system", content=REWRITE_SYSTEM),
+        ChatMessage(role="user", content=user_content),
     ]
     try:
-        response = llm_service.completion(messages=messages, temperature=0.3)
-        from agent.llm.llm_service import LlmService
-        text = LlmService.extract_content(response)
+        async def call_chat():
+            request = ChatCompletionRequest(
+                model="qwen-plus",
+                messages=messages,
+                temperature=0.3,
+            )
+            return await chat_service.chat_completion(request)
+
+        # Run async call in executor for sync context
+        loop = asyncio.get_event_loop()
+        response = loop.run_until_complete(call_chat())
+        text = extract_content(response)
         if not text or not text.strip():
             return None
         return text.strip()
@@ -60,7 +73,7 @@ def _rewrite_content_with_llm(
 
 def rewrite_screenplay_in_context(
     screenplay_manager: Any,
-    llm_service: Any,
+    chat_service: Any,
     instruction: str,
     scene_ids: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
@@ -69,7 +82,7 @@ def rewrite_screenplay_in_context(
 
     Args:
         screenplay_manager: ScreenPlayManager instance
-        llm_service: LLM service for completion
+        chat_service: ChatService for completion
         instruction: User's rewrite directive
         scene_ids: List of scene_id to rewrite; if None, rewrite all scenes
 
@@ -112,7 +125,7 @@ def rewrite_screenplay_in_context(
             logger.warning(f"Scene {scene_id} not found, skipping.")
             continue
         new_content = _rewrite_content_with_llm(
-            llm_service,
+            chat_service,
             instruction,
             scene_id,
             scene.content,
@@ -166,12 +179,19 @@ def execute(context: "ToolContext", args: Dict[str, Any]) -> Dict[str, Any]:
                 "message": "No screenplay manager available in context. Cannot rewrite.",
             }
 
-        llm_service = getattr(context, "llm_service", None)
-        if llm_service is None:
+        chat_service = getattr(context, "chat_service", None)
+        if chat_service is None:
+            # Try to get from workspace
+            workspace = getattr(context, "workspace", None)
+            if workspace:
+                from utils.llm_utils import get_chat_service
+                chat_service = get_chat_service(workspace)
+
+        if chat_service is None:
             return {
                 "success": False,
-                "error": "no_llm_service",
-                "message": "No LLM service available in context. Cannot rewrite.",
+                "error": "no_chat_service",
+                "message": "No ChatService available. Cannot rewrite.",
             }
 
         scene_ids: Optional[List[str]] = None
@@ -182,7 +202,7 @@ def execute(context: "ToolContext", args: Dict[str, Any]) -> Dict[str, Any]:
 
         return rewrite_screenplay_in_context(
             screenplay_manager=screenplay_manager,
-            llm_service=llm_service,
+            chat_service=chat_service,
             instruction=instruction,
             scene_ids=scene_ids,
         )

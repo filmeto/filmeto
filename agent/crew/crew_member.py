@@ -11,12 +11,12 @@ import yaml
 from agent.chat.agent_chat_message import AgentMessage, StructureContent
 from agent.chat.agent_chat_signals import AgentChatSignals
 from agent.chat.agent_chat_types import ContentType
-from agent.llm.llm_service import LlmService
 from agent.plan.plan_service import PlanService
 from agent.skill.skill_service import SkillService, Skill
 from agent.soul import soul_service as soul_service_instance, SoulService
 from agent.prompt.prompt_service import prompt_service
 from agent.crew.crew_member_history_service import crew_member_history_service
+from utils.llm_utils import get_chat_service, validate_llm_config
 
 if TYPE_CHECKING:
     from agent.event.agent_event import AgentEvent
@@ -82,7 +82,7 @@ class CrewMember:
         config_path: str,
         workspace: Any = None,
         project: Any = None,
-        llm_service: Optional[LlmService] = None,
+        chat_service=None,
         skill_service: Optional[SkillService] = None,
         soul_service: Optional[SoulService] = None,
         plan_service: Optional[PlanService] = None,
@@ -93,7 +93,7 @@ class CrewMember:
         self.project_name = _resolve_project_name(project) or getattr(project, 'project_name', 'default_project')
         # Get crew_title from metadata or derive from name
         self.crew_title = self.config.metadata.get('crew_title', self.config.name.lower().replace(' ', '_'))
-        self.llm_service = llm_service or LlmService(workspace)
+        self.chat_service = chat_service if chat_service else get_chat_service(workspace)
         self.skill_service = skill_service or SkillService(workspace)
         # Get PlanService instance for this workspace/project combination
         self.plan_service = plan_service or PlanService.get_instance(workspace, self.project_name)
@@ -163,7 +163,7 @@ class CrewMember:
             self._save_event_to_history(typing_start_event, message_id)
         yield typing_start_event
 
-        if not self.llm_service.validate_config():
+        if not self.chat_service or not validate_llm_config(self.workspace):
             # Yield error event first
             error_event = AgentEvent.error(
                 error_message="LLM service is not configured.",
@@ -211,7 +211,7 @@ class CrewMember:
             build_prompt_function=build_prompt_function,
             available_tool_names=available_tool_names,
             workspace=self.workspace,
-            llm_service=self.llm_service,
+            chat_service=self.chat_service,
             max_steps=self.config.max_steps,
         )
 

@@ -11,13 +11,11 @@ from .utils import (
     create_error_message,
     create_system_message
 )
-from .llm.llm_service import LlmService
 from .skill.skill_service import SkillService
 from .crew import CrewService
 
 __all__ = [
     "FilmetoAgent",
-    "LlmService",
     "SkillService",
     "CrewService",
     "AgentMessage",

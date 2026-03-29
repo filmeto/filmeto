@@ -132,7 +132,7 @@ class ExecuteSkillTool(BaseTool):
                     user_message=prompt,
                     workspace=workspace,
                     project=context.project_name if context else None,
-                    llm_service=None,
+                    chat_service=None,
                     max_steps=max_steps,
                     crew_member_name=crew_member_name,
                     conversation_id=conversation_id,

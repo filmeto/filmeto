@@ -41,7 +41,7 @@ class SkillChat:
         workspace: Any = None,
         project: Any = None,
         args: Optional[Dict[str, Any]] = None,
-        llm_service: Any = None,
+        chat_service=None,
         max_steps: int = 10,
         crew_member_name: Optional[str] = None,
         conversation_id: Optional[str] = None,
@@ -55,7 +55,7 @@ class SkillChat:
             workspace: Any object (optional)
             project: Any object (optional)
             args: Arguments to pass to the skill
-            llm_service: Optional LLM service
+            chat_service: Optional ChatService instance
             max_steps: Maximum number of ReAct steps
             crew_member_name: Name of the crew member calling this skill (for react_type uniqueness)
             conversation_id: Unique conversation/session ID (for react_type uniqueness)
@@ -132,10 +132,10 @@ class SkillChat:
         try:
             from agent.react import React
             from agent.tool.tool_service import ToolService
+            from utils.llm_utils import get_chat_service
 
-            if llm_service is None:
-                from agent.llm.llm_service import LlmService
-                llm_service = LlmService(workspace)
+            if chat_service is None:
+                chat_service = get_chat_service(workspace)
 
             # Build available tool names based on skill type
             tool_service = ToolService()
@@ -173,7 +173,7 @@ class SkillChat:
                 react_type=react_type,
                 build_prompt_function=build_prompt_function,
                 available_tool_names=available_tool_names,
-                llm_service=llm_service,
+                chat_service=chat_service,
                 max_steps=max_steps,
                 run_id=run_id,
                 message_id=message_id,

@@ -207,15 +207,12 @@ These models require Coding Plan subscription. In the UI, they are prefixed with
 ## Requirements
 
 - Python >= 3.9
-- litellm >= 1.0.0 (for chat completion)
-- dashscope (optional, for image generation with SDK)
+- dashscope (for chat completion and image generation with SDK)
 
 ## Installation
 
 ```bash
-pip install litellm pillow
-# Optional: for SDK-based image generation
-pip install dashscope
+pip install dashscope pillow
 ```
 
 ## Configuration Schema

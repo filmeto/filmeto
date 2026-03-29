@@ -9,9 +9,10 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
-from agent.llm.llm_service import LlmService
 from agent.prompt.prompt_service import prompt_service
+from server.api.chat_types import ChatCompletionRequest, ChatMessage
 from utils.i18n_utils import translation_manager
+from utils.llm_utils import extract_content, get_chat_service, validate_llm_config
 
 if TYPE_CHECKING:
     from agent.crew.crew_member import CrewMember
@@ -41,15 +42,16 @@ class MessageRouterService:
     and how to customize the message for each recipient.
     """
 
-    def __init__(self, llm_service: Optional[LlmService] = None, workspace: Any = None):
+    def __init__(self, chat_service=None, workspace: Any = None):
         """
         Initialize the MessageRouterService.
 
         Args:
-            llm_service: Optional LLM service for routing decisions
-            workspace: Optional workspace for LLM service initialization
+            chat_service: Optional ChatService for routing decisions
+            workspace: Optional workspace for ChatService initialization
         """
-        self.llm_service = llm_service or LlmService(workspace)
+        self.chat_service = chat_service
+        self.workspace = workspace
 
     async def route_message(
         self,
@@ -81,8 +83,12 @@ class MessageRouterService:
                 member_messages={},
             )
 
-        # Validate LLM service
-        if not self.llm_service or not self.llm_service.validate_config():
+        # Get chat service
+        if self.chat_service is None:
+            self.chat_service = get_chat_service(self.workspace)
+
+        # Validate chat service
+        if not self.chat_service or not validate_llm_config(self.workspace):
             logger.warning("LLM service not configured, using fallback routing")
             return self._fallback_routing(message, sender_id, crew_members)
 
@@ -96,14 +102,16 @@ class MessageRouterService:
                 conversation_history=conversation_history[-max_history:] if conversation_history else [],
             )
 
-            # Call LLM for routing decision
-            response = await self.llm_service.acompletion(
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.3,  # Lower temperature for more consistent routing
+            # Call LLM for routing decision via ChatService
+            request = ChatCompletionRequest(
+                model="qwen-max",
+                messages=[ChatMessage(role="user", content=prompt)],
+                temperature=0.3,
             )
+            response = await self.chat_service.chat_completion(request)
 
             # Extract content from response
-            content = LlmService.extract_content(response)
+            content = extract_content(response)
             if not content:
                 logger.warning("Empty LLM response for routing")
                 return self._fallback_routing(message, sender_id, crew_members)
