@@ -60,7 +60,7 @@ class ReactService:
         available_tool_names: Optional[List[str]] = None,
         *,
         workspace=None,
-        llm_service=None,
+        chat_service=None,
         max_steps: int = 20,
     ) -> React:
         instance_key = self._generate_instance_key(project_name, react_type)
@@ -78,7 +78,7 @@ class ReactService:
                 react_type=react_type,
                 build_prompt_function=build_prompt_function,
                 available_tool_names=available_tool_names,
-                llm_service=llm_service,
+                chat_service=chat_service,
                 max_steps=max_steps,
             )
 

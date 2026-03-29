@@ -27,6 +27,11 @@ from server.api.types import FilmetoTask, TaskProgress, TaskResult, ProgressType
 from server.api.types import ServerNotFoundError, ServerExecutionError
 
 
+class PluginExecutionError(Exception):
+    """Exception raised when plugin execution fails."""
+    pass
+
+
 @dataclass
 class CapabilityInfo:
     """Information about a specific capability supported by a server."""

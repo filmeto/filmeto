@@ -259,7 +259,7 @@ async def example_settings_configuration():
         # API key and base_url will be read from environment variables automatically
     )
     
-    if agent.llm:
+    if agent.chat_service:
         print("\n✅ Agent initialized successfully with settings configuration")
         try:
             response = await agent.chat("Hello! Please introduce yourself.")
@@ -267,7 +267,7 @@ async def example_settings_configuration():
         except Exception as e:
             print(f"❌ Error during chat: {e}")
     else:
-        print("\n⚠️ Agent LLM not initialized. Check your API key configuration.")
+        print("\n⚠️ Agent ChatService not initialized. Check your server configuration.")
 
 
 async def example_instance_management():

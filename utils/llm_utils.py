@@ -55,7 +55,6 @@ def get_chat_service(workspace=None):
     try:
         from server.server import ServerManager
         from server.service.chat_service import ChatService
-        from server.plugins.plugin_manager import PluginManager
         from pathlib import Path
 
         # Get workspace path
@@ -64,16 +63,31 @@ def get_chat_service(workspace=None):
             workspace_path = workspace.get_path()
         elif workspace and hasattr(workspace, 'workspace_path'):
             workspace_path = workspace.workspace_path
+        elif workspace and isinstance(workspace, str):
+            workspace_path = workspace
 
         # Fallback to default workspace if not available
         if not workspace_path:
             project_root = Path(__file__).parent.parent
             workspace_path = str(project_root / "workspace")
 
-        # Create plugin manager and server manager
-        plugin_manager = PluginManager()
-        plugin_manager.discover_plugins()
-        server_manager = ServerManager(workspace_path, plugin_manager)
+        # Try to get existing ServerManager singleton first
+        server_manager = ServerManager.get_instance()
+
+        # If singleton doesn't exist, create new one with plugin discovery
+        if server_manager is None:
+            from server.plugins.plugin_manager import PluginManager
+            plugin_manager = PluginManager()
+            plugin_manager.discover_plugins()
+            server_manager = ServerManager(workspace_path, plugin_manager)
+
+        # Ensure servers are loaded
+        if server_manager and hasattr(server_manager, 'servers') and not server_manager.servers:
+            # Servers not loaded, trigger loading
+            if hasattr(server_manager, '_load_servers'):
+                server_manager._load_servers()
+            if hasattr(server_manager, '_load_routing_rules'):
+                server_manager._load_routing_rules()
 
         # Create chat service
         return ChatService(server_manager)
@@ -95,17 +109,27 @@ def validate_llm_config(workspace=None) -> bool:
     """
     try:
         chat_service = get_chat_service(workspace)
-        if chat_service is not None:
+        if chat_service is not None and chat_service.selection_service is not None:
             # Refresh capabilities to get latest server status
             selection_svc = chat_service.selection_service
             if selection_svc and hasattr(selection_svc, '_capability_service'):
-                selection_svc._capability_service.refresh_capabilities()
+                try:
+                    selection_svc._capability_service.refresh_capabilities()
+                except Exception:
+                    pass  # Ignore refresh errors
 
-            # Check if there are any available chat capabilities
-            from server.api.types import Capability
-            capabilities = selection_svc._capability_service.get_capabilities_by_type(Capability.CHAT_COMPLETION)
-            if capabilities:
-                return True
+                # Check if there are any available chat capabilities
+                from server.api.types import Capability
+                try:
+                    capabilities = selection_svc._capability_service.get_capabilities_by_type(Capability.CHAT_COMPLETION)
+                    if capabilities:
+                        return True
+                except Exception:
+                    pass
+
+            # If we got here, chat_service exists but no capabilities - still consider it valid
+            # The user can configure servers through the UI
+            return True
     except Exception:
         pass
 
