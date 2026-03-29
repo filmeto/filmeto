@@ -142,7 +142,7 @@ class PrivateChatWidget(BaseWidget):
         sender,
         workspace_path: str,
         project_name: str,
-        crew_title: str,
+        member_id: str,
         message: Dict[str, Any],
     ):
         """Blinker callback — may be called from any thread.
@@ -155,7 +155,7 @@ class PrivateChatWidget(BaseWidget):
         """
         if self._is_processing:
             return
-        if crew_title != self.crew_member.crew_title:
+        if member_id != self.crew_member.member_id:
             return
         if workspace_path != getattr(self.workspace, "workspace_path", None):
             return
@@ -284,7 +284,7 @@ class PrivateChatWidget(BaseWidget):
             if not workspace_path:
                 return
             self._last_rendered_offset = crew_member_history_service.get_latest_line_offset(
-                workspace_path, project_name, self.crew_member.crew_title
+                workspace_path, project_name, self.crew_member.member_id
             )
         except Exception as e:
             logger.debug(f"Could not sync last rendered offset: {e}")
@@ -301,13 +301,13 @@ class PrivateChatWidget(BaseWidget):
             workspace_path = getattr(self.workspace, "workspace_path", None)
             project = self.workspace.get_project() if self.workspace else None
             project_name = project.project_name if project else "default"
-            crew_title = self.crew_member.crew_title
+            member_id = self.crew_member.member_id
             if not workspace_path:
                 return
 
             # Get current total offset
             current_offset = crew_member_history_service.get_latest_line_offset(
-                workspace_path, project_name, crew_title
+                workspace_path, project_name, member_id
             )
 
             # Check if there are new messages since last render
@@ -318,7 +318,7 @@ class PrivateChatWidget(BaseWidget):
             new_messages = crew_member_history_service.get_messages_after(
                 workspace_path,
                 project_name,
-                crew_title,
+                member_id,
                 self._last_rendered_offset,
                 count=current_offset - self._last_rendered_offset
             )
@@ -327,7 +327,7 @@ class PrivateChatWidget(BaseWidget):
                 return
 
             logger.debug(
-                f"Loading {len(new_messages)} incremental messages for {crew_title} "
+                f"Loading {len(new_messages)} incremental messages for {member_id} "
                 f"(offset: {self._last_rendered_offset} -> {current_offset})"
             )
 

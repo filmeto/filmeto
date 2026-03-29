@@ -41,7 +41,7 @@ class AgentChatWidget(BaseWidget):
         self.agent = None
         self._agent_ready = False
         self._agent_lock = asyncio.Lock()
-        self._private_tabs: Dict[str, int] = {}  # crew_member_name -> tab_index
+        self._private_tabs: Dict[str, int] = {}  # member_id -> tab_index
         # Cached reference for blinker connect/disconnect (same object required)
         self._crew_activity_handler = self._on_crew_member_activity_from_agent
         self._pending_crew_activity: list = []  # [(member_name, active), ...] replayed after init
@@ -122,15 +122,15 @@ class AgentChatWidget(BaseWidget):
         """Open a private chat tab for a crew member, or switch to it if already open."""
         from app.ui.chat.private_chat_widget import PrivateChatWidget
 
-        member_name = crew_member.config.name
+        member_id = crew_member.member_id
 
-        if member_name in self._private_tabs:
-            tab_index = self._private_tabs[member_name]
+        if member_id in self._private_tabs:
+            tab_index = self._private_tabs[member_id]
             if tab_index < self.tab_widget.count():
                 self.tab_widget.setCurrentIndex(tab_index)
                 return
             else:
-                del self._private_tabs[member_name]
+                del self._private_tabs[member_id]
 
         private_widget = PrivateChatWidget(self.workspace, crew_member, self)
         # New private chat tab starts as inactive (will be activated by _on_tab_changed)
@@ -140,7 +140,7 @@ class AgentChatWidget(BaseWidget):
         tab_title = crew_member.config.name.title()
 
         tab_index = self.tab_widget.addTab(private_widget, f"{icon_text} {tab_title}")
-        self._private_tabs[member_name] = tab_index
+        self._private_tabs[member_id] = tab_index
 
         self.tab_widget.setCurrentIndex(tab_index)
 
@@ -150,16 +150,16 @@ class AgentChatWidget(BaseWidget):
             return
 
         widget = self.tab_widget.widget(index)
-        member_name = None
-        for name, idx in self._private_tabs.items():
+        member_id = None
+        for mid, idx in self._private_tabs.items():
             if idx == index:
-                member_name = name
+                member_id = mid
                 break
 
         self.tab_widget.removeTab(index)
 
-        if member_name:
-            del self._private_tabs[member_name]
+        if member_id:
+            del self._private_tabs[member_id]
 
         self._rebuild_tab_index_map()
 
@@ -180,13 +180,13 @@ class AgentChatWidget(BaseWidget):
         # via its set_active(True) call
 
     def _rebuild_tab_index_map(self):
-        """Rebuild the name->index mapping after tab removal."""
+        """Rebuild the member_id->index mapping after tab removal."""
         from app.ui.chat.private_chat_widget import PrivateChatWidget
         new_map = {}
         for i in range(1, self.tab_widget.count()):
             widget = self.tab_widget.widget(i)
             if isinstance(widget, PrivateChatWidget):
-                new_map[widget.get_crew_member().config.name] = i
+                new_map[widget.get_crew_member().member_id] = i
         self._private_tabs = new_map
 
     def _auto_initialize_agent(self):

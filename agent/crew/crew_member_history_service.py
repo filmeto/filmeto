@@ -1,7 +1,7 @@
 """
 Crew Member History Service - History storage for individual crew members.
 
-Storage path: workspace/projects/{project}/agent/crews/{crew_member}/history
+Storage path: workspace/projects/{project}/agent/crews/{member_id}/history
 
 This service provides:
 - Message storage for crew member conversations
@@ -13,7 +13,7 @@ Signal:
     written to storage. UI components (e.g. PrivateChatWidget) can listen
     to this signal to render system-routed messages in real-time.
     Args: sender, workspace_path (str), project_name (str),
-          crew_title (str), message (dict)
+          member_id (str), message (dict)
 """
 
 import logging
@@ -36,7 +36,7 @@ class CrewMemberHistoryService:
     Singleton service to manage history storage for crew members.
 
     Each crew member has its own history storage under:
-    workspace/projects/{project}/agent/crews/{crew_title}/history/
+    workspace/projects/{project}/agent/crews/{member_id}/history/
     """
 
     _instance = None
@@ -56,11 +56,11 @@ class CrewMemberHistoryService:
         self._storages: Dict[str, MessageLogStorage] = {}
         self._initialized = True
 
-    def _make_key(self, workspace_path: str, project_name: str, crew_title: str) -> str:
-        """Create a unique key for workspace+project+crew_member combination."""
-        return f"{workspace_path}||{project_name}||{crew_title}"
+    def _make_key(self, workspace_path: str, project_name: str, member_id: str) -> str:
+        """Create a unique key for workspace+project+member_id combination."""
+        return f"{workspace_path}||{project_name}||{member_id}"
 
-    def _get_history_root(self, workspace_path: str, project_name: str, crew_title: str) -> str:
+    def _get_history_root(self, workspace_path: str, project_name: str, member_id: str) -> str:
         """Get the history root path for a crew member."""
         return os.path.join(
             workspace_path,
@@ -68,18 +68,18 @@ class CrewMemberHistoryService:
             project_name,
             "agent",
             "crews",
-            crew_title,
+            member_id,
             "history"
         )
 
-    def get_storage(self, workspace_path: str, project_name: str, crew_title: str) -> MessageLogStorage:
+    def get_storage(self, workspace_path: str, project_name: str, member_id: str) -> MessageLogStorage:
         """Get or create a MessageLogStorage instance for a crew member."""
-        key = self._make_key(workspace_path, project_name, crew_title)
+        key = self._make_key(workspace_path, project_name, member_id)
 
         if key not in self._storages:
-            history_root = self._get_history_root(workspace_path, project_name, crew_title)
+            history_root = self._get_history_root(workspace_path, project_name, member_id)
             self._storages[key] = MessageLogStorage(history_root)
-            logger.debug(f"Created MessageLogStorage for crew member: {crew_title}")
+            logger.debug(f"Created MessageLogStorage for crew member: {member_id}")
 
         return self._storages[key]
 
@@ -87,7 +87,7 @@ class CrewMemberHistoryService:
         self,
         workspace_path: str,
         project_name: str,
-        crew_title: str,
+        member_id: str,
         message: Dict[str, Any]
     ) -> bool:
         """
@@ -99,13 +99,13 @@ class CrewMemberHistoryService:
         Args:
             workspace_path: Path to workspace
             project_name: Name of project
-            crew_title: Crew member's title (used as directory name)
+            member_id: Crew member's unique ID (used as directory name)
             message: Message dictionary to store
 
         Returns:
             True if successful
         """
-        storage = self.get_storage(workspace_path, project_name, crew_title)
+        storage = self.get_storage(workspace_path, project_name, member_id)
         success = storage.append_message(message)
         if success:
             try:
@@ -113,7 +113,7 @@ class CrewMemberHistoryService:
                     self,
                     workspace_path=workspace_path,
                     project_name=project_name,
-                    crew_title=crew_title,
+                    member_id=member_id,
                     message=message,
                 )
             except Exception as e:
@@ -124,7 +124,7 @@ class CrewMemberHistoryService:
         self,
         workspace_path: str,
         project_name: str,
-        crew_title: str,
+        member_id: str,
         count: int = 20
     ) -> List[Dict[str, Any]]:
         """
@@ -133,20 +133,20 @@ class CrewMemberHistoryService:
         Args:
             workspace_path: Path to workspace
             project_name: Name of project
-            crew_title: Crew member's title
+            member_id: Crew member's unique ID
             count: Number of messages to retrieve
 
         Returns:
             List of message dictionaries, most recent first
         """
-        storage = self.get_storage(workspace_path, project_name, crew_title)
+        storage = self.get_storage(workspace_path, project_name, member_id)
         return storage.get_latest_messages(count)
 
     def get_messages_after(
         self,
         workspace_path: str,
         project_name: str,
-        crew_title: str,
+        member_id: str,
         line_offset: int,
         count: int = 20
     ) -> List[Dict[str, Any]]:
@@ -156,14 +156,14 @@ class CrewMemberHistoryService:
         Args:
             workspace_path: Path to workspace
             project_name: Name of project
-            crew_title: Crew member's title
+            member_id: Crew member's unique ID
             line_offset: Line offset in active log
             count: Number of messages to retrieve
 
         Returns:
             List of message dictionaries in chronological order
         """
-        storage = self.get_storage(workspace_path, project_name, crew_title)
+        storage = self.get_storage(workspace_path, project_name, member_id)
         active_count = storage.get_message_count()
 
         if line_offset >= active_count:
@@ -176,7 +176,7 @@ class CrewMemberHistoryService:
         self,
         workspace_path: str,
         project_name: str,
-        crew_title: str,
+        member_id: str,
         line_offset: int,
         count: int = 20
     ) -> List[Dict[str, Any]]:
@@ -186,14 +186,14 @@ class CrewMemberHistoryService:
         Args:
             workspace_path: Path to workspace
             project_name: Name of project
-            crew_title: Crew member's title
+            member_id: Crew member's unique ID
             line_offset: Starting line offset (exclusive)
             count: Number of messages to retrieve
 
         Returns:
             List of message dictionaries in chronological order
         """
-        storage = self.get_storage(workspace_path, project_name, crew_title)
+        storage = self.get_storage(workspace_path, project_name, member_id)
         if line_offset <= 0:
             return []
 
@@ -205,7 +205,7 @@ class CrewMemberHistoryService:
         self,
         workspace_path: str,
         project_name: str,
-        crew_title: str
+        member_id: str
     ) -> int:
         """
         Get total message count for a crew member.
@@ -213,19 +213,19 @@ class CrewMemberHistoryService:
         Args:
             workspace_path: Path to workspace
             project_name: Name of project
-            crew_title: Crew member's title
+            member_id: Crew member's unique ID
 
         Returns:
             Total number of messages
         """
-        storage = self.get_storage(workspace_path, project_name, crew_title)
+        storage = self.get_storage(workspace_path, project_name, member_id)
         return storage.get_total_count()
 
     def get_latest_line_offset(
         self,
         workspace_path: str,
         project_name: str,
-        crew_title: str
+        member_id: str
     ) -> int:
         """
         Get the latest line offset (total messages in active log).
@@ -233,19 +233,19 @@ class CrewMemberHistoryService:
         Args:
             workspace_path: Path to workspace
             project_name: Name of project
-            crew_title: Crew member's title
+            member_id: Crew member's unique ID
 
         Returns:
             Current line offset
         """
-        storage = self.get_storage(workspace_path, project_name, crew_title)
+        storage = self.get_storage(workspace_path, project_name, member_id)
         return storage.get_message_count()
 
     def clear_history(
         self,
         workspace_path: str,
         project_name: str,
-        crew_title: str
+        member_id: str
     ) -> bool:
         """
         Clear all history for a crew member.
@@ -253,38 +253,38 @@ class CrewMemberHistoryService:
         Args:
             workspace_path: Path to workspace
             project_name: Name of project
-            crew_title: Crew member's title
+            member_id: Crew member's unique ID
 
         Returns:
             True if successful
         """
         import shutil
 
-        key = self._make_key(workspace_path, project_name, crew_title)
+        key = self._make_key(workspace_path, project_name, member_id)
 
         # Remove from cache
         if key in self._storages:
             del self._storages[key]
 
         # Remove directory
-        history_root = self._get_history_root(workspace_path, project_name, crew_title)
+        history_root = self._get_history_root(workspace_path, project_name, member_id)
         if os.path.exists(history_root):
             try:
                 shutil.rmtree(history_root)
-                logger.info(f"Cleared history for crew member: {crew_title}")
+                logger.info(f"Cleared history for crew member: {member_id}")
                 return True
             except Exception as e:
-                logger.error(f"Error clearing history for {crew_title}: {e}")
+                logger.error(f"Error clearing history for {member_id}: {e}")
                 return False
 
         return True
 
-    def remove_storage(self, workspace_path: str, project_name: str, crew_title: str):
+    def remove_storage(self, workspace_path: str, project_name: str, member_id: str):
         """Remove a storage instance from the cache."""
-        key = self._make_key(workspace_path, project_name, crew_title)
+        key = self._make_key(workspace_path, project_name, member_id)
         if key in self._storages:
             del self._storages[key]
-            logger.debug(f"Removed storage for crew member: {crew_title}")
+            logger.debug(f"Removed storage for crew member: {member_id}")
 
 
 # Singleton instance

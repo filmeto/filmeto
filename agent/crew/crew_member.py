@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import os
 import uuid
@@ -27,7 +28,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class CrewMemberConfig:
-    name: str
+    id: str = ""  # Unique ID generated from config file path hash
+    name: str = ""
     description: str = ""
     soul: Optional[str] = None
     skills: List[str] = field(default_factory=list)
@@ -56,7 +58,11 @@ class CrewMemberConfig:
         color = metadata.get("color", "#4a90e2")  # Get color from metadata, default to blue
         icon = metadata.get("icon", "🤖")  # Get icon from metadata, default to robot
 
+        # Generate unique ID from config file path
+        member_id = cls._generate_member_id(file_path)
+
         return cls(
+            id=member_id,
             name=name,
             description=description,
             soul=soul,
@@ -70,6 +76,24 @@ class CrewMemberConfig:
             metadata=metadata,
             config_path=file_path,
         )
+
+    @staticmethod
+    def _generate_member_id(config_path: str) -> str:
+        """Generate a unique ID from the config file path using MD5 hash.
+
+        This ensures:
+        - No modification needed to existing config files
+        - Same config file always generates the same ID
+        - Each crew member has a unique ID
+
+        Args:
+            config_path: Path to the crew member's config file
+
+        Returns:
+            A 12-character unique ID string
+        """
+        path_hash = hashlib.md5(config_path.encode()).hexdigest()[:12]
+        return path_hash
 
 
 class CrewMember:
@@ -88,10 +112,11 @@ class CrewMember:
         plan_service: Optional[PlanService] = None,
     ):
         self.config = CrewMemberConfig.from_markdown(config_path)
+        self.member_id = self.config.id  # Unique ID for indexing and storage
         self.workspace = workspace
         self.project = project
         self.project_name = _resolve_project_name(project) or getattr(project, 'project_name', 'default_project')
-        # Get crew_title from metadata or derive from name
+        # Get crew_title from metadata or derive from name (kept for backward compatibility)
         self.crew_title = self.config.metadata.get('crew_title', self.config.name.lower().replace(' ', '_'))
         self.chat_service = chat_service if chat_service else get_chat_service(workspace)
         self.skill_service = skill_service or SkillService(workspace)
@@ -417,7 +442,7 @@ class CrewMember:
                 "sender_name": final_sender_name,
                 "content": content_dict,
                 "timestamp": datetime.now().isoformat(),
-                "crew_title": self.crew_title,
+                "member_id": self.member_id,
                 "is_error": is_error,
                 "event_type": event_type,
                 # Note: is_event field removed - rendering now based on content structure
@@ -426,7 +451,7 @@ class CrewMember:
             crew_member_history_service.add_message(
                 workspace_path=workspace_path,
                 project_name=self.project_name,
-                crew_title=self.crew_title,
+                member_id=self.member_id,
                 message=message_dict
             )
         except Exception as e:
@@ -469,7 +494,7 @@ class CrewMember:
                 "event_type": event.event_type,
                 "step_id": event.step_id,
                 "timestamp": datetime.now().isoformat(),
-                "crew_title": self.crew_title,
+                "member_id": self.member_id,
                 "content": content_dict,
                 # Note: is_event field removed - rendering now based on content.content_type
             }
@@ -477,10 +502,10 @@ class CrewMember:
             crew_member_history_service.add_message(
                 workspace_path=workspace_path,
                 project_name=self.project_name,
-                crew_title=self.crew_title,
+                member_id=self.member_id,
                 message=event_dict
             )
-            logger.debug(f"Saved event {event.event_type} to crew member {self.crew_title} history")
+            logger.debug(f"Saved event {event.event_type} to crew member {self.member_id} history")
         except Exception as e:
             logger.error(f"Error saving event to history: {e}")
 
@@ -503,7 +528,7 @@ class CrewMember:
             return crew_member_history_service.get_latest_messages(
                 workspace_path=workspace_path,
                 project_name=self.project_name,
-                crew_title=self.crew_title,
+                member_id=self.member_id,
                 count=count
             )
         except Exception as e:
@@ -530,7 +555,7 @@ class CrewMember:
             return crew_member_history_service.get_messages_after(
                 workspace_path=workspace_path,
                 project_name=self.project_name,
-                crew_title=self.crew_title,
+                member_id=self.member_id,
                 line_offset=line_offset,
                 count=count
             )
@@ -558,7 +583,7 @@ class CrewMember:
             return crew_member_history_service.get_messages_before(
                 workspace_path=workspace_path,
                 project_name=self.project_name,
-                crew_title=self.crew_title,
+                member_id=self.member_id,
                 line_offset=line_offset,
                 count=count
             )
@@ -582,7 +607,7 @@ class CrewMember:
             return crew_member_history_service.get_total_count(
                 workspace_path=workspace_path,
                 project_name=self.project_name,
-                crew_title=self.crew_title
+                member_id=self.member_id
             )
         except Exception as e:
             logger.error(f"Error getting history count: {e}")
@@ -604,7 +629,7 @@ class CrewMember:
             return crew_member_history_service.clear_history(
                 workspace_path=workspace_path,
                 project_name=self.project_name,
-                crew_title=self.crew_title
+                member_id=self.member_id
             )
         except Exception as e:
             logger.error(f"Error clearing history: {e}")
