@@ -12,8 +12,9 @@ from PySide6.QtWidgets import (
     QScrollArea, QFormLayout, QLineEdit,
     QCheckBox, QMessageBox, QTabWidget
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QUrl
 from PySide6.QtGui import QFont
+from PySide6.QtQuickWidgets import QQuickWidget
 
 from server.plugins.bailian_server.models_config import models_config, CODING_PLAN_PREFIX
 

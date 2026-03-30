@@ -10,6 +10,8 @@ Rectangle {
     signal toggleEnabled(int displayRow, bool enabled)
     signal moveUp(int displayRow)
     signal moveDown(int displayRow)
+    signal moveToTop(int displayRow)
+    signal moveToBottom(int displayRow)
     signal editRequested(var itemData)
     signal removeRequested(int displayRow)
 
@@ -43,6 +45,8 @@ Rectangle {
                 onToggleEnabled: (displayRow, enabled) => root.toggleEnabled(displayRow, enabled)
                 onMoveUp: displayRow => root.moveUp(displayRow)
                 onMoveDown: displayRow => root.moveDown(displayRow)
+                onMoveToTop: displayRow => root.moveToTop(displayRow)
+                onMoveToBottom: displayRow => root.moveToBottom(displayRow)
                 onEditRequested: item => root.editRequested(item)
                 onRemoveRequested: displayRow => root.removeRequested(displayRow)
             }

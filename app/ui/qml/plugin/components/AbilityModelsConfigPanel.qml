@@ -114,6 +114,16 @@ ColumnLayout {
                     amModel.moveAt(displayRow, 1)
                     root.refreshData()
                 }
+                onMoveToTop: displayRow => {
+                    if (!amModel) return
+                    amModel.moveToTop(displayRow)
+                    root.refreshData()
+                }
+                onMoveToBottom: displayRow => {
+                    if (!amModel) return
+                    amModel.moveToBottom(displayRow)
+                    root.refreshData()
+                }
                 onEditRequested: itemData => {
                     root.editingDisplayRow = itemData.displayRow
                     root.editingCustom = !!itemData.custom

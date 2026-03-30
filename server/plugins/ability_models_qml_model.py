@@ -339,6 +339,63 @@ class AbilityModelsConfigModel(QAbstractListModel):
         self._refresh_display()
         self._emit_persist()
 
+    @Slot(int)
+    def moveToTop(self, display_row: int) -> None:
+        """Move entry at display_row to the top of its ability group."""
+        if display_row < 0 or display_row >= len(self._display_order):
+            return
+        if display_row == 0:
+            return
+
+        raw_index = self._display_order[display_row]
+        ability = self._entries[raw_index]["ability"]
+
+        # Find the first entry with the same ability
+        first_same_ability = None
+        for i, raw in enumerate(self._display_order):
+            if self._entries[raw]["ability"] == ability:
+                first_same_ability = i
+                break
+
+        if first_same_ability is None or first_same_ability == display_row:
+            return
+
+        # Move the entry to the top of its ability group
+        src_raw = self._display_order[display_row]
+        dst_raw = self._display_order[first_same_ability]
+
+        self._entries[src_raw], self._entries[dst_raw] = self._entries[dst_raw], self._entries[src_raw]
+        self._refresh_display()
+        self._emit_persist()
+
+    @Slot(int)
+    def moveToBottom(self, display_row: int) -> None:
+        """Move entry at display_row to the bottom of its ability group."""
+        if display_row < 0 or display_row >= len(self._display_order):
+            return
+
+        raw_index = self._display_order[display_row]
+        ability = self._entries[raw_index]["ability"]
+
+        # Find the last entry with the same ability
+        last_same_ability = None
+        for i in range(len(self._display_order) - 1, -1, -1):
+            raw = self._display_order[i]
+            if self._entries[raw]["ability"] == ability:
+                last_same_ability = i
+                break
+
+        if last_same_ability is None or last_same_ability == display_row:
+            return
+
+        # Move the entry to the bottom of its ability group
+        src_raw = self._display_order[display_row]
+        dst_raw = self._display_order[last_same_ability]
+
+        self._entries[src_raw], self._entries[dst_raw] = self._entries[dst_raw], self._entries[src_raw]
+        self._refresh_display()
+        self._emit_persist()
+
     @Slot(int, str, str)
     def updateEntryAt(self, display_row: int, ability: str, model_id: str) -> None:
         if display_row < 0 or display_row >= len(self._display_order):

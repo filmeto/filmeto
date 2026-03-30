@@ -10,6 +10,8 @@ Rectangle {
     signal toggleEnabled(int displayRow, bool enabled)
     signal moveUp(int displayRow)
     signal moveDown(int displayRow)
+    signal moveToTop(int displayRow)
+    signal moveToBottom(int displayRow)
     signal editRequested(var itemData)
     signal removeRequested(int displayRow)
 
@@ -62,44 +64,16 @@ Rectangle {
             }
         }
 
-        Repeater {
-            model: [
-                { key: "up", label: qsTr("Up") },
-                { key: "down", label: qsTr("Down") },
-                { key: "edit", label: qsTr("Edit") }
-            ]
-            delegate: Button {
-                text: modelData.label
-                implicitHeight: 26
-                onClicked: {
-                    if (modelData.key === "up") root.moveUp(root.itemData.displayRow)
-                    else if (modelData.key === "down") root.moveDown(root.itemData.displayRow)
-                    else root.editRequested(root.itemData)
-                }
-                background: Rectangle {
-                    color: parent.down ? "#252525" : "#1e1e1e"
-                    border.color: parent.hovered ? "#3498db" : "#3a3a3a"
-                    border.width: 1
-                    radius: 3
-                }
-                contentItem: Text {
-                    text: parent.text
-                    color: "#e0e0e0"
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-            }
-        }
-
-        Button {
-            text: qsTr("Remove")
+        // Move to top button (iconfont)
+        ToolButton {
+            implicitWidth: 26
             implicitHeight: 26
-            visible: !!root.itemData.custom
-            onClicked: root.removeRequested(root.itemData.displayRow)
+            text: "\ue84c"  // upper-left-arrow
+            font.family: "iconfont"
+            font.pixelSize: 12
+            onClicked: root.moveToTop(root.itemData.displayRow)
             background: Rectangle {
-                color: parent.down ? "#2a1a1a" : "#1e1e1e"
-                border.color: parent.hovered ? "#e74c3c" : "#3a3a3a"
-                border.width: 1
+                color: parent.down ? "#252525" : "transparent"
                 radius: 3
             }
             contentItem: Text {
@@ -108,6 +82,125 @@ Rectangle {
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
             }
+            ToolTip.text: qsTr("Move to top")
+            ToolTip.visible: parent.hovered
+            ToolTip.delay: 500
+        }
+
+        // Move up button (iconfont)
+        ToolButton {
+            implicitWidth: 26
+            implicitHeight: 26
+            text: "\ue84a"  // up
+            font.family: "iconfont"
+            font.pixelSize: 12
+            onClicked: root.moveUp(root.itemData.displayRow)
+            background: Rectangle {
+                color: parent.down ? "#252525" : "transparent"
+                radius: 3
+            }
+            contentItem: Text {
+                text: parent.text
+                color: "#e0e0e0"
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+            }
+            ToolTip.text: qsTr("Move up")
+            ToolTip.visible: parent.hovered
+            ToolTip.delay: 500
+        }
+
+        // Move down button (iconfont)
+        ToolButton {
+            implicitWidth: 26
+            implicitHeight: 26
+            text: "\ue83a"  // down
+            font.family: "iconfont"
+            font.pixelSize: 12
+            onClicked: root.moveDown(root.itemData.displayRow)
+            background: Rectangle {
+                color: parent.down ? "#252525" : "transparent"
+                radius: 3
+            }
+            contentItem: Text {
+                text: parent.text
+                color: "#e0e0e0"
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+            }
+            ToolTip.text: qsTr("Move down")
+            ToolTip.visible: parent.hovered
+            ToolTip.delay: 500
+        }
+
+        // Move to bottom button (iconfont)
+        ToolButton {
+            implicitWidth: 26
+            implicitHeight: 26
+            text: "\ue842"  // lower-right-arrow
+            font.family: "iconfont"
+            font.pixelSize: 12
+            onClicked: root.moveToBottom(root.itemData.displayRow)
+            background: Rectangle {
+                color: parent.down ? "#252525" : "transparent"
+                radius: 3
+            }
+            contentItem: Text {
+                text: parent.text
+                color: "#e0e0e0"
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+            }
+            ToolTip.text: qsTr("Move to bottom")
+            ToolTip.visible: parent.hovered
+            ToolTip.delay: 500
+        }
+
+        // Edit button (iconfont)
+        ToolButton {
+            implicitWidth: 26
+            implicitHeight: 26
+            text: "\ue614"  // edit-role
+            font.family: "iconfont"
+            font.pixelSize: 12
+            onClicked: root.editRequested(root.itemData)
+            background: Rectangle {
+                color: parent.down ? "#252525" : "transparent"
+                radius: 3
+            }
+            contentItem: Text {
+                text: parent.text
+                color: "#e0e0e0"
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+            }
+            ToolTip.text: qsTr("Edit")
+            ToolTip.visible: parent.hovered
+            ToolTip.delay: 500
+        }
+
+        // Remove button (iconfont)
+        ToolButton {
+            implicitWidth: 26
+            implicitHeight: 26
+            text: "\ue6dd"  // trash
+            font.family: "iconfont"
+            font.pixelSize: 12
+            visible: !!root.itemData.custom
+            onClicked: root.removeRequested(root.itemData.displayRow)
+            background: Rectangle {
+                color: parent.down ? "#2a1a1a" : "transparent"
+                radius: 3
+            }
+            contentItem: Text {
+                text: parent.text
+                color: parent.hovered ? "#e74c3c" : "#e0e0e0"
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+            }
+            ToolTip.text: qsTr("Remove")
+            ToolTip.visible: parent.hovered
+            ToolTip.delay: 500
         }
     }
 }

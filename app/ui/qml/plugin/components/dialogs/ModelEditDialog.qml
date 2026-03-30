@@ -16,6 +16,10 @@ Dialog {
     title: isEdit ? qsTr("Edit model") : qsTr("Add model")
     standardButtons: Dialog.Ok | Dialog.Cancel
 
+    // Center the dialog on the parent
+    x: (parent ? parent.width / 2 - width / 2 : 0)
+    y: (parent ? parent.height / 2 - height / 2 : 0)
+
     background: Rectangle {
         color: "#2d2d2d"
         border.color: "#3a3a3a"
