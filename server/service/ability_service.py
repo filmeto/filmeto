@@ -17,7 +17,7 @@ from server.api.types import (
     ModelPricing,
 )
 from server.server import ServerManager, Server
-from server.plugins.ability_model_config import is_model_enabled_for_ability
+from server.plugins.ability_model_config import is_model_enabled_for_ability, get_model_priority
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +110,16 @@ class AbilityService:
 
             for model_info in model_infos:
                 instance = AbilityInstance.from_model_info(config.name, model_info)
+
+                # 从配置中获取用户设置的 priority
+                config_priority = get_model_priority(
+                    config.parameters,
+                    instance.ability_type.value,
+                    instance.model_name,
+                    default=instance.priority,  # 保留原有的 default 优先级
+                )
+                instance.priority = config_priority
+
                 instance.metadata.update({
                     "server_type": config.server_type,
                     "plugin_name": config.plugin_name,
