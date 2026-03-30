@@ -13,8 +13,8 @@ from typing import Any, Dict, List, Optional
 import uuid
 
 
-class Capability(str, Enum):
-    """Enumeration of AI capabilities"""
+class Ability(str, Enum):
+    """Enumeration of AI abilities (task / plugin kinds)."""
     TEXT2IMAGE = "text2image"      # Text to image generation
     IMAGE2IMAGE = "image2image"    # Image to image transformation
     IMAGE2VIDEO = "image2video"    # Image to video animation
@@ -128,17 +128,17 @@ class FilmetoTask:
 
     Attributes:
         task_id: Unique task identifier
-        capability: AI capability to execute
+        ability: AI ability to execute
         server_name: Server instance name to use (optional if selection provided)
         model_name: Model name to use (optional)
-        parameters: Capability-specific parameters
+        parameters: Ability-specific parameters
         resources: Input resources (images, videos, etc.)
         created_at: Task creation timestamp
         timeout: Timeout in seconds
         metadata: Additional metadata
         selection: Selection configuration for auto server/model selection
     """
-    capability: Capability
+    ability: Ability
     parameters: Dict[str, Any]
     server_name: Optional[str] = None
     model_name: Optional[str] = None
@@ -153,7 +153,7 @@ class FilmetoTask:
         """Convert to dictionary"""
         result = {
             "task_id": self.task_id,
-            "capability": self.capability.value,
+            "ability": self.ability.value,
             "parameters": self.parameters,
             "resources": [r.to_dict() for r in self.resources],
             "created_at": self.created_at.isoformat(),
@@ -181,9 +181,12 @@ class FilmetoTask:
         if data.get("selection"):
             selection = SelectionConfig.from_dict(data["selection"])
 
+        _abil = data.get("ability") or data.get("capability")
+        if _abil is None:
+            raise KeyError("FilmetoTask requires 'ability' (or legacy 'capability')")
         return cls(
             task_id=data.get("task_id", str(uuid.uuid4())),
-            capability=Capability(data["capability"]),
+            ability=Ability(str(_abil)),
             server_name=data.get("server_name"),
             model_name=data.get("model_name"),
             parameters=data["parameters"],
@@ -244,28 +247,28 @@ class FilmetoTask:
             if not resource.mime_type:
                 return False, "Resource mime_type is required"
 
-        # Capability-specific validation
-        if self.capability == Capability.TEXT2IMAGE:
+        # Ability-specific validation
+        if self.ability == Ability.TEXT2IMAGE:
             if "prompt" not in self.parameters:
                 return False, "TEXT2IMAGE requires 'prompt' parameter"
-        elif self.capability == Capability.IMAGE2IMAGE:
+        elif self.ability == Ability.IMAGE2IMAGE:
             if "prompt" not in self.parameters:
                 return False, "IMAGE2IMAGE requires 'prompt' parameter"
             if not self.resources:
                 return False, "IMAGE2IMAGE requires at least one input image"
-        elif self.capability == Capability.IMAGE2VIDEO:
+        elif self.ability == Ability.IMAGE2VIDEO:
             if not self.resources:
                 return False, "IMAGE2VIDEO requires at least one input image"
-        elif self.capability == Capability.TEXT2VIDEO:
+        elif self.ability == Ability.TEXT2VIDEO:
             if "prompt" not in self.parameters:
                 return False, "TEXT2VIDEO requires 'prompt' parameter"
-        elif self.capability == Capability.SPEAK2VIDEO:
+        elif self.ability == Ability.SPEAK2VIDEO:
             if not self.resources:
                 return False, "SPEAK2VIDEO requires audio input"
-        elif self.capability == Capability.TEXT2SPEAK:
+        elif self.ability == Ability.TEXT2SPEAK:
             if "text" not in self.parameters:
                 return False, "TEXT2SPEAK requires 'text' parameter"
-        elif self.capability == Capability.TEXT2MUSIC:
+        elif self.ability == Ability.TEXT2MUSIC:
             if "prompt" not in self.parameters:
                 return False, "TEXT2MUSIC requires 'prompt' parameter"
 
@@ -586,19 +589,19 @@ class SelectionResult:
     Attributes:
         server_name: Selected server name
         model_name: Selected model name
-        capability_type: Capability type
+        ability_type: Ability type
         key: Combined key in "server:model" format
         mode_used: Selection mode that was used
-        instance: The selected CapabilityInstance
+        instance: The selected AbilityInstance
         candidates_count: Number of candidates considered
         selection_reason: Human-readable reason for selection
     """
     server_name: str
     model_name: str
-    capability_type: 'Capability'
+    ability_type: 'Ability'
     key: str
     mode_used: SelectionMode
-    instance: 'CapabilityInstance'
+    instance: 'AbilityInstance'
     candidates_count: int = 0
     selection_reason: str = ""
 
@@ -607,7 +610,7 @@ class SelectionResult:
         return {
             "server_name": self.server_name,
             "model_name": self.model_name,
-            "capability_type": self.capability_type.value,
+            "ability_type": self.ability_type.value,
             "key": self.key,
             "mode_used": self.mode_used.value,
             "candidates_count": self.candidates_count,
@@ -619,11 +622,12 @@ class SelectionResult:
     def from_dict(cls, data: Dict[str, Any]) -> 'SelectionResult':
         """Create from dictionary."""
         instance_data = data.get("instance")
-        instance = CapabilityInstance.from_dict(instance_data) if instance_data else None
+        instance = AbilityInstance.from_dict(instance_data) if instance_data else None
+        _at = data.get("ability_type") or data.get("capability_type")
         return cls(
             server_name=data["server_name"],
             model_name=data["model_name"],
-            capability_type=Capability(data["capability_type"]),
+            ability_type=Ability(str(_at)),
             key=data["key"],
             mode_used=SelectionMode(data["mode_used"]),
             instance=instance,
@@ -632,7 +636,7 @@ class SelectionResult:
         )
 
 
-# --- Capability Discovery Types ---------------------------------------------
+# --- Ability discovery types ---------------------------------------------
 
 @dataclass
 class ModelPricing:
@@ -736,15 +740,15 @@ class ModelInfo:
     """
     Information about a specific model.
 
-    Models are the specific implementations within a capability.
-    Each server/plugin can support multiple models for a capability.
+    Models are the specific implementations within an ability.
+    Each server/plugin can support multiple models for an ability.
 
     Attributes:
         name: Model identifier (e.g., "wanx2.1-t2i-turbo", "qwen-max")
         display_name: Human-readable name for UI display
         description: Short description of the model
         detailed_description: Detailed description with features and use cases
-        capability: Which capability this model belongs to
+        ability: Which ability this model belongs to
         provider: Provider name (e.g., "Alibaba", "OpenAI")
         version: Model version string
         tags: Tags for filtering (e.g., ["fast", "high-quality"])
@@ -755,14 +759,14 @@ class ModelInfo:
             - supports_vision: Whether the model supports image input
             - supports_audio: Whether the model supports audio input
         pricing: Pricing information
-        is_default: Whether this is the default model for the capability
+        is_default: Whether this is the default model for the ability
         is_available: Whether this model is currently available
         metadata: Additional metadata
     """
     name: str
     display_name: str
     description: str
-    capability: 'Capability'
+    ability: 'Ability'
     provider: str = ""
     version: str = ""
     detailed_description: str = ""
@@ -779,7 +783,7 @@ class ModelInfo:
             "name": self.name,
             "display_name": self.display_name,
             "description": self.description,
-            "capability": self.capability.value,
+            "ability": self.ability.value,
             "provider": self.provider,
             "version": self.version,
             "detailed_description": self.detailed_description,
@@ -798,11 +802,12 @@ class ModelInfo:
         if data.get("pricing"):
             pricing = ModelPricing.from_dict(data["pricing"])
 
+        _ab = data.get("ability") or data.get("capability")
         return cls(
             name=data["name"],
             display_name=data.get("display_name", data["name"]),
             description=data["description"],
-            capability=Capability(data["capability"]),
+            ability=Ability(str(_ab)),
             provider=data.get("provider", ""),
             version=data.get("version", ""),
             detailed_description=data.get("detailed_description", ""),
@@ -816,19 +821,19 @@ class ModelInfo:
 
 
 @dataclass
-class CapabilityInstance:
+class AbilityInstance:
     """
-    Represents a specific capability instance (server:model combination).
+    Represents a specific ability instance (server:model combination).
 
     This is the basic unit for LLM service selection, containing complete
     description information for the LLM to understand the characteristics
-    and use cases of this capability instance.
+    and use cases of this ability instance.
 
     Attributes:
         key: Unique identifier in "server:model" format
         server_name: Server instance name (e.g., "bailian-prod", "comfyui-local")
         model_name: Model name (e.g., "wanx2.1-t2i-turbo", "sd-xl")
-        capability_type: Capability type (Capability enum)
+        ability_type: Ability type (Ability enum)
         description: Short description (1-2 sentences)
         detailed_description: Detailed description with features, use cases, etc.
         tags: Tags for filtering (e.g., ["fast", "high-quality", "chinese-optimized"])
@@ -841,7 +846,7 @@ class CapabilityInstance:
     key: str
     server_name: str
     model_name: str
-    capability_type: 'Capability'
+    ability_type: 'Ability'
     description: str
     detailed_description: str = ""
     tags: List[str] = field(default_factory=list)
@@ -857,7 +862,7 @@ class CapabilityInstance:
             "key": self.key,
             "server_name": self.server_name,
             "model_name": self.model_name,
-            "capability_type": self.capability_type.value,
+            "ability_type": self.ability_type.value,
             "description": self.description,
             "detailed_description": self.detailed_description,
             "tags": self.tags,
@@ -869,17 +874,18 @@ class CapabilityInstance:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'CapabilityInstance':
+    def from_dict(cls, data: Dict[str, Any]) -> 'AbilityInstance':
         """Create from dictionary"""
         pricing = None
         if data.get("pricing"):
             pricing = ModelPricing.from_dict(data["pricing"])
 
+        _at = data.get("ability_type") or data.get("capability_type")
         return cls(
             key=data["key"],
             server_name=data["server_name"],
             model_name=data["model_name"],
-            capability_type=Capability(data["capability_type"]),
+            ability_type=Ability(str(_at)),
             description=data["description"],
             detailed_description=data.get("detailed_description", ""),
             tags=data.get("tags", []),
@@ -891,22 +897,22 @@ class CapabilityInstance:
         )
 
     @classmethod
-    def from_model_info(cls, server_name: str, model_info: ModelInfo) -> 'CapabilityInstance':
+    def from_model_info(cls, server_name: str, model_info: ModelInfo) -> 'AbilityInstance':
         """
-        Create CapabilityInstance from ModelInfo.
+        Create AbilityInstance from ModelInfo.
 
         Args:
             server_name: Server instance name
             model_info: Model information
 
         Returns:
-            CapabilityInstance with key format "server_name:model_name"
+            AbilityInstance with key format "server_name:model_name"
         """
         return cls(
             key=f"{server_name}:{model_info.name}",
             server_name=server_name,
             model_name=model_info.name,
-            capability_type=model_info.capability,
+            ability_type=model_info.ability,
             description=model_info.description,
             detailed_description=model_info.detailed_description,
             tags=model_info.tags,
@@ -919,30 +925,30 @@ class CapabilityInstance:
 
 
 @dataclass
-class CapabilityGroup:
+class AbilityGroup:
     """
-    Group of capability instances by capability type.
+    Group of ability instances by ability type.
 
-    Used to display all available options for a specific capability.
+    Used to display all available options for a specific ability.
 
     Attributes:
-        capability_type: Capability type enum
-        capability_name: Human-readable capability name
-        description: Description of this capability type
-        instances: List of available capability instances (server:model combinations)
-        models: List of unique models available for this capability
+        ability_type: Ability type enum
+        ability_name: Human-readable ability name
+        description: Description of this ability type
+        instances: List of available ability instances (server:model combinations)
+        models: List of unique models available for this ability
     """
-    capability_type: 'Capability'
-    capability_name: str
+    ability_type: 'Ability'
+    ability_name: str
     description: str
-    instances: List[CapabilityInstance] = field(default_factory=list)
+    instances: List[AbilityInstance] = field(default_factory=list)
     models: List[ModelInfo] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for API response"""
         return {
-            "capability_type": self.capability_type.value,
-            "capability_name": self.capability_name,
+            "ability_type": self.ability_type.value,
+            "ability_name": self.ability_name,
             "description": self.description,
             "instances": [inst.to_dict() for inst in self.instances],
             "models": [model.to_dict() for model in self.models],

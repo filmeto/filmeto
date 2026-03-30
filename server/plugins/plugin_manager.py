@@ -33,8 +33,8 @@ class PluginExecutionError(Exception):
 
 
 @dataclass
-class CapabilityInfo:
-    """Information about a specific capability supported by a server."""
+class AbilityInfo:
+    """Information about a specific ability supported by a server."""
     name: str
     description: str
     parameters: List[Dict[str, Any]]
@@ -47,8 +47,7 @@ class ServerInfo:
     version: str
     description: str
     author: str
-    # List of supported capabilities with their configurations
-    capabilities: List[CapabilityInfo]
+    abilities: List[AbilityInfo]
     engine: str
     plugin_path: Path
     main_script: Path
@@ -56,11 +55,11 @@ class ServerInfo:
     config: Dict[str, Any]
 
 
-def capabilities_from_plugin_yml(
+def abilities_from_plugin_yml(
     config: Dict[str, Any], plugin_dir_name: str = ""
-) -> List[CapabilityInfo]:
+) -> List[AbilityInfo]:
     """
-    Build CapabilityInfo list from plugin.yml.
+    Build AbilityInfo list from plugin.yml.
 
     Preferred keys: ``ability`` (single string) and ``abilities`` (list of entries).
     Legacy: ``tool_type`` and ``tools`` (same shapes).
@@ -68,7 +67,7 @@ def capabilities_from_plugin_yml(
     single = config.get("ability") or config.get("tool_type")
     if single:
         return [
-            CapabilityInfo(
+            AbilityInfo(
                 name=str(single),
                 description=config.get("description", ""),
                 parameters=config.get("parameters", []),
@@ -79,7 +78,7 @@ def capabilities_from_plugin_yml(
     if not entries:
         return []
 
-    capabilities: List[CapabilityInfo] = []
+    out: List[AbilityInfo] = []
     for cap_config in entries:
         if not isinstance(cap_config, dict) or "name" not in cap_config:
             logger.warning(
@@ -87,14 +86,14 @@ def capabilities_from_plugin_yml(
                 plugin_dir_name or "unknown",
             )
             continue
-        capabilities.append(
-            CapabilityInfo(
+        out.append(
+            AbilityInfo(
                 name=cap_config["name"],
                 description=cap_config.get("description", ""),
                 parameters=cap_config.get("parameters", []),
             )
         )
-    return capabilities
+    return out
 
 
 class PluginProcess:
@@ -487,8 +486,8 @@ class PluginManager:
                 if not requirements_file.exists():
                     requirements_file = None
 
-                capabilities = capabilities_from_plugin_yml(config, plugin_dir.name)
-                if not capabilities:
+                abilities = abilities_from_plugin_yml(config, plugin_dir.name)
+                if not abilities:
                     logger.error(
                         f"Server {plugin_dir.name} missing ability definitions: "
                         f"expected 'ability' / 'abilities' (or legacy 'tool_type' / 'tools')"
@@ -500,7 +499,7 @@ class PluginManager:
                     version=config['version'],
                     description=config['description'],
                     author=config.get('author', ''),
-                    capabilities=capabilities,
+                    abilities=abilities,
                     engine=config['engine'],
                     plugin_path=plugin_dir,
                     main_script=main_script,
@@ -510,8 +509,8 @@ class PluginManager:
 
                 self.plugin_infos[server_info.name] = server_info
 
-                cap_names = [c.name for c in capabilities]
-                logger.info(f"Discovered server: {server_info.name} (capabilities: {', '.join(cap_names)})")
+                ab_names = [c.name for c in abilities]
+                logger.info(f"Discovered server: {server_info.name} (abilities: {', '.join(ab_names)})")
 
             except yaml.YAMLError as e:
                 logger.error(f"Invalid YAML in plugin {plugin_dir.name}: {e}")
@@ -609,17 +608,17 @@ class PluginManager:
         """
         return self.plugin_infos.get(plugin_name)
     
-    def get_servers_by_capability(self, capability_name: str) -> list[ServerInfo]:
+    def get_servers_by_ability(self, ability_name: str) -> list[ServerInfo]:
         """
-        Get all servers supporting a specific capability by name.
+        Get all servers supporting a specific ability by name.
 
         Args:
-            capability_name: Capability name (e.g., "text2image")
+            ability_name: Ability name (e.g., "text2image")
 
         Returns:
             List of ServerInfo objects
         """
         return [
             info for info in self.plugin_infos.values()
-            if any(cap.name == capability_name for cap in info.capabilities)
+            if any(a.name == ability_name for a in info.abilities)
         ]

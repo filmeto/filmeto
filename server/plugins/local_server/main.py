@@ -15,7 +15,7 @@ from typing import Dict, Any, Callable, List, Optional
 # Add parent directory to path to import base_plugin
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from server.plugins.base_plugin import BaseServerPlugin, CapabilityConfig
+from server.plugins.base_plugin import BaseServerPlugin, AbilityConfig
 
 logger = logging.getLogger(__name__)
 
@@ -69,8 +69,8 @@ class LocalServerPlugin(BaseServerPlugin):
             logger.error(f"Failed to create LocalServer config widget: {e}", exc_info=True)
             return None
 
-    def get_supported_capabilities(self) -> List[CapabilityConfig]:
-        """Get list of capabilities supported by this plugin with their configs"""
+    def get_supported_abilities(self) -> List[AbilityConfig]:
+        """Get list of abilities supported by this plugin with their configs"""
         # Define capabilities supported by this plugin
         text2image_params = [
             {
@@ -134,8 +134,8 @@ class LocalServerPlugin(BaseServerPlugin):
         ]
 
         return [
-            CapabilityConfig(name="text2image", description="Generate image from text prompt", parameters=text2image_params),
-            CapabilityConfig(name="image2image", description="Transform image based on text prompt", parameters=image2image_params)
+            AbilityConfig(name="text2image", description="Generate image from text prompt", parameters=text2image_params),
+            AbilityConfig(name="image2image", description="Transform image based on text prompt", parameters=image2image_params)
         ]
     
     async def execute_task(
@@ -154,24 +154,24 @@ class LocalServerPlugin(BaseServerPlugin):
             Result dictionary with output files
         """
         task_id = task_data.get("task_id", "unknown")
-        capability = task_data.get("capability", "")
+        ability = task_data.get("ability") or task_data.get("capability", "")
         parameters = task_data.get("parameters", {})
 
         try:
-            if capability == "text2image":
+            if ability == "text2image":
                 return await self._execute_text2image_task(task_id, parameters, progress_callback)
-            elif capability == "image2image":
+            elif ability == "image2image":
                 return await self._execute_image2image_task(task_id, parameters, progress_callback)
             else:
                 return {
                     "task_id": task_id,
                     "status": "error",
-                    "error_message": f"Unsupported capability: {capability}",
+                    "error_message": f"Unsupported ability: {ability}",
                     "output_files": []
                 }
 
         except Exception as e:
-            print(f"Error executing task with capability {capability}: {e}")
+            print(f"Error executing task with ability {ability}: {e}")
             return {
                 "task_id": task_id,
                 "status": "error",

@@ -213,13 +213,14 @@ class RoutingRule:
         if not self.enabled:
             return False
 
-        # Check capability condition
-        if "capability" in self.conditions:
-            expected_cap = self.conditions["capability"]
-            if isinstance(expected_cap, list):
-                if task.capability.value not in expected_cap:
+        cond_ability = self.conditions.get("ability")
+        if cond_ability is None and "capability" in self.conditions:
+            cond_ability = self.conditions["capability"]
+        if cond_ability is not None:
+            if isinstance(cond_ability, list):
+                if task.ability.value not in cond_ability:
                     return False
-            elif task.capability.value != expected_cap:
+            elif task.ability.value != cond_ability:
                 return False
 
         # Check server_name condition

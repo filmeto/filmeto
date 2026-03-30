@@ -131,14 +131,14 @@ class Image2Video(BaseTool,BaseTaskWidget):
             import logging
             logger = logging.getLogger(__name__)
             logger.info(f"Processing img2video task with FilmetoApi: {task.options}")
-            from server.api import FilmetoApi, FilmetoTask, Capability, ResourceInput, ResourceType
+            from server.api import FilmetoApi, FilmetoTask, Ability, ResourceInput, ResourceType
             from app.data.task import TaskResult as AppTaskResult, TaskProgress as AppTaskProgress
             from server.api.types import TaskProgress as FilmetoTaskProgress, TaskResult as FilmetoTaskResult
 
             api = FilmetoApi()
             
             # Find a plugin that supports image2video
-            plugins = api.get_plugins_by_tool(Capability.IMAGE2VIDEO.value)
+            plugins = api.get_plugins_by_tool(Ability.IMAGE2VIDEO.value)
             if not plugins:
                 logger.warning("No plugins found for image2video")
                 return
@@ -167,7 +167,7 @@ class Image2Video(BaseTool,BaseTaskWidget):
                 ))
 
             filmeto_task = FilmetoTask(
-                capability=Capability.IMAGE2VIDEO,
+                ability=Ability.IMAGE2VIDEO,
                 server_name=plugin_name,
                 parameters={
                     "prompt": task.options['prompt'],

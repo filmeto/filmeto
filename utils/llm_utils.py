@@ -112,17 +112,18 @@ def validate_llm_config(workspace=None) -> bool:
         if chat_service is not None and chat_service.selection_service is not None:
             # Refresh capabilities to get latest server status
             selection_svc = chat_service.selection_service
-            if selection_svc and hasattr(selection_svc, '_capability_service'):
+            if selection_svc and hasattr(selection_svc, '_ability_service'):
                 try:
-                    selection_svc._capability_service.refresh_capabilities()
+                    selection_svc._ability_service.refresh_abilities()
                 except Exception:
                     pass  # Ignore refresh errors
 
-                # Check if there are any available chat capabilities
-                from server.api.types import Capability
+                from server.api.types import Ability
                 try:
-                    capabilities = selection_svc._capability_service.get_capabilities_by_type(Capability.CHAT_COMPLETION)
-                    if capabilities:
+                    instances = selection_svc._ability_service.get_ability_instances_by_type(
+                        Ability.CHAT_COMPLETION
+                    )
+                    if instances:
                         return True
                 except Exception:
                     pass

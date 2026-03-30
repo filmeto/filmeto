@@ -11,11 +11,11 @@ from typing import Optional, List
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from server.api.filmeto_api import FilmetoApi
 from server.api.types import (
-    FilmetoTask, TaskProgress, TaskResult, Capability, ResourceInput,
+    FilmetoTask, TaskProgress, TaskResult, Ability, ResourceInput,
     ValidationError, ServerNotFoundError, ServerExecutionError, TimeoutError as TaskTimeoutError
 )
 from server.api.chat_types import (
@@ -28,9 +28,15 @@ from server.api.chat_types import (
 # Pydantic models for API
 class TaskRequest(BaseModel):
     """Request model for creating a task"""
-    capability: str = Field(..., description="Capability to use (e.g., 'text2image')")
+    model_config = ConfigDict(populate_by_name=True)
+
+    ability: str = Field(
+        ...,
+        description="Ability to use (e.g., 'text2image')",
+        validation_alias=AliasChoices("ability", "capability"),
+    )
     server_name: str = Field(..., description="Server name to execute")
-    parameters: dict = Field(..., description="Capability-specific parameters")
+    parameters: dict = Field(..., description="Ability-specific parameters")
     resources: list = Field(default_factory=list, description="Input resources")
     timeout: int = Field(default=300, description="Timeout in seconds")
     metadata: dict = Field(default_factory=dict, description="Additional metadata")
@@ -43,8 +49,8 @@ class TaskResponse(BaseModel):
     message: str
 
 
-class CapabilityInfo(BaseModel):
-    """Capability information"""
+class AbilitySummary(BaseModel):
+    """Ability information"""
     name: str
     display_name: str
 
@@ -54,7 +60,7 @@ class ServerInfo(BaseModel):
     name: str
     version: str
     description: str
-    capability_type: str
+    ability_type: str
     engine: str
     author: str
 
@@ -118,106 +124,63 @@ async def health_check():
     return {"status": "healthy"}
 
 
-@app.get("/api/v1/capabilities")
-async def list_capabilities(capability_type: Optional[str] = None):
+@app.get("/api/v1/abilities")
+async def list_abilities(ability_type: Optional[str] = None):
     """
-    List all capability instances.
-
-    Capabilities represent server:model combinations that provide specific
-    AI services. Each capability has a unique key in "server:model" format.
-
-    Args:
-        capability_type: Optional filter by capability type (e.g., "text2image")
-
-    Returns:
-        List of capability instances with descriptions for LLM selection
+    List all ability instances (server:model). Optional filter by ability type.
 
     Example:
-        GET /api/v1/capabilities?capability_type=text2image
+        GET /api/v1/abilities?ability_type=text2image
     """
     try:
-        capabilities = filmeto_api.list_capabilities(capability_type)
+        items = filmeto_api.list_abilities(ability_type)
         return {
-            "capabilities": capabilities,
-            "total": len(capabilities),
-            "capability_type_filter": capability_type
+            "abilities": items,
+            "total": len(items),
+            "ability_type_filter": ability_type,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/v1/capabilities/groups")
-async def list_capability_groups():
-    """
-    List capabilities grouped by capability type.
-
-    Returns all capabilities organized by their type (text2image, image2video, etc.)
-    with each group containing available server:model options.
-
-    Returns:
-        List of capability groups with their instances
-    """
+@app.get("/api/v1/abilities/groups")
+async def list_ability_groups():
+    """List abilities grouped by ability type."""
     try:
-        groups = filmeto_api.get_capability_groups()
-        return {
-            "groups": groups,
-            "total_groups": len(groups)
-        }
+        groups = filmeto_api.get_ability_groups()
+        return {"groups": groups, "total_groups": len(groups)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/v1/capabilities/{key}")
-async def get_capability(key: str):
-    """
-    Get a specific capability instance by key.
-
-    Args:
-        key: Capability key in "server:model" format
-             (e.g., "bailian-prod:wanx2.1-t2i-turbo")
-
-    Returns:
-        Capability instance details including description for LLM selection
-    """
+@app.get("/api/v1/abilities/{key}")
+async def get_ability_instance_http(key: str):
+    """Get one ability instance by ``server:model`` key."""
     try:
-        capability = filmeto_api.get_capability(key)
-        if not capability:
+        inst = filmeto_api.get_ability_instance(key)
+        if not inst:
             raise HTTPException(
                 status_code=404,
-                detail=f"Capability '{key}' not found"
+                detail=f"Ability instance '{key}' not found",
             )
-        return capability
+        return inst
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/v1/capabilities/select/{capability_type}")
-async def get_capability_selection_context(
-    capability_type: str,
-    user_requirement: Optional[str] = None
+@app.get("/api/v1/abilities/select/{ability_type}")
+async def get_ability_selection_context_http(
+    ability_type: str,
+    user_requirement: Optional[str] = None,
 ):
-    """
-    Get context for LLM to select appropriate capability.
-
-    This endpoint returns structured information that can be used
-    by an LLM to select the most appropriate capability instance
-    based on user requirements.
-
-    Args:
-        capability_type: Capability type needed (e.g., "text2image")
-        user_requirement: Optional user requirement description
-
-    Returns:
-        Structured context for LLM-based capability selection
-    """
+    """LLM-oriented context for choosing a server:model for an ability."""
     try:
-        context = filmeto_api.get_capability_selection_context(
-            capability_type,
-            user_requirement or ""
+        return filmeto_api.get_ability_selection_context(
+            ability_type,
+            user_requirement or "",
         )
-        return context
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -239,7 +202,7 @@ class SelectionResponse(BaseModel):
     """Response model for selection result."""
     server_name: str
     model_name: str
-    capability_type: str
+    ability_type: str
     key: str
     mode_used: str
     candidates_count: int
@@ -247,44 +210,30 @@ class SelectionResponse(BaseModel):
     instance: Optional[dict] = None
 
 
-@app.post("/api/v1/select/{capability_type}", response_model=SelectionResponse)
-async def select_capability(
-    capability_type: str,
-    selection: SelectionRequest
-):
-    """
-    Select server:model for a capability.
-
-    Uses the unified selection system to find the best server:model
-    combination based on selection configuration.
-
-    Args:
-        capability_type: Capability type (e.g., "text2image", "chat_completion")
-        selection: Selection configuration
-
-    Returns:
-        SelectionResult with selected server_name, model_name, and metadata
-    """
+@app.post("/api/v1/select/{ability_type}", response_model=SelectionResponse)
+async def select_ability(ability_type: str, selection: SelectionRequest):
+    """Select server:model for an ability."""
     try:
-        from server.api.types import Capability, SelectionConfig, SelectionMode
+        from server.api.types import Ability, SelectionConfig, SelectionMode
         from server.service.ability_selection_service import SelectionError
 
-        # Parse capability type
         try:
-            capability = Capability(capability_type)
+            ability = Ability(ability_type)
         except ValueError:
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid capability type: {capability_type}"
+                detail=f"Invalid ability type: {ability_type}",
             )
 
-        # Build selection config
         try:
             mode = SelectionMode(selection.mode)
         except ValueError:
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid selection mode: {selection.mode}. Valid modes: auto, server_only, exact"
+                detail=(
+                    f"Invalid selection mode: {selection.mode}. "
+                    "Valid modes: auto, server_only, exact"
+                ),
             )
 
         config = SelectionConfig(
@@ -295,13 +244,12 @@ async def select_capability(
             min_priority=selection.min_priority,
         )
 
-        # Execute selection
-        result = filmeto_api.selection_service.select(capability, config)
+        result = filmeto_api.selection_service.select(ability, config)
 
         return SelectionResponse(
             server_name=result.server_name,
             model_name=result.model_name,
-            capability_type=result.capability_type.value,
+            ability_type=result.ability_type.value,
             key=result.key,
             mode_used=result.mode_used.value,
             candidates_count=result.candidates_count,
@@ -319,54 +267,36 @@ async def select_capability(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/v1/select/{capability_type}/default", response_model=SelectionResponse)
-async def get_default_capability(
-    capability_type: str,
-    tags: Optional[str] = None
-):
-    """
-    Get default (highest priority) server:model for a capability.
-
-    Convenience endpoint that returns the best available instance
-    without requiring a full selection configuration.
-
-    Args:
-        capability_type: Capability type (e.g., "text2image")
-        tags: Optional comma-separated tag filters
-
-    Returns:
-        SelectionResult with default server_name, model_name
-    """
+@app.get("/api/v1/select/{ability_type}/default", response_model=SelectionResponse)
+async def get_default_ability(ability_type: str, tags: Optional[str] = None):
+    """Default (highest priority) server:model for an ability."""
     try:
-        from server.api.types import Capability
+        from server.api.types import Ability
 
-        # Parse capability type
         try:
-            capability = Capability(capability_type)
+            ability = Ability(ability_type)
         except ValueError:
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid capability type: {capability_type}"
+                detail=f"Invalid ability type: {ability_type}",
             )
 
-        # Parse tags
         tag_list = None
         if tags:
             tag_list = [t.strip() for t in tags.split(",") if t.strip()]
 
-        # Get default instance
-        result = filmeto_api.selection_service.get_default_instance(capability, tag_list)
+        result = filmeto_api.selection_service.get_default_instance(ability, tag_list)
 
         if not result:
             raise HTTPException(
                 status_code=404,
-                detail=f"No available instances for capability '{capability_type}'"
+                detail=f"No available instances for ability '{ability_type}'",
             )
 
         return SelectionResponse(
             server_name=result.server_name,
             model_name=result.model_name,
-            capability_type=result.capability_type.value,
+            ability_type=result.ability_type.value,
             key=result.key,
             mode_used="auto",
             candidates_count=1,
@@ -380,57 +310,42 @@ async def get_default_capability(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/v1/select/{capability_type}/candidates")
-async def list_selection_candidates(
-    capability_type: str,
+@app.get("/api/v1/select/{ability_type}/candidates")
+async def list_ability_selection_candidates(
+    ability_type: str,
     tags: Optional[str] = None,
-    min_priority: Optional[int] = None
+    min_priority: Optional[int] = None,
 ):
-    """
-    List all candidate instances for selection.
-
-    Returns all available instances for a capability, sorted by priority.
-
-    Args:
-        capability_type: Capability type (e.g., "text2image")
-        tags: Optional comma-separated tag filters
-        min_priority: Optional minimum priority filter
-
-    Returns:
-        List of candidate CapabilityInstance objects
-    """
+    """List candidate server:model instances for an ability."""
     try:
-        from server.api.types import Capability
+        from server.api.types import Ability
 
-        # Parse capability type
         try:
-            capability = Capability(capability_type)
+            ability = Ability(ability_type)
         except ValueError:
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid capability type: {capability_type}"
+                detail=f"Invalid ability type: {ability_type}",
             )
 
-        # Parse tags
         tag_list = None
         if tags:
             tag_list = [t.strip() for t in tags.split(",") if t.strip()]
 
-        # Get all instances
         instances = filmeto_api.selection_service.get_all_instances(
-            capability,
+            ability,
             tags=tag_list,
-            min_priority=min_priority
+            min_priority=min_priority,
         )
 
         return {
-            "capability_type": capability_type,
+            "ability_type": ability_type,
             "candidates": [inst.to_dict() for inst in instances],
             "total": len(instances),
             "filters": {
                 "tags": tag_list,
                 "min_priority": min_priority,
-            }
+            },
         }
 
     except Exception as e:
@@ -453,7 +368,7 @@ async def create_task(task_request: TaskRequest):
     """
     try:
         task = FilmetoTask(
-            capability=Capability(task_request.capability),
+            ability=Ability(task_request.ability),
             server_name=task_request.server_name,
             parameters=task_request.parameters,
             resources=[ResourceInput.from_dict(r) for r in task_request.resources],
@@ -492,7 +407,7 @@ async def execute_task_stream(task_request: TaskRequest):
     try:
         # Convert request to FilmetoTask
         task = FilmetoTask(
-            capability=Capability(task_request.capability),
+            ability=Ability(task_request.ability),
             server_name=task_request.server_name,
             parameters=task_request.parameters,
             resources=[ResourceInput.from_dict(r) for r in task_request.resources],
