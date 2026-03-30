@@ -118,6 +118,14 @@ class ChatCompletionResponse(BaseModel):
     model: str
     choices: List[ChatCompletionChoice]
     usage: UsageInfo = Field(default_factory=UsageInfo)
+    filmeto_server: Optional[str] = Field(
+        None,
+        description="Filmeto extension: server name that executed the completion",
+    )
+    filmeto_model: Optional[str] = Field(
+        None,
+        description="Filmeto extension: model id actually used by the provider",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -145,6 +153,14 @@ class ChatCompletionChunk(BaseModel):
     created: int
     model: str
     choices: List[ChatCompletionChunkChoice]
+    filmeto_server: Optional[str] = Field(
+        None,
+        description="Filmeto extension: server name that executed the completion",
+    )
+    filmeto_model: Optional[str] = Field(
+        None,
+        description="Filmeto extension: model id actually used by the provider",
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -125,6 +125,7 @@ class ChatService:
             stream=False,
         )
 
+        self._annotate_chat_task_metadata(result, server_cfg, model_name)
         return self._convert_to_response(result, model_name)
 
     async def chat_completion_stream(
@@ -213,6 +214,19 @@ class ChatService:
 
         except SelectionError as e:
             raise ValueError(str(e)) from e
+
+    def _annotate_chat_task_metadata(
+        self,
+        result: TaskResult,
+        server_cfg: "ServerConfig",
+        requested_model: str,
+    ) -> None:
+        """Record resolved server and provider model on the task for API and diagnostics."""
+        md = dict(result.metadata or {})
+        actual = md.get("actual_model") or md.get("model") or requested_model
+        md["filmeto_server"] = server_cfg.name
+        md["filmeto_model"] = actual
+        result.metadata = md
 
     def _resolve_server(self, request: ChatCompletionRequest) -> ServerConfig:
         """Legacy method for backward compatibility."""
@@ -349,13 +363,15 @@ class ChatService:
             if result.get("status") == "error":
                 raise RuntimeError(f"Chat completion failed: {result.get('error_message')}")
 
+            inner_meta = result.get("metadata", {}) or {}
             return TaskResult(
                 task_id=result.get("task_id", ""),
                 status=result.get("status", "success"),
                 output_files=result.get("output_files", []),
                 metadata={
-                    "text": result.get("metadata", {}).get("text", ""),
-                    "model": result.get("metadata", {}).get("model", model),
+                    "text": inner_meta.get("text", ""),
+                    "model": inner_meta.get("model", model),
+                    "actual_model": inner_meta.get("actual_model"),
                 },
             )
         except ImportError as e:
@@ -414,6 +430,8 @@ class ChatService:
         completion_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
         created = int(time.time())
         accumulated_content = ""
+        filmeto_server = server_cfg.name
+        filmeto_model = model
 
         async for msg in server.execute_task(task):
             if isinstance(msg, TaskProgress):
@@ -430,6 +448,8 @@ class ChatService:
                             id=completion_id,
                             created=created,
                             model=model,
+                            filmeto_server=filmeto_server,
+                            filmeto_model=filmeto_model,
                             choices=[
                                 ChatCompletionChunkChoice(
                                     index=0,
@@ -443,6 +463,10 @@ class ChatService:
                 if msg.status == "error":
                     raise RuntimeError(f"Chat completion failed: {msg.error_message}")
 
+                self._annotate_chat_task_metadata(msg, server_cfg, model)
+                filmeto_server = msg.metadata.get("filmeto_server", filmeto_server)
+                filmeto_model = msg.metadata.get("filmeto_model", filmeto_model)
+
                 # Check if there's remaining content in the result
                 final_text = msg.metadata.get("text", "")
                 delta_content = final_text[len(accumulated_content):] if accumulated_content else final_text
@@ -452,6 +476,8 @@ class ChatService:
                         id=completion_id,
                         created=created,
                         model=model,
+                        filmeto_server=filmeto_server,
+                        filmeto_model=filmeto_model,
                         choices=[
                             ChatCompletionChunkChoice(
                                 index=0,
@@ -466,6 +492,8 @@ class ChatService:
                         id=completion_id,
                         created=created,
                         model=model,
+                        filmeto_server=filmeto_server,
+                        filmeto_model=filmeto_model,
                         choices=[
                             ChatCompletionChunkChoice(
                                 index=0,
@@ -490,6 +518,7 @@ class ChatService:
             total_tokens=usage_dict.get("total_tokens", 0),
         )
 
+        md = result.metadata or {}
         return ChatCompletionResponse(
             id=result.task_id,
             created=int(time.time()),
@@ -505,4 +534,6 @@ class ChatService:
                 )
             ],
             usage=usage,
+            filmeto_server=md.get("filmeto_server"),
+            filmeto_model=md.get("filmeto_model"),
         )

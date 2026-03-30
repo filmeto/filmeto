@@ -710,6 +710,7 @@ class BailianServerPlugin(BaseServerPlugin):
             "metadata": {
                 "text": result_text,
                 "model": model,
+                "actual_model": actual_model,
                 "usage": usage,
             }
         }

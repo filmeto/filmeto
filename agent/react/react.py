@@ -2,7 +2,7 @@ import asyncio
 import logging
 import time
 import uuid
-from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
+from typing import Any, AsyncGenerator, Callable, Dict, List, Optional, Tuple
 
 from agent.tool.tool_service import ToolService
 from agent.tool.tool_context import ToolContext
@@ -169,11 +169,13 @@ class React:
 
         self.messages = [{"role": "user", "content": user_prompt}]
 
-    async def _call_llm(self, messages: List[Dict[str, str]]) -> str:
+    async def _call_llm(
+        self, messages: List[Dict[str, str]]
+    ) -> Tuple[str, Optional[str], Optional[str]]:
         """Call LLM service with timing and metrics tracking.
 
         Returns:
-            The content of the LLM response message.
+            Message text, then filmeto server name and model id used (if known).
         """
         # Get chat service if not set
         if self.chat_service is None:
@@ -181,7 +183,7 @@ class React:
 
         if not self.chat_service or not validate_llm_config(self.workspace):
             logger.warning("LLM service is not configured")
-            return '{"type": "final", "final": "LLM service is not configured."}'
+            return ('{"type": "final", "final": "LLM service is not configured."}', None, None)
 
         model_to_use = "qwen-plus"
         temperature_to_use = 0.7
@@ -206,10 +208,14 @@ class React:
             logger.debug(f"LLM call completed in {duration_ms:.2f}ms")
 
             # Extract content using utility function
-            return extract_content(response)
+            return (
+                extract_content(response),
+                response.filmeto_server,
+                response.filmeto_model,
+            )
         except Exception as exc:
             logger.error(f"LLM call failed: {exc}", exc_info=True)
-            return f'{{"type": "final", "final": "LLM call failed: {str(exc)}"}}'
+            return (f'{{"type": "final", "final": "LLM call failed: {str(exc)}"}}', None, None)
 
     def _parse_action(self, response_text: str) -> ReactAction:
         """
@@ -582,7 +588,7 @@ class React:
                     for msg in new_pending:
                         self.messages.append({"role": "user", "content": msg})
 
-                    response_text = await self._call_llm(self.messages)
+                    response_text, llm_server, llm_model = await self._call_llm(self.messages)
                     action = self._parse_action(response_text)
                     logger.debug(f"React step {step + 1}: action type={action.type}, is_tool={action.is_tool()}, is_final={action.is_final()}")
                     thinking = ReactActionParser.get_thinking_message(action, step + 1, self.max_steps)
@@ -602,7 +608,9 @@ class React:
                         content=LlmOutputContent(
                             output=response_text,
                             title="LLM Output",
-                            description="Raw LLM response"
+                            description="Raw LLM response",
+                            filmeto_server=llm_server,
+                            filmeto_model=llm_model,
                         )
                     )
 

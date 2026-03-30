@@ -222,7 +222,9 @@ class FilmetoRoutingManager:
             return LlmOutputContent(
                 output=event.payload.get("content", ""),
                 title="LLM Output",
-                description="Raw LLM output"
+                description="Raw LLM output",
+                filmeto_server=event.payload.get("filmeto_server"),
+                filmeto_model=event.payload.get("filmeto_model"),
             )
 
         elif event.event_type == AgentEventType.TOOL_START:
