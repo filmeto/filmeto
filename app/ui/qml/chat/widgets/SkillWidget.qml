@@ -354,6 +354,8 @@ Rectangle {
             widgetColor: Qt.rgba(root.widgetColor.r, root.widgetColor.g, root.widgetColor.b, 0.8)
             output: itemData.data?.output || itemData.output || ""
             title: itemData.title || itemData.data?.title || "LLM Output"
+            filmeto_server: itemData.data?.filmeto_server || itemData.filmeto_server || ""
+            filmeto_model: itemData.data?.filmeto_model || itemData.filmeto_model || ""
         }
     }
 

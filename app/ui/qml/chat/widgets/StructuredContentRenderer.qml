@@ -957,6 +957,8 @@ Item {
             widgetColor: root.widgetColor
             output: data.output || data.data?.output || ""
             title: data.title || data.data?.title || "LLM Output"
+            filmeto_server: data.filmeto_server || data.data?.filmeto_server || ""
+            filmeto_model: data.filmeto_model || data.data?.filmeto_model || ""
         }
     }
 

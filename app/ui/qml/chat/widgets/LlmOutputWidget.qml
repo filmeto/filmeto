@@ -8,6 +8,8 @@ Rectangle {
 
     property string output: ""
     property string title: "LLM Output"
+    property string filmeto_server: ""
+    property string filmeto_model: ""
     property color widgetColor: "#9b59b6"
     property bool isCollapsible: true
 
@@ -108,6 +110,28 @@ Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 1
                     color: borderColor
+                }
+
+                // Server and model info row
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 12
+
+                    Text {
+                        visible: root.filmeto_server !== ""
+                        text: "Server: " + root.filmeto_server
+                        color: root.textColor
+                        font.pixelSize: 10
+                        opacity: 0.7
+                    }
+
+                    Text {
+                        visible: root.filmeto_model !== ""
+                        text: "Model: " + root.filmeto_model
+                        color: root.textColor
+                        font.pixelSize: 10
+                        opacity: 0.7
+                    }
                 }
 
                 SelectableText {
