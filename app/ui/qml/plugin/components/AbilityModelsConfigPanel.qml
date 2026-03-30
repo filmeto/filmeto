@@ -26,6 +26,34 @@ Item {
     // Expose font family to children
     readonly property string iconFontFamily: iconFontLoader.status === FontLoader.Ready ? iconFontLoader.name : "iconfont"
 
+    // Refresh data function
+    function refreshData() {
+        if (!amModel) {
+            abilityItems = []
+            modelItems = []
+            selectedAbility = ""
+            return
+        }
+        abilityItems = amModel.abilityStats()
+        if (!selectedAbility.length && abilityItems.length > 0)
+            selectedAbility = abilityItems[0].ability
+
+        var exists = false
+        for (var i = 0; i < abilityItems.length; ++i) {
+            if (abilityItems[i].ability === selectedAbility) {
+                exists = true
+                break
+            }
+        }
+        if (!exists)
+            selectedAbility = abilityItems.length > 0 ? abilityItems[0].ability : ""
+
+        amModel.abilityFilter = selectedAbility.length ? selectedAbility : ""
+        modelItems = amModel.modelsForAbility(selectedAbility)
+    }
+
+    Component.onCompleted: refreshData()
+
     ColumnLayout {
         anchors.fill: parent
         visible: amModel !== null
@@ -156,33 +184,6 @@ Item {
                 }
             }
         }
-
-        function refreshData() {
-            if (!amModel) {
-                abilityItems = []
-                modelItems = []
-                selectedAbility = ""
-                return
-            }
-            abilityItems = amModel.abilityStats()
-            if (!selectedAbility.length && abilityItems.length > 0)
-                selectedAbility = abilityItems[0].ability
-
-            var exists = false
-            for (var i = 0; i < abilityItems.length; ++i) {
-                if (abilityItems[i].ability === selectedAbility) {
-                    exists = true
-                    break
-                }
-            }
-            if (!exists)
-                selectedAbility = abilityItems.length > 0 ? abilityItems[0].ability : ""
-
-            amModel.abilityFilter = selectedAbility.length ? selectedAbility : ""
-            modelItems = amModel.modelsForAbility(selectedAbility)
-        }
-
-        Component.onCompleted: refreshData()
 
         Connections {
             target: amModel
