@@ -74,16 +74,17 @@ def load_custom_font(main_path):
     font_id = QFontDatabase.addApplicationFont(font_path)
     if font_id == -1:
         error_msg += f"失败：PySide6 无法加载字体文件 '{font_path}'。文件可能已损坏、格式不受支持或权限不足。\n"
-        return None, success_msg, error_msg
+        logger.error(f"Failed to load iconfont from {font_path}")
     else:
         font_families = QFontDatabase.applicationFontFamilies(font_id)
         if font_families:
             family_name = font_families[0]
             success_msg += f"成功：加载了字体族 '{family_name}' (来自 {font_path})\n"
+            logger.info(f"Loaded iconfont: family='{family_name}' from {font_path}")
             return family_name, success_msg, error_msg
         else:
             error_msg += f"失败：字体文件 '{font_path}' 已加载，但未找到有效的字体族名称。\n"
-            return None, success_msg, error_msg
+            logger.error(f"iconfont loaded but no font family found from {font_path}")
 
 class App():
 

@@ -17,14 +17,9 @@ Item {
     property int editingDisplayRow: -1
     property bool editingCustom: false
 
-    // Load iconfont at the panel level
-    FontLoader {
-        id: iconFontLoader
-        source: Qt.resolvedUrl("../../../textures/iconfont.ttf")
-    }
-
-    // Expose font family to children
-    readonly property string iconFontFamily: iconFontLoader.status === FontLoader.Ready ? iconFontLoader.name : "iconfont"
+    // Icon font family - use "iconfont" which is loaded by Python's QFontDatabase
+    // If QFontDatabase successfully loaded the font, this should work
+    readonly property string iconFontFamily: "iconfont"
 
     // Refresh data function
     function refreshData() {
