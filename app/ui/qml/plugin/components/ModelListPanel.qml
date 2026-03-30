@@ -7,6 +7,7 @@ Rectangle {
     id: root
     property string selectedAbility: ""
     property var modelItems: []
+    property string iconFontFamily: "iconfont"
     signal toggleEnabled(int displayRow, bool enabled)
     signal moveUp(int displayRow)
     signal moveDown(int displayRow)
@@ -42,6 +43,7 @@ Rectangle {
                 height: 50
                 itemData: modelData
                 rowColor: index % 2 ? "#1e1e1e" : "#2d2d2d"
+                iconFontFamily: root.iconFontFamily
                 onToggleEnabled: (displayRow, enabled) => root.toggleEnabled(displayRow, enabled)
                 onMoveUp: displayRow => root.moveUp(displayRow)
                 onMoveDown: displayRow => root.moveDown(displayRow)

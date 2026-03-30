@@ -7,6 +7,7 @@ Rectangle {
     id: root
     property var itemData: ({})
     property color rowColor: "#1e1e1e"
+    property string iconFontFamily: "iconfont"
     signal toggleEnabled(int displayRow, bool enabled)
     signal moveUp(int displayRow)
     signal moveDown(int displayRow)
@@ -69,7 +70,7 @@ Rectangle {
             implicitWidth: 26
             implicitHeight: 26
             text: "\ue84c"  // upper-left-arrow
-            font.family: "iconfont"
+            font.family: root.iconFontFamily
             font.pixelSize: 12
             onClicked: root.moveToTop(root.itemData.displayRow)
             background: Rectangle {
@@ -78,6 +79,7 @@ Rectangle {
             }
             contentItem: Text {
                 text: parent.text
+                font.family: root.iconFontFamily
                 color: "#e0e0e0"
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
@@ -92,7 +94,7 @@ Rectangle {
             implicitWidth: 26
             implicitHeight: 26
             text: "\ue84a"  // up
-            font.family: "iconfont"
+            font.family: root.iconFontFamily
             font.pixelSize: 12
             onClicked: root.moveUp(root.itemData.displayRow)
             background: Rectangle {
@@ -101,6 +103,7 @@ Rectangle {
             }
             contentItem: Text {
                 text: parent.text
+                font.family: root.iconFontFamily
                 color: "#e0e0e0"
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
@@ -115,7 +118,7 @@ Rectangle {
             implicitWidth: 26
             implicitHeight: 26
             text: "\ue83a"  // down
-            font.family: "iconfont"
+            font.family: root.iconFontFamily
             font.pixelSize: 12
             onClicked: root.moveDown(root.itemData.displayRow)
             background: Rectangle {
@@ -124,6 +127,7 @@ Rectangle {
             }
             contentItem: Text {
                 text: parent.text
+                font.family: root.iconFontFamily
                 color: "#e0e0e0"
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
@@ -138,7 +142,7 @@ Rectangle {
             implicitWidth: 26
             implicitHeight: 26
             text: "\ue842"  // lower-right-arrow
-            font.family: "iconfont"
+            font.family: root.iconFontFamily
             font.pixelSize: 12
             onClicked: root.moveToBottom(root.itemData.displayRow)
             background: Rectangle {
@@ -147,6 +151,7 @@ Rectangle {
             }
             contentItem: Text {
                 text: parent.text
+                font.family: root.iconFontFamily
                 color: "#e0e0e0"
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
@@ -161,7 +166,7 @@ Rectangle {
             implicitWidth: 26
             implicitHeight: 26
             text: "\ue614"  // edit-role
-            font.family: "iconfont"
+            font.family: root.iconFontFamily
             font.pixelSize: 12
             onClicked: root.editRequested(root.itemData)
             background: Rectangle {
@@ -170,6 +175,7 @@ Rectangle {
             }
             contentItem: Text {
                 text: parent.text
+                font.family: root.iconFontFamily
                 color: "#e0e0e0"
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
@@ -184,7 +190,7 @@ Rectangle {
             implicitWidth: 26
             implicitHeight: 26
             text: "\ue6dd"  // trash
-            font.family: "iconfont"
+            font.family: root.iconFontFamily
             font.pixelSize: 12
             visible: !!root.itemData.custom
             onClicked: root.removeRequested(root.itemData.displayRow)
@@ -194,6 +200,7 @@ Rectangle {
             }
             contentItem: Text {
                 text: parent.text
+                font.family: root.iconFontFamily
                 color: parent.hovered ? "#e74c3c" : "#e0e0e0"
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
