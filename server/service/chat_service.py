@@ -44,7 +44,7 @@ from server.api.chat_types import (
     ModelInfo,
     UsageInfo,
 )
-from server.api.types import Capability, FilmetoTask, SelectionConfig, SelectionMode, TaskProgress, TaskResult
+from server.api.types import Ability, FilmetoTask, SelectionConfig, SelectionMode, TaskProgress, TaskResult
 
 if TYPE_CHECKING:
     from server.server import ServerConfig, ServerManager
@@ -194,7 +194,7 @@ class ChatService:
         config = request.to_selection_config()
 
         try:
-            result = self.selection_service.select(Capability.CHAT_COMPLETION, config)
+            result = self.selection_service.select(Ability.CHAT_COMPLETION, config)
 
             server = self._server_manager.get_server(result.server_name)
             if not server or not server.is_enabled:
@@ -290,7 +290,7 @@ class ChatService:
         # Create FilmetoTask
         task = FilmetoTask(
             task_id=f"chat_{uuid.uuid4().hex[:12]}",
-            capability=Capability.CHAT_COMPLETION,
+            ability=Ability.CHAT_COMPLETION,
             parameters=task_params,
             metadata=task_metadata,
         )
@@ -353,7 +353,7 @@ class ChatService:
 
             task_data = {
                 "task_id": f"chat_{uuid.uuid4().hex[:12]}",
-                "capability": "chat_completion",
+                "ability": "chat_completion",
                 "parameters": parameters,
                 "metadata": {"server_config": server_config},
             }
@@ -421,7 +421,7 @@ class ChatService:
         # Create FilmetoTask
         task = FilmetoTask(
             task_id=f"chat_{uuid.uuid4().hex[:12]}",
-            capability=Capability.CHAT_COMPLETION,
+            ability=Ability.CHAT_COMPLETION,
             parameters=task_params,
             metadata=task_metadata,
         )

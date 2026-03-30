@@ -8,7 +8,7 @@ Supports both web-based access and local in-app calls with streaming.
 from __future__ import annotations
 from typing import AsyncIterator, List, Union, Optional, Dict, Any
 
-from server.api.types import FilmetoTask, TaskProgress, TaskResult, ValidationError, Capability
+from server.api.types import FilmetoTask, TaskProgress, TaskResult, ValidationError, Ability
 from server.api.chat_types import (
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -36,12 +36,12 @@ class FilmetoApi:
         """
         from server.service.filmeto_service import FilmetoService
         from server.service.chat_service import ChatService
-        from server.service.capability_service import CapabilityService
+        from server.service.ability_service import AbilityService
         from server.service.ability_selection_service import AbilitySelectionService
 
         self.service = FilmetoService(plugins_dir, cache_dir, workspace_path)
         self.chat_service = ChatService(self.service.server_manager)
-        self.capability_service = CapabilityService(self.service.server_manager)
+        self.ability_service = AbilityService(self.service.server_manager)
         self.selection_service = AbilitySelectionService(self.service.server_manager)
 
     async def execute_task_stream(
@@ -72,7 +72,7 @@ class FilmetoApi:
             ```python
             api = FilmetoApi()
             task = FilmetoTask(
-                capability=Capability.TEXT2IMAGE,
+                ability=Ability.TEXT2IMAGE,
                 server_name="bailian",
                 parameters={"prompt": "a beautiful sunset"}
             )
@@ -136,115 +136,60 @@ class FilmetoApi:
         """Plugins that expose a given ability name (e.g. ``text2image``)."""
         return self.service.get_plugins_by_tool(tool_name)
 
-    def list_capabilities(self, capability_type: Optional[str] = None) -> List[Dict[str, Any]]:
+    def list_abilities(self, ability_type: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        List all capability instances, optionally filtered by type.
+        List all ability instances, optionally filtered by type.
 
         Args:
-            capability_type: Optional capability type filter (e.g., "text2image")
+            ability_type: Optional ability type filter (e.g., "text2image")
 
         Returns:
-            List of capability instance dictionaries
-
-        Example:
-            ```python
-            api = FilmetoApi()
-            # Get all capabilities
-            all_caps = api.list_capabilities()
-            # Get only text2image capabilities
-            t2i_caps = api.list_capabilities("text2image")
-            ```
+            List of ability instance dictionaries
         """
-        if capability_type:
+        if ability_type:
             try:
-                cap = Capability(capability_type)
-                instances = self.capability_service.get_capabilities_by_type(cap)
+                ab = Ability(ability_type)
+                instances = self.ability_service.get_ability_instances_by_type(ab)
             except ValueError:
                 return []
         else:
-            instances = self.capability_service.get_all_capabilities()
+            instances = self.ability_service.get_all_ability_instances()
 
         return [inst.to_dict() for inst in instances]
 
-    def get_capability(self, key: str) -> Optional[Dict[str, Any]]:
+    def get_ability_instance(self, key: str) -> Optional[Dict[str, Any]]:
         """
-        Get a specific capability instance by key.
-
-        Args:
-            key: Capability key in "server:model" format
-
-        Returns:
-            Capability instance dictionary or None if not found
-
-        Example:
-            ```python
-            api = FilmetoApi()
-            cap = api.get_capability("bailian-prod:wanx2.1-t2i-turbo")
-            if cap:
-                print(f"Description: {cap['description']}")
-            ```
+        Get a specific ability instance by key (``server:model``).
         """
-        instance = self.capability_service.get_capability(key)
+        instance = self.ability_service.get_ability_instance(key)
         return instance.to_dict() if instance else None
 
-    def get_capability_groups(self) -> List[Dict[str, Any]]:
-        """
-        Get all capabilities grouped by capability type.
-
-        Returns:
-            List of capability group dictionaries
-
-        Example:
-            ```python
-            api = FilmetoApi()
-            groups = api.get_capability_groups()
-            for group in groups:
-                print(f"{group['capability_name']}: {group['total_instances']} options")
-            ```
-        """
-        groups = self.capability_service.get_capability_groups()
+    def get_ability_groups(self) -> List[Dict[str, Any]]:
+        """Get all ability instances grouped by ability type."""
+        groups = self.ability_service.get_ability_groups()
         return [g.to_dict() for g in groups]
 
-    def get_capability_selection_context(
+    def get_ability_selection_context(
         self,
-        capability_type: str,
+        ability_type: str,
         user_requirement: str = ""
     ) -> Dict[str, Any]:
-        """
-        Get context for LLM to select appropriate capability.
-
-        This method returns structured information that can be used
-        by an LLM to select the most appropriate capability instance
-        based on user requirements.
-
-        Args:
-            capability_type: Capability type needed (e.g., "text2image")
-            user_requirement: User's requirement description
-
-        Returns:
-            Dict with capability info for LLM selection
-        """
+        """Context for LLM-based selection of ``server:model`` for an ability."""
         try:
-            cap = Capability(capability_type)
-            return self.capability_service.get_llm_selection_context(cap, user_requirement)
+            ab = Ability(ability_type)
+            return self.ability_service.get_llm_selection_context(ab, user_requirement)
         except ValueError:
             return {
-                "capability_type": capability_type,
+                "ability_type": ability_type,
                 "available": False,
-                "message": f"Unknown capability type: {capability_type}"
+                "message": f"Unknown ability type: {ability_type}"
             }
 
-    def refresh_capabilities(self) -> None:
-        """
-        Refresh the capability cache.
-
-        Call this method when server configurations change.
-        Also refreshes the selection service cache to stay consistent.
-        """
-        self.capability_service.refresh_capabilities()
-        # Also refresh selection service to keep caches consistent
-        if hasattr(self, 'selection_service') and self.selection_service is not None:
-            self.selection_service.refresh_capabilities()
+    def refresh_abilities(self) -> None:
+        """Refresh ability cache when server configuration changes."""
+        self.ability_service.refresh_abilities()
+        if getattr(self, "selection_service", None) is not None:
+            self.selection_service.refresh_abilities()
 
     # ------------------------------------------------------------------
     # Chat Completion API (OpenAI-compatible)

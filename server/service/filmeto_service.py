@@ -18,7 +18,7 @@ import structlog
 from server.api.types import (
     FilmetoTask, TaskProgress, TaskResult, ProgressType,
     ValidationError, ServerNotFoundError, ServerExecutionError,
-    TimeoutError as TaskTimeoutError, Capability
+    TimeoutError as TaskTimeoutError, Ability
 )
 from server.api.resource_processor import ResourceProcessor
 from server.plugins.plugin_manager import PluginManager
@@ -175,11 +175,13 @@ class FilmetoService:
         if not task.server_name:
             self._resolve_task_selection(task)
 
-        log = logger.bind(task_id=task.task_id, capability=task.capability.value,
+        log = logger.bind(task_id=task.task_id, ability=task.ability.value,
                           server=task.server_name)
-        metrics = TaskMetrics(task_id=task.task_id,
-                              capability=task.capability.value,
-                              server=task.server_name)
+        metrics = TaskMetrics(
+            task_id=task.task_id,
+            ability=task.ability.value,
+            server=task.server_name,
+        )
 
         # Validate task
         is_valid, error_msg = task.validate()
@@ -381,7 +383,7 @@ class FilmetoService:
 
         try:
             config = task.get_selection_config()
-            result = self.selection_service.select(task.capability, config)
+            result = self.selection_service.select(task.ability, config)
 
             # Update task with resolved selection
             task.resolve_selection(result)
@@ -396,8 +398,8 @@ class FilmetoService:
 
         except SelectionError as e:
             raise ValidationError(
-                f"Failed to resolve selection for capability '{task.capability.value}': {e}",
-                {"task_id": task.task_id, "capability": task.capability.value}
+                f"Failed to resolve selection for ability '{task.ability.value}': {e}",
+                {"task_id": task.task_id, "ability": task.ability.value}
             )
 
     async def enqueue_task(self, task: FilmetoTask, priority: int = 0) -> str:
@@ -471,7 +473,7 @@ class FilmetoService:
                     "description": cap.description,
                     "parameters": cap.parameters,
                 }
-                for cap in p.capabilities
+                for cap in p.abilities
             ]
             entry = {
                 "name": p.name,
@@ -512,8 +514,8 @@ class FilmetoService:
         plugins = self.plugin_manager.list_plugins()
 
         for plugin in plugins:
-            for capability in plugin.capabilities:
-                all_capabilities.add(capability.name)
+            for abil in plugin.abilities:
+                all_capabilities.add(abil.name)
 
         return [
             {
@@ -523,32 +525,32 @@ class FilmetoService:
             for cap_name in sorted(list(all_capabilities))
         ]
 
-    def get_capability_details(self, capability_name: str) -> dict:
+    def get_ability_details(self, ability_name: str) -> dict:
         """
-        Get detailed information about a specific capability.
+        Get detailed information about a specific ability.
 
         Args:
-            capability_name: Name of the capability to query
+            ability_name: Name of the ability to query
 
         Returns:
-            Capability details including parameters and supporting servers
+            Ability details including parameters and supporting servers
         """
         plugins = self.plugin_manager.list_plugins()
         supporting_servers = []
 
         for plugin in plugins:
-            for capability in plugin.capabilities:
-                if capability.name == capability_name:
+            for abil in plugin.abilities:
+                if abil.name == ability_name:
                     supporting_servers.append({
                         "server_name": plugin.name,
                         "server_version": plugin.version,
                         "server_description": plugin.description,
-                        "parameters": capability.parameters
+                        "parameters": abil.parameters
                     })
 
         return {
-            "name": capability_name,
-            "display_name": capability_name.replace('2', ' to ').title(),
+            "name": ability_name,
+            "display_name": ability_name.replace('2', ' to ').title(),
             "supporting_servers": supporting_servers
         }
     

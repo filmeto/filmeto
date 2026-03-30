@@ -5,7 +5,7 @@ Unified API interface for AI model services.
 """
 
 from server.api.types import (
-    Capability,
+    Ability,
     ResourceType,
     ProgressType,
     ResourceInput,
@@ -19,8 +19,8 @@ from server.api.types import (
     ServerExecutionError,
     ResourceProcessingError,
     TimeoutError,
-    CapabilityInstance,
-    CapabilityGroup,
+    AbilityInstance,
+    AbilityGroup,
 )
 
 from server.api.filmeto_api import FilmetoApi
@@ -36,7 +36,7 @@ from server.api.chat_types import (
 
 __all__ = [
     'FilmetoApi',
-    'Capability',
+    'Ability',
     'ResourceType',
     'ProgressType',
     'ResourceInput',
@@ -50,8 +50,8 @@ __all__ = [
     'ServerExecutionError',
     'ResourceProcessingError',
     'TimeoutError',
-    'CapabilityInstance',
-    'CapabilityGroup',
+    'AbilityInstance',
+    'AbilityGroup',
     'ChatMessage',
     'ChatCompletionRequest',
     'ChatCompletionResponse',

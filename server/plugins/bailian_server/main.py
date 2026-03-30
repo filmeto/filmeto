@@ -21,7 +21,7 @@ from typing import Dict, Any, Callable, List, Optional
 # Add parent directory to path to import base_plugin
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from server.plugins.base_plugin import BaseServerPlugin, CapabilityConfig
+from server.plugins.base_plugin import BaseServerPlugin, AbilityConfig
 from server.plugins.bailian_server.models_config import models_config, CODING_PLAN_PREFIX
 
 logger = logging.getLogger(__name__)
@@ -75,8 +75,8 @@ class BailianServerPlugin(BaseServerPlugin):
             print(f"Failed to create Bailian config widget: {e}")
             return None
 
-    def get_supported_capabilities(self) -> List[CapabilityConfig]:
-        """Get list of capabilities supported by this plugin with model definitions"""
+    def get_supported_abilities(self) -> List[AbilityConfig]:
+        """Get list of abilities supported by this plugin with model definitions"""
         # Text-to-Image models with pricing
         text2image_models = [
             {
@@ -332,19 +332,19 @@ class BailianServerPlugin(BaseServerPlugin):
         ]
 
         return [
-            CapabilityConfig(
+            AbilityConfig(
                 name="text2image",
                 description="Generate image from text using Wanx model",
                 parameters=text2image_params,
                 models=text2image_models
             ),
-            CapabilityConfig(
+            AbilityConfig(
                 name="image2image",
                 description="Transform image using Wanx model",
                 parameters=image2image_params,
                 models=image2image_models
             ),
-            CapabilityConfig(
+            AbilityConfig(
                 name="chat_completion",
                 description="LLM chat via DashScope OpenAI-compatible API",
                 parameters=chat_completion_params,
@@ -359,7 +359,7 @@ class BailianServerPlugin(BaseServerPlugin):
     ) -> Dict[str, Any]:
         """Execute a task based on its capability type."""
         task_id = task_data.get("task_id", "unknown")
-        capability = task_data.get("capability", "")
+        ability = task_data.get("ability") or task_data.get("capability", "")
         parameters = task_data.get("parameters", {})
         metadata = task_data.get("metadata", {})
         server_config = metadata.get("server_config", {})
@@ -383,16 +383,16 @@ class BailianServerPlugin(BaseServerPlugin):
         coding_plan_api_key = server_config.get("coding_plan_api_key", "")
 
         try:
-            if capability == "text2image":
+            if ability == "text2image":
                 return await self._execute_text2image(
                     task_id, api_key, parameters, default_image_model, progress_callback
                 )
-            elif capability == "image2image":
+            elif ability == "image2image":
                 return await self._execute_image2image(
                     task_id, api_key, parameters, task_data.get("resources", []),
                     default_image_model, progress_callback
                 )
-            elif capability == "chat_completion":
+            elif ability == "chat_completion":
                 return await self._execute_chat_completion(
                     task_id, api_key, parameters, default_model,
                     coding_plan_enabled, coding_plan_api_key, progress_callback
@@ -401,12 +401,12 @@ class BailianServerPlugin(BaseServerPlugin):
                 return {
                     "task_id": task_id,
                     "status": "error",
-                    "error_message": f"Unsupported capability: {capability}",
+                    "error_message": f"Unsupported ability: {ability}",
                     "output_files": []
                 }
 
         except Exception as e:
-            logger.error(f"Error executing task with capability {capability}: {e}", exc_info=True)
+            logger.error(f"Error executing task with ability {ability}: {e}", exc_info=True)
             return {
                 "task_id": task_id,
                 "status": "error",

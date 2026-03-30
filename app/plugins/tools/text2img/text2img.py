@@ -96,14 +96,14 @@ class Text2Image(BaseTool,BaseTaskWidget):
             import logging
             logger = logging.getLogger(__name__)
             logger.info(f"Processing text2img task with FilmetoApi: {task.options}")
-            from server.api import FilmetoApi, FilmetoTask, Capability, ResourceInput, ResourceType
+            from server.api import FilmetoApi, FilmetoTask, Ability, ResourceInput, ResourceType
             from app.data.task import TaskResult as AppTaskResult, TaskProgress as AppTaskProgress
             from server.api.types import TaskProgress as FilmetoTaskProgress, TaskResult as FilmetoTaskResult
 
             api = FilmetoApi()
             
             # Find a plugin that supports text2image
-            plugins = api.get_plugins_by_tool(Capability.TEXT2IMAGE.value)
+            plugins = api.get_plugins_by_tool(Ability.TEXT2IMAGE.value)
             if not plugins:
                 logger.warning("No plugins found for text2image")
                 return
@@ -123,7 +123,7 @@ class Text2Image(BaseTool,BaseTaskWidget):
                 ))
 
             filmeto_task = FilmetoTask(
-                capability=Capability.TEXT2IMAGE,
+                ability=Ability.TEXT2IMAGE,
                 server_name=plugin_name,
                 parameters={
                     "prompt": task.options['prompt'],

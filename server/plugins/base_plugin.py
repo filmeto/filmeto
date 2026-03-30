@@ -19,9 +19,9 @@ logger = logging.getLogger(__name__)
 DEFAULT_HEARTBEAT_INTERVAL = 30
 
 
-class CapabilityConfig:
+class AbilityConfig:
     """
-    Configuration for a specific capability supported by a plugin.
+    Configuration for a specific ability supported by a plugin.
     """
     def __init__(
         self,
@@ -31,11 +31,11 @@ class CapabilityConfig:
         models: List[Dict[str, Any]] = None
     ):
         """
-        Initialize capability configuration.
+        Initialize ability configuration.
 
         Args:
-            name: Capability name (e.g., "text2image")
-            description: Description of this capability
+            name: Ability name (e.g., "text2image")
+            description: Description of this ability
             parameters: List of parameter definitions
             models: List of model configurations with the following structure:
                 [
@@ -98,7 +98,7 @@ class BaseServerPlugin(ABC):
         Execute a task and return the result.
 
         Args:
-            task_data: Task data including capability, parameters, resources
+            task_data: Task data including ability, parameters, resources
             progress_callback: Callback to report progress
                                progress_callback(percent, message, data)
 
@@ -113,50 +113,50 @@ class BaseServerPlugin(ABC):
         Get plugin metadata.
 
         Returns:
-            Dictionary with name, version, description, capabilities
+            Dictionary with name, version, description, abilities
         """
         pass
 
     @abstractmethod
-    def get_supported_capabilities(self) -> List[CapabilityConfig]:
+    def get_supported_abilities(self) -> List[AbilityConfig]:
         """
-        Get list of capabilities supported by this plugin with their configs.
+        Get list of abilities supported by this plugin with their configs.
 
         Returns:
-            List of CapabilityConfig objects, each containing:
-            - name: Capability name
+            List of AbilityConfig objects, each containing:
+            - name: Ability name
             - description: Description
             - parameters: Parameter definitions
             - models: List of supported models with their configs
         """
         pass
 
-    def get_models_for_capability(self, capability_name: str) -> List[Dict[str, Any]]:
+    def get_models_for_ability(self, ability_name: str) -> List[Dict[str, Any]]:
         """
-        Get list of models available for a specific capability.
+        Get list of models available for a specific ability.
 
         Args:
-            capability_name: Name of the capability (e.g., "text2image")
+            ability_name: Name of the ability (e.g., "text2image")
 
         Returns:
-            List of model configurations for the specified capability
+            List of model configurations for the specified ability
         """
-        for cap_config in self.get_supported_capabilities():
-            if cap_config.name == capability_name:
-                return cap_config.models
+        for ab_config in self.get_supported_abilities():
+            if ab_config.name == ability_name:
+                return ab_config.models
         return []
 
     def get_all_models(self) -> Dict[str, List[Dict[str, Any]]]:
         """
-        Get all models organized by capability.
+        Get all models organized by ability.
 
         Returns:
-            Dictionary mapping capability names to lists of model configurations
+            Dictionary mapping ability names to lists of model configurations
         """
         result = {}
-        for cap_config in self.get_supported_capabilities():
-            if cap_config.models:
-                result[cap_config.name] = cap_config.models
+        for ab_config in self.get_supported_abilities():
+            if ab_config.models:
+                result[ab_config.name] = ab_config.models
         return result
 
     def get_config_schema(self) -> Dict[str, Any]:
@@ -418,17 +418,16 @@ class BaseServerPlugin(ABC):
             JSON-RPC response with plugin info
         """
         info = self.get_plugin_info()
-        # Add supported capabilities to the info
-        capabilities = []
-        for cap_config in self.get_supported_capabilities():
-            capabilities.append({
-                "name": cap_config.name,
-                "description": cap_config.description,
-                "parameters": cap_config.parameters,
-                "models": cap_config.models
+        abilities_payload = []
+        for ab_config in self.get_supported_abilities():
+            abilities_payload.append({
+                "name": ab_config.name,
+                "description": ab_config.description,
+                "parameters": ab_config.parameters,
+                "models": ab_config.models
             })
 
-        info["capabilities"] = capabilities
+        info["abilities"] = abilities_payload
         # Also add models summary at the top level for convenience
         info["models"] = self.get_all_models()
         return {

@@ -31,7 +31,7 @@ spec.loader.exec_module(base_plugin_module)
 
 # Import the required classes
 BaseServerPlugin = base_plugin_module.BaseServerPlugin
-CapabilityConfig = base_plugin_module.CapabilityConfig
+AbilityConfig = base_plugin_module.AbilityConfig
 
 logger = logging.getLogger(__name__)
 
@@ -62,8 +62,8 @@ class ComfyUiServerPlugin(BaseServerPlugin):
             "engine": "comfyui"
         }
 
-    def get_supported_capabilities(self) -> List[CapabilityConfig]:
-        """Get list of capabilities supported by this plugin with their configs"""
+    def get_supported_abilities(self) -> List[AbilityConfig]:
+        """Get list of abilities supported by this plugin with their configs"""
         text2image_params = [
             {"name": "prompt", "type": "string", "required": True, "description": "Text prompt for generation"},
             {"name": "width", "type": "integer", "required": False, "default": 720, "description": "Image width"},
@@ -81,9 +81,9 @@ class ComfyUiServerPlugin(BaseServerPlugin):
         ]
 
         return [
-            CapabilityConfig(name="text2image", description="Generate image from text prompt using ComfyUI", parameters=text2image_params),
-            CapabilityConfig(name="image2image", description="Transform image using ComfyUI", parameters=image2image_params),
-            CapabilityConfig(name="image2video", description="Animate image using ComfyUI", parameters=image2video_params),
+            AbilityConfig(name="text2image", description="Generate image from text prompt using ComfyUI", parameters=text2image_params),
+            AbilityConfig(name="image2image", description="Transform image using ComfyUI", parameters=image2image_params),
+            AbilityConfig(name="image2video", description="Animate image using ComfyUI", parameters=image2video_params),
         ]
 
     def init_ui(self, workspace_path: str, server_config: Optional[Dict[str, Any]] = None):
@@ -201,7 +201,7 @@ class ComfyUiServerPlugin(BaseServerPlugin):
         Execute a task based on its capability type.
         """
         task_id = task_data.get("task_id", "unknown")
-        capability = task_data.get("capability", "")
+        ability = task_data.get("ability") or task_data.get("capability", "")
         parameters = task_data.get("parameters", {})
         metadata = task_data.get("metadata", {})
         server_config = metadata.get("server_config", {})
@@ -228,22 +228,22 @@ class ComfyUiServerPlugin(BaseServerPlugin):
         }
 
         try:
-            if capability == "text2image":
+            if ability == "text2image":
                 return await self._execute_text2image(client, task_id, parameters, progress_callback, workflow_server_config)
-            elif capability == "image2image":
+            elif ability == "image2image":
                 return await self._execute_image2image(client, task_id, parameters, progress_callback, workflow_server_config)
-            elif capability == "image2video":
+            elif ability == "image2video":
                 return await self._execute_image2video(client, task_id, parameters, progress_callback, workflow_server_config)
             else:
                 return {
                     "task_id": task_id,
                     "status": "error",
-                    "error_message": f"Unsupported capability: {capability}",
+                    "error_message": f"Unsupported ability: {ability}",
                     "output_files": []
                 }
 
         except Exception as e:
-            logger.error(f"Error executing task with capability {capability}: {e}", exc_info=True)
+            logger.error(f"Error executing task with ability {ability}: {e}", exc_info=True)
             return {
                 "task_id": task_id,
                 "status": "error",

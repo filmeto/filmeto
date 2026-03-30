@@ -12,7 +12,7 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from server.api import FilmetoApi, FilmetoTask, TaskProgress, TaskResult, Capability
+from server.api import FilmetoApi, FilmetoTask, TaskProgress, TaskResult, Ability
 
 
 async def main():
@@ -28,7 +28,7 @@ async def main():
     try:
         # 1. List available capabilities
         print("\n📋 Available Capabilities:")
-        capabilities = api.list_capabilities()
+        capabilities = api.list_abilities()
         for cap in capabilities:
             print(f"   • {cap['description']}")
 
@@ -48,7 +48,7 @@ async def main():
         print()
 
         task = FilmetoTask(
-            capability=Capability.TEXT2IMAGE,
+            ability=Ability.TEXT2IMAGE,
             server_name="text2image_demo",
             parameters={
                 "prompt": "Quick Start Demo - Filmeto API",
