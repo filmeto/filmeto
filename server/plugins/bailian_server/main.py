@@ -625,6 +625,13 @@ class BailianServerPlugin(BaseServerPlugin):
         # Strip prefix for actual API call
         actual_model = models_config.strip_coding_plan_prefix(model)
 
+        # DEBUG: Log API key info
+        logger.warning(
+            f"[DEBUG] Chat completion: model={model}, actual_model={actual_model}, "
+            f"is_coding_plan={is_coding_plan_model}, coding_plan_enabled={coding_plan_enabled}, "
+            f"has_coding_plan_key={bool(coding_plan_api_key)}"
+        )
+
         if is_coding_plan_model:
             # Check if Coding Plan is enabled and configured
             if not coding_plan_enabled or not coding_plan_api_key:
@@ -635,12 +642,20 @@ class BailianServerPlugin(BaseServerPlugin):
                                       f"Please enable Coding Plan and configure the API Key.",
                     "output_files": []
                 }
-            # Use Coding Plan API key
+            # Use Coding Plan API key and base URL
             use_api_key = coding_plan_api_key
+            # Set Coding Plan base URL
+            dashscope.base_http_api_url = "https://coding.dashscope.aliyuncs.com/v1"
+            dashscope.base_websocket_api_url = "https://coding.dashscope.aliyuncs.com/api-ws/v1/inference"
+            logger.warning(f"[DEBUG] Using Coding Plan API key: {use_api_key[:10]}... and base URL: {dashscope.base_http_api_url}")
             progress_callback(10, f"Calling Coding Plan ({actual_model})...", {})
         else:
             # Use standard DashScope API key
             use_api_key = api_key
+            # Reset to standard base URL
+            dashscope.base_http_api_url = "https://dashscope.aliyuncs.com/api/v1"
+            dashscope.base_websocket_api_url = "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
+            logger.warning(f"[DEBUG] Using standard API key: {use_api_key[:10]}... and base URL: {dashscope.base_http_api_url}")
             progress_callback(10, f"Calling DashScope LLM ({actual_model})...", {})
 
         # Set API key for dashscope SDK
