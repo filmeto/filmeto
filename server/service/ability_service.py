@@ -246,6 +246,18 @@ class AbilityService:
         elif isinstance(ability_models_config, dict):
             models.update(ability_models_config)
 
+        # Also include models from ability_models config (includes code_plan models)
+        ability_models_raw = config.parameters.get("ability_models", [])
+        ability_type_str = ability_type.value
+        for am in ability_models_raw:
+            if not isinstance(am, dict):
+                continue
+            if am.get("ability") != ability_type_str:
+                continue
+            model_id = am.get("model_id")
+            if model_id and model_id not in models:
+                models[model_id] = {"description": f"Model {model_id}"}
+
         if not models:
             default_model = config.parameters.get("default_model")
             if default_model:
