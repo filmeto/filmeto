@@ -96,6 +96,7 @@ def merge_catalog_with_saved(
                 "model_id": c["model_id"],
                 "label": c.get("label") or c["model_id"],
                 "enabled": s.get("enabled", c.get("default_enabled", True)),
+                "priority": s.get("priority", 0),
                 "custom": False,
             }
         )
@@ -110,19 +111,32 @@ def merge_catalog_with_saved(
                 "model_id": s["model_id"],
                 "label": str(s.get("label", s["model_id"])),
                 "enabled": s.get("enabled", True),
+                "priority": s.get("priority", 0),
                 "custom": True,
             }
         )
         seen.add(key)
 
+    # Sort by priority descending (higher priority = first)
+    entries.sort(key=lambda e: -e.get("priority", 0))
+
     return entries
 
 
 def serialize_entries(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    return [
-        {"ability": e["ability"], "model_id": e["model_id"], "enabled": bool(e.get("enabled", True))}
-        for e in entries
-    ]
+    # Save order based on list position: first item = highest priority
+    # Priority decreases from (len-1) to 0 as we go down the list
+    result = []
+    for i, e in enumerate(entries):
+        result.append(
+            {
+                "ability": e["ability"],
+                "model_id": e["model_id"],
+                "enabled": bool(e.get("enabled", True)),
+                "priority": len(entries) - 1 - i,
+            }
+        )
+    return result
 
 
 def is_model_enabled_for_ability(

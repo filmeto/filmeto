@@ -335,6 +335,7 @@ class AbilityModelsConfigModel(QAbstractListModel):
         if src_ability != dst_ability:
             return
 
+        # Swap entries and their priorities
         self._entries[src_raw], self._entries[dst_raw] = self._entries[dst_raw], self._entries[src_raw]
         self._refresh_display()
         self._emit_persist()
