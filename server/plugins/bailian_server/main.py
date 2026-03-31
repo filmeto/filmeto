@@ -661,52 +661,121 @@ class BailianServerPlugin(BaseServerPlugin):
         # Set API key for dashscope SDK
         dashscope.api_key = use_api_key
 
-        # Use dashscope SDK directly
-        from dashscope import Generation
+        # For Coding Plan, use OpenAI-compatible API directly via HTTP
+        if is_coding_plan_model:
+            # Use OpenAI-compatible API for Coding Plan
+            base_url = "https://coding.dashscope.aliyuncs.com/v1"
+            progress_callback(10, f"Calling Coding Plan ({actual_model}) via OpenAI API...", {})
 
-        def call_dashscope():
-            if stream:
-                # Streaming response
-                full_content = []
-                response = Generation.call(
-                    model=actual_model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    stream=True,
-                    result_format='message'
-                )
-                if response.status_code == 200:
-                    for chunk in response:
-                        if chunk.code is None and hasattr(chunk, 'choices') and chunk.choices:
-                            delta = chunk.choices[0].get('delta', {})
-                            content = delta.get('content', '')
-                            if content:
-                                full_content.append(content)
-                                progress_callback(
-                                    50, f"Generating... ({len(full_content)} chars)",
-                                    {"partial_content": content}
-                                )
+            def call_coding_plan():
+                import requests
+                import json
+
+                headers = {
+                    "Authorization": f"Bearer {use_api_key}",
+                    "Content-Type": "application/json"
+                }
+
+                payload = {
+                    "model": actual_model,
+                    "messages": messages,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                    "stream": stream,
+                }
+
+                url = f"{base_url}/chat/completions"
+
+                if stream:
+                    # Streaming response
+                    full_content = []
+                    response = requests.post(url, headers=headers, json=payload, stream=True, timeout=60)
+                    if response.status_code != 200:
+                        raise Exception(f"Coding Plan API error: {response.status_code} - {response.text}")
+
+                    for line in response.iter_lines():
+                        if line:
+                            line = line.decode('utf-8')
+                            if line.startswith('data: '):
+                                data = line[6:]
+                                if data == '[DONE]':
+                                    break
+                                try:
+                                    chunk_data = json.loads(data)
+                                    if 'choices' in chunk_data and chunk_data['choices']:
+                                        delta = chunk_data['choices'][0].get('delta', {})
+                                        if 'content' in delta:
+                                            content = delta['content']
+                                            full_content.append(content)
+                                            progress_callback(
+                                                50, f"Generating... ({len(''.join(full_content))} chars)",
+                                                {"partial_content": content}
+                                            )
+                                except:
+                                    pass
                     return {"content": "".join(full_content), "stream": True}
                 else:
-                    raise Exception(f"DashScope API error: {response.code} - {response.message}")
-            else:
-                # Non-streaming response
-                response = Generation.call(
-                    model=actual_model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    result_format='message'
-                )
-                if response.status_code == 200:
-                    content = response.output.choices[0].message.content
-                    return {"content": content, "stream": False}
-                else:
-                    raise Exception(f"DashScope API error: {response.code} - {response.message}")
+                    # Non-streaming response
+                    response = requests.post(url, headers=headers, json=payload, timeout=60)
+                    if response.status_code != 200:
+                        raise Exception(f"Coding Plan API error: {response.status_code} - {response.text}")
 
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, call_dashscope)
+                    result = response.json()
+                    if 'choices' in result and result['choices']:
+                        content = result['choices'][0]['message']['content']
+                        return {"content": content, "stream": False}
+                    raise Exception("No content in response")
+
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, call_coding_plan)
+
+        else:
+            # Use dashscope SDK directly for standard models
+            from dashscope import Generation
+
+            def call_dashscope():
+                if stream:
+                    # Streaming response
+                    full_content = []
+                    response = Generation.call(
+                        model=actual_model,
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        stream=True,
+                        result_format='message'
+                    )
+                    if response.status_code == 200:
+                        for chunk in response:
+                            if chunk.code is None and hasattr(chunk, 'choices') and chunk.choices:
+                                delta = chunk.choices[0].get('delta', {})
+                                content = delta.get('content', '')
+                                if content:
+                                    full_content.append(content)
+                                    progress_callback(
+                                        50, f"Generating... ({len(full_content)} chars)",
+                                        {"partial_content": content}
+                                    )
+                        return {"content": "".join(full_content), "stream": True}
+                    else:
+                        raise Exception(f"DashScope API error: {response.code} - {response.message}")
+                else:
+                    # Non-streaming response
+                    response = Generation.call(
+                        model=actual_model,
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        result_format='message'
+                    )
+                    if response.status_code == 200:
+                        content = response.output.choices[0].message.content
+                        return {"content": content, "stream": False}
+                    else:
+                        raise Exception(f"DashScope API error: {response.code} - {response.message}")
+
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, call_dashscope)
 
         result_text = result["content"]
 
