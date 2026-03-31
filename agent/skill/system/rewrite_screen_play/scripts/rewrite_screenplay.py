@@ -53,7 +53,6 @@ def _rewrite_content_with_llm(
     try:
         async def call_chat():
             request = ChatCompletionRequest(
-                model="qwen-plus",
                 messages=messages,
                 temperature=0.3,
             )

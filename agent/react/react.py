@@ -185,7 +185,6 @@ class React:
             logger.warning("LLM service is not configured")
             return ('{"type": "final", "final": "LLM service is not configured."}', None, None)
 
-        model_to_use = "qwen-plus"
         temperature_to_use = 0.7
 
         start_time = time.time()
@@ -195,9 +194,8 @@ class React:
             for msg in messages:
                 chat_messages.append(ChatMessage(role=msg.get("role", "user"), content=msg.get("content", "")))
 
-            # Call ChatService
+            # Call ChatService without model - let server auto-select based on priority
             request = ChatCompletionRequest(
-                model=model_to_use,
                 messages=chat_messages,
                 temperature=temperature_to_use,
             )

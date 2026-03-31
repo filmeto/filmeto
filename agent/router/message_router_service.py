@@ -103,8 +103,8 @@ class MessageRouterService:
             )
 
             # Call LLM for routing decision via ChatService
+            # Use auto-selection based on priority (no model specified)
             request = ChatCompletionRequest(
-                model="qwen-max",
                 messages=[ChatMessage(role="user", content=prompt)],
                 temperature=0.3,
             )
