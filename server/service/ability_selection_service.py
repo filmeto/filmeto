@@ -52,6 +52,9 @@ class AbilitySelectionService:
         self._ability_service = AbilityService(server_manager)
 
     def select(self, ability: Ability, config: SelectionConfig) -> SelectionResult:
+        # Always refresh abilities to ensure we have the latest config (including priority)
+        self._ability_service.refresh_abilities()
+
         if config.mode == SelectionMode.EXACT:
             return self._select_exact(ability, config)
         if config.mode == SelectionMode.SERVER_ONLY:
