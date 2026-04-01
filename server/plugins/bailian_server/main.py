@@ -612,6 +612,13 @@ class BailianServerPlugin(BaseServerPlugin):
         metadata = task_data.get("metadata", {})
         server_config = metadata.get("server_config", {})
 
+        # Get workspace_path from metadata and update output directory
+        workspace_path = metadata.get("workspace_path")
+        if workspace_path:
+            # Use workspace/plugins/bailian as output directory
+            self.output_dir = Path(workspace_path) / "plugins" / "bailian"
+            self.output_dir.mkdir(parents=True, exist_ok=True)
+
         # Get API Key - single credential needed
         api_key = server_config.get("api_key")
 
