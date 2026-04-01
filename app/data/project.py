@@ -295,6 +295,33 @@ class Project:
         item_durations = self.config.get('timeline_item_durations', {})
         return sum(item_durations.values())
 
+    # ==================== Resolution management ====================
+
+    def get_width(self) -> int:
+        """Get project default width"""
+        return self.config.get('width', 720)
+
+    def set_width(self, width: int):
+        """Set project default width"""
+        self.update_config('width', width)
+
+    def get_height(self) -> int:
+        """Get project default height"""
+        return self.config.get('height', 1280)
+
+    def set_height(self, height: int):
+        """Set project default height"""
+        self.update_config('height', height)
+
+    def get_resolution(self) -> tuple:
+        """Get project default resolution as (width, height)"""
+        return (self.get_width(), self.get_height())
+
+    def set_resolution(self, width: int, height: int):
+        """Set project default resolution"""
+        self.update_config('width', width)
+        self.update_config('height', height)
+
     # ==================== Config management ====================
 
     def get_config(self) -> dict:

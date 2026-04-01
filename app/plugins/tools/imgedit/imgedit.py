@@ -70,11 +70,18 @@ class ImageEdit(BaseTool, BaseTaskWidget):
         timeline_index = self.workspace.get_project().get_timeline_index()
         timeline_item = self.workspace.get_project().get_timeline().get_item(timeline_index)
         input_image_path = self.input_image_path or timeline_item.get_image_path()
+
+        # Get width and height from layer manager (validates against actual images)
+        layer_manager = timeline_item.get_layer_manager()
+        width, height = layer_manager.get_valid_dimensions()
+
         return {
             "tool": "imgedit",
-            "model": "comfy_ui",
+            "model": "bailian",
             "input_image_path": input_image_path,
-            "prompt": self.editor.get_prompt()
+            "prompt": self.editor.get_prompt(),
+            "width": width,
+            "height": height
         }
 
     @classmethod
@@ -112,24 +119,51 @@ class ImageEdit(BaseTool, BaseTaskWidget):
             from server.api.types import TaskProgress as FilmetoTaskProgress, TaskResult as FilmetoTaskResult
 
             api = FilmetoApi()
-            
-            # Find a plugin that supports image2image (used for imgedit)
+
+            # Get parameters from task options
+            model = task.options.get('model', 'bailian')
+            prompt = task.options.get('prompt', '')
+            input_image_path = task.options.get('input_image_path', '')
+            width = task.options.get('width', 1024)
+            height = task.options.get('height', 1024)
+
+            logger.info(f"ImageEdit parameters: model={model}, width={width}, height={height}, prompt={prompt[:50]}...")
+
+            # Find a plugin that supports image2image
             plugins = api.get_plugins_by_tool(Ability.IMAGE2IMAGE.value)
             if not plugins:
                 logger.warning("No plugins found for image2image")
                 return
-            
-            # Prefer ComfyUI if available, otherwise use the first one
-            plugin_name = "ComfyUI"
-            if not any(p['name'] == plugin_name for p in plugins):
+
+            # Use the specified model (from task.options), or fallback to Bailian, then first available
+            plugin_name = model
+            if not any(p['name'].lower() == plugin_name.lower() for p in plugins):
+                # Try case-insensitive match
+                plugin_name = None
+                for p in plugins:
+                    if p['name'].lower() in [model.lower(), model.lower().replace(' ', '')]:
+                        plugin_name = p['name']
+                        break
+
+            # Fallback to Bailian if model not found
+            if not plugin_name:
+                # Try to find Bailian (case-insensitive, partial match)
+                for p in plugins:
+                    if 'bailian' in p['name'].lower():
+                        plugin_name = p['name']
+                        break
+
+            if not plugin_name:
                 plugin_name = plugins[0]['name']
+
+            logger.info(f"Using plugin: {plugin_name}")
 
             # Create input resources (input image)
             resources = []
-            if task.options.get('input_image_path'):
+            if input_image_path:
                 resources.append(ResourceInput(
                     type=ResourceType.LOCAL_PATH,
-                    data=task.options['input_image_path'],
+                    data=input_image_path,
                     mime_type="image/png"
                 ))
 
@@ -137,8 +171,12 @@ class ImageEdit(BaseTool, BaseTaskWidget):
                 ability=Ability.IMAGE2IMAGE,
                 server_name=plugin_name,
                 parameters={
-                    "prompt": task.options['prompt'],
-                    "input_image_path": task.options['input_image_path'],
+                    "prompt": prompt,
+                    "model": "qwen-image-edit-max",  # Use qwen-image-edit model for best results
+                    "input_image_path": input_image_path,
+                    "width": width,
+                    "height": height,
+                    "n": 1,
                     "save_dir": task.path
                 },
                 resources=resources

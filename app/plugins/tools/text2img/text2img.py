@@ -80,11 +80,18 @@ class Text2Image(BaseTool,BaseTaskWidget):
         timeline_index = self.workspace.get_project().get_timeline_index()
         timeline_item = self.workspace.get_project().get_timeline().get_item(timeline_index)
         prompt = self.editor.get_prompt() if self.editor else ""
+
+        # Get width and height from layer manager (validates against actual images)
+        layer_manager = timeline_item.get_layer_manager()
+        width, height = layer_manager.get_valid_dimensions()
+
         return {
             "tool": "text2img",
-            "model": "comfy_ui",
+            "model": "bailian",
             "prompt": prompt,
-            "reference_image_path": self.reference_image_path
+            "reference_image_path": self.reference_image_path,
+            "width": width,
+            "height": height
         }
 
     @asyncSlot()
@@ -101,17 +108,43 @@ class Text2Image(BaseTool,BaseTaskWidget):
             from server.api.types import TaskProgress as FilmetoTaskProgress, TaskResult as FilmetoTaskResult
 
             api = FilmetoApi()
-            
+
+            # Get parameters from task options
+            model = task.options.get('model', 'bailian')
+            prompt = task.options.get('prompt', '')
+            width = task.options.get('width', 1024)
+            height = task.options.get('height', 1024)
+
+            logger.info(f"Text2Image parameters: model={model}, width={width}, height={height}, prompt={prompt[:50]}...")
+
             # Find a plugin that supports text2image
             plugins = api.get_plugins_by_tool(Ability.TEXT2IMAGE.value)
             if not plugins:
                 logger.warning("No plugins found for text2image")
                 return
-            
-            # Prefer ComfyUI if available, otherwise use the first one
-            plugin_name = "ComfyUI"
-            if not any(p['name'] == plugin_name for p in plugins):
+
+            # Use the specified model (from task.options), or fallback to Bailian, then first available
+            plugin_name = model
+            if not any(p['name'].lower() == plugin_name.lower() for p in plugins):
+                # Try case-insensitive match
+                plugin_name = None
+                for p in plugins:
+                    if p['name'].lower() in [model.lower(), model.lower().replace(' ', '')]:
+                        plugin_name = p['name']
+                        break
+
+            # Fallback to Bailian if model not found, then first available plugin
+            if not plugin_name:
+                # Try to find Bailian (case-insensitive, partial match)
+                for p in plugins:
+                    if 'bailian' in p['name'].lower():
+                        plugin_name = p['name']
+                        break
+
+            if not plugin_name:
                 plugin_name = plugins[0]['name']
+
+            logger.info(f"Using plugin: {plugin_name}")
 
             # Create input resources if any (e.g., reference image)
             resources = []
@@ -126,7 +159,11 @@ class Text2Image(BaseTool,BaseTaskWidget):
                 ability=Ability.TEXT2IMAGE,
                 server_name=plugin_name,
                 parameters={
-                    "prompt": task.options['prompt'],
+                    "prompt": prompt,
+                    "model": "qwen-image-2.0-pro",  # Use qwen-image model for best results
+                    "width": width,
+                    "height": height,
+                    "n": 1,
                     "save_dir": task.path
                 },
                 resources=resources

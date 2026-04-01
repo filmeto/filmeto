@@ -112,6 +112,79 @@ class LayerManager:
         self.layers = {layer_data["id"]: Layer.from_dict(layer_data, timeline_item, self) for layer_data in layers_data}
         logger.info(f"Loaded {len(self.layers)} layers")
 
+        # Validate and fix layer dimensions based on actual image files
+        self._validate_layer_dimensions()
+
+    def _validate_layer_dimensions(self):
+        """
+        Validate and fix layer dimensions based on actual image files.
+        This ensures layers have correct dimensions even if config is outdated.
+        """
+        if not self.timeline_item:
+            return
+
+        import cv2
+        fixed_count = 0
+
+        for layer_id, layer in self.layers.items():
+            if layer.type == LayerType.IMAGE:
+                # Check the actual layer file path
+                layer_path = layer.get_layer_path()
+                if layer_path and os.path.exists(layer_path):
+                    try:
+                        img = cv2.imread(layer_path)
+                        if img is not None:
+                            height, width = img.shape[:2]
+                            # If stored dimensions don't match actual, fix them
+                            if layer.width != width or layer.height != height:
+                                logger.info(f"Fixing layer {layer_id} dimensions: {layer.width}x{layer.height} -> {width}x{height}")
+                                layer.width = width
+                                layer.height = height
+                                fixed_count += 1
+                    except Exception as e:
+                        logger.warning(f"Could not read layer {layer_id} for dimension validation: {e}")
+
+        if fixed_count > 0:
+            # Save the corrected dimensions
+            self._save_layers()
+            logger.info(f"Fixed {fixed_count} layer dimensions")
+
+    def get_valid_dimensions(self) -> tuple:
+        """
+        Get valid dimensions for generation from timeline item.
+        Priority:
+        1. Actual timeline image.png dimensions (the composed output)
+        2. Layer dimensions (if valid, i.e., >= 720)
+        3. Project default resolution
+        """
+        # First priority: check the actual composed image (image.png)
+        if self.timeline_item:
+            image_path = self.timeline_item.get_image_path()
+            if os.path.exists(image_path):
+                try:
+                    import cv2
+                    img = cv2.imread(image_path)
+                    if img is not None:
+                        height, width = img.shape[:2]
+                        if width > 0 and height > 0:
+                            return (width, height)
+                except Exception:
+                    pass
+
+        # Second priority: layers (if they have valid dimensions)
+        if self.layers:
+            first_layer = list(self.layers.values())[0]
+            if first_layer.width >= 720 or first_layer.height >= 720:
+                return (first_layer.width, first_layer.height)
+
+        # Third priority: project defaults
+        if self.timeline_item and self.timeline_item.timeline:
+            project = self.timeline_item.timeline.project
+            return project.get_resolution()
+
+        # Hardcoded fallback
+        return (720, 1280)
+
     def connect_layer_changed(self, func):
         if self.layer_changed is not None:
             self.layer_changed.connect(func, sender=self)
