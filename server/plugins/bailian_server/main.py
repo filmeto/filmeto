@@ -637,6 +637,15 @@ class BailianServerPlugin(BaseServerPlugin):
         coding_plan_enabled = server_config.get("coding_plan_enabled", False)
         coding_plan_api_key = server_config.get("coding_plan_api_key", "")
 
+        # Log task parameters for debugging
+        model = parameters.get("model", default_image_model)
+        width = parameters.get("width", 1024)
+        height = parameters.get("height", 1024)
+        prompt = parameters.get("prompt", "")
+        n = parameters.get("n", 1)
+        logger.info(f"[Bailian] {ability} task: task_id={task_id}, model={model}, size={width}x{height}, n={n}")
+        logger.info(f"[Bailian] prompt={prompt[:200]}...")
+
         try:
             if ability == "text2image":
                 return await self._execute_text2image(
@@ -725,6 +734,10 @@ class BailianServerPlugin(BaseServerPlugin):
         """Execute text-to-image using qwen-image model via MultiModalConversation API."""
         from dashscope import MultiModalConversation
         import mimetypes
+
+        # Log model and prompt for debugging
+        logger.info(f"[Bailian Text2Image] task_id={task_id}, model={model}, size={width}x{height}, n={n}")
+        logger.info(f"[Bailian Text2Image] prompt={prompt[:200]}...")
 
         progress_callback(20, f"Calling Qwen-Image API ({model})...", {})
 
@@ -955,6 +968,11 @@ class BailianServerPlugin(BaseServerPlugin):
     ):
         """Execute image-to-image using qwen-image-edit model via MultiModalConversation API."""
         from dashscope import MultiModalConversation
+
+        # Log model and prompt for debugging
+        logger.info(f"[Bailian ImageEdit] task_id={task_id}, model={model}, n={n}")
+        logger.info(f"[Bailian ImageEdit] prompt={prompt[:200]}...")
+        logger.info(f"[Bailian ImageEdit] input_image={input_image_path}")
 
         progress_callback(20, f"Calling Qwen-Image Edit API ({model})...", {})
 
