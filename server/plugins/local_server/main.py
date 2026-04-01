@@ -12,8 +12,8 @@ import logging
 from pathlib import Path
 from typing import Dict, Any, Callable, List, Optional
 
-# Add parent directory to path to import base_plugin
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+# Add project root to path to import base_plugin
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from server.plugins.base_plugin import BaseServerPlugin, AbilityConfig
 
