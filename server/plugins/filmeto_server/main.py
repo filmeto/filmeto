@@ -182,7 +182,7 @@ class FilmetoServerPlugin(BaseServerPlugin):
                 }
 
         except Exception as e:
-            print(f"Error executing task with ability {ability}: {e}")
+            logger.error(f"Error executing task with ability {ability}: {e}", exc_info=True)
             return {
                 "task_id": task_id,
                 "status": "error",
@@ -214,7 +214,7 @@ class FilmetoServerPlugin(BaseServerPlugin):
         height = parameters.get("height", 512)
         steps = parameters.get("steps", 20)
 
-        print(f"Generating image: {prompt} ({width}x{height})")
+        logger.info(f"Generating image: {prompt} ({width}x{height})")
 
         # Report initialization
         progress_callback(0, "Initializing text-to-image generation...", {})
@@ -288,7 +288,7 @@ class FilmetoServerPlugin(BaseServerPlugin):
         prompt = parameters.get("prompt", "")
         strength = parameters.get("strength", 0.7)
 
-        print(f"Transforming image with prompt: {prompt}, strength: {strength}")
+        logger.info(f"Transforming image with prompt: {prompt}, strength: {strength}")
 
         # Report initialization
         progress_callback(0, "Initializing image-to-image transformation...", {})
@@ -420,7 +420,7 @@ class FilmetoServerPlugin(BaseServerPlugin):
         
         # Save image
         image.save(output_path, 'PNG')
-        print(f"Saved image to: {output_path}")
+        logger.info(f"Saved image to: {output_path}")
         
         return output_path
 

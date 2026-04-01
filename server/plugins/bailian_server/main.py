@@ -77,7 +77,7 @@ class BailianServerPlugin(BaseServerPlugin):
 
     def get_supported_abilities(self) -> List[AbilityConfig]:
         """Get list of abilities supported by this plugin with model definitions"""
-        # Text-to-Image models with pricing
+        # Text-to-Image models (wanx series)
         text2image_models = [
             {
                 "name": "wanx2.1-t2i-turbo",
@@ -92,7 +92,7 @@ class BailianServerPlugin(BaseServerPlugin):
                 "pricing": {
                     "per_image": 0.008  # ~0.5 cents per image
                 },
-                "is_default": True
+                "is_default": False
             },
             {
                 "name": "wanx2.1-t2i-plus",
@@ -137,7 +137,149 @@ class BailianServerPlugin(BaseServerPlugin):
             },
         ]
 
-        # Image-to-Image models with pricing
+        # Qwen-Image models (new generation using MultiModalConversation API)
+        qwen_image_t2i_models = [
+            {
+                "name": "qwen-image-2.0-pro",
+                "display_name": "Qwen Image 2.0 Pro",
+                "description": "Latest Qwen image generation Pro series with enhanced text rendering, realistic textures, and semantic adherence",
+                "tags": ["latest", "pro", "recommended", "text-rendering", "high-quality"],
+                "specs": {
+                    "max_resolution": "2048x2048",
+                    "min_resolution": "512x512",
+                    "supported_sizes": ["512x512", "1024x1024", "1280x720", "720x1280", "2048x2048"],
+                    "max_images": 6,
+                    "min_images": 1,
+                    "api_type": "qwen-image"
+                },
+                "pricing": {
+                    "per_image": 0.05  # TBD - placeholder
+                },
+                "is_default": True
+            },
+            {
+                "name": "qwen-image-2.0-pro-2026-03-03",
+                "display_name": "Qwen Image 2.0 Pro 2026-03-03",
+                "description": "Qwen image generation Pro series (snapshot 2026-03-03)",
+                "tags": ["pro", "snapshot"],
+                "specs": {
+                    "max_resolution": "2048x2048",
+                    "max_images": 6,
+                    "api_type": "qwen-image"
+                },
+                "pricing": {
+                    "per_image": 0.05
+                },
+                "is_default": False
+            },
+            {
+                "name": "qwen-image-2.0",
+                "display_name": "Qwen Image 2.0",
+                "description": "Qwen image generation accelerated version, balancing quality and speed",
+                "tags": ["latest", "fast", "accelerated"],
+                "specs": {
+                    "max_resolution": "2048x2048",
+                    "max_images": 6,
+                    "api_type": "qwen-image"
+                },
+                "pricing": {
+                    "per_image": 0.03
+                },
+                "is_default": False
+            },
+            {
+                "name": "qwen-image-2.0-2026-03-03",
+                "display_name": "Qwen Image 2.0 2026-03-03",
+                "description": "Qwen image generation (snapshot 2026-03-03)",
+                "tags": ["snapshot"],
+                "specs": {
+                    "max_resolution": "2048x2048",
+                    "max_images": 6,
+                    "api_type": "qwen-image"
+                },
+                "pricing": {
+                    "per_image": 0.03
+                },
+                "is_default": False
+            },
+            {
+                "name": "qwen-image-max",
+                "display_name": "Qwen Image Max",
+                "description": "Qwen image generation Max series with stronger realism and naturalness, lower AI artifacts",
+                "tags": ["max", "high-quality", "realistic"],
+                "specs": {
+                    "max_resolution": "2048x2048",
+                    "max_images": 1,
+                    "api_type": "qwen-image"
+                },
+                "pricing": {
+                    "per_image": 0.08
+                },
+                "is_default": False
+            },
+            {
+                "name": "qwen-image-max-2025-12-30",
+                "display_name": "Qwen Image Max 2025-12-30",
+                "description": "Qwen image generation Max series (snapshot 2025-12-30)",
+                "tags": ["max", "snapshot"],
+                "specs": {
+                    "max_resolution": "2048x2048",
+                    "max_images": 1,
+                    "api_type": "qwen-image"
+                },
+                "pricing": {
+                    "per_image": 0.08
+                },
+                "is_default": False
+            },
+            {
+                "name": "qwen-image-plus",
+                "display_name": "Qwen Image Plus",
+                "description": "Qwen image generation Plus series, excels at diverse artistic styles and text rendering",
+                "tags": ["plus", "artistic", "text-rendering"],
+                "specs": {
+                    "max_resolution": "2048x2048",
+                    "max_images": 6,
+                    "api_type": "qwen-image"
+                },
+                "pricing": {
+                    "per_image": 0.04
+                },
+                "is_default": False
+            },
+            {
+                "name": "qwen-image-plus-2026-01-09",
+                "display_name": "Qwen Image Plus 2026-01-09",
+                "description": "Qwen image generation Plus series (snapshot 2026-01-09)",
+                "tags": ["plus", "snapshot"],
+                "specs": {
+                    "max_resolution": "2048x2048",
+                    "max_images": 6,
+                    "api_type": "qwen-image"
+                },
+                "pricing": {
+                    "per_image": 0.04
+                },
+                "is_default": False
+            },
+            {
+                "name": "qwen-image",
+                "display_name": "Qwen Image",
+                "description": "Qwen image generation base model",
+                "tags": ["base"],
+                "specs": {
+                    "max_resolution": "2048x2048",
+                    "max_images": 6,
+                    "api_type": "qwen-image"
+                },
+                "pricing": {
+                    "per_image": 0.02
+                },
+                "is_default": False
+            },
+        ]
+
+        # Image-to-Image models (wanx series)
         image2image_models = [
             {
                 "name": "wanx2.1-i2i-turbo",
@@ -150,7 +292,7 @@ class BailianServerPlugin(BaseServerPlugin):
                 "pricing": {
                     "per_image": 0.012
                 },
-                "is_default": True
+                "is_default": False
             },
             {
                 "name": "wanx2.1-i2i-plus",
@@ -162,6 +304,102 @@ class BailianServerPlugin(BaseServerPlugin):
                 },
                 "pricing": {
                     "per_image": 0.02
+                },
+                "is_default": False
+            },
+        ]
+
+        # Qwen-Image Edit models
+        qwen_image_i2i_models = [
+            {
+                "name": "qwen-image-edit-max",
+                "display_name": "Qwen Image Edit Max",
+                "description": "Qwen image editing Max series with stronger industrial design, geometric reasoning, and character consistency",
+                "tags": ["max", "edit", "recommended", "industrial-design", "geometric"],
+                "specs": {
+                    "max_resolution": "2048x2048",
+                    "min_resolution": "512x512",
+                    "max_images": 6,
+                    "min_images": 1,
+                    "api_type": "qwen-image-edit"
+                },
+                "pricing": {
+                    "per_image": 0.08
+                },
+                "is_default": True
+            },
+            {
+                "name": "qwen-image-edit-max-2026-01-16",
+                "display_name": "Qwen Image Edit Max 2026-01-16",
+                "description": "Qwen image editing Max series (snapshot 2026-01-16)",
+                "tags": ["max", "edit", "snapshot"],
+                "specs": {
+                    "max_resolution": "2048x2048",
+                    "max_images": 6,
+                    "api_type": "qwen-image-edit"
+                },
+                "pricing": {
+                    "per_image": 0.08
+                },
+                "is_default": False
+            },
+            {
+                "name": "qwen-image-edit-plus",
+                "display_name": "Qwen Image Edit Plus",
+                "description": "Qwen image editing Plus series with multi-image output and custom resolution support",
+                "tags": ["plus", "edit", "multi-output"],
+                "specs": {
+                    "max_resolution": "2048x2048",
+                    "max_images": 6,
+                    "api_type": "qwen-image-edit"
+                },
+                "pricing": {
+                    "per_image": 0.05
+                },
+                "is_default": False
+            },
+            {
+                "name": "qwen-image-edit-plus-2025-12-15",
+                "display_name": "Qwen Image Edit Plus 2025-12-15",
+                "description": "Qwen image editing Plus series (snapshot 2025-12-15)",
+                "tags": ["plus", "edit", "snapshot"],
+                "specs": {
+                    "max_resolution": "2048x2048",
+                    "max_images": 6,
+                    "api_type": "qwen-image-edit"
+                },
+                "pricing": {
+                    "per_image": 0.05
+                },
+                "is_default": False
+            },
+            {
+                "name": "qwen-image-edit-plus-2025-10-30",
+                "display_name": "Qwen Image Edit Plus 2025-10-30",
+                "description": "Qwen image editing Plus series (snapshot 2025-10-30)",
+                "tags": ["plus", "edit", "snapshot"],
+                "specs": {
+                    "max_resolution": "2048x2048",
+                    "max_images": 6,
+                    "api_type": "qwen-image-edit"
+                },
+                "pricing": {
+                    "per_image": 0.05
+                },
+                "is_default": False
+            },
+            {
+                "name": "qwen-image-edit",
+                "display_name": "Qwen Image Edit",
+                "description": "Qwen image editing base model, supports single image editing and multi-image fusion",
+                "tags": ["base", "edit"],
+                "specs": {
+                    "max_resolution": "2048x2048",
+                    "max_images": 1,
+                    "api_type": "qwen-image-edit"
+                },
+                "pricing": {
+                    "per_image": 0.03
                 },
                 "is_default": False
             },
@@ -301,20 +539,24 @@ class BailianServerPlugin(BaseServerPlugin):
             {"name": "prompt", "type": "string", "required": True,
              "description": "Text prompt for image generation"},
             {"name": "model", "type": "string", "required": False,
-             "default": "wanx2.1-t2i-turbo",
-             "description": "Model: wanx2.1-t2i-turbo, wanx2.1-t2i-plus, wanx2.6-t2i-turbo, wanx2.6-t2i-plus"},
+             "default": "qwen-image-2.0-pro",
+             "description": "Model: qwen-image-2.0-pro, wanx2.1-t2i-turbo, wanx2.1-t2i-plus, etc."},
             {"name": "width", "type": "integer", "required": False,
              "default": 1024, "description": "Image width (512-2048)"},
             {"name": "height", "type": "integer", "required": False,
-             "default": 1024, "description": "Image height (512-2048)"}
+             "default": 1024, "description": "Image height (512-2048)"},
+            {"name": "n", "type": "integer", "required": False,
+             "default": 1, "description": "Number of images to generate (1-6, for qwen-image models only)"}
         ]
 
         image2image_params = [
             {"name": "prompt", "type": "string", "required": True,
              "description": "Text prompt for transformation"},
             {"name": "model", "type": "string", "required": False,
-             "default": "wanx2.1-i2i-turbo",
-             "description": "Model for image-to-image"}
+             "default": "qwen-image-edit-max",
+             "description": "Model: qwen-image-edit-max, wanx2.1-i2i-turbo, etc."},
+            {"name": "n", "type": "integer", "required": False,
+             "default": 1, "description": "Number of images to generate (1-6, for qwen-image-edit models only)"}
         ]
 
         chat_completion_params = [
@@ -331,18 +573,24 @@ class BailianServerPlugin(BaseServerPlugin):
              "default": False, "description": "Enable streaming response"},
         ]
 
+        # Combine wanx and qwen-image models for text2image
+        all_text2image_models = text2image_models + qwen_image_t2i_models
+
+        # Combine wanx and qwen-image edit models for image2image
+        all_image2image_models = image2image_models + qwen_image_i2i_models
+
         return [
             AbilityConfig(
                 name="text2image",
-                description="Generate image from text using Wanx model",
+                description="Generate image from text using Wanx or Qwen-Image model",
                 parameters=text2image_params,
-                models=text2image_models
+                models=all_text2image_models
             ),
             AbilityConfig(
                 name="image2image",
-                description="Transform image using Wanx model",
+                description="Transform image using Wanx or Qwen-Image model",
                 parameters=image2image_params,
-                models=image2image_models
+                models=all_image2image_models
             ),
             AbilityConfig(
                 name="chat_completion",
@@ -414,6 +662,14 @@ class BailianServerPlugin(BaseServerPlugin):
                 "output_files": []
             }
 
+    def _is_qwen_image_model(self, model: str) -> bool:
+        """Check if model is a qwen-image model"""
+        return model.startswith("qwen-image") and not model.startswith("qwen-image-edit")
+
+    def _is_qwen_image_edit_model(self, model: str) -> bool:
+        """Check if model is a qwen-image-edit model"""
+        return model.startswith("qwen-image-edit")
+
     async def _execute_text2image(
         self, task_id, api_key, parameters, default_model, progress_callback
     ):
@@ -422,10 +678,17 @@ class BailianServerPlugin(BaseServerPlugin):
         model = parameters.get("model", default_model)
         width = parameters.get("width", 1024)
         height = parameters.get("height", 1024)
+        n = parameters.get("n", 1)  # Number of images to generate for qwen-image
 
         progress_callback(10, f"Submitting image generation task ({model})...", {})
 
-        # Use SDK if available
+        # Check if this is a qwen-image model
+        if self._is_qwen_image_model(model):
+            return await self._execute_qwen_image_text2image(
+                task_id, api_key, model, prompt, width, height, n, progress_callback
+            )
+
+        # Use wanx (ImageSynthesis) API for other models
         if DASHSCOPE_SDK_AVAILABLE:
             dashscope.api_key = api_key
 
@@ -448,6 +711,60 @@ class BailianServerPlugin(BaseServerPlugin):
             return await self._text2image_via_http(
                 task_id, api_key, model, prompt, width, height, progress_callback
             )
+
+    async def _execute_qwen_image_text2image(
+        self, task_id, api_key, model, prompt, width, height, n, progress_callback
+    ):
+        """Execute text-to-image using qwen-image model via MultiModalConversation API."""
+        from dashscope import MultiModalConversation
+        import mimetypes
+
+        progress_callback(20, f"Calling Qwen-Image API ({model})...", {})
+
+        # Build messages in the format required by MultiModalConversation
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"text": prompt}
+                ]
+            }
+        ]
+
+        # Prepare parameters
+        size = f"{width}*{height}"
+
+        def call_qwen_image():
+            return MultiModalConversation.call(
+                api_key=api_key,
+                model=model,
+                messages=messages,
+                result_format='message',
+                stream=False,
+                watermark=False,
+                prompt_extend=True,
+                negative_prompt=" ",
+                size=size,
+                n=n
+            )
+
+        loop = asyncio.get_event_loop()
+        rsp = await loop.run_in_executor(None, call_qwen_image)
+
+        if rsp.status_code == 200:
+            # Extract image URLs from response
+            results = []
+            for content in rsp.output.choices[0].message.content:
+                if 'image' in content:
+                    image_url = content['image']
+                    results.append({"url": image_url})
+
+            if results:
+                return await self._download_images_from_urls(task_id, results, progress_callback)
+            else:
+                raise Exception("No images in response from Qwen-Image API")
+        else:
+            raise Exception(f"Qwen-Image API error: {rsp.code} - {rsp.message}")
 
     async def _text2image_via_http(
         self, task_id, api_key, model, prompt, width, height, progress_callback
@@ -546,7 +863,10 @@ class BailianServerPlugin(BaseServerPlugin):
         progress_callback(80, "Downloading generated images...", {})
         output_files = []
 
-        async with aiohttp.ClientSession() as session:
+        # SSL context that skips verification (for development)
+        ssl_context = aiohttp.TCPConnector(ssl=False)
+
+        async with aiohttp.ClientSession(connector=ssl_context) as session:
             for i, result in enumerate(results):
                 url = result.get("url")
                 if not url:
@@ -568,6 +888,7 @@ class BailianServerPlugin(BaseServerPlugin):
         """Execute image-to-image transformation."""
         prompt = parameters.get("prompt", "")
         model = parameters.get("model", default_model.replace("-t2i-", "-i2i-"))
+        n = parameters.get("n", 1)  # Number of images to generate for qwen-image-edit
 
         # Get input image path
         input_image_path = parameters.get("input_image_path")
@@ -581,6 +902,13 @@ class BailianServerPlugin(BaseServerPlugin):
 
         progress_callback(10, f"Submitting image-to-image task ({model})...", {})
 
+        # Check if this is a qwen-image-edit model
+        if self._is_qwen_image_edit_model(model):
+            return await self._execute_qwen_image_edit(
+                task_id, api_key, model, prompt, input_image_path, n, progress_callback
+            )
+
+        # Use wanx (ImageSynthesis) API for other models
         if DASHSCOPE_SDK_AVAILABLE:
             dashscope.api_key = api_key
 
@@ -601,6 +929,72 @@ class BailianServerPlugin(BaseServerPlugin):
                 raise Exception(f"DashScope error: {rsp.code} - {rsp.message}")
         else:
             raise Exception("Image-to-image requires dashscope SDK. Install with: pip install dashscope")
+
+    def _encode_image_base64(self, file_path: str) -> str:
+        """Encode image file to base64 data URL format"""
+        import mimetypes
+        import base64
+
+        mime_type, _ = mimetypes.guess_type(file_path)
+        if not mime_type or not mime_type.startswith("image/"):
+            raise ValueError(f"Unsupported or unrecognized image format: {file_path}")
+
+        with open(file_path, "rb") as image_file:
+            encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+        return f"data:{mime_type};base64,{encoded_string}"
+
+    async def _execute_qwen_image_edit(
+        self, task_id, api_key, model, prompt, input_image_path, n, progress_callback
+    ):
+        """Execute image-to-image using qwen-image-edit model via MultiModalConversation API."""
+        from dashscope import MultiModalConversation
+
+        progress_callback(20, f"Calling Qwen-Image Edit API ({model})...", {})
+
+        # Encode input image to base64
+        image_base64 = self._encode_image_base64(input_image_path)
+
+        # Build messages with the input image
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"image": image_base64},
+                    {"text": prompt}
+                ]
+            }
+        ]
+
+        def call_qwen_image_edit():
+            return MultiModalConversation.call(
+                api_key=api_key,
+                model=model,
+                messages=messages,
+                result_format='message',
+                stream=False,
+                watermark=False,
+                prompt_extend=True,
+                negative_prompt=" ",
+                n=n
+            )
+
+        loop = asyncio.get_event_loop()
+        rsp = await loop.run_in_executor(None, call_qwen_image_edit)
+
+        if rsp.status_code == 200:
+            # Extract image URLs from response
+            results = []
+            for content in rsp.output.choices[0].message.content:
+                if 'image' in content:
+                    image_url = content['image']
+                    results.append({"url": image_url})
+
+            if results:
+                return await self._download_images_from_urls(task_id, results, progress_callback)
+            else:
+                raise Exception("No images in response from Qwen-Image Edit API")
+        else:
+            raise Exception(f"Qwen-Image Edit API error: {rsp.code} - {rsp.message}")
 
     async def _execute_chat_completion(
         self, task_id, api_key, parameters, default_model,
