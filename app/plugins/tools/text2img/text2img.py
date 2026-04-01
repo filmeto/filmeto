@@ -85,9 +85,9 @@ class Text2Image(BaseTool,BaseTaskWidget):
         layer_manager = timeline_item.get_layer_manager()
         width, height = layer_manager.get_valid_dimensions()
 
+        # Don't set server_name or model here - let ability selection handle it
         return {
             "tool": "text2img",
-            "model": "bailian",
             "prompt": prompt,
             "reference_image_path": self.reference_image_path,
             "width": width,
@@ -104,47 +104,18 @@ class Text2Image(BaseTool,BaseTaskWidget):
             logger = logging.getLogger(__name__)
             logger.info(f"Processing text2img task with FilmetoApi: {task.options}")
             from server.api import FilmetoApi, FilmetoTask, Ability, ResourceInput, ResourceType
+            from server.api.types import SelectionConfig, SelectionMode
             from app.data.task import TaskResult as AppTaskResult, TaskProgress as AppTaskProgress
             from server.api.types import TaskProgress as FilmetoTaskProgress, TaskResult as FilmetoTaskResult
 
             api = FilmetoApi()
 
             # Get parameters from task options
-            model = task.options.get('model', 'bailian')
             prompt = task.options.get('prompt', '')
             width = task.options.get('width', 1024)
             height = task.options.get('height', 1024)
 
-            logger.info(f"Text2Image parameters: model={model}, width={width}, height={height}, prompt={prompt[:50]}...")
-
-            # Find a plugin that supports text2image
-            plugins = api.get_plugins_by_tool(Ability.TEXT2IMAGE.value)
-            if not plugins:
-                logger.warning("No plugins found for text2image")
-                return
-
-            # Use the specified model (from task.options), or fallback to Bailian, then first available
-            plugin_name = model
-            if not any(p['name'].lower() == plugin_name.lower() for p in plugins):
-                # Try case-insensitive match
-                plugin_name = None
-                for p in plugins:
-                    if p['name'].lower() in [model.lower(), model.lower().replace(' ', '')]:
-                        plugin_name = p['name']
-                        break
-
-            # Fallback to Bailian if model not found, then first available plugin
-            if not plugin_name:
-                # Try to find Bailian (case-insensitive, partial match)
-                for p in plugins:
-                    if 'bailian' in p['name'].lower():
-                        plugin_name = p['name']
-                        break
-
-            if not plugin_name:
-                plugin_name = plugins[0]['name']
-
-            logger.info(f"Using plugin: {plugin_name}")
+            logger.info(f"Text2Image: width={width}, height={height}, prompt={prompt[:50]}...")
 
             # Create input resources if any (e.g., reference image)
             resources = []
@@ -155,12 +126,15 @@ class Text2Image(BaseTool,BaseTaskWidget):
                     mime_type="image/png"
                 ))
 
+            # Let ability selection choose the best server and model
+            # Use auto mode to select based on priority from ability_models config
+            selection_config = SelectionConfig.auto()
+
             filmeto_task = FilmetoTask(
                 ability=Ability.TEXT2IMAGE,
-                server_name=plugin_name,
+                selection=selection_config,
                 parameters={
                     "prompt": prompt,
-                    "model": "qwen-image-2.0-pro",  # Use qwen-image model for best results
                     "width": width,
                     "height": height,
                     "n": 1,
@@ -168,13 +142,19 @@ class Text2Image(BaseTool,BaseTaskWidget):
                 },
                 resources=resources
             )
-            
+
+            logger.info(f"Text2Image: using ability selection (auto mode)")
+
             app_progress = AppTaskProgress(task)
-            
+
             async for update in api.execute_task_stream(filmeto_task):
                 if isinstance(update, FilmetoTaskProgress):
                     app_progress.on_progress(int(update.percent), update.message)
                 elif isinstance(update, FilmetoTaskResult):
+                    # Log which server/model was used
+                    result_dict = update.dict() if hasattr(update, 'dict') else {}
+                    logger.info(f"Text2Image completed: status={update.status}, server={filmeto_task.server_name}, model={filmeto_task.model_name}")
+
                     # Create a BaseModelResult wrapper for the FilmetoTaskResult
                     class FilmetoResultWrapper:
                         def __init__(self, filmeto_result):

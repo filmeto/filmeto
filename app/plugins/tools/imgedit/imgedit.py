@@ -75,9 +75,9 @@ class ImageEdit(BaseTool, BaseTaskWidget):
         layer_manager = timeline_item.get_layer_manager()
         width, height = layer_manager.get_valid_dimensions()
 
+        # Don't set server_name or model here - let ability selection handle it
         return {
             "tool": "imgedit",
-            "model": "bailian",
             "input_image_path": input_image_path,
             "prompt": self.editor.get_prompt(),
             "width": width,
@@ -115,48 +115,19 @@ class ImageEdit(BaseTool, BaseTaskWidget):
             logger = logging.getLogger(__name__)
             logger.info(f"Processing imgedit task with FilmetoApi: {task.options}")
             from server.api import FilmetoApi, FilmetoTask, Ability, ResourceInput, ResourceType
+            from server.api.types import SelectionConfig
             from app.data.task import TaskResult as AppTaskResult, TaskProgress as AppTaskProgress
             from server.api.types import TaskProgress as FilmetoTaskProgress, TaskResult as FilmetoTaskResult
 
             api = FilmetoApi()
 
             # Get parameters from task options
-            model = task.options.get('model', 'bailian')
             prompt = task.options.get('prompt', '')
             input_image_path = task.options.get('input_image_path', '')
             width = task.options.get('width', 1024)
             height = task.options.get('height', 1024)
 
-            logger.info(f"ImageEdit parameters: model={model}, width={width}, height={height}, prompt={prompt[:50]}...")
-
-            # Find a plugin that supports image2image
-            plugins = api.get_plugins_by_tool(Ability.IMAGE2IMAGE.value)
-            if not plugins:
-                logger.warning("No plugins found for image2image")
-                return
-
-            # Use the specified model (from task.options), or fallback to Bailian, then first available
-            plugin_name = model
-            if not any(p['name'].lower() == plugin_name.lower() for p in plugins):
-                # Try case-insensitive match
-                plugin_name = None
-                for p in plugins:
-                    if p['name'].lower() in [model.lower(), model.lower().replace(' ', '')]:
-                        plugin_name = p['name']
-                        break
-
-            # Fallback to Bailian if model not found
-            if not plugin_name:
-                # Try to find Bailian (case-insensitive, partial match)
-                for p in plugins:
-                    if 'bailian' in p['name'].lower():
-                        plugin_name = p['name']
-                        break
-
-            if not plugin_name:
-                plugin_name = plugins[0]['name']
-
-            logger.info(f"Using plugin: {plugin_name}")
+            logger.info(f"ImageEdit: width={width}, height={height}, prompt={prompt[:50]}...")
 
             # Create input resources (input image)
             resources = []
@@ -167,12 +138,15 @@ class ImageEdit(BaseTool, BaseTaskWidget):
                     mime_type="image/png"
                 ))
 
+            # Let ability selection choose the best server and model
+            # Use auto mode to select based on priority from ability_models config
+            selection_config = SelectionConfig.auto()
+
             filmeto_task = FilmetoTask(
                 ability=Ability.IMAGE2IMAGE,
-                server_name=plugin_name,
+                selection=selection_config,
                 parameters={
                     "prompt": prompt,
-                    "model": "qwen-image-edit-max",  # Use qwen-image-edit model for best results
                     "input_image_path": input_image_path,
                     "width": width,
                     "height": height,
@@ -181,13 +155,17 @@ class ImageEdit(BaseTool, BaseTaskWidget):
                 },
                 resources=resources
             )
-            
+
+            logger.info(f"ImageEdit: using ability selection (auto mode)")
+
             app_progress = AppTaskProgress(task)
-            
+
             async for update in api.execute_task_stream(filmeto_task):
                 if isinstance(update, FilmetoTaskProgress):
                     app_progress.on_progress(int(update.percent), update.message)
                 elif isinstance(update, FilmetoTaskResult):
+                    logger.info(f"ImageEdit completed: status={update.status}, server={filmeto_task.server_name}, model={filmeto_task.model_name}")
+
                     # Create a BaseModelResult wrapper for the FilmetoTaskResult
                     class FilmetoResultWrapper:
                         def __init__(self, filmeto_result):

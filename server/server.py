@@ -822,7 +822,21 @@ class ServerManager:
             TaskProgress: Progress updates
             TaskResult: Final result
         """
-        if use_fallback:
+        # If task has explicit server_name, use it directly
+        if task.server_name:
+            server = self.get_server(task.server_name)
+            # If exact match not found, try case-insensitive partial match
+            if not server:
+                for name, srv in self.servers.items():
+                    if task.server_name.lower() in name.lower() or name.lower() in task.server_name.lower():
+                        server = srv
+                        break
+            if server and server.is_enabled:
+                servers = [server]
+            else:
+                logger.warning(f"Requested server '{task.server_name}' not found or disabled")
+                servers = []
+        elif use_fallback:
             servers = self.route_task_with_fallback(task)
         else:
             primary = self.route_task(task)
