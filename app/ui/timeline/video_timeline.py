@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QApplication, QWidget, QHBoxLayout,
     QLabel, QVBoxLayout, QFrame, QSizePolicy
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QKeyEvent, QPixmap
 
 from app.data.timeline import TimelineItem
@@ -103,19 +103,22 @@ class VideoTimeline(BaseTaskWidget):
         # 将内容容器放入滚动区域
         self.scroll_area.setWidget(self.content_widget)
 
-        # ------------------- 添加一些示例卡片 -------------------
+        # ------------------- 添加卡片 (延迟加载图像) -------------------
         timeline = workspace.get_project().get_timeline()
         timeline_item_count = timeline.get_item_count()
         self.cards = []
-        for i in range(timeline_item_count):  # 创建 10 个示例卡片
-            index = i+1
-            timeline_item = timeline.get_item(index)
-            snapshot_image = timeline_item.get_image()
+        self._timeline = timeline  # 保存 timeline 引用用于延迟加载
+        self._loaded_card_indices = set()  # 跟踪已加载的卡片
+
+        for i in range(timeline_item_count):
+            index = i + 1
             title = f"# {i+1}"
-            card = VideoTimelineCard(self, title, snapshot_image, index)
+            # 初始创建卡片时不加载图像 (传入 None)
+            # 图像将在后续按需加载
+            card = VideoTimelineCard(self, title, None, index)
             self.timeline_layout.addWidget(card)
             self.cards.append(card)
-        
+
         # Set the timeline to the current index from project config instead of always jumping to 1
         current_index = workspace.get_project().get_timeline_index()
         if 1 <= current_index <= timeline_item_count:
@@ -130,33 +133,106 @@ class VideoTimeline(BaseTaskWidget):
             self.selected_card_index = 1
             if self.cards:
                 self.cards[0].set_selected(True)
+
         # Add the "Add Card" button at the end
         self.add_card_button = AddCardFrame(self)
         self.timeline_layout.addWidget(self.add_card_button)
-        
+
         self.timeline_layout.addStretch()
         # ------------------- 主窗口布局 -------------------
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0,0,0,0)
         main_layout.addWidget(self.scroll_area)
 
-        # 可选：添加一些说明
-        # info_label = QLabel("提示：鼠标拖动或使用左右方向键滑动时间线")
-        # info_label.setAlignment(Qt.AlignCenter)
-        # main_layout.addWidget(info_label)
-
         # 聚焦以接收键盘事件
         self.scroll_area.setFocusPolicy(Qt.StrongFocus)
         self.scroll_area.setFocus()
-        
+
         # Connect to language change signal
         translation_manager.language_changed.connect(self.retranslateUi)
-        
+
         # Connect timeline switch signal to update card images
         self.workspace.connect_timeline_switch(self.on_timeline_switch)
-        
+
         # Connect timeline changed signal to update card images when composition completes
         timeline.connect_timeline_changed(self.on_timeline_changed)
+
+        # 设置滚动监听，延迟加载可见区域的卡片图像
+        self.scroll_area.horizontalScrollBar().valueChanged.connect(self._on_scroll_changed)
+        self._scroll_debounce_timer = QTimer(self)
+        self._scroll_debounce_timer.setSingleShot(True)
+        self._scroll_debounce_timer.setInterval(100)
+        self._scroll_debounce_timer.timeout.connect(self._load_visible_cards)
+
+        # 延迟加载初始可见区域的卡片 (100ms 后)
+        QTimer.singleShot(100, self._load_initial_cards)
+
+    def _load_initial_cards(self):
+        """加载初始可见区域的卡片（当前选中卡片优先，然后向两侧扩展）"""
+        if not hasattr(self, '_timeline') or not self.cards:
+            return
+
+        # 首先加载当前选中的卡片
+        if self.selected_card_index and 1 <= self.selected_card_index <= len(self.cards):
+            self._load_card_image(self.selected_card_index - 1)
+
+        # 然后加载当前选中卡片附近的卡片（左右各3个）
+        if self.selected_card_index:
+            for offset in range(1, 4):
+                # 右侧
+                idx = self.selected_card_index - 1 + offset
+                if idx < len(self.cards):
+                    self._load_card_image(idx)
+                # 左侧
+                idx = self.selected_card_index - 1 - offset
+                if idx >= 0:
+                    self._load_card_image(idx)
+
+    def _on_scroll_changed(self):
+        """滚动事件防抖处理"""
+        if hasattr(self, '_scroll_debounce_timer'):
+            self._scroll_debounce_timer.start()
+
+    def _load_visible_cards(self):
+        """加载滚动后可见区域的卡片"""
+        if not hasattr(self, '_timeline') or not self.cards:
+            return
+
+        # 获取滚动区域的可见范围
+        scroll_value = self.scroll_area.horizontalScrollBar().value()
+        viewport_width = self.scroll_area.viewport().width()
+
+        # 卡片宽度 + 间距 = 95px
+        card_width = 95
+        start_index = max(0, scroll_value // card_width - 1)  # 稍微提前一点开始加载
+        end_index = min(len(self.cards), (scroll_value + viewport_width) // card_width + 2)  # 稍微延后结束
+
+        # 加载可见区域内的卡片
+        for i in range(start_index, end_index):
+            self._load_card_image(i)
+
+    def _load_card_image(self, card_index: int):
+        """加载单个卡片的图像"""
+        if card_index < 0 or card_index >= len(self.cards):
+            return
+
+        # 如果已经加载过，跳过
+        if card_index in self._loaded_card_indices:
+            return
+
+        self._loaded_card_indices.add(card_index)
+
+        try:
+            # 获取 timeline item 并加载图像
+            timeline_item = self._timeline.get_item(card_index + 1)
+            snapshot_image = timeline_item.get_image()
+
+            # 更新卡片图像
+            card = self.cards[card_index]
+            if snapshot_image is not None and not snapshot_image.isNull():
+                card.setImage(snapshot_image)
+        except Exception as e:
+            logger.warning(f"Failed to load image for card {card_index + 1}: {e}")
 
     def retranslateUi(self):
         """更新所有UI文本当语言变化时"""

@@ -20,6 +20,8 @@ class VideoTimelineCard(QFrame):
         super().__init__(parent)
         self.parent = parent
         self.index = index
+        self._image_loaded = False
+        self._pending_pixmap = None
         # --- 基本配置 ---
         self.setFrameStyle(QFrame.NoFrame)  # Use CSS for all styling to avoid Qt's frame affecting size
         self.setLineWidth(0)  # Use CSS for borders
@@ -42,8 +44,24 @@ class VideoTimelineCard(QFrame):
         # Make label transparent to mouse events so clicks pass through to parent card
         # This allows the parent container's eventFilter to handle card selection
         self.content_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        scaled_image = snapshot.scaled(QSize(90, 160), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-        self.content_label.setPixmap(scaled_image)
+
+        # Set placeholder or actual image
+        if snapshot is not None and not snapshot.isNull():
+            scaled_image = snapshot.scaled(QSize(90, 160), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+            self.content_label.setPixmap(scaled_image)
+            self._image_loaded = True
+        else:
+            # Show placeholder with loading indicator
+            self.content_label.setText(content_text + "\n\nLoading...")
+            self.content_label.setStyleSheet("""
+                QLabel {
+                    background-color: #2c2c2c;
+                    border: 1px dashed #555555;
+                    border-radius: 8px;
+                    color: #666666;
+                }
+            """)
+
         self.content_label.setAlignment(Qt.AlignCenter)
         self.content_label.setWordWrap(True)
         font = self.content_label.font()
