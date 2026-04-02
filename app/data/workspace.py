@@ -56,9 +56,9 @@ class Workspace():
 
         self.project = project
 
-        # Ensure all projects are loaded into memory regardless of defer_scan setting
-        # This is important for UI components that need to list all available projects
-        self.project_manager.ensure_projects_loaded()
+        # Note: ensure_projects_loaded() is now called on-demand by UI components
+        # (e.g., ProjectListWidget) when they need to display the project list.
+        # This improves startup performance by deferring project scanning.
         pm_time = (time.time() - pm_start) * 1000
         logger.info(f"⏱️  [Workspace] ProjectManager and Project created in {pm_time:.2f}ms")
 

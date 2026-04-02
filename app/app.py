@@ -201,38 +201,32 @@ class App():
                 self.server_manager = ServerManager(workspacePath, defer_plugin_discovery=True)
                 self._server = self.server_manager.get_server("local")
             
-            # Complete deferred initializations synchronously
-            with TimingContext("Deferred initializations"):
-                logger.info("Completing deferred workspace initializations...")
-                self._complete_deferred_init()
-            
-            # Load project data synchronously
-            with TimingContext("Project data loading"):
-                logger.info("Loading project data...")
-                self._load_project_tasks()
-            
-            # Pre-load actor and resource managers
-            with TimingContext("Managers pre-loading"):
-                logger.info("Pre-loading managers...")
-                self.workspace.project.character_manager.list_characters()
-                self.workspace.project.resource_manager.get_all()
-            
-            # Complete server plugin discovery
-            with TimingContext("Server plugin discovery"):
-                logger.info("Completing server plugin discovery...")
-                if hasattr(self.server_manager, '_complete_plugin_discovery'):
-                    self.server_manager._complete_plugin_discovery()
-            
-            # Create window manager and show startup window
+            # Create window manager and show startup window FIRST (for fast UI display)
             with TimingContext("Window manager creation"):
                 logger.info("Creating window manager...")
                 self.window_manager = WindowManager(self.workspace)
                 self.window_manager.show_startup_window()
-            
-            # Refresh the startup page project list
+
+            # Refresh the startup page project list (this triggers project scanning)
             with TimingContext("Project list refresh"):
                 logger.info("Refreshing startup page project list...")
                 self.window_manager.refresh_projects()
+
+            # Complete deferred initializations ASYNCHRONOUSLY (after window is shown)
+            # This runs in the background after UI is displayed
+            with TimingContext("Deferred initializations"):
+                logger.info("Scheduling deferred workspace initializations in background...")
+                from PySide6.QtCore import QTimer
+                QTimer.singleShot(0, self._complete_deferred_init)
+
+            # Note: Project data loading (_load_project_tasks) is now deferred to on-demand
+            # Managers pre-loading has been removed (data loads on first access)
+
+            # Complete server plugin discovery in background
+            with TimingContext("Server plugin discovery"):
+                logger.info("Completing server plugin discovery in background...")
+                if hasattr(self.server_manager, '_complete_plugin_discovery'):
+                    QTimer.singleShot(0, self.server_manager._complete_plugin_discovery)
             
             # Register cleanup on application exit
             logger.info("Registering cleanup handlers...")
