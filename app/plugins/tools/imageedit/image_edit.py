@@ -77,7 +77,7 @@ class ImageEdit(BaseTool, BaseTaskWidget):
 
         # Don't set server_name or model here - let ability selection handle it
         return {
-            "tool": "imgedit",
+            "tool": "imageedit",
             "input_image_path": input_image_path,
             "prompt": self.editor.get_prompt(),
             "width": width,
@@ -86,7 +86,7 @@ class ImageEdit(BaseTool, BaseTaskWidget):
 
     @classmethod
     def get_tool_name(cls):
-        return "imgedit"
+        return "imageedit"
     
     @classmethod
     def get_tool_icon(cls):
@@ -107,13 +107,13 @@ class ImageEdit(BaseTool, BaseTaskWidget):
 
     @asyncSlot()
     async def execute(self, task):
-        # Only process imgedit tasks
-        if task.tool != "imgedit":
-            return  # Exit early if this is not an imgedit task
+        # Only process imageedit tasks
+        if task.tool != "imageedit":
+            return  # Exit early if this is not an imageedit task
         try:
             import logging
             logger = logging.getLogger(__name__)
-            logger.info(f"Processing imgedit task with FilmetoApi: {task.options}")
+            logger.info(f"Processing imageedit task with FilmetoApi: {task.options}")
             from server.api import FilmetoApi, FilmetoTask, Ability, ResourceInput, ResourceType
             from server.api.types import SelectionConfig
             from app.data.task import TaskResult as AppTaskResult, TaskProgress as AppTaskProgress
@@ -143,7 +143,7 @@ class ImageEdit(BaseTool, BaseTaskWidget):
             selection_config = SelectionConfig.auto()
 
             filmeto_task = FilmetoTask(
-                ability=Ability.IMAGE2IMAGE,
+                ability=Ability.IMAGEEDIT,
                 selection=selection_config,
                 parameters={
                     "prompt": prompt,

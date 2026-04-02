@@ -171,6 +171,10 @@ class TaskItemWidget(BaseWidget):
             "sync": "🔁",
             "default": "📋",
             "text2img": "🖼️",
+            "text2image": "🖼️",
+            "image2image": "🖼️",
+            "image2video": "🎬",
+            "imageedit": "✏️",
             "generate": "🔄"
         }
         emoji = icon_map.get(task.tool, "📋")

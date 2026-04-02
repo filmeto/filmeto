@@ -19,7 +19,7 @@ class Text2Image(BaseTool,BaseTaskWidget):
         self.media_selector = None
 
     def init_ui(self, main_editor):
-        """Initialize the UI for the text2img tool"""
+        """Initialize the UI for the text2image tool"""
         # Create widget for tool configuration
         widget = QWidget()
         layout = QHBoxLayout(widget)
@@ -57,7 +57,7 @@ class Text2Image(BaseTool,BaseTaskWidget):
 
     @classmethod
     def get_tool_name(cls):
-        return "text2img"
+        return "text2image"
     
     @classmethod
     def get_tool_icon(cls):
@@ -73,7 +73,7 @@ class Text2Image(BaseTool,BaseTaskWidget):
         return True
     
     def get_media_path(self, timeline_item):
-        """Get media path for text2img tool"""
+        """Get media path for text2image tool"""
         return timeline_item.get_image_path()
 
     def params(self):
@@ -87,7 +87,7 @@ class Text2Image(BaseTool,BaseTaskWidget):
 
         # Don't set server_name or model here - let ability selection handle it
         return {
-            "tool": "text2img",
+            "tool": "text2image",
             "prompt": prompt,
             "reference_image_path": self.reference_image_path,
             "width": width,
@@ -96,13 +96,13 @@ class Text2Image(BaseTool,BaseTaskWidget):
 
     @asyncSlot()
     async def execute(self, task):
-        # Only process text2img tasks to avoid conflicts with other tools
-        if task.tool != "text2img" and task.tool != "text2image":
-            return  # Exit early if this is not a text2img task
+        # Only process text2image tasks to avoid conflicts with other tools
+        if task.tool != "text2image":
+            return  # Exit early if this is not a text2image task
         try:
             import logging
             logger = logging.getLogger(__name__)
-            logger.info(f"Processing text2img task with FilmetoApi: {task.options}")
+            logger.info(f"Processing text2image task with FilmetoApi: {task.options}")
             from server.api import FilmetoApi, FilmetoTask, Ability, ResourceInput, ResourceType
             from server.api.types import SelectionConfig, SelectionMode
             from app.data.task import TaskResult as AppTaskResult, TaskProgress as AppTaskProgress

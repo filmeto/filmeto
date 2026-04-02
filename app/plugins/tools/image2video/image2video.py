@@ -27,7 +27,7 @@ class Image2Video(BaseTool,BaseTaskWidget):
         timeline_item = self.workspace.get_project().get_timeline().get_item(timeline_index)
         input_image_path = timeline_item.get_image_path()
         return {
-            "tool":"img2video",
+            "tool":"image2video",
             "model":"comfy_ui",
             "input_image_path":input_image_path,
             "prompt":self.editor.get_prompt(),
@@ -97,7 +97,7 @@ class Image2Video(BaseTool,BaseTaskWidget):
     
     @classmethod
     def get_tool_name(cls):
-        return "img2video"
+        return "image2video"
     
     @classmethod
     def get_tool_icon(cls):
@@ -113,7 +113,7 @@ class Image2Video(BaseTool,BaseTaskWidget):
         return True
     
     def get_media_path(self, timeline_item):
-        """Get media path for img2video tool"""
+        """Get media path for image2video tool"""
         # Check for video first, then image
         video_path = timeline_item.get_video_path()
         if os.path.exists(video_path):
@@ -123,14 +123,14 @@ class Image2Video(BaseTool,BaseTaskWidget):
     
     @asyncSlot()
     async def execute(self, task):
-        # Only process img2video tasks to avoid conflicts with other tools
-        if task.tool != "img2video" and task.tool != "image2video":
-            return  # Exit early if this is not an img2video task
-            
+        # Only process image2video tasks to avoid conflicts with other tools
+        if task.tool != "image2video":
+            return  # Exit early if this is not an image2video task
+
         try:
             import logging
             logger = logging.getLogger(__name__)
-            logger.info(f"Processing img2video task with FilmetoApi: {task.options}")
+            logger.info(f"Processing image2video task with FilmetoApi: {task.options}")
             from server.api import FilmetoApi, FilmetoTask, Ability, ResourceInput, ResourceType
             from app.data.task import TaskResult as AppTaskResult, TaskProgress as AppTaskProgress
             from server.api.types import TaskProgress as FilmetoTaskProgress, TaskResult as FilmetoTaskResult

@@ -559,6 +559,17 @@ class BailianServerPlugin(BaseServerPlugin):
              "default": 1, "description": "Number of images to generate (1-6, for qwen-image-edit models only)"}
         ]
 
+        # Image edit params (for inpainting, outpainting, etc.)
+        imageedit_params = [
+            {"name": "prompt", "type": "string", "required": True,
+             "description": "Text prompt for image editing"},
+            {"name": "model", "type": "string", "required": False,
+             "default": "qwen-image-edit-max",
+             "description": "Model: qwen-image-edit-max, qwen-image-edit-plus, etc."},
+            {"name": "n", "type": "integer", "required": False,
+             "default": 1, "description": "Number of images to generate (1-6)"}
+        ]
+
         chat_completion_params = [
             {"name": "model", "type": "string", "required": False,
              "default": "qwen-max",
@@ -588,9 +599,15 @@ class BailianServerPlugin(BaseServerPlugin):
             ),
             AbilityConfig(
                 name="image2image",
-                description="Transform image using Wanx or Qwen-Image model",
+                description="Transform image using Wanx or Qwen-Image model (reference based generation)",
                 parameters=image2image_params,
                 models=all_image2image_models
+            ),
+            AbilityConfig(
+                name="imageedit",
+                description="Edit image using Qwen-Image-Edit model (inpainting, outpainting, etc.)",
+                parameters=imageedit_params,
+                models=qwen_image_i2i_models
             ),
             AbilityConfig(
                 name="chat_completion",
@@ -653,6 +670,11 @@ class BailianServerPlugin(BaseServerPlugin):
                 )
             elif ability == "image2image":
                 return await self._execute_image2image(
+                    task_id, api_key, parameters, task_data.get("resources", []),
+                    default_image_model, progress_callback
+                )
+            elif ability == "imageedit":
+                return await self._execute_imageedit(
                     task_id, api_key, parameters, task_data.get("resources", []),
                     default_image_model, progress_callback
                 )
@@ -949,6 +971,31 @@ class BailianServerPlugin(BaseServerPlugin):
                 raise Exception(f"DashScope error: {rsp.code} - {rsp.message}")
         else:
             raise Exception("Image-to-image requires dashscope SDK. Install with: pip install dashscope")
+
+    async def _execute_imageedit(
+        self, task_id, api_key, parameters, resources, default_model, progress_callback
+    ):
+        """Execute image editing (inpainting, outpainting, etc.) using qwen-image-edit model."""
+        prompt = parameters.get("prompt", "")
+        model = parameters.get("model", "qwen-image-edit-max")
+        n = parameters.get("n", 1)
+
+        # Get input image path
+        input_image_path = parameters.get("input_image_path")
+        processed_resources = parameters.get("processed_resources")
+
+        if processed_resources:
+            input_image_path = processed_resources[0]
+
+        if not input_image_path or not os.path.exists(input_image_path):
+            raise FileNotFoundError(f"Input image not found: {input_image_path}")
+
+        progress_callback(10, f"Submitting image edit task ({model})...", {})
+
+        # Use qwen-image-edit model for image editing
+        return await self._execute_qwen_image_edit(
+            task_id, api_key, model, prompt, input_image_path, n, progress_callback
+        )
 
     def _encode_image_base64(self, file_path: str) -> str:
         """Encode image file to base64 data URL format"""

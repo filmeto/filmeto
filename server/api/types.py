@@ -16,7 +16,8 @@ import uuid
 class Ability(str, Enum):
     """Enumeration of AI abilities (task / plugin kinds)."""
     TEXT2IMAGE = "text2image"      # Text to image generation
-    IMAGE2IMAGE = "image2image"    # Image to image transformation
+    IMAGE2IMAGE = "image2image"    # Image to image (reference based generation)
+    IMAGEEDIT = "imageedit"       # Image editing (inpainting, outpainting, etc.)
     IMAGE2VIDEO = "image2video"    # Image to video animation
     TEXT2VIDEO = "text2video"      # Text to video generation
     SPEAK2VIDEO = "speak2video"    # Speech to video (avatar)
