@@ -98,9 +98,14 @@ class ServerStatusWidget(BaseWidget):
 
         self.refresh_timer = QTimer(self)
         self.refresh_timer.timeout.connect(self._refresh_status)
-        self.refresh_timer.start(5000)
+        # Delay timer start and initial refresh for faster window display
+        # Server status will be fetched in the background after UI is ready
+        QTimer.singleShot(2000, self._start_refresh_timer)
 
+    def _start_refresh_timer(self):
+        """Start the refresh timer after initial delay"""
         self._refresh_status()
+        self.refresh_timer.start(5000)
 
     def _on_button_clicked(self):
         self.show_status_dialog.emit()

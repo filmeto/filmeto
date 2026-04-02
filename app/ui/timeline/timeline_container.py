@@ -225,32 +225,26 @@ class TimelineContainer(BaseWidget):
         self.card_width = 90  # Fixed width of each card
         self.card_spacing = 5  # Spacing between cards (from timeline_layout.setSpacing(5))
         self.content_margin_left = 5  # Left margin from timeline_layout.setContentsMargins(5, 5, 5, 5)
-        # Create the timeline widget
+        # Create the main timeline widget (VideoTimeline - immediately required)
         self.video_timeline = VideoTimeline(self, workspace)
-        self.subtitle_timeline = SubtitleTimeline(self, workspace)
-        self.voice_timeline = VoiceTimeline(self, workspace)
-        
+
+        # Create placeholders for secondary timelines (lazy loaded)
+        self.subtitle_timeline = None
+        self.voice_timeline = None
+        self._secondary_timelines_loaded = False
+
         # Scroll synchronization state
         self._scroll_sync_active = False  # Flag to prevent feedback loops
         self._last_scroll_position = 0  # Cache last synchronized scroll value
-        
-        # Timer to detect when scrolling has stopped (for cursor show/hide)
-        self._scroll_stop_timer = QTimer(self)
-        self._scroll_stop_timer.setSingleShot(True)
-        self._scroll_stop_timer.setInterval(100)  # 100ms delay after scroll stops
-        self._scroll_stop_timer.timeout.connect(self._on_scroll_stopped)
-        
-        # Setup the layout to hold the timelines
+
+        # Setup the layout - only add video timeline initially
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
-        # Subtitle timeline will be added here if needed
-        # Main timeline is added here
-        self.main_layout.addWidget(self.subtitle_timeline)
+        # Only add video timeline initially for fast display
         self.main_layout.addWidget(self.video_timeline)
-        self.main_layout.addWidget(self.voice_timeline)
 
-        # Create the overlay widget for drawing divider lines
+        # Create the overlay widget for drawing position line
         timeline_position = self.workspace.get_project().get_timeline_position()
         timeline_x, card_index = self.calculate_timeline_x(timeline_position)
         self.timeline_position_overlay = TimelinePositionLineOverlay(self, timeline_position,timeline_x)
@@ -261,31 +255,64 @@ class TimelineContainer(BaseWidget):
         # Enable hover events to track mouse globally
         self.setAttribute(Qt.WidgetAttribute.WA_Hover)
         self.setMouseTracking(True)
-        
+
         # Enable mouse press events
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        
+
         # Connect to signals for card selection
         Signals().connect(Signals.TIMELINE_POSITION_CLICKED, self._on_timeline_position_signal)
         Signals().connect(Signals.TIMELINE_POSITION_STOPPED, self._on_timeline_position_signal)
-        
+
         # Track last processed click event to prevent duplicate triggers
         self._last_click_event = None
-        
+
         # Install event filter to intercept mouse clicks from child widgets
         self.installEventFilter(self)
         self._install_event_filters_recursively(self.video_timeline)
-        if self.subtitle_timeline:
-            self._install_event_filters_recursively(self.subtitle_timeline)
-        if self.voice_timeline:
-            self._install_event_filters_recursively(self.voice_timeline)
-        
-        # Setup scroll synchronization after all timelines are created
-        self.setup_scroll_synchronization()
-        
+
         # Initialize scroll offset after overlay creation
         initial_scroll_offset = self.video_timeline.scroll_area.horizontalScrollBar().value()
         self.timeline_position_overlay.update_scroll_offset(initial_scroll_offset)
+
+        # Delay load secondary timelines (subtitle, voice) after window is displayed
+        # This speeds up initial window display
+        QTimer.singleShot(100, self._load_secondary_timelines)
+
+    def _load_secondary_timelines(self):
+        """Load secondary timelines (subtitle, voice) in the background after initial display"""
+        if self._secondary_timelines_loaded:
+            return
+
+        self._secondary_timelines_loaded = True
+        logger.info("Loading secondary timelines (subtitle, voice)...")
+
+        # Timer to detect when scrolling has stopped (for cursor show/hide)
+        self._scroll_stop_timer = QTimer(self)
+        self._scroll_stop_timer.setSingleShot(True)
+        self._scroll_stop_timer.setInterval(100)  # 100ms delay after scroll stops
+        self._scroll_stop_timer.timeout.connect(self._on_scroll_stopped)
+
+        # Create secondary timelines
+        self.subtitle_timeline = SubtitleTimeline(self, self.workspace)
+        self.voice_timeline = VoiceTimeline(self, self.workspace)
+
+        # Install event filters for secondary timelines
+        self._install_event_filters_recursively(self.subtitle_timeline)
+        self._install_event_filters_recursively(self.voice_timeline)
+
+        # Add to layout in the correct order
+        self.main_layout.insertWidget(0, self.subtitle_timeline)
+        self.main_layout.insertWidget(2, self.voice_timeline)
+
+        # Setup scroll synchronization
+        self.setup_scroll_synchronization()
+
+        logger.info("Secondary timelines loaded successfully")
+
+    def _ensure_secondary_timelines_loaded(self):
+        """Ensure secondary timelines are loaded before accessing them"""
+        if not self._secondary_timelines_loaded:
+            self._load_secondary_timelines()
 
     def _install_event_filters_recursively(self, widget):
         """Install event filter on widget and all its children recursively"""
@@ -320,38 +347,42 @@ class TimelineContainer(BaseWidget):
         """
         Handle scroll value change from any timeline.
         Synchronizes the scroll position across all timelines.
-        
+
         Args:
             source_timeline: Which timeline triggered the scroll ('video', 'subtitle', or 'voice')
             new_value: New scroll position value
         """
+        # Ensure secondary timelines are loaded before trying to sync
+        if not self._secondary_timelines_loaded:
+            return
+
         # Prevent feedback loops - if we're already syncing, ignore
         if self._scroll_sync_active:
             return
-        
+
         # Only sync if value actually changed (optimization)
         if new_value == self._last_scroll_position:
             return
-        
+
         # Set sync flag to prevent feedback loops
         self._scroll_sync_active = True
         self._last_scroll_position = new_value
-        
+
         try:
             # Sync to other timelines
             if source_timeline != 'video':
                 self.video_timeline.scroll_area.get_horizontal_scrollbar().setValue(new_value)
-            if source_timeline != 'subtitle':
+            if source_timeline != 'subtitle' and self.subtitle_timeline:
                 self.subtitle_timeline.scroll_area.get_horizontal_scrollbar().setValue(new_value)
-            if source_timeline != 'voice':
+            if source_timeline != 'voice' and self.voice_timeline:
                 self.voice_timeline.scroll_area.get_horizontal_scrollbar().setValue(new_value)
-            
+
             # Update overlay scroll offset
             self.timeline_position_overlay.update_scroll_offset(new_value)
         finally:
             # Always reset sync flag
             self._scroll_sync_active = False
-        
+
         # Reset the scroll stop timer (scrolling is still active)
         self._scroll_stop_timer.start()
     
@@ -377,11 +408,16 @@ class TimelineContainer(BaseWidget):
         This ensures all timelines have the same scrollable width.
         """
         width = self.get_timeline_content_width()
-        
-        # Set content width for all timelines
+
+        # Set content width for video timeline (always available)
         self.video_timeline.content_widget.setMinimumWidth(width)
-        self.subtitle_timeline.set_content_width(width)
-        self.voice_timeline.set_content_width(width)
+
+        # Set content width for secondary timelines if loaded
+        if self._secondary_timelines_loaded:
+            if self.subtitle_timeline:
+                self.subtitle_timeline.set_content_width(width)
+            if self.voice_timeline:
+                self.voice_timeline.set_content_width(width)
     
     def get_timeline_content_width(self) -> int:
         """
