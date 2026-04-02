@@ -891,11 +891,19 @@ class BailianServerPlugin(BaseServerPlugin):
 
         for i, img in enumerate(results):
             url = img.url
+            logger.info(f"[Bailian] Downloading image {i+1} from: {url[:100]}...")
             local_path = self.output_dir / f"{task_id}_{i}.png"
-            img_data = requests.get(url).content
-            with open(local_path, "wb") as f:
-                f.write(img_data)
-            output_files.append(str(local_path))
+            try:
+                img_data = requests.get(url, timeout=30)
+                if img_data.status_code != 200:
+                    raise Exception(f"Failed to download image: HTTP {img_data.status_code}")
+                with open(local_path, "wb") as f:
+                    f.write(img_data.content)
+                output_files.append(str(local_path))
+                logger.info(f"[Bailian] Image saved to: {local_path}")
+            except Exception as e:
+                logger.error(f"[Bailian] Failed to download image {i+1}: {e}")
+                raise Exception(f"Failed to download generated image: {e}")
 
         return {"task_id": task_id, "status": "success", "output_files": output_files}
 
@@ -933,6 +941,9 @@ class BailianServerPlugin(BaseServerPlugin):
         model = parameters.get("model", default_model.replace("-t2i-", "-i2i-"))
         n = parameters.get("n", 1)  # Number of images to generate for qwen-image-edit
 
+        logger.info(f"[Bailian Image2Image] task_id={task_id}, model={model}, n={n}")
+        logger.info(f"[Bailian Image2Image] prompt={prompt[:200]}...")
+
         # Get input image path
         input_image_path = parameters.get("input_image_path")
         processed_resources = parameters.get("processed_resources")
@@ -942,6 +953,8 @@ class BailianServerPlugin(BaseServerPlugin):
 
         if not input_image_path or not os.path.exists(input_image_path):
             raise FileNotFoundError(f"Input image not found: {input_image_path}")
+
+        logger.info(f"[Bailian Image2Image] input_image={input_image_path}")
 
         progress_callback(10, f"Submitting image-to-image task ({model})...", {})
 
@@ -966,9 +979,12 @@ class BailianServerPlugin(BaseServerPlugin):
             loop = asyncio.get_event_loop()
             rsp = await loop.run_in_executor(None, call_dashscope_i2i)
 
+            logger.info(f"[Bailian Image2Image] API response status: {rsp.status_code}")
             if rsp.status_code == 200:
+                logger.info(f"[Bailian Image2Image] Got {len(rsp.output.results)} results")
                 return await self._download_images(task_id, rsp.output.results, progress_callback)
             else:
+                logger.error(f"[Bailian Image2Image] API error: {rsp.code} - {rsp.message}")
                 raise Exception(f"DashScope error: {rsp.code} - {rsp.message}")
         else:
             raise Exception("Image-to-image requires dashscope SDK. Install with: pip install dashscope")
