@@ -355,10 +355,34 @@ image_models:
   image_editing:
     - name: wanx2.1-imgedit-turbo
       description: Fast image editing
-      default: true
+      default: false
 
     - name: wanx2.1-imgedit-plus
       description: High quality image editing
+      default: false
+
+    - name: qwen-image-edit-max
+      description: Qwen Image Edit Max - strongest editing, industrial design, geometric reasoning
+      default: true
+
+    - name: qwen-image-edit-max-2026-01-16
+      description: Qwen Image Edit Max (snapshot 2026-01-16)
+      default: false
+
+    - name: qwen-image-edit-plus
+      description: Qwen Image Edit Plus - multi-output, custom resolution
+      default: false
+
+    - name: qwen-image-edit-plus-2025-12-15
+      description: Qwen Image Edit Plus (snapshot 2025-12-15)
+      default: false
+
+    - name: qwen-image-edit-plus-2025-10-30
+      description: Qwen Image Edit Plus (snapshot 2025-10-30)
+      default: false
+
+    - name: qwen-image-edit
+      description: Qwen Image Edit base model
       default: false
 
 # ============================================================

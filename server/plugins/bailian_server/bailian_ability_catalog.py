@@ -50,6 +50,16 @@ def build_bailian_ability_catalog() -> List[Dict[str, Any]]:
             }
         )
 
+    for name in models_config.get_image_editing_models():
+        rows.append(
+            {
+                "ability": "imageedit",
+                "model_id": name,
+                "label": name,
+                "default_enabled": True,
+            }
+        )
+
     return rows
 
 
