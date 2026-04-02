@@ -405,6 +405,55 @@ class BailianServerPlugin(BaseServerPlugin):
             },
         ]
 
+        # Video generation models
+        image2video_models = [
+            {
+                "name": "wanx2.1-i2v-turbo",
+                "display_name": "Wanx 2.1 I2V Turbo",
+                "description": "Fast image-to-video generation",
+                "tags": ["fast", "turbo", "video"],
+                "specs": {
+                    "max_duration": 10,
+                    "default_duration": 5
+                },
+                "pricing": {
+                    "per_second": 0.05
+                },
+                "is_default": True
+            },
+        ]
+
+        text2video_models = [
+            {
+                "name": "wanx2.1-t2v-turbo",
+                "display_name": "Wanx 2.1 T2V Turbo",
+                "description": "Fast text-to-video generation",
+                "tags": ["fast", "turbo", "video"],
+                "specs": {
+                    "max_duration": 10,
+                    "default_duration": 5
+                },
+                "pricing": {
+                    "per_second": 0.05
+                },
+                "is_default": True
+            },
+            {
+                "name": "wanx2.1-t2v-plus",
+                "display_name": "Wanx 2.1 T2V Plus",
+                "description": "High quality text-to-video generation",
+                "tags": ["high-quality", "plus", "video"],
+                "specs": {
+                    "max_duration": 10,
+                    "default_duration": 5
+                },
+                "pricing": {
+                    "per_second": 0.1
+                },
+                "is_default": False
+            },
+        ]
+
         # Chat completion models with pricing (LLMs)
         chat_models = [
             # Flagship models
@@ -570,6 +619,27 @@ class BailianServerPlugin(BaseServerPlugin):
              "default": 1, "description": "Number of images to generate (1-6)"}
         ]
 
+        # Video generation params
+        image2video_params = [
+            {"name": "prompt", "type": "string", "required": True,
+             "description": "Text prompt for video generation"},
+            {"name": "model", "type": "string", "required": False,
+             "default": "wanx2.1-i2v-turbo",
+             "description": "Model: wanx2.1-i2v-turbo"},
+            {"name": "duration", "type": "integer", "required": False,
+             "default": 5, "description": "Video duration in seconds (5-10)"}
+        ]
+
+        text2video_params = [
+            {"name": "prompt", "type": "string", "required": True,
+             "description": "Text prompt for video generation"},
+            {"name": "model", "type": "string", "required": False,
+             "default": "wanx2.1-t2v-turbo",
+             "description": "Model: wanx2.1-t2v-turbo, wanx2.1-t2v-plus"},
+            {"name": "duration", "type": "integer", "required": False,
+             "default": 5, "description": "Video duration in seconds (5-10)"}
+        ]
+
         chat_completion_params = [
             {"name": "model", "type": "string", "required": False,
              "default": "qwen-max",
@@ -609,6 +679,18 @@ class BailianServerPlugin(BaseServerPlugin):
                 description="Edit image using Qwen-Image-Edit model (inpainting, outpainting, etc.)",
                 parameters=imageedit_params,
                 models=qwen_image_i2i_models
+            ),
+            AbilityConfig(
+                name="image2video",
+                description="Generate video from image using Wanx model",
+                parameters=image2video_params,
+                models=image2video_models
+            ),
+            AbilityConfig(
+                name="text2video",
+                description="Generate video from text using Wanx model",
+                parameters=text2video_params,
+                models=text2video_models
             ),
             AbilityConfig(
                 name="chat_completion",
@@ -678,6 +760,15 @@ class BailianServerPlugin(BaseServerPlugin):
                 return await self._execute_imageedit(
                     task_id, api_key, parameters, task_data.get("resources", []),
                     default_image_model, progress_callback
+                )
+            elif ability == "image2video":
+                return await self._execute_image2video(
+                    task_id, api_key, parameters, task_data.get("resources", []),
+                    default_image_model, progress_callback
+                )
+            elif ability == "text2video":
+                return await self._execute_text2video(
+                    task_id, api_key, parameters, default_image_model, progress_callback
                 )
             elif ability == "chat_completion":
                 return await self._execute_chat_completion(
@@ -1084,6 +1175,248 @@ class BailianServerPlugin(BaseServerPlugin):
                 raise Exception("No images in response from Qwen-Image Edit API")
         else:
             raise Exception(f"Qwen-Image Edit API error: {rsp.code} - {rsp.message}")
+
+    async def _execute_image2video(
+        self, task_id, api_key, parameters, resources, default_model, progress_callback
+    ):
+        """Execute image-to-video generation using Wanx video API."""
+        import aiohttp
+
+        prompt = parameters.get("prompt", "")
+        model = parameters.get("model", "wanx2.1-i2v-turbo")
+        duration = parameters.get("duration", 5)
+
+        # Get input image path
+        input_image_path = parameters.get("input_image_path")
+        processed_resources = parameters.get("processed_resources")
+
+        if processed_resources:
+            input_image_path = processed_resources[0]
+
+        if not input_image_path or not os.path.exists(input_image_path):
+            raise FileNotFoundError(f"Input image not found: {input_image_path}")
+
+        logger.info(f"[Bailian Image2Video] task_id={task_id}, model={model}, duration={duration}")
+        logger.info(f"[Bailian Image2Video] prompt={prompt[:200]}...")
+        logger.info(f"[Bailian Image2Video] input_image={input_image_path}")
+
+        progress_callback(10, f"Submitting image-to-video task ({model})...", {})
+
+        # Use HTTP API for video generation
+        video_endpoint = models_config.get_dashscope_video_endpoint()
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "X-DashScope-Async": "enable"
+        }
+
+        # Encode image to base64
+        import base64
+        import mimetypes
+        mime_type, _ = mimetypes.guess_type(input_image_path)
+        if not mime_type:
+            mime_type = "image/png"
+        with open(input_image_path, "rb") as f:
+            image_base64 = base64.b64encode(f.read()).decode("utf-8")
+
+        payload = {
+            "model": model,
+            "input": {
+                "image_url": f"data:{mime_type};base64,{image_base64}",
+                "prompt": prompt
+            },
+            "parameters": {
+                "duration": duration
+            }
+        }
+
+        progress_callback(20, "Calling DashScope video API...", {})
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                video_endpoint,
+                headers=headers,
+                json=payload
+            ) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    logger.error(f"[Bailian Image2Video] API error: {response.status} - {error_text}")
+                    raise Exception(f"DashScope video API error: {response.status} - {error_text}")
+
+                result = await response.json()
+
+                # Check if async task
+                output = result.get("output", {})
+                task_status = output.get("task_status")
+
+                if task_status == "PENDING":
+                    # Poll for result
+                    task_id_api = output.get("task_id")
+                    task_status_url = f"{video_endpoint}/{task_id_api}"
+                    progress_callback(30, "Waiting for video generation...", {})
+
+                    for _ in range(120):  # Max 240 seconds wait (video takes longer)
+                        await asyncio.sleep(2)
+                        async with session.get(
+                            task_status_url,
+                            headers={"Authorization": f"Bearer {api_key}"}
+                        ) as status_response:
+                            status_result = await status_response.json()
+                            status = status_result.get("output", {}).get("task_status")
+
+                            if status == "SUCCEEDED":
+                                results = status_result.get("output", {}).get("results", [])
+                                if results:
+                                    # Download video
+                                    video_url = results[0].get("video_url")
+                                    progress_callback(80, "Downloading generated video...", {})
+
+                                    local_path = self.output_dir / f"{task_id}.mp4"
+                                    async with session.get(video_url) as video_response:
+                                        if video_response.status == 200:
+                                            content = await video_response.read()
+                                            with open(local_path, "wb") as f:
+                                                f.write(content)
+                                            return {"task_id": task_id, "status": "success", "output_files": [str(local_path)]}
+                                        else:
+                                            raise Exception(f"Failed to download video: HTTP {video_response.status}")
+                                raise Exception("No video in response")
+                            elif status == "FAILED":
+                                error_msg = status_result.get("output", {}).get("message", "Unknown error")
+                                raise Exception(f"Video generation failed: {error_msg}")
+
+                            progress_callback(40, f"Generating video... ({status})", {})
+
+                    raise Exception("Video generation timeout")
+
+                # Direct result
+                results = output.get("results", [])
+                if results:
+                    video_url = results[0].get("video_url")
+                    progress_callback(80, "Downloading generated video...", {})
+
+                    local_path = self.output_dir / f"{task_id}.mp4"
+                    async with session.get(video_url) as video_response:
+                        if video_response.status == 200:
+                            content = await video_response.read()
+                            with open(local_path, "wb") as f:
+                                f.write(content)
+                            return {"task_id": task_id, "status": "success", "output_files": [str(local_path)]}
+                        else:
+                            raise Exception(f"Failed to download video: HTTP {video_response.status}")
+
+                raise Exception("No results from DashScope video API")
+
+    async def _execute_text2video(
+        self, task_id, api_key, parameters, default_model, progress_callback
+    ):
+        """Execute text-to-video generation using Wanx video API."""
+        import aiohttp
+
+        prompt = parameters.get("prompt", "")
+        model = parameters.get("model", "wanx2.1-t2v-turbo")
+        duration = parameters.get("duration", 5)
+
+        logger.info(f"[Bailian Text2Video] task_id={task_id}, model={model}, duration={duration}")
+        logger.info(f"[Bailian Text2Video] prompt={prompt[:200]}...")
+
+        progress_callback(10, f"Submitting text-to-video task ({model})...", {})
+
+        # Use HTTP API for video generation
+        video_endpoint = models_config.get_dashscope_video_endpoint()
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "X-DashScope-Async": "enable"
+        }
+
+        payload = {
+            "model": model,
+            "input": {
+                "prompt": prompt
+            },
+            "parameters": {
+                "duration": duration
+            }
+        }
+
+        progress_callback(20, "Calling DashScope video API...", {})
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                video_endpoint,
+                headers=headers,
+                json=payload
+            ) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    logger.error(f"[Bailian Text2Video] API error: {response.status} - {error_text}")
+                    raise Exception(f"DashScope video API error: {response.status} - {error_text}")
+
+                result = await response.json()
+
+                # Check if async task
+                output = result.get("output", {})
+                task_status = output.get("task_status")
+
+                if task_status == "PENDING":
+                    # Poll for result
+                    task_id_api = output.get("task_id")
+                    task_status_url = f"{video_endpoint}/{task_id_api}"
+                    progress_callback(30, "Waiting for video generation...", {})
+
+                    for _ in range(120):  # Max 240 seconds wait
+                        await asyncio.sleep(2)
+                        async with session.get(
+                            task_status_url,
+                            headers={"Authorization": f"Bearer {api_key}"}
+                        ) as status_response:
+                            status_result = await status_response.json()
+                            status = status_result.get("output", {}).get("task_status")
+
+                            if status == "SUCCEEDED":
+                                results = status_result.get("output", {}).get("results", [])
+                                if results:
+                                    video_url = results[0].get("video_url")
+                                    progress_callback(80, "Downloading generated video...", {})
+
+                                    local_path = self.output_dir / f"{task_id}.mp4"
+                                    async with session.get(video_url) as video_response:
+                                        if video_response.status == 200:
+                                            content = await video_response.read()
+                                            with open(local_path, "wb") as f:
+                                                f.write(content)
+                                            return {"task_id": task_id, "status": "success", "output_files": [str(local_path)]}
+                                        else:
+                                            raise Exception(f"Failed to download video: HTTP {video_response.status}")
+                                raise Exception("No video in response")
+                            elif status == "FAILED":
+                                error_msg = status_result.get("output", {}).get("message", "Unknown error")
+                                raise Exception(f"Video generation failed: {error_msg}")
+
+                            progress_callback(40, f"Generating video... ({status})", {})
+
+                    raise Exception("Video generation timeout")
+
+                # Direct result
+                results = output.get("results", [])
+                if results:
+                    video_url = results[0].get("video_url")
+                    progress_callback(80, "Downloading generated video...", {})
+
+                    local_path = self.output_dir / f"{task_id}.mp4"
+                    async with session.get(video_url) as video_response:
+                        if video_response.status == 200:
+                            content = await video_response.read()
+                            with open(local_path, "wb") as f:
+                                f.write(content)
+                            return {"task_id": task_id, "status": "success", "output_files": [str(local_path)]}
+                        else:
+                            raise Exception(f"Failed to download video: HTTP {video_response.status}")
+
+                raise Exception("No results from DashScope video API")
 
     async def _execute_chat_completion(
         self, task_id, api_key, parameters, default_model,

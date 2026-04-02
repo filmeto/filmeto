@@ -60,6 +60,26 @@ def build_bailian_ability_catalog() -> List[Dict[str, Any]]:
             }
         )
 
+    for name in models_config.get_image_to_video_models():
+        rows.append(
+            {
+                "ability": "image2video",
+                "model_id": name,
+                "label": name,
+                "default_enabled": True,
+            }
+        )
+
+    for name in models_config.get_text_to_video_models():
+        rows.append(
+            {
+                "ability": "text2video",
+                "model_id": name,
+                "label": name,
+                "default_enabled": True,
+            }
+        )
+
     return rows
 
 

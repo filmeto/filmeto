@@ -84,6 +84,46 @@ abilities:
         default: 1
         description: Number of images to generate
 
+  - name: image2video
+    description: Generate video from image using Wanx model
+    parameters:
+      - name: prompt
+        type: string
+        required: true
+        description: Text prompt for video generation
+
+      - name: model
+        type: string
+        required: false
+        default: "wanx2.1-i2v-turbo"
+        description: Model to use for image-to-video (e.g., wanx2.1-i2v-turbo)
+
+      - name: duration
+        type: integer
+        required: false
+        default: 5
+        description: Video duration in seconds (5-10)
+
+  - name: text2video
+    description: Generate video from text using Wanx model
+    parameters:
+      - name: prompt
+        type: string
+        required: true
+        description: Text prompt for video generation
+
+      - name: model
+        type: string
+        required: false
+        default: "wanx2.1-t2v-turbo"
+        description: Model to use for text-to-video (e.g., wanx2.1-t2v-turbo, wanx2.1-t2v-plus)
+
+      - name: duration
+        type: integer
+        required: false
+        default: 5
+        description: Video duration in seconds (5-10)
+
   - name: chat_completion
     description: LLM chat completion via DashScope OpenAI-compatible API
     parameters:
