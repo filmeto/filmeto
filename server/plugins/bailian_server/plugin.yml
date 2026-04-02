@@ -64,6 +64,26 @@ abilities:
         default: "wanx2.1-i2i-turbo"
         description: Model to use for image-to-image
 
+  - name: imageedit
+    description: Edit image (inpainting, outpainting) using Qwen-Image-Edit model
+    parameters:
+      - name: prompt
+        type: string
+        required: true
+        description: Text prompt for image editing
+
+      - name: model
+        type: string
+        required: false
+        default: "qwen-image-edit-max"
+        description: Model to use for image editing (e.g., qwen-image-edit-max, qwen-image-edit-plus)
+
+      - name: n
+        type: integer
+        required: false
+        default: 1
+        description: Number of images to generate
+
   - name: chat_completion
     description: LLM chat completion via DashScope OpenAI-compatible API
     parameters:

@@ -36,6 +36,7 @@ class AbilityService:
     ABILITY_NAMES = {
         Ability.TEXT2IMAGE: "Text to Image",
         Ability.IMAGE2IMAGE: "Image to Image",
+        Ability.IMAGEEDIT: "Image Edit",
         Ability.IMAGE2VIDEO: "Image to Video",
         Ability.TEXT2VIDEO: "Text to Video",
         Ability.SPEAK2VIDEO: "Speech to Video",
@@ -46,7 +47,8 @@ class AbilityService:
 
     ABILITY_DESCRIPTIONS = {
         Ability.TEXT2IMAGE: "Generate images from text descriptions",
-        Ability.IMAGE2IMAGE: "Transform or edit images based on prompts",
+        Ability.IMAGE2IMAGE: "Transform or style images based on reference",
+        Ability.IMAGEEDIT: "Edit images (inpainting, outpainting, subject replacement)",
         Ability.IMAGE2VIDEO: "Animate static images into videos",
         Ability.TEXT2VIDEO: "Generate videos from text descriptions",
         Ability.SPEAK2VIDEO: "Generate avatar videos from speech/audio",

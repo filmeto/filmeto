@@ -21,12 +21,13 @@ logger = logging.getLogger(__name__)
 class EditWindow(QMainWindow):
     """
     Independent window for edit mode.
-    
+
     This window displays the project editing interface with timeline,
     canvas, and all editing tools.
     """
-    
+
     go_home = Signal()  # Emitted when home button is clicked
+    about_to_close = Signal()  # Emitted when window is about to close
     
     def __init__(self, workspace: Workspace):
         super(EditWindow, self).__init__()
@@ -97,6 +98,8 @@ class EditWindow(QMainWindow):
     def closeEvent(self, event):
         """Handle close event to save current window size."""
         self._save_window_sizes()
+        # Emit signal before closing
+        self.about_to_close.emit()
         # Clear workspace reference
         if hasattr(self.workspace, '_main_window') and self.workspace._main_window == self:
             self.workspace._main_window = None

@@ -59,17 +59,8 @@ class WindowManager(QObject):
             self.edit_window = EditWindow(self.workspace)
             self.edit_window.go_home.connect(self._on_go_home)
             self.edit_window.destroyed.connect(self._on_edit_window_destroyed)
-            # Override closeEvent to show startup window instead of closing
-            def close_with_fallback(event):
-                # Save window size before hiding
-                self.edit_window._save_window_sizes()
-                # Hide edit window and show startup window instead of closing
-                self.edit_window.hide()
-                if self.startup_window:
-                    self.startup_window.show()
-                # Don't call original_close to prevent actual window destruction
-                event.ignore()
-            self.edit_window.closeEvent = close_with_fallback
+            # Show startup window when edit window closes
+            self.edit_window.about_to_close.connect(self._on_edit_window_about_to_close)
         
         # Update project reference
         self.edit_window.project = self.workspace.get_project()
@@ -164,6 +155,12 @@ class WindowManager(QObject):
         """Handle startup window destruction."""
         self.startup_window = None
     
+    def _on_edit_window_about_to_close(self):
+        """Handle edit window close - show startup window."""
+        # Show startup window when edit window closes
+        if self.startup_window:
+            self.startup_window.show()
+
     def _on_edit_window_destroyed(self):
         """Handle edit window destruction."""
         self.edit_window = None
