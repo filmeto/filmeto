@@ -553,10 +553,10 @@ class BailianServerPlugin(BaseServerPlugin):
             {"name": "prompt", "type": "string", "required": True,
              "description": "Text prompt for transformation"},
             {"name": "model", "type": "string", "required": False,
-             "default": "qwen-image-edit-max",
-             "description": "Model: qwen-image-edit-max, wanx2.1-i2i-turbo, etc."},
+             "default": "wanx2.1-i2i-turbo",
+             "description": "Model: wanx2.1-i2i-turbo, wanx2.1-i2i-plus, qwen-image, etc."},
             {"name": "n", "type": "integer", "required": False,
-             "default": 1, "description": "Number of images to generate (1-6, for qwen-image-edit models only)"}
+             "default": 1, "description": "Number of images to generate (1-6, for qwen-image models only)"}
         ]
 
         # Image edit params (for inpainting, outpainting, etc.)
@@ -587,8 +587,9 @@ class BailianServerPlugin(BaseServerPlugin):
         # Combine wanx and qwen-image models for text2image
         all_text2image_models = text2image_models + qwen_image_t2i_models
 
-        # Combine wanx and qwen-image edit models for image2image
-        all_image2image_models = image2image_models + qwen_image_i2i_models
+        # image2image uses wanx i2i models only (reference-based style transfer)
+        # qwen-image-edit models are for imageedit ability
+        all_image2image_models = image2image_models
 
         return [
             AbilityConfig(
@@ -599,7 +600,7 @@ class BailianServerPlugin(BaseServerPlugin):
             ),
             AbilityConfig(
                 name="image2image",
-                description="Transform image using Wanx or Qwen-Image model (reference based generation)",
+                description="Transform image using Wanx model (reference-based style transfer)",
                 parameters=image2image_params,
                 models=all_image2image_models
             ),

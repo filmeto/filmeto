@@ -105,6 +105,7 @@ class PluginProcess:
         self.plugin_info = plugin_info
         self.process: Optional[asyncio.subprocess.Process] = None
         self.is_ready = False
+        self._read_lock = asyncio.Lock()
 
         # Health check state
         startup_cfg = plugin_info.config.get("startup", {})
@@ -400,19 +401,20 @@ class PluginProcess:
         """Read JSON message from plugin stdout"""
         if not self.process or not self.process.stdout:
             return None
-        
-        try:
-            line = await self.process.stdout.readline()
-            if not line:
+
+        async with self._read_lock:
+            try:
+                line = await self.process.stdout.readline()
+                if not line:
+                    return None
+
+                return json.loads(line.decode().strip())
+            except json.JSONDecodeError as e:
+                logger.error(f"Error parsing JSON from plugin: {e}")
                 return None
-            
-            return json.loads(line.decode().strip())
-        except json.JSONDecodeError as e:
-            logger.error(f"Error parsing JSON from plugin: {e}")
-            return None
-        except Exception as e:
-            logger.error(f"Error reading from plugin: {e}")
-            return None
+            except Exception as e:
+                logger.error(f"Error reading from plugin: {e}")
+                return None
     
     def __repr__(self) -> str:
         return f"PluginProcess({self.plugin_info.name}, ready={self.is_ready})"
