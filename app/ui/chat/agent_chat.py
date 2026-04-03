@@ -14,6 +14,7 @@ from PySide6.QtWidgets import QVBoxLayout, QWidget, QSplitter, QTabWidget, QTabB
 from PySide6.QtCore import Qt, QTimer, QObject, Property, Slot, QUrl
 from PySide6.QtCore import Signal
 from PySide6.QtQuickWidgets import QQuickWidget
+from qasync import asyncSlot
 
 from app.ui.base_widget import BaseWidget
 from app.data.workspace import Workspace
@@ -316,14 +317,37 @@ class AgentChatWidget(BaseWidget):
                 logger.debug("Could not disconnect crew_member_activity signal: %s", e)
         self.agent = None
 
-        asyncio.ensure_future(self._initialize_agent())
-
-        if self.plan_widget:
-            self.plan_widget.refresh_plan()
-        if self.chat_history_widget:
-            self.chat_history_widget.on_project_switched(self._extract_project_name(project))
-
+        # 快速同步清理标签页
         self._close_all_private_tabs()
+
+        # 异步初始化 Agent（使用 QTimer 延迟确保事件循环就绪）
+        QTimer.singleShot(0, self._start_initialize_agent)
+
+        # 异步刷新 plan_widget（避免阻塞主线程）
+        if self.plan_widget:
+            QTimer.singleShot(0, self.plan_widget.refresh_plan)
+
+        # 异步刷新 chat_history_widget（避免阻塞主线程）
+        if self.chat_history_widget:
+            project_name = self._extract_project_name(project)
+            QTimer.singleShot(0, lambda pn=project_name: self.chat_history_widget.on_project_switched(pn))
+
+    def _start_initialize_agent(self):
+        """Wrapper to start async initialization safely."""
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.ensure_future(self._initialize_agent())
+            else:
+                # If no loop is running, create a new task directly
+                asyncio.create_task(self._initialize_agent())
+        except RuntimeError:
+            # Fallback: try to get the running loop
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                # No running loop, schedule for later
+                QTimer.singleShot(10, self._start_initialize_agent)
 
     def _close_all_private_tabs(self):
         """Close all private chat tabs (e.g. on project switch)."""

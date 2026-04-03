@@ -176,6 +176,55 @@ class Workspace():
         logger.info(f"切换到项目: {project_name}")
         return self.project
 
+    def switch_project_lightweight(self, project_name: str):
+        """Lightweight project switch for fast window transition"""
+        # 更新项目路径和名称
+        self.project_name = project_name
+        projects_dir = os.path.join(self.workspace_path, "projects")
+        self.project_path = os.path.join(projects_dir, project_name)
+
+        # Create project with minimal initialization (defer heavy loading)
+        new_project = Project(self, self.project_path, project_name, load_data=False)
+
+        # 替换当前项目
+        self.project = new_project
+
+        # Update PromptManager
+        prompts_dir = os.path.join(self.project_path, 'prompts')
+        self.prompt_manager = PromptManager(prompts_dir)
+
+        # Use ProjectManager to switch (lightweight)
+        self.project_manager.switch_project(project_name)
+
+        logger.info(f"Lightweight switch to project: {project_name}")
+        return self.project
+
+    def _async_load_project_data(self):
+        """Asynchronously load project data after window is displayed"""
+        if not self.project:
+            return
+
+        logger.info("Starting async load of project data...")
+        from PySide6.QtCore import QTimer
+
+        # Defer loading managers data
+        QTimer.singleShot(0, self._load_project_managers_data)
+
+    def _load_project_managers_data(self):
+        """Load managers data in background"""
+        if not self.project:
+            return
+
+        # Load character manager data
+        if hasattr(self.project, 'character_manager'):
+            self.project.character_manager.list_characters()
+
+        # Load resource manager data
+        if hasattr(self.project, 'resource_manager'):
+            self.project.resource_manager.get_all()
+
+        logger.info("Project managers data loaded")
+
     def get_path(self) -> str:
         """
         Get the workspace path.

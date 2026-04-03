@@ -28,26 +28,71 @@ class EditWindow(QMainWindow):
 
     go_home = Signal()  # Emitted when home button is clicked
     about_to_close = Signal()  # Emitted when window is about to close
-    
-    def __init__(self, workspace: Workspace):
+
+    def __init__(self, workspace: Workspace, lazy_init: bool = False):
         super(EditWindow, self).__init__()
         self.setWindowFlags(Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.workspace = workspace
         self.project = workspace.get_project()
-        
+        self._lazy_init = lazy_init
+        self._ui_initialized = False
+
         # Set main window reference to workspace for access to preview components
         self.workspace._main_window = self
-        
+
         # Window size storage
         self._window_sizes = {}
         self._load_window_sizes()
-        
-        # Set up the UI
-        self._setup_ui()
-        
+
+        if lazy_init:
+            # Minimal initialization for fast display
+            self._init_minimal_ui()
+        else:
+            # Full initialization
+            self._setup_ui()
+
         # Set initial window size (fullscreen/maximized)
         self.showMaximized()
+
+    def _init_minimal_ui(self):
+        """Initialize minimal UI for fast display"""
+        # Create a minimal placeholder central widget
+        from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
+        from PySide6.QtCore import Qt
+
+        central_widget = QWidget()
+        layout = QVBoxLayout(central_widget)
+
+        # Loading indicator
+        loading_label = QLabel("Loading...")
+        loading_label.setAlignment(Qt.AlignCenter)
+        loading_label.setStyleSheet("color: #888888; font-size: 16px;")
+        layout.addWidget(loading_label)
+
+        self.setCentralWidget(central_widget)
+
+    def _complete_lazy_init(self):
+        """Complete the full initialization after window is displayed"""
+        if self._ui_initialized:
+            return
+
+        logger.info("Completing lazy initialization of EditWindow...")
+        from PySide6.QtCore import QTimer
+
+        # Use timer to defer heavy initialization
+        QTimer.singleShot(0, self._do_full_init)
+
+    def _do_full_init(self):
+        """Perform full UI initialization"""
+        if self._ui_initialized:
+            return
+
+        # Set up the full UI
+        self._setup_ui()
+        self._ui_initialized = True
+
+        logger.info("Full initialization of EditWindow completed")
     
     def _load_window_sizes(self):
         """Load stored window sizes from file."""

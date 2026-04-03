@@ -129,7 +129,8 @@ class AsyncDataLoader(QObject, Generic[T, K]):
     def invalidate(self, key: K) -> None:
         w = self._active_workers.pop(key, None)
         if w is not None:
-            w.stop()
+            # Use stop_and_wait to ensure thread is properly stopped
+            w.stop_and_wait(timeout_ms=1000)
         self._load_token[key] = self._load_token.get(key, 0) + 1
         self._cache.pop(key, None)
         self._loading[key] = False
@@ -186,7 +187,8 @@ class AsyncDataLoader(QObject, Generic[T, K]):
             self._pending_keys.discard(k)
             w = self._active_workers.pop(k, None)
             if w is not None:
-                w.stop()
+                # Use stop_and_wait to ensure thread is properly stopped
+                w.stop_and_wait(timeout_ms=1000)
             self._load_token[k] = self._load_token.get(k, 0) + 1
             self._loading[k] = False
 

@@ -5,7 +5,7 @@ Window Manager
 Manages the startup and edit windows, handling transitions between them.
 """
 import logging
-from PySide6.QtCore import QObject
+from PySide6.QtCore import QObject, QTimer
 
 from app.data.workspace import Workspace
 from app.ui.window.startup.startup_window import StartupWindow
@@ -50,28 +50,51 @@ class WindowManager(QObject):
     
     def show_edit_window(self, project_name: str = None):
         """Show the edit window and hide the startup window."""
-        # Switch project if specified
+        # Switch project if specified (lightweight, defer heavy loading)
         if project_name:
-            self.workspace.switch_project(project_name)
-        
-        # Create edit window if it doesn't exist
+            # Use lightweight project switch (don't load all data yet)
+            self.workspace.switch_project_lightweight(project_name)
+
+        # Create edit window if it doesn't exist (this will be done asynchronously)
         if self.edit_window is None:
-            self.edit_window = EditWindow(self.workspace)
+            # Create a placeholder first for fast display
+            self.edit_window = EditWindow(self.workspace, lazy_init=True)
             self.edit_window.go_home.connect(self._on_go_home)
             self.edit_window.destroyed.connect(self._on_edit_window_destroyed)
-            # Show startup window when edit window closes
             self.edit_window.about_to_close.connect(self._on_edit_window_about_to_close)
-        
+
         # Update project reference
         self.edit_window.project = self.workspace.get_project()
-        
-        # Show edit window
+
+        # Show edit window immediately (will complete loading in background)
         self.edit_window.show()
-        
+
         # Hide startup window if it exists
         if self.startup_window:
             self.startup_window.hide()
-    
+
+        # Start async loading in background
+        QTimer.singleShot(0, self._async_load_edit_window_data)
+
+    def _async_load_edit_window_data(self):
+        """Asynchronously load edit window data after window is displayed"""
+        if not self.edit_window:
+            return
+
+        logger.info("Starting async load of edit window data...")
+        start_time = __import__('time').time()
+
+        # Trigger lazy initialization to complete the UI setup
+        if hasattr(self.edit_window, '_complete_lazy_init'):
+            self.edit_window._complete_lazy_init()
+
+        # Load project data in background
+        if hasattr(self.workspace, '_async_load_project_data'):
+            self.workspace._async_load_project_data()
+
+        elapsed = (__import__('time').time() - start_time) * 1000
+        logger.info(f"Async load of edit window data completed in {elapsed:.2f}ms")
+
     def _on_enter_edit_mode(self, project_name: str):
         """Handle entering edit mode from startup window."""
         # Get pending prompt from startup window if available
