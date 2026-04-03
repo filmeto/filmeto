@@ -26,7 +26,7 @@ from utils import dict_utils
 from utils.async_queue_utils import AsyncQueue
 from utils.async_file_io import path_exists, run_coroutine_blocking, to_thread
 from utils.progress_utils import Progress
-from utils.yaml_utils import AsyncFileIoError, load_yaml, load_yaml_async, save_yaml
+from utils.yaml_utils import AsyncFileIoError, load_yaml, load_yaml_async, save_yaml, save_yaml_async
 
 logger = logging.getLogger(__name__)
 
@@ -312,7 +312,7 @@ class TimelineItemTaskManager:
 
             task_fold_path = os.path.join(self.tasks_path, str(num))
             os.makedirs(task_fold_path, exist_ok=True)
-            save_yaml(os.path.join(task_fold_path, "config.yml"), options)
+            await save_yaml_async(os.path.join(task_fold_path, "config.yml"), options)
 
             task = Task(self, project_task_manager, task_fold_path, options)
             self.tasks[str(num)] = task

@@ -2,9 +2,9 @@ import os.path
 import shutil
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict
 
-from PySide6.QtGui import QPixmap, Qt
+from PySide6.QtGui import QImage, QPixmap, Qt
 
 from app.data.task import TaskResult, TimelineItemTaskManager
 from app.data.layer import LayerManager, LayerType
@@ -12,7 +12,17 @@ from app.data.layer import LayerManager, LayerType
 from blinker import signal
 
 from utils import dict_utils
+from utils.async_file_io import run_coroutine_blocking, shutil_copy2, to_thread
+from utils.opencv_utils import get_video_duration_async
 from utils.yaml_utils import load_yaml, save_yaml
+
+
+def _read_image_bytes(path: str) -> bytes:
+    try:
+        with open(path, "rb") as f:
+            return f.read()
+    except OSError:
+        return b""
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +51,8 @@ class TimelineItem:
         self.config_path = os.path.join(self.item_path, "config.yml")
         self.layers_path = os.path.join(self.item_path, "layers")
         self.tasks_path = os.path.join(self.item_path, "tasks")
-        self.config = load_yaml(self.config_path) or {}
+        self._item_config: Dict[str, Any] = {}
+        self._item_config_loaded = False
         self._layer_changed_signal = layer_changed_signal
         self.layer_manager = None
         self._task_manager: TimelineItemTaskManager = None  # Lazy-loaded
@@ -49,24 +60,39 @@ class TimelineItem:
         # Create directories if they don't exist
         os.makedirs(self.layers_path, exist_ok=True)
         os.makedirs(self.tasks_path, exist_ok=True)
-        
-        # Migrate legacy duration from item config to project config
+
+    def _ensure_item_config_loaded(self) -> None:
+        if self._item_config_loaded:
+            return
+        self._item_config = load_yaml(self.config_path) or {}
+        self._item_config_loaded = True
         self._migrate_duration_if_needed()
-        
-        # Initialize duration if not set in project config
         if not self.timeline.project.has_item_duration(self.index):
             self._initialize_duration()
 
+    @property
+    def config(self) -> Dict[str, Any]:
+        self._ensure_item_config_loaded()
+        return self._item_config
 
     def get_image(self):
-        original_pixmap= QPixmap(self.image_path)
-        return original_pixmap
+        return QPixmap(self.image_path)
+
+    async def get_image_async(self) -> QPixmap:
+        """Load pixmap bytes off the thread pool; construct QPixmap on the caller thread."""
+        data = await to_thread(_read_image_bytes, self.image_path)
+        if not data:
+            return QPixmap()
+        image = QImage.fromData(data)
+        if image.isNull():
+            return QPixmap()
+        return QPixmap.fromImage(image)
     
     def _migrate_duration_if_needed(self):
         """Migrate legacy duration from item config to project config"""
-        if 'duration' in self.config:
+        if 'duration' in self._item_config:
             # Found legacy duration in item config - migrate to project config
-            legacy_duration = self.config['duration']
+            legacy_duration = self._item_config['duration']
             self.timeline.project.set_item_duration(self.index, legacy_duration)
             # Remove from item config (optional - could keep for backward compatibility)
             # del self.config['duration']
@@ -76,8 +102,7 @@ class TimelineItem:
         """Initialize duration based on item type (image or video)"""
         if os.path.exists(self.video_path):
             # Video item - get duration from video file
-            from utils.opencv_utils import get_video_duration
-            duration = get_video_duration(self.video_path)
+            duration = run_coroutine_blocking(get_video_duration_async(self.video_path))
             if duration is not None:
                 self.timeline.project.set_item_duration(self.index, duration)
             else:
@@ -102,7 +127,7 @@ class TimelineItem:
             return
         ext = os.path.splitext(source_path)[1].lower() or ".mp3"
         dest = os.path.join(self.item_path, f"audio{ext}")
-        shutil.copy2(source_path, dest)
+        shutil_copy2(source_path, dest)
         layer_manager = self.get_layer_manager()
         layer_manager.add_layer_from_file(dest, LayerType.AUDIO)
 
@@ -111,7 +136,7 @@ class TimelineItem:
             return
         
         # Copy the video file directly to the timeline item's video path
-        shutil.copy2(video_path, self.video_path)
+        shutil_copy2(video_path, self.video_path)
         
         # Get the layer manager and register the video as a new layer
         layer_manager = self.get_layer_manager()
@@ -119,15 +144,16 @@ class TimelineItem:
         layer_manager.add_layer_from_file(self.video_path, LayerType.VIDEO)
         
         # Update duration based on the new video
-        from utils.opencv_utils import get_video_duration
-        duration = get_video_duration(self.video_path)
+        duration = run_coroutine_blocking(get_video_duration_async(self.video_path))
         if duration is not None:
             self.timeline.project.set_item_duration(self.index, duration)
             # Notify timeline to update total duration
             self.timeline._on_item_duration_changed()
 
     def update_config(self,config_path:str):
-        shutil.copy2(config_path, self.config_path)
+        shutil_copy2(config_path, self.config_path)
+        self._item_config_loaded = False
+        self._item_config.clear()
 
     def get_image_path(self):
         return self.image_path
@@ -148,37 +174,40 @@ class TimelineItem:
         return self.image_path
 
     def get_prompt(self, tool_name: str = None):
-        if tool_name and tool_name in self.config:
+        cfg = self.config
+        if tool_name and tool_name in cfg:
             # Try to get prompt from tool-specific section
-            tool_section = self.config.get(tool_name, {})
+            tool_section = cfg.get(tool_name, {})
             return dict_utils.get_value(tool_section, 'prompt')
         
         # Fall back to the general prompt if tool-specific prompt doesn't exist
-        return dict_utils.get_value(self.config, 'prompt')
+        return dict_utils.get_value(cfg, 'prompt')
     
     def set_prompt(self, prompt: str, tool_name: str = None):
+        cfg = self.config
         if tool_name:
             # Initialize the tool section if it doesn't exist
-            if tool_name not in self.config:
-                self.config[tool_name] = {}
+            if tool_name not in cfg:
+                cfg[tool_name] = {}
             
             # Store in the tool-specific section
-            dict_utils.set_value(self.config[tool_name], 'prompt', prompt)
+            dict_utils.set_value(cfg[tool_name], 'prompt', prompt)
         else:
             # Store as general prompt (in root level)
-            dict_utils.set_value(self.config, 'prompt', prompt)
+            dict_utils.set_value(cfg, 'prompt', prompt)
         
         # Also update the config file
         from utils.yaml_utils import save_yaml
-        save_yaml(self.config_path, self.config)
+        save_yaml(self.config_path, cfg)
     
     def get_tool_config(self, tool_name: str) -> dict:
         return self.config.get(tool_name, {})
-    
+
     def set_tool_config(self, tool_name: str, config_data: dict):
-        self.config[tool_name] = config_data or {}
+        cfg = self.config
+        cfg[tool_name] = config_data or {}
         # Update the config file
-        save_yaml(self.config_path, self.config)
+        save_yaml(self.config_path, cfg)
 
     def get_index(self):
         return self.index
@@ -187,8 +216,9 @@ class TimelineItem:
         return self.config
 
     def set_config_value(self,config_key:str,configy_value):
-        self.config[config_key] = configy_value
-        save_yaml(self.config_path, self.config)
+        cfg = self.config
+        cfg[config_key] = configy_value
+        save_yaml(self.config_path, cfg)
 
     def get_config_value(self,config_key:str):
         return self.config.get(config_key, None)
@@ -228,14 +258,9 @@ class TimelineItem:
         tool_name = result.get_task().tool
 
         if tool_name:
-            # Get the current timeline item config
-            current_timeline_config = load_yaml(self.config_path) or {}
-
-            # Add/Update the tool-specific section with the full task config data
-            current_timeline_config[tool_name] = task_config_data
-
-            # Save the updated config back to the timeline item config file
-            save_yaml(self.config_path, current_timeline_config)
+            cfg = self.config
+            cfg[tool_name] = task_config_data
+            save_yaml(self.config_path, cfg)
         else:
             # If no tool name, just update normally
             self.update_config(result.get_task().get_config_path())
@@ -476,6 +501,8 @@ class Timeline:
                     cached_item.config_path = os.path.join(cached_item.item_path, "config.yml")
                     cached_item.layers_path = os.path.join(cached_item.item_path, "layers")
                     cached_item.tasks_path = os.path.join(cached_item.item_path, "tasks")
+                    cached_item._item_config_loaded = False
+                    cached_item._item_config = {}
                     new_cache[cached_idx - 1] = cached_item
             self._item_cache = new_cache
 

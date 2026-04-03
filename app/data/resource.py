@@ -9,7 +9,15 @@ from pathlib import Path
 from blinker import signal
 
 from utils.lazy_load import AsyncLazyLoadMixin
-from utils.yaml_utils import load_yaml, save_yaml
+from utils.async_file_io import (
+    load_yaml_async,
+    path_exists,
+    run_coroutine_blocking,
+    save_yaml_async,
+    shutil_copy2,
+    to_thread,
+)
+from utils.yaml_utils import AsyncFileIoError, save_yaml
 
 logger = logging.getLogger(__name__)
 
@@ -102,8 +110,31 @@ class ResourceManager(AsyncLazyLoadMixin):
         self._ensure_directories()
 
     def _do_load(self) -> None:
-        self._migrate_index_if_needed()
-        self._load_index()
+        run_coroutine_blocking(self._do_load_async())
+
+    async def _do_load_async(self) -> None:
+        await to_thread(self._migrate_index_if_needed)
+        if await path_exists(self.index_file):
+            try:
+                data = await load_yaml_async(self.index_file)
+                if data and "resources" in data:
+                    for resource_data in data["resources"]:
+                        resource = Resource(resource_data)
+                        self._resources_by_name[resource.name] = resource
+                        self._resources_by_id[resource.resource_id] = resource
+                    logger.info("✅ Loaded %s resources from index", len(self._resources_by_name))
+                    self.index_loaded.send(len(self._resources_by_name))
+                else:
+                    logger.warning("⚠️ Empty or invalid index file, starting fresh")
+            except AsyncFileIoError as e:
+                logger.error("❌ Error loading resource index: %s", e)
+                logger.warning("⚠️ Starting with empty index")
+            except Exception as e:
+                logger.error("❌ Error loading resource index: %s", e)
+                logger.warning("⚠️ Starting with empty index")
+        else:
+            logger.info("📝 No existing index found, creating new one")
+            await save_yaml_async(self.index_file, {"resources": []})
 
     def _clear_internal_state(self) -> None:
         self._resources_by_name.clear()
@@ -142,27 +173,6 @@ class ResourceManager(AsyncLazyLoadMixin):
                 logger.info(f"✅ Removed old resource_index.yml from project root (new one already exists)")
             except Exception as e:
                 logger.warning(f"⚠️ Warning: Could not remove old resource_index.yml: {e}")
-    
-    def _load_index(self):
-        """Load resource index from YAML file"""
-        if os.path.exists(self.index_file):
-            try:
-                data = load_yaml(self.index_file)
-                if data and 'resources' in data:
-                    for resource_data in data['resources']:
-                        resource = Resource(resource_data)
-                        self._resources_by_name[resource.name] = resource
-                        self._resources_by_id[resource.resource_id] = resource
-                    logger.info(f"✅ Loaded {len(self._resources_by_name)} resources from index")
-                    self.index_loaded.send(len(self._resources_by_name))
-                else:
-                    logger.warning("⚠️ Empty or invalid index file, starting fresh")
-            except Exception as e:
-                logger.error(f"❌ Error loading resource index: {e}")
-                logger.warning("⚠️ Starting with empty index")
-        else:
-            logger.info("📝 No existing index found, creating new one")
-            self._save_index()
     
     def _save_index(self):
         """Persist resource index to YAML file"""
@@ -285,14 +295,16 @@ class ResourceManager(AsyncLazyLoadMixin):
             relative_path = os.path.join('resources', subdirectory, unique_name)
             destination_path = os.path.join(self.project_path, relative_path)
             
-            # Copy file to resources directory
-            shutil.copy2(source_file_path, destination_path)
-            
+            # Copy file to resources directory (async-backed I/O)
+            shutil_copy2(source_file_path, destination_path)
+
             # Get file size
             file_size = os.path.getsize(destination_path)
-            
-            # Extract metadata
-            extracted_metadata = self._extract_file_metadata(destination_path, media_type)
+
+            # Extract metadata off the event-loop thread when invoked from Qt async loop
+            extracted_metadata = run_coroutine_blocking(
+                to_thread(self._extract_file_metadata, destination_path, media_type)
+            )
             
             # Merge with additional metadata
             if additional_metadata:

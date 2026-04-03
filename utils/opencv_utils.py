@@ -2,6 +2,7 @@
 OpenCV utilities module for image and video processing operations.
 Provides methods for extracting frames from videos using OpenCV as a fallback.
 """
+import asyncio
 import os
 from pathlib import Path
 from typing import Optional, Union
@@ -151,6 +152,11 @@ def get_video_duration(video_path: Union[str, Path]) -> Optional[float]:
         logger.error(f"Exception occurred while getting video duration: {e}", exc_info=True)
 
     return None
+
+
+async def get_video_duration_async(video_path: Union[str, Path]) -> Optional[float]:
+    """Same as ``get_video_duration`` but runs OpenCV work on the asyncio thread pool."""
+    return await asyncio.to_thread(get_video_duration, video_path)
 
 
 def extract_frame_at_time_opencv(video_path: Union[str, Path], output_path: Union[str, Path], 

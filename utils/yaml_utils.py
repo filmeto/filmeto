@@ -1,8 +1,6 @@
 from typing import Any
 
-import yaml
 import logging
-from pathlib import Path
 
 from utils.async_file_io import (
     AsyncFileIoError,
@@ -11,6 +9,7 @@ from utils.async_file_io import (
     AsyncFileWriteError,
     load_yaml_async,
     save_yaml_async,
+    run_coroutine_blocking,
 )
 
 logger = logging.getLogger(__name__)
@@ -28,20 +27,20 @@ __all__ = (
 
 
 def load_yaml(path):
+    """Load YAML via async I/O (thread offload when a loop is already running)."""
     try:
-        with open(path, 'r', encoding='utf-8') as file:
-            data = yaml.safe_load(file)
-        return data
-    except FileNotFoundError:
+        return run_coroutine_blocking(load_yaml_async(path))
+    except AsyncFileNotFoundError:
         logger.error("file not exists")
-    except yaml.YAMLError as e:
-        logger.error(f"YAML error: {e}")
+        return None
+    except AsyncFileParseError as e:
+        logger.error("YAML error: %s", e)
+        return None
 
-def save_yaml(path,dict:Any):
+
+def save_yaml(path, data: Any) -> None:
+    """Persist YAML via async I/O (thread offload when a loop is already running)."""
     try:
-        with open(path, 'w', encoding='utf-8') as file:
-            yaml.safe_dump(dict, file,encoding='utf-8',allow_unicode=True)
-    except FileNotFoundError:
-        logger.error("file not exists")
-    except yaml.YAMLError as e:
-        logger.error(f"YAML error: {e}")
+        run_coroutine_blocking(save_yaml_async(path, data))
+    except (AsyncFileNotFoundError, AsyncFileParseError, AsyncFileWriteError) as e:
+        logger.error("YAML save error: %s", e)

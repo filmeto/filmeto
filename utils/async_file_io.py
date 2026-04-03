@@ -12,6 +12,7 @@ import concurrent.futures
 import json
 import logging
 import os
+import shutil
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Coroutine, List, Optional, TypeVar
@@ -167,3 +168,12 @@ async def list_dir_names(path: str | Path) -> List[str]:
 
 async def path_exists(path: str | Path) -> bool:
     return await to_thread(os.path.exists, str(path))
+
+
+async def shutil_copy2_async(src: str | Path, dst: str | Path) -> None:
+    await to_thread(shutil.copy2, str(src), str(dst))
+
+
+def shutil_copy2(src: str | Path, dst: str | Path) -> None:
+    """Copy a file without blocking the caller's event loop (uses thread pool + asyncio)."""
+    run_coroutine_blocking(shutil_copy2_async(src, dst))
