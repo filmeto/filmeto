@@ -13,7 +13,14 @@ class LeftPanelDialog(QDialog):
     # 服务器状态按钮点击信号
     server_status_clicked = Signal()
 
-    def __init__(self, parent=None, left_panel_width=200, show_right_title_bar=True, workspace=None):
+    def __init__(
+        self,
+        parent=None,
+        left_panel_width=200,
+        show_right_title_bar=True,
+        workspace=None,
+        defer_server_status=False,
+    ):
         super().__init__(parent)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
         self.setAttribute(Qt.WA_TranslucentBackground)
@@ -21,6 +28,9 @@ class LeftPanelDialog(QDialog):
 
         # Store workspace for server status widget
         self._workspace = workspace
+        self._defer_server_status = defer_server_status
+        self._server_status_placeholder = None
+        self._server_status_title_layout = None
 
         # 应用全局对话框样式
         self.setStyleSheet(DIALOG_STYLE)
@@ -86,11 +96,27 @@ class LeftPanelDialog(QDialog):
 
             # Server status button (if workspace is provided)
             self.server_status_widget = None
+            self._server_status_title_layout = title_bar_layout
             if self._workspace:
-                from app.ui.server_status import ServerStatusWidget
-                self.server_status_widget = ServerStatusWidget(self._workspace)
-                self.server_status_widget.show_status_dialog.connect(self._on_server_status_clicked)
-                title_bar_layout.addWidget(self.server_status_widget.status_button)
+                if defer_server_status:
+                    self._server_status_placeholder = QWidget()
+                    self._server_status_placeholder.setFixedSize(100, 32)
+                    self._server_status_placeholder.setObjectName(
+                        "LeftPanelDialogServerStatusPlaceholder"
+                    )
+                    self._server_status_placeholder.setStyleSheet(
+                        "QWidget { background-color: rgba(60, 63, 65, 0.35); "
+                        "border-radius: 6px; }"
+                    )
+                    title_bar_layout.addWidget(self._server_status_placeholder)
+                else:
+                    from app.ui.server_status import ServerStatusWidget
+
+                    self.server_status_widget = ServerStatusWidget(self._workspace)
+                    self.server_status_widget.show_status_dialog.connect(
+                        self._on_server_status_clicked
+                    )
+                    title_bar_layout.addWidget(self.server_status_widget.status_button)
 
             # 设置按钮
             self.settings_button = QPushButton("\ue60f")  # settings icon
@@ -123,6 +149,28 @@ class LeftPanelDialog(QDialog):
         self.drag_position = QPoint()
         self.drag_enabled = True
 
+    def attach_server_status_widget(self):
+        """Create and show the server status control (when deferred at construction)."""
+        if self.server_status_widget is not None:
+            return
+        if not self._workspace or self._server_status_placeholder is None:
+            return
+
+        from app.ui.server_status import ServerStatusWidget
+
+        layout = self._server_status_title_layout
+        if layout is None:
+            return
+
+        self.server_status_widget = ServerStatusWidget(self._workspace)
+        self.server_status_widget.show_status_dialog.connect(self._on_server_status_clicked)
+        layout.replaceWidget(
+            self._server_status_placeholder,
+            self.server_status_widget.status_button,
+        )
+        self._server_status_placeholder.deleteLater()
+        self._server_status_placeholder = None
+
     def _on_settings_clicked(self):
         """设置按钮点击处理"""
         self.settings_clicked.emit()
@@ -140,14 +188,11 @@ class LeftPanelDialog(QDialog):
 
             # 如果点击在MacTitleBar区域内，检查是否点击在QML按钮上
             if mac_buttons_rect.contains(click_pos):
-                # MacTitleBar现在使用QQuickWidget，其中的按钮是QML元素
-                # 检查是否有_quick属性（QQuickWidget），如果有则让QML处理点击
-                quick_widget = getattr(self.mac_control_buttons, '_quick', None)
+                # Legacy: QML MacTitleBar used _quick; pure QWidget traffic lights handle their own clicks.
+                quick_widget = getattr(self.mac_control_buttons, "_quick", None)
                 if quick_widget is not None:
-                    # 检查点击是否在QQuickWidget区域内
                     quick_rect = quick_widget.geometry()
                     if quick_rect.contains(click_pos - mac_buttons_rect.topLeft()):
-                        # 让QML处理点击事件，不进行拖拽
                         super().mousePressEvent(event)
                         return
 

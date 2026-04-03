@@ -9,6 +9,10 @@
         <source>Timeline</source>
         <translation>TimeLine</translation>
     </message>
+    <message>
+        <source>Loading</source>
+        <translation>加载中...</translation>
+    </message>
     
     <!-- Top Bar -->
     <message>

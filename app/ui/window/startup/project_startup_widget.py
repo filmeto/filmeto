@@ -9,7 +9,7 @@ import logging
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel
 )
-from PySide6.QtCore import Signal, Qt
+from PySide6.QtCore import Signal, Qt, QTimer
 
 from app.data.workspace import Workspace
 from app.ui.base_widget import BaseWidget
@@ -29,7 +29,14 @@ class ProjectStartupWidget(BaseWidget):
 
     enter_edit_mode = Signal(str)  # Emits project name when entering edit mode
 
-    def __init__(self, window, workspace: Workspace, project_name: str = None, parent=None):
+    def __init__(
+        self,
+        window,
+        workspace: Workspace,
+        project_name: str = None,
+        parent=None,
+        defer_components: bool = False,
+    ):
         super().__init__(workspace)
         if parent:
             self.setParent(parent)
@@ -37,78 +44,141 @@ class ProjectStartupWidget(BaseWidget):
         self.window = window
         self.project_name = project_name
         self.setObjectName("project_startup_widget")
+        self._defer_components = defer_components
+        self._work_area_attached = not defer_components
 
         self._setup_ui()
-        self._connect_signals()
-        self._apply_styles()
-
-        # Set the project info if a project name is provided
-        if self.project_name:
-            self.set_project(self.project_name)
+        if not defer_components:
+            self._connect_signals()
+            self._apply_styles()
+            if self.project_name:
+                self.set_project(self.project_name)
+        else:
+            self._apply_styles()
 
     def _setup_ui(self):
         """Set up the UI components."""
-        from PySide6.QtWidgets import QSplitter, QFrame
-        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QSplitter
 
-        # Track if member double-click signal is connected
         self._member_double_clicked_connected = False
 
-        # Main layout
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # Create main splitter for first level split (work area and right sidebar)
         self.main_splitter = QSplitter(Qt.Horizontal)
-        # Set the main splitter to have no handle (fixed position)
         self.main_splitter.setHandleWidth(0)
 
-        # Create the work area splitter (second level split)
         self.work_area_splitter = QSplitter(Qt.Horizontal)
 
-        # Create the chat component (left side of work area)
-        self.chat_tab = QWidget()
-        self._setup_chat_tab(self.chat_tab)
-        self.work_area_splitter.addWidget(self.chat_tab)
+        if self._defer_components:
+            self.agent_chat_component = None
+            self.right_panel_switcher = None
+            self.right_sidebar = None
 
-        # Create the right panel switcher for the startup window (right side of work area)
-        from app.ui.window.startup.panel_switcher import StartupWindowWorkspaceTopRightBar
-        self.right_panel_switcher = StartupWindowWorkspaceTopRightBar(self.workspace, self)
-        self.work_area_splitter.addWidget(self.right_panel_switcher)
+            self.chat_tab = QWidget()
+            self.chat_tab.setObjectName("startup_chat_skeleton")
+            chat_lay = QVBoxLayout(self.chat_tab)
+            chat_lay.setContentsMargins(0, 0, 0, 0)
+            chat_hint = QLabel(tr("Loading"))
+            chat_hint.setAlignment(Qt.AlignCenter)
+            chat_hint.setStyleSheet("color: #808080; font-size: 14px;")
+            chat_lay.addStretch()
+            chat_lay.addWidget(chat_hint)
+            chat_lay.addStretch()
+            self.work_area_splitter.addWidget(self.chat_tab)
 
-        # Set size policies for the work area splitter
-        self.work_area_splitter.setStretchFactor(0, 1)  # Chat area expands
-        self.work_area_splitter.setStretchFactor(1, 0)  # Panel area doesn't expand by default
+            self._panel_shell = QWidget()
+            self._panel_shell.setObjectName("startup_panel_skeleton")
+            self._panel_shell.setMinimumWidth(300)
+            self._panel_shell.setMaximumWidth(600)
+            ps_lay = QVBoxLayout(self._panel_shell)
+            ps_lay.setContentsMargins(8, 8, 8, 8)
+            ps_lay.addStretch()
+            panel_hint = QLabel(tr("Loading"))
+            panel_hint.setAlignment(Qt.AlignCenter)
+            panel_hint.setStyleSheet("color: #808080; font-size: 14px;")
+            ps_lay.addWidget(panel_hint)
+            ps_lay.addStretch()
+            self.work_area_splitter.addWidget(self._panel_shell)
+        else:
+            self.chat_tab = QWidget()
+            self._setup_chat_tab(self.chat_tab)
+            self.work_area_splitter.addWidget(self.chat_tab)
 
-        # Set minimum and maximum sizes for the right panel area
-        # Get the right panel widget and set its size constraints
-        self.right_panel_switcher.setMinimumWidth(300)
-        self.right_panel_switcher.setMaximumWidth(600)
+            from app.ui.window.startup.panel_switcher import StartupWindowWorkspaceTopRightBar
 
-        # Add the work area splitter to the main splitter
+            self.right_panel_switcher = StartupWindowWorkspaceTopRightBar(self.workspace, self)
+            self.work_area_splitter.addWidget(self.right_panel_switcher)
+
+            self.right_panel_switcher.setMinimumWidth(300)
+            self.right_panel_switcher.setMaximumWidth(600)
+
+        self.work_area_splitter.setStretchFactor(0, 1)
+        self.work_area_splitter.setStretchFactor(1, 0)
+
         self.main_splitter.addWidget(self.work_area_splitter)
 
-        # Create the right sidebar for switching between panels
-        from app.ui.window.startup.right_side_bar import StartupWindowRightSideBar
-        self.right_sidebar = StartupWindowRightSideBar(self.workspace, self)
-        # Set fixed width for the right sidebar
-        self.right_sidebar.setFixedWidth(40)
-        self.main_splitter.addWidget(self.right_sidebar)
+        if self._defer_components:
+            self._sidebar_shell = QWidget()
+            self._sidebar_shell.setObjectName("startup_sidebar_skeleton")
+            self._sidebar_shell.setFixedWidth(40)
+            self.main_splitter.addWidget(self._sidebar_shell)
+        else:
+            from app.ui.window.startup.right_side_bar import StartupWindowRightSideBar
 
-        # Set the main splitter's stretch factors
-        self.main_splitter.setStretchFactor(0, 1)  # Work area expands
-        self.main_splitter.setStretchFactor(1, 0)  # Sidebar stays fixed
+            self.right_sidebar = StartupWindowRightSideBar(self.workspace, self)
+            self.right_sidebar.setFixedWidth(40)
+            self.main_splitter.addWidget(self.right_sidebar)
 
-        # Add the main splitter to the main layout
+        self.main_splitter.setStretchFactor(0, 1)
+        self.main_splitter.setStretchFactor(1, 0)
+
         main_layout.addWidget(self.main_splitter)
 
-        # Connect the right sidebar button clicks to the panel switcher
-        self.right_sidebar.button_clicked.connect(self.right_panel_switcher.switch_to_panel)
+        if not self._defer_components:
+            self.right_sidebar.button_clicked.connect(self.right_panel_switcher.switch_to_panel)
+            QTimer.singleShot(
+                0,
+                lambda: self.right_sidebar.set_selected_button("members", emit_signal=True),
+            )
 
-        # Trigger the default panel to load after the UI is set up
-        from PySide6.QtCore import QTimer
-        QTimer.singleShot(0, lambda: self.right_sidebar.set_selected_button('members', emit_signal=True))
+    def attach_work_area_components(self):
+        """Replace skeleton widgets with chat, panel switcher, and sidebar (main-thread)."""
+        if self._work_area_attached:
+            return
+        self._work_area_attached = True
+
+        new_chat_tab = QWidget()
+        self._setup_chat_tab(new_chat_tab)
+        self.work_area_splitter.replaceWidget(0, new_chat_tab)
+        self.chat_tab.deleteLater()
+        self.chat_tab = new_chat_tab
+
+        from app.ui.window.startup.panel_switcher import StartupWindowWorkspaceTopRightBar
+
+        self.right_panel_switcher = StartupWindowWorkspaceTopRightBar(self.workspace, self)
+        self.right_panel_switcher.setMinimumWidth(300)
+        self.right_panel_switcher.setMaximumWidth(600)
+        self.work_area_splitter.replaceWidget(1, self.right_panel_switcher)
+        self._panel_shell.deleteLater()
+
+        from app.ui.window.startup.right_side_bar import StartupWindowRightSideBar
+
+        self.right_sidebar = StartupWindowRightSideBar(self.workspace, self)
+        self.right_sidebar.setFixedWidth(40)
+        self.main_splitter.replaceWidget(1, self.right_sidebar)
+        self._sidebar_shell.deleteLater()
+
+        self.right_sidebar.button_clicked.connect(self.right_panel_switcher.switch_to_panel)
+        self._connect_signals()
+        QTimer.singleShot(
+            0,
+            lambda: self.right_sidebar.set_selected_button("members", emit_signal=True),
+        )
+
+        if self.project_name:
+            self.set_project(self.project_name)
 
     def _setup_chat_tab(self, tab: QWidget):
         """Set up the chat tab."""
@@ -200,9 +270,10 @@ class ProjectStartupWidget(BaseWidget):
 
     def set_project(self, project_name: str):
         """Set the project to display."""
-        # Store previous project name to detect actual project switches
         previous_project = self.project_name
         self.project_name = project_name
+        if not self._work_area_attached:
+            return
 
         # Update the agent chat component with the new project context
         # Only clear chat history if actually switching to a different project

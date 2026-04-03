@@ -201,13 +201,10 @@ class App():
                 workspacePath = os.path.join(self.main_path, "workspace")
                 self._workspace = Workspace(workspacePath, "demo", load_data=False, defer_heavy_init=True)
 
-            # Initialize server manager (defer plugin discovery)
-            with TimingContext("Server manager initialization"):
-                logger.info("Initializing server manager...")
-                workspacePath = os.path.join(self.main_path, "workspace")
-                self.server_manager = ServerManager(workspacePath, defer_plugin_discovery=True)
-                self._server = self.server_manager.get_server("local")
-            
+            # ServerManager is created on the first event-loop tick so the window can paint first
+            self.server_manager = None
+            self._server = None
+
             # Create window manager and show startup window FIRST (for fast UI display)
             with TimingContext("Window manager creation"):
                 logger.info("Creating window manager...")
@@ -219,21 +216,13 @@ class App():
                 logger.info("Refreshing startup page project list...")
                 self.window_manager.refresh_projects()
 
-            # Complete deferred initializations ASYNCHRONOUSLY (after window is shown)
-            # This runs in the background after UI is displayed
             with TimingContext("Deferred initializations"):
-                logger.info("Scheduling deferred workspace initializations in background...")
+                logger.info("Scheduling post-first-frame bootstrap (server + workspace deferrals)...")
                 from PySide6.QtCore import QTimer
-                QTimer.singleShot(0, self._complete_deferred_init)
+                QTimer.singleShot(0, self._bootstrap_after_first_frame)
 
             # Note: Project data loading (_load_project_tasks) is now deferred to on-demand
             # Managers pre-loading has been removed (data loads on first access)
-
-            # Complete server plugin discovery in background
-            with TimingContext("Server plugin discovery"):
-                logger.info("Completing server plugin discovery in background...")
-                if hasattr(self.server_manager, '_complete_plugin_discovery'):
-                    QTimer.singleShot(0, self.server_manager._complete_plugin_discovery)
             
             # Register cleanup on application exit
             logger.info("Registering cleanup handlers...")
@@ -258,6 +247,23 @@ class App():
     
 
     
+    def _init_server_manager_if_needed(self):
+        """Create ServerManager + default server once (after UI first frame or on demand)."""
+        if self.server_manager is not None:
+            return
+        workspacePath = os.path.join(self.main_path, "workspace")
+        with TimingContext("Server manager initialization (deferred)"):
+            logger.info("Initializing server manager...")
+            self.server_manager = ServerManager(workspacePath, defer_plugin_discovery=True)
+            self._server = self.server_manager.get_server("local")
+
+    def _bootstrap_after_first_frame(self):
+        """Runs on timer 0: load servers, then workspace/plugin deferrals (order preserved)."""
+        self._init_server_manager_if_needed()
+        self._complete_deferred_init()
+        if hasattr(self.server_manager, "_complete_plugin_discovery"):
+            self.server_manager._complete_plugin_discovery()
+
     def _load_project_tasks(self):
         """Load all tasks from all timeline items"""
         logger.info("⏱️  [BackgroundInit] Loading all project tasks...")
@@ -460,6 +466,7 @@ class App():
 
     @property
     def server(self):
+        self._init_server_manager_if_needed()
         return self._server
 if __name__ == "__main__":
     App()

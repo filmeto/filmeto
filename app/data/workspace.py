@@ -18,6 +18,15 @@ logger = logging.getLogger(__name__)
 
 class Workspace():
 
+    @property
+    def project(self) -> Project:
+        self._ensure_bootstrap_project()
+        return self._project
+
+    @project.setter
+    def project(self, value: Project):
+        self._project = value
+
     def __init__(self, workspace_path:str, project_name:str, load_data:bool = True, defer_heavy_init:bool = False):
         init_start = time.time()
         logger.info(f"⏱️  [Workspace] Starting initialization (defer_heavy_init={defer_heavy_init})...")
@@ -34,33 +43,38 @@ class Workspace():
         logger.info(f"⏱️  [Workspace] Creating ProjectManager (defer_scan={defer_heavy_init})...")
         self.project_manager = ProjectManager(workspace_path, defer_scan=defer_heavy_init)
 
-        # Check if project exists, create if it doesn't
-        project = self.project_manager.get_project(project_name)
-        if project is None:
-            # If project is not in memory (possibly due to deferred loading),
-            # check if it exists on disk
+        self._project = None
+        if defer_heavy_init:
             projects_dir = os.path.join(workspace_path, "projects")
             project_path_on_disk = os.path.join(projects_dir, project_name)
-
-            if os.path.exists(project_path_on_disk):
-                # Project exists on disk but wasn't loaded, so load it manually
-                logger.info(f"Project {project_name} exists on disk, loading it...")
-                project = Project(self, project_path_on_disk, project_name, load_data=load_data)
-                self.project_manager.projects[project_name] = project
-            else:
-                # Project doesn't exist anywhere, create it
+            if not os.path.exists(project_path_on_disk):
                 logger.info(f"Project {project_name} does not exist, creating new project...")
-                project = self.project_manager.create_project(project_name)
+                self._project = self.project_manager.create_project(project_name)
+            else:
+                logger.info(
+                    f"Project {project_name} on disk; full Project instance deferred "
+                    f"(saves heavy init before first UI access)"
+                )
         else:
-            logger.info(f"Project {project_name} already exists, loading existing project...")
+            loaded = self.project_manager.get_project(project_name)
+            if loaded is None:
+                projects_dir = os.path.join(workspace_path, "projects")
+                project_path_on_disk = os.path.join(projects_dir, project_name)
+                if os.path.exists(project_path_on_disk):
+                    logger.info(f"Project {project_name} exists on disk, loading it...")
+                    self._project = Project(
+                        self, project_path_on_disk, project_name, load_data=load_data
+                    )
+                    self.project_manager.projects[project_name] = self._project
+                else:
+                    logger.info(f"Project {project_name} does not exist, creating new project...")
+                    self._project = self.project_manager.create_project(project_name)
+            else:
+                logger.info(f"Project {project_name} already exists, loading existing project...")
+                self._project = loaded
 
-        self.project = project
-
-        # Note: ensure_projects_loaded() is now called on-demand by UI components
-        # (e.g., ProjectListWidget) when they need to display the project list.
-        # This improves startup performance by deferring project scanning.
         pm_time = (time.time() - pm_start) * 1000
-        logger.info(f"⏱️  [Workspace] ProjectManager and Project created in {pm_time:.2f}ms")
+        logger.info(f"⏱️  [Workspace] ProjectManager ready in {pm_time:.2f}ms")
 
         # Initialize PromptManager (lightweight - just sets up directory)
         prompt_start = time.time()
@@ -89,16 +103,27 @@ class Workspace():
         logger.info(f"⏱️  [Workspace] Initialization complete in {total_time:.2f}ms")
         return
 
+    def _ensure_bootstrap_project(self) -> None:
+        """Instantiate the default project when defer_heavy_init left it unloaded."""
+        if self._project is not None:
+            return
+        if not getattr(self, "_defer_heavy_init", False):
+            return
+        pn = self.project_name
+        pp = os.path.join(self.workspace_path, "projects", pn)
+        if not os.path.exists(pp):
+            self._project = self.project_manager.create_project(pn)
+            return
+        logger.info("⏱️  [Workspace] Lazy-loading project '%s' on first access", pn)
+        t0 = time.time()
+        self._project = Project(self, pp, pn, load_data=False)
+        self.project_manager.projects[pn] = self._project
+        logger.info(
+            "⏱️  [Workspace] Lazy project init done in %.2fms", (time.time() - t0) * 1000
+        )
+
     def get_project(self):
         """Get the current project instance."""
-        # Ensure deferred initializations are complete before accessing project
-        # This is called from UI threads, so we need to ensure workspace is ready
-        if hasattr(self, '_defer_heavy_init') and self._defer_heavy_init:
-            # If heavy init was deferred, it should be completed in background
-            # For now, just return the project (it should be initialized)
-            # The actual heavy operations (ProjectManager scan, Settings load, Plugins discovery)
-            # are done in background and don't block project access
-            pass
         return self.project
 
     def get_project_manager(self):

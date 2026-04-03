@@ -156,7 +156,7 @@ class ProjectListWidget(BaseWidget):
     project_edit = Signal(str)  # Emits project name when edit is requested
     project_created = Signal(str)  # Emits project name when a new project is created
     
-    def __init__(self, workspace: Workspace, parent=None):
+    def __init__(self, workspace: Workspace, parent=None, defer_projects_load: bool = False):
         super().__init__(workspace)
         if parent:
             self.setParent(parent)
@@ -168,7 +168,8 @@ class ProjectListWidget(BaseWidget):
         self._project_items = {}
         
         self._setup_ui()
-        self._load_projects()
+        if not defer_projects_load:
+            self._load_projects()
         self._apply_styles()
     
     def _setup_ui(self):

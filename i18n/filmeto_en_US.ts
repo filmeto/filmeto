@@ -9,6 +9,10 @@
         <source>TimeLine</source>
         <translation>Timeline</translation>
     </message>
+    <message>
+        <source>Loading</source>
+        <translation>Loading</translation>
+    </message>
     
     <!-- Top Bar -->
     <message>

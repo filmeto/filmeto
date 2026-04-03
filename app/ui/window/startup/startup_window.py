@@ -7,15 +7,21 @@ Independent window for startup/home mode with its own size management.
 import json
 import os
 import logging
-from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (
+    QApplication,
+    QWidget,
+    QVBoxLayout,
+    QLabel,
+    QSplitter,
+    QScrollArea,
+    QFrame,
+)
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QKeyEvent
 
 from app.data.workspace import Workspace
 from app.ui.dialog.left_panel_dialog import LeftPanelDialog
 from app.ui.window.startup.project_list_widget import ProjectListWidget
-from app.ui.window.startup.project_info_widget import ProjectInfoWidget
-from app.ui.prompt.agent_prompt_widget import AgentPromptWidget
 
 logger = logging.getLogger(__name__)
 
@@ -31,31 +37,42 @@ class StartupWindow(LeftPanelDialog):
     enter_edit_mode = Signal(str)  # Emits project name when entering edit mode
 
     def __init__(self, workspace: Workspace):
-        super(StartupWindow, self).__init__(parent=None, left_panel_width=250, workspace=workspace)
+        super(StartupWindow, self).__init__(
+            parent=None,
+            left_panel_width=250,
+            workspace=workspace,
+            defer_server_status=True,
+        )
         self.workspace = workspace
-        
+
         # Store pending prompt to be set in agent panel after entering edit mode
         self._pending_prompt = None
-        
+
         # Window size storage
         self._window_sizes = {}
         self._load_window_sizes()
-        
-        # Set up the UI
-        self._setup_ui()
-        
-        # Set initial window size (ensure not maximized)
+
+        self._startup_ui_ready = False
+        self._pending_project_refresh = False
+        self._startup_stages_cancelled = False
+        self._project_list_signals_connected = False
+        self.project_list = None
+
+        self.settings_clicked.connect(self._on_settings_clicked)
+        self.server_status_clicked.connect(self._on_server_status_clicked)
+
+        self._setup_shell_layout()
+        self._apply_styles()
+
         width, height = self._get_window_size()
         self.resize(width, height)
-        
-        # Ensure window is in normal state (not maximized)
         self.setWindowState(Qt.WindowNoState)
-        
-        # Center the window on screen
         screen = self.screen().availableGeometry()
         x = (screen.width() - width) // 2
         y = (screen.height() - height) // 2
         self.move(x, y)
+
+        QTimer.singleShot(0, self._startup_stage_install_project_list)
     
     def _load_window_sizes(self):
         """Load stored window sizes from file."""
@@ -111,31 +128,23 @@ class StartupWindow(LeftPanelDialog):
     
     def closeEvent(self, event):
         """Handle close event to save current window size."""
+        self._startup_stages_cancelled = True
         self._save_window_sizes()
-        # Closing startup window should close the application
         from PySide6.QtWidgets import QApplication
+
         QApplication.instance().quit()
         event.accept()
 
     def reject(self):
         """Handle close button click (from MacTitleBar)."""
+        self._startup_stages_cancelled = True
         self._save_window_sizes()
-        # Closing startup window should close the application
         from PySide6.QtWidgets import QApplication
+
         QApplication.instance().quit()
         super().reject()
-    
-    def _setup_ui(self):
-        """Set up the UI with left panel and right work area."""
-        # Left panel: Project list with header, scrollable list, and toolbar
-        # The ProjectListWidget already has the correct layout structure:
-        # - Header (top, fixed)
-        # - Scrollable project list (middle, stretches)
-        # - Toolbar (bottom, fixed)
-        self.project_list = ProjectListWidget(self.workspace)
 
-        # Clear the default left content layout and set up proper layout
-        # Remove the default margins and spacing to let ProjectListWidget control its own layout
+    def _clear_left_content(self):
         while self.left_content_layout.count():
             item = self.left_content_layout.takeAt(0)
             if item.widget():
@@ -143,52 +152,142 @@ class StartupWindow(LeftPanelDialog):
             elif item.layout():
                 item.layout().deleteLater()
 
-        # Set margins to 0 so ProjectListWidget fills the entire left panel
+    def _build_left_panel_shell(self) -> QWidget:
+        """Mirror ProjectListWidget splitter geometry (header / list / toolbar)."""
+        root = QWidget()
+        root.setObjectName("startup_left_panel_shell")
+        layout = QVBoxLayout(root)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        splitter = QSplitter(Qt.Vertical)
+        splitter.setObjectName("startup_left_shell_splitter")
+        splitter.setChildrenCollapsible(False)
+        splitter.setHandleWidth(1)
+
+        header = QFrame()
+        header.setFixedHeight(80)
+        header.setStyleSheet(
+            "QFrame { background-color: rgba(45, 45, 48, 0.55); border-radius: 4px; }"
+        )
+        splitter.addWidget(header)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setStyleSheet(
+            "QScrollArea { background-color: transparent; border: none; }"
+            "QScrollArea > QWidget > QWidget { background-color: transparent; }"
+        )
+        inner = QWidget()
+        inner_lay = QVBoxLayout(inner)
+        inner_lay.setContentsMargins(8, 8, 8, 8)
+        inner_lay.setSpacing(4)
+        for _ in range(5):
+            row = QFrame()
+            row.setFixedHeight(48)
+            row.setStyleSheet(
+                "QFrame { background-color: rgba(60, 63, 65, 0.45); border-radius: 6px; }"
+            )
+            inner_lay.addWidget(row)
+        inner_lay.addStretch()
+        scroll.setWidget(inner)
+        splitter.addWidget(scroll)
+
+        toolbar = QFrame()
+        toolbar.setFixedHeight(56)
+        toolbar.setStyleSheet(
+            "QFrame { background-color: transparent; "
+            "border-top: 1px solid rgba(60, 63, 65, 0.5); }"
+        )
+        splitter.addWidget(toolbar)
+
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        splitter.setStretchFactor(2, 0)
+        layout.addWidget(splitter, 1)
+        return root
+
+    def _setup_shell_layout(self):
+        """Shell matching final layout; heavy widgets load in later stages."""
+        self._clear_left_content()
         self.left_content_layout.setContentsMargins(0, 0, 0, 0)
         self.left_content_layout.setSpacing(0)
+        self.left_content_layout.addWidget(self._build_left_panel_shell(), 1)
 
-        # Add project list widget, it will stretch vertically
-        self.left_content_layout.addWidget(self.project_list, 1)
-
-        # Set right title bar text
         self.set_right_title("Filmeto")
 
-        # Right work area: Using ProjectStartupWidget which contains the tab functionality
+        while self.right_work_layout.count():
+            item = self.right_work_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+            elif item.layout():
+                item.layout().deleteLater()
+
+        self.right_work_layout.setContentsMargins(0, 0, 0, 0)
+        self.right_work_layout.setSpacing(0)
+
         from app.ui.window.startup.project_startup_widget import ProjectStartupWidget
-        # Initialize with the selected project from the project list
-        selected_project = self.project_list.get_selected_project()
-        self.startup_widget = ProjectStartupWidget(self, self.workspace, selected_project)
 
-        # Connect the enter_edit_mode signal from the startup widget
+        self.startup_widget = ProjectStartupWidget(
+            self,
+            self.workspace,
+            None,
+            defer_components=True,
+        )
         self.startup_widget.enter_edit_mode.connect(self._on_edit_project_from_widget)
-
-        # Set the right work widget and adjust margins to 0 on the right
         self.set_right_work_widget(self.startup_widget)
-        # Adjust the right work layout margins to have no margins
-        self.right_work_layout.setContentsMargins(0, 0, 0, 0)  # Left, Top, Right, Bottom
 
-        # Connect signals
-        self._connect_signals()
-
-        # Apply styles
-        self._apply_styles()
-    
-    def _connect_signals(self):
-        """Connect signals between components."""
-        # Project selection changes - update the ProjectStartupWidget to show the selected project
+    def _connect_project_list_signals(self):
+        if self._project_list_signals_connected or self.project_list is None:
+            return
+        self._project_list_signals_connected = True
         self.project_list.project_selected.connect(self._on_project_selected_in_list)
-
-        # Edit project (from list) - these will now be handled by the ProjectStartupWidget
         self.project_list.project_edit.connect(self.startup_widget._on_edit_project)
-
-        # New project created - update the ProjectStartupWidget
         self.project_list.project_created.connect(self._on_project_created_in_list)
 
-        # Settings button click
-        self.settings_clicked.connect(self._on_settings_clicked)
+    def _startup_stage_install_project_list(self):
+        if self._startup_stages_cancelled:
+            return
+        self.project_list = ProjectListWidget(self.workspace, defer_projects_load=True)
 
-        # Server status button click
-        self.server_status_clicked.connect(self._on_server_status_clicked)
+        self._clear_left_content()
+        self.left_content_layout.setContentsMargins(0, 0, 0, 0)
+        self.left_content_layout.setSpacing(0)
+        self.left_content_layout.addWidget(self.project_list, 1)
+
+        self._connect_project_list_signals()
+        QTimer.singleShot(0, self._startup_stage_load_projects)
+
+    def _startup_stage_load_projects(self):
+        if self._startup_stages_cancelled:
+            return
+        self.project_list.refresh()
+        QTimer.singleShot(0, self._startup_stage_server_status)
+
+    def _startup_stage_server_status(self):
+        if self._startup_stages_cancelled:
+            return
+        self.attach_server_status_widget()
+        QTimer.singleShot(0, self._startup_stage_work_area)
+
+    def _startup_stage_work_area(self):
+        if self._startup_stages_cancelled:
+            return
+        self.startup_widget.attach_work_area_components()
+        selected = self.project_list.get_selected_project()
+        if selected:
+            self.startup_widget.set_project(selected)
+        self._apply_styles()
+        QTimer.singleShot(0, self._startup_stage_finalize)
+
+    def _startup_stage_finalize(self):
+        if self._startup_stages_cancelled:
+            return
+        self._startup_ui_ready = True
+        if self._pending_project_refresh:
+            self._pending_project_refresh = False
+            self._do_refresh_projects()
     
     def _apply_styles(self):
         """Apply styles to the widget."""
@@ -197,6 +296,12 @@ class StartupWindow(LeftPanelDialog):
                 background-color: #2b2b2b;
             }
             QWidget#startup_prompt_container {
+                background-color: #2b2b2b;
+            }
+            QWidget#startup_chat_skeleton,
+            QWidget#startup_panel_skeleton,
+            QWidget#startup_sidebar_skeleton,
+            QWidget#project_startup_widget {
                 background-color: #2b2b2b;
             }
         """)
@@ -307,18 +412,23 @@ class StartupWindow(LeftPanelDialog):
     
     def refresh_projects(self):
         """Refresh the project list."""
-        # Refresh the project list in the left panel
-        self.project_list.refresh()
+        if not self._startup_ui_ready:
+            self._pending_project_refresh = True
+            return
+        self._do_refresh_projects()
 
-        # Also refresh the project info in the startup widget
+    def _do_refresh_projects(self):
+        self.project_list.refresh()
         selected_project = self.project_list.get_selected_project()
         if selected_project:
             self.startup_widget.set_project(selected_project)
 
     def get_selected_project(self) -> str:
         """Get the currently selected project name."""
-        # Get the selected project from the project list
-        return self.project_list.get_selected_project()
+        if self.project_list is None:
+            return ""
+        name = self.project_list.get_selected_project()
+        return name or ""
     
     def keyPressEvent(self, event: QKeyEvent):
         """Handle keyboard shortcuts."""
