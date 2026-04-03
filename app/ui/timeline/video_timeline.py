@@ -183,17 +183,11 @@ class VideoTimeline(BaseTaskWidget, AsyncDataLoaderMixin):
         timeline_index = card_index + 1
         item = self._timeline.get_item(timeline_index)
         path = item.get_image_path()
-        mtime = 0
-        if path and os.path.isfile(path):
-            try:
-                mtime = int(os.path.getmtime(path))
-            except OSError:
-                mtime = 0
-        return (card_index, path, mtime)
+        return (card_index, path)
 
     def _load_timeline_card_thumbnail(self, key):
         """Background thread: disk + QImage only (no QPixmap here)."""
-        _, image_path, _mtime = key
+        _card_index, image_path = key
         if not image_path or not os.path.isfile(image_path):
             return None
         img = QImage(image_path)

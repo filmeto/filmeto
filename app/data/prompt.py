@@ -5,7 +5,13 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 
-from utils.yaml_utils import load_yaml, save_yaml
+from utils.async_file_io import (
+    glob_paths,
+    load_files_parallel,
+    path_exists,
+    run_coroutine_blocking,
+)
+from utils.yaml_utils import AsyncFileIoError, load_yaml, load_yaml_async, save_yaml
 
 logger = logging.getLogger(__name__)
 
@@ -53,28 +59,34 @@ class PromptManager:
         Path(self.prompts_dir).mkdir(parents=True, exist_ok=True)
     
     def load_templates(self) -> List[PromptTemplate]:
-        """Load all templates from storage"""
-        templates = []
+        """Load all templates from storage (delegates to async implementation)."""
+        return run_coroutine_blocking(self.load_templates_async())
+
+    async def load_templates_async(self) -> List[PromptTemplate]:
+        """Load all templates without blocking the event loop (parallel async I/O)."""
         prompts_path = Path(self.prompts_dir)
-        
-        if not prompts_path.exists():
-            return templates
-        
-        for yaml_file in prompts_path.glob('template_*.yml'):
+
+        if not await path_exists(prompts_path):
+            self._templates_cache = []
+            return []
+
+        async def load_one(yaml_file: Path) -> Optional[PromptTemplate]:
             try:
-                data = load_yaml(str(yaml_file))
+                data = await load_yaml_async(yaml_file)
                 if data and self._validate_template_data(data):
-                    template = PromptTemplate.from_dict(data)
-                    templates.append(template)
+                    return PromptTemplate.from_dict(data)
+            except AsyncFileIoError as e:
+                logger.error("Error loading template %s: %s", yaml_file, e)
             except Exception as e:
-                logger.error(f"Error loading template {yaml_file}: {e}")
-        
-        # Sort by usage_count (descending) then created_at (descending)
+                logger.error("Error loading template %s: %s", yaml_file, e)
+            return None
+
+        files = await glob_paths(prompts_path, "template_*.yml")
+        templates = await load_files_parallel(files, load_one)
         templates.sort(key=lambda t: (-t.usage_count, t.created_at), reverse=False)
-        
         self._templates_cache = templates
         return templates
-    
+
     def _validate_template_data(self, data: Dict[str, Any]) -> bool:
         """Validate required fields in template data"""
         required_fields = ['id', 'icon', 'text', 'created_at']

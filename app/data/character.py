@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 from pathlib import Path
 from blinker import signal
 
+from utils.lazy_load import AsyncLazyLoadMixin
 from utils.yaml_utils import load_yaml, save_yaml
 
 
@@ -128,7 +129,7 @@ class Character:
             self.updated_at = datetime.now().isoformat()
 
 
-class CharacterManager:
+class CharacterManager(AsyncLazyLoadMixin):
     """Manages project characters with centralized YAML storage"""
     
     # Signals for actor events
@@ -155,14 +156,12 @@ class CharacterManager:
         
         # Initialize directory structure
         self._ensure_directories()
-    
-    def _ensure_loaded(self):
-        """Ensure characters are loaded from disk"""
-        if not self._loaded:
-            with self._load_lock:
-                if not self._loaded:
-                    self._load_characters()
-                    self._loaded = True
+
+    def _do_load(self) -> None:
+        self._load_characters()
+
+    def _clear_internal_state(self) -> None:
+        self._characters.clear()
 
     def _ensure_directories(self):
         """Create characters directory if it doesn't exist"""
