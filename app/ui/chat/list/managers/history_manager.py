@@ -16,7 +16,7 @@ from typing import Dict, List, Any, Optional, TYPE_CHECKING, Callable
 from PySide6.QtCore import QTimer
 
 from app.ui.chat.list.agent_chat_list_items import LoadState
-from app.ui.worker.worker import run_in_background, BackgroundWorker
+from app.workers.worker import BackgroundWorker, run_in_background
 
 if TYPE_CHECKING:
     from app.data.workspace import Workspace
@@ -93,6 +93,15 @@ class HistoryManager:
 
         # QML root reference (set by widget)
         self._qml_root = None
+
+    def _cancel_background_loads(self) -> None:
+        for w in (self._recent_worker, self._older_worker):
+            if w is not None:
+                w.stop()
+        self._recent_worker = None
+        self._older_worker = None
+        self._loading_recent = False
+        self._loading_older = False
 
     def set_qml_root(self, qml_root) -> None:
         """Set the QML root object.
@@ -265,7 +274,10 @@ class HistoryManager:
             logger.error(f"Background load_recent_conversation error: {msg}")
 
         self._recent_worker = run_in_background(
-            _fetch, on_finished=_on_finished, on_error=_on_error
+            _fetch,
+            on_finished=_on_finished,
+            on_error=_on_error,
+            task_type="chat_history_recent",
         )
 
     def load_older_messages(self) -> None:
@@ -390,7 +402,10 @@ class HistoryManager:
             logger.error(f"Background load_older_messages error: {msg}")
 
         self._older_worker = run_in_background(
-            _fetch, on_finished=_on_finished, on_error=_on_error
+            _fetch,
+            on_finished=_on_finished,
+            on_error=_on_error,
+            task_type="chat_history_older",
         )
 
     def _prune_model_bottom(self) -> None:
@@ -423,6 +438,7 @@ class HistoryManager:
 
     def clear_all_caches_and_model(self) -> None:
         """Clear all caches and the model."""
+        self._cancel_background_loads()
         self._model.clear()
         self._load_state.known_message_ids.clear()
         self._load_state.unique_message_count = 0
@@ -433,6 +449,7 @@ class HistoryManager:
 
     def on_project_switched(self) -> None:
         """Handle project switch."""
+        self._cancel_background_loads()
         self._stop_new_data_check_timer()
         self._load_state = LoadState()
         self._loading_older = False

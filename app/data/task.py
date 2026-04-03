@@ -338,9 +338,23 @@ class TimelineItemTaskManager:
             List of loaded Task objects
         """
         try:
-            return run_coroutine_blocking(self.load_all_tasks_async())
+            return run_coroutine_blocking(self.load_all_tasks_async(apply=True))
         except Exception as e:
             logger.error(f"❌ Error loading tasks: {e}", exc_info=True)
+            return []
+
+    def load_all_tasks_thread_worker(self) -> List[Task]:
+        """Load from disk using a fresh asyncio loop (call only from ``TaskManager`` pool threads)."""
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(self.load_all_tasks_async(apply=False))
+            finally:
+                loop.close()
+                asyncio.set_event_loop(None)
+        except Exception as e:
+            logger.error(f"❌ Error loading tasks (worker): {e}", exc_info=True)
             return []
 
     def _collect_numeric_task_dirs(self) -> List[str]:
@@ -353,15 +367,20 @@ class TimelineItemTaskManager:
                 names.append(d)
         return names
 
-    async def load_all_tasks_async(self) -> List[Task]:
-        """Load tasks with async config reads (parallel I/O)."""
+    async def load_all_tasks_async(self, *, apply: bool = True) -> List[Task]:
+        """Load tasks with async config reads (parallel I/O).
+
+        When ``apply`` is False, returns tasks without mutating ``self.tasks`` (for background workers;
+        caller must assign on the GUI thread).
+        """
         if not await path_exists(self.tasks_path):
             logger.warning(f"⚠️ Tasks directory does not exist: {self.tasks_path}")
             return []
 
         try:
             task_dir_names = await to_thread(self._collect_numeric_task_dirs)
-            self.tasks.clear()
+            if apply:
+                self.tasks.clear()
             project_tm = self.project_task_manager
 
             async def load_one(task_dir_name: str) -> tuple[str, Task]:
@@ -379,7 +398,8 @@ class TimelineItemTaskManager:
             pairs = await asyncio.gather(*(load_one(d) for d in task_dir_names))
             loaded_tasks: List[Task] = []
             for name, task in pairs:
-                self.tasks[name] = task
+                if apply:
+                    self.tasks[name] = task
                 loaded_tasks.append(task)
             logger.info(f"✅ Loaded {len(loaded_tasks)} tasks from {self.tasks_path}")
             return loaded_tasks

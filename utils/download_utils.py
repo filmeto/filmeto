@@ -35,6 +35,41 @@ class DownloadWorker(QThread):
         self.signals = DownloadWorkerSignals()
         self._running_tasks = {}
         self.loop = None
+        self._wire_event_bus()
+
+    def _wire_event_bus(self) -> None:
+        """Mirror download lifecycle to :class:`app.core.event_bus.EventBus` (Qt thread–safe)."""
+        if getattr(self, "_bus_wired", False):
+            return
+        self._bus_wired = True
+        try:
+            from app.core.event_bus import EventBus
+        except Exception:
+            return
+        bus = EventBus.instance()
+
+        def task_id(url: str) -> str:
+            return f"download:{url}"
+
+        self.signals.started.connect(
+            lambda url: bus.emit_task_started(task_id(url), "download_aiohttp")
+        )
+        self.signals.progress.connect(
+            lambda url, downloaded, total: bus.emit_task_progress(
+                task_id(url),
+                int(min(100, downloaded * 100 // total)) if total and total > 0 else 0,
+                f"{downloaded}/{total}" if total else str(downloaded),
+            )
+        )
+        self.signals.finished.connect(
+            lambda url, filepath: bus.emit_task_finished(task_id(url), filepath)
+        )
+        self.signals.error.connect(
+            lambda url, msg: bus.emit_task_error(task_id(url), msg, None)
+        )
+        self.signals.cancelled.connect(
+            lambda url: bus.emit_task_cancelled(task_id(url))
+        )
 
     def run(self):
         """在子线程中启动 asyncio 事件循环"""

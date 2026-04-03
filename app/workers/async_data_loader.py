@@ -13,7 +13,7 @@ from typing import Any, Callable, Dict, Generic, Hashable, Iterable, Optional, S
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
-from app.ui.worker.worker import BackgroundWorker, run_in_background
+from app.workers.worker import BackgroundWorker, run_in_background
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +118,12 @@ class AsyncDataLoader(QObject, Generic[T, K]):
             self.load_error.emit(key, msg)
             self.load_finished.emit(key)
 
-        worker = run_in_background(load_task, on_finished=on_finished, on_error=on_error)
+        worker = run_in_background(
+            load_task,
+            on_finished=on_finished,
+            on_error=on_error,
+            task_type="async_data_loader",
+        )
         self._active_workers[key] = worker
 
     def invalidate(self, key: K) -> None:

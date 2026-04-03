@@ -14,6 +14,8 @@ from PySide6.QtGui import QFontDatabase, QIcon
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import qInstallMessageHandler, QtMsgType
 
+from app.core.event_bus import EventBus
+from app.core.task_manager import TaskManager
 from app.data.workspace import Workspace
 from app.ui.window import WindowManager
 from server.server import Server, ServerManager
@@ -188,6 +190,11 @@ class App():
                 logger.info("Loading stylesheet...")
                 app.setStyleSheet(load_stylesheet(self.main_path))
             
+            with TimingContext("Core architecture init"):
+                logger.info("Initializing EventBus and TaskManager...")
+                self._bus = EventBus.instance()
+                self._task_manager = TaskManager.instance(max_workers=4)
+
             # Initialize workspace (minimal - defer heavy operations)
             with TimingContext("Workspace initialization"):
                 logger.info("Initializing workspace...")
@@ -414,11 +421,25 @@ class App():
             logger.error("Full stack trace:", exc_info=True)
 
         try:
-            # Shut down the global worker pool if it exists
-            logger.info("Shutting down global worker pool...")
-            from app.ui.worker.worker import _global_pool
+            from app.workers.worker import _global_pool
             if _global_pool is not None:
-                logger.info("Waiting for all tasks in global worker pool to complete...")
+                logger.info("Canceling queued legacy WorkerPool tasks...")
+                _global_pool.cancel_pending()
+        except Exception as e:
+            logger.error(f"Error canceling worker pool queue: {e}")
+
+        try:
+            logger.info("Shutting down TaskManager...")
+            TaskManager.instance().shutdown()
+            logger.info("TaskManager shutdown complete")
+        except Exception as e:
+            logger.error(f"Error during TaskManager cleanup: {e}")
+            logger.error("Full stack trace:", exc_info=True)
+
+        try:
+            logger.info("Draining global worker pool bookkeeping...")
+            from app.workers.worker import _global_pool
+            if _global_pool is not None:
                 _global_pool.wait_all()
             logger.info("Global worker pool shutdown complete")
         except Exception as e:

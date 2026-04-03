@@ -1201,8 +1201,8 @@ class LayerComposeTaskManager:
     
     def _start_qt_background_task(self, task: 'LayerComposeTask'):
         """Start a composition task using Qt background worker."""
-        from app.ui.worker.worker import run_in_background
-        
+        from app.workers.worker import run_in_background
+
         def execute_task_sync():
             """Wrapper to run async task in a new event loop within the background thread."""
             import asyncio
@@ -1225,16 +1225,14 @@ class LayerComposeTaskManager:
             logger.error(f"Composition task {task.task_id} failed: {error_msg}")
             self._on_task_finished()
         
-        # Run in background thread
         worker = run_in_background(
             task=execute_task_sync,
             on_finished=on_finished,
-            on_error=on_error
+            on_error=on_error,
+            auto_cleanup=False,
+            task_type="layer_compose",
         )
-        
-        # Disable auto-cleanup - we'll manage cleanup ourselves
-        worker.set_auto_cleanup(False)
-        
+
         self._current_worker = worker
     
     def _on_task_finished(self):
@@ -1264,59 +1262,18 @@ class LayerComposeTaskManager:
             logger.info("All composition tasks completed")
     
     def _cleanup_current_worker(self):
-        """Clean up the current worker with proper thread termination."""
+        """Stop the active TaskManager-backed compose worker."""
         if self._current_worker is None:
             return
-        
+
         worker = self._current_worker
         self._current_worker = None
-        
-        logger.debug(f"Starting worker cleanup (running: {worker.is_running() if worker._thread else False})")
-        
-        # Properly stop the worker thread
+
+        logger.debug("Compose worker cleanup (running=%s)", worker.is_running())
         try:
-            # First, ensure the thread is stopped
-            if worker._thread is not None:
-                thread_was_running = worker._thread.isRunning()
-                
-                if thread_was_running:
-                    logger.warning(f"Worker thread still running during cleanup, waiting for completion...")
-                    
-                # Quit the thread's event loop
-                worker._thread.quit()
-                
-                # Wait for thread to actually finish (with timeout)
-                # Increased timeout from 5s to 10s for complex compositions
-                if not worker._thread.wait(10000):  # 10 second timeout
-                    logger.error("Worker thread did not finish in time, forcing termination")
-                    worker._thread.terminate()
-                    worker._thread.wait(2000)  # Wait 2 more seconds after terminate
-                else:
-                    logger.debug(f"Worker thread stopped gracefully (was running: {thread_was_running})")
-            
-            # Use QTimer to defer the final deletion, allowing all Qt events to process
-            from PySide6.QtCore import QTimer
-            # Move worker to a temporary list to prevent garbage collection
-            if not hasattr(self, '_cleanup_pending'):
-                self._cleanup_pending = []
-            self._cleanup_pending.append(worker)
-            
-            def do_cleanup():
-                if worker in self._cleanup_pending:
-                    self._cleanup_pending.remove(worker)
-                    # Explicitly delete the worker's thread and executor
-                    if worker._thread is not None:
-                        worker._thread.deleteLater()
-                        worker._thread = None
-                    if worker._executor is not None:
-                        worker._executor.deleteLater()
-                        worker._executor = None
-                    logger.debug("Worker cleanup completed")
-            
-            # Increased delay from 200ms to 500ms to ensure Qt event processing
-            QTimer.singleShot(500, do_cleanup)
+            worker.stop()
         except Exception as e:
-            logger.error(f"Error during worker cleanup: {e}", exc_info=True)
+            logger.error("Error during compose worker cleanup: %s", e, exc_info=True)
     
     def shutdown(self):
         """Shutdown the task manager and clean up all resources.
@@ -1329,21 +1286,8 @@ class LayerComposeTaskManager:
         # Clear pending tasks
         self._task_queue.clear()
         
-        # Clean up current worker
         self._cleanup_current_worker()
-        
-        # Clean up any pending cleanup workers
-        if hasattr(self, '_cleanup_pending'):
-            for worker in self._cleanup_pending:
-                try:
-                    if worker._thread is not None:
-                        worker._thread.quit()
-                        worker._thread.wait(2000)
-                        worker._thread.deleteLater()
-                except Exception as e:
-                    logger.error(f"Error cleaning up pending worker: {e}")
-            self._cleanup_pending.clear()
-        
+
         logger.info("LayerComposeTaskManager shutdown complete")
 
 
