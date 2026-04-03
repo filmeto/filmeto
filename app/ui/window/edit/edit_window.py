@@ -37,6 +37,7 @@ class EditWindow(QMainWindow):
         self.project = workspace.get_project()
         self._lazy_init = lazy_init
         self._ui_initialized = False
+        self._data_loaded = False
 
         # Set main window reference to workspace for access to preview components
         self.workspace._main_window = self
@@ -45,54 +46,47 @@ class EditWindow(QMainWindow):
         self._window_sizes = {}
         self._load_window_sizes()
 
-        if lazy_init:
-            # Minimal initialization for fast display
-            self._init_minimal_ui()
-        else:
-            # Full initialization
-            self._setup_ui()
+        # Always create full UI (components handle their own lazy loading)
+        # This avoids conflicts from signals triggering component creation
+        self._setup_ui()
 
         # Set initial window size (fullscreen/maximized)
         self.showMaximized()
 
-    def _init_minimal_ui(self):
-        """Initialize minimal UI for fast display"""
-        # Create a minimal placeholder central widget
-        from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
-        from PySide6.QtCore import Qt
+        # If lazy_init is True, defer data loading to background
+        if lazy_init:
+            # Start async data loading after window is displayed
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(0, self._start_async_data_load)
 
-        central_widget = QWidget()
-        layout = QVBoxLayout(central_widget)
+    def _start_async_data_load(self):
+        """Start background data loading after window is displayed"""
+        logger.info("Starting background data loading for EditWindow...")
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, self._load_data_in_background)
 
-        # Loading indicator
-        loading_label = QLabel("Loading...")
-        loading_label.setAlignment(Qt.AlignCenter)
-        loading_label.setStyleSheet("color: #888888; font-size: 16px;")
-        layout.addWidget(loading_label)
+    def _load_data_in_background(self):
+        """Load project data in background"""
+        if self._data_loaded:
+            return
+        self._data_loaded = True
 
-        self.setCentralWidget(central_widget)
+        # Trigger workspace async data loading
+        if hasattr(self.workspace, '_async_load_project_data'):
+            self.workspace._async_load_project_data()
+
+        # Trigger agent chat data loading
+        if hasattr(self, 'edit_widget') and self.edit_widget:
+            # The edit_widget and its children will handle their own lazy loading
+            pass
+
+        logger.info("Background data loading initiated for EditWindow")
 
     def _complete_lazy_init(self):
         """Complete the full initialization after window is displayed"""
-        if self._ui_initialized:
-            return
-
-        logger.info("Completing lazy initialization of EditWindow...")
-        from PySide6.QtCore import QTimer
-
-        # Use timer to defer heavy initialization
-        QTimer.singleShot(0, self._do_full_init)
-
-    def _do_full_init(self):
-        """Perform full UI initialization"""
-        if self._ui_initialized:
-            return
-
-        # Set up the full UI
-        self._setup_ui()
-        self._ui_initialized = True
-
-        logger.info("Full initialization of EditWindow completed")
+        # UI is already created, just trigger data loading if not done
+        if not self._data_loaded:
+            self._start_async_data_load()
     
     def _load_window_sizes(self):
         """Load stored window sizes from file."""

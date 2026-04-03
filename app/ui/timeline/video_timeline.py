@@ -77,6 +77,15 @@ class VideoTimeline(BaseTaskWidget, AsyncDataLoaderMixin):
     """左右滑动的卡片式时间线主窗口"""
     def __init__(self,parent:QWidget,workspace:Workspace):
         super().__init__(workspace)
+        # Setup async loader early - must be done BEFORE any signal handlers that use it are connected
+        # (BaseTaskWidget.__init__ connects timeline_switch signal which may call schedule_async_load)
+        self.setup_async_loader(
+            loader_func=self._load_timeline_card_thumbnail,
+            on_loaded=self._on_timeline_card_thumbnail_loaded,
+            on_error=self._on_timeline_card_thumbnail_error,
+            debounce_ms=TIMELINE_THUMB_DEBOUNCE_MS,
+            cache_enabled=True,
+        )
         self.setWindowTitle(tr("TimeLine"))
         self.resize(parent.width(), parent.height())
         self.setContentsMargins(0, 0, 0, 0)  # Remove widget margins, use layout margins instead
@@ -157,14 +166,6 @@ class VideoTimeline(BaseTaskWidget, AsyncDataLoaderMixin):
 
         # Connect timeline changed signal to update card images when composition completes
         timeline.connect_timeline_changed(self.on_timeline_changed)
-
-        self.setup_async_loader(
-            loader_func=self._load_timeline_card_thumbnail,
-            on_loaded=self._on_timeline_card_thumbnail_loaded,
-            on_error=self._on_timeline_card_thumbnail_error,
-            debounce_ms=TIMELINE_THUMB_DEBOUNCE_MS,
-            cache_enabled=True,
-        )
 
         try:
             self._timeline.timeline_switch.disconnect(self.on_timeline_switch)

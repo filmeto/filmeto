@@ -206,7 +206,7 @@ class AsyncDataLoader(QObject, Generic[T, K]):
             _cancel_one(k)
 
 
-class AsyncDataLoaderMixin(QObject):
+class AsyncDataLoaderMixin:
     """Adds a child :class:`AsyncDataLoader`; the concrete widget must also inherit ``QObject`` (e.g. ``QWidget``)."""
 
     _async_loader: AsyncDataLoader[Any, Any]
@@ -220,9 +220,11 @@ class AsyncDataLoaderMixin(QObject):
         debounce_ms: int = AsyncDataLoader.DEFAULT_DEBOUNCE_MS,
         cache_enabled: bool = True,
     ) -> None:
+        # Note: Don't set parent=self when the mixin is used with QWidget multiple inheritance
+        # This avoids "can't initialize QWidget twice" errors in PySide6
         self._async_loader = AsyncDataLoader(
             loader_func,
-            parent=self,
+            parent=None,
             debounce_ms=debounce_ms,
             cache_enabled=cache_enabled,
         )
