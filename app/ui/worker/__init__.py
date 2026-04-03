@@ -13,6 +13,7 @@ Functions:
     get_worker_pool: Get global worker pool singleton
 """
 
+from .async_data_loader import AsyncDataLoader, AsyncDataLoaderMixin
 from .worker import (
     TaskExecutor,
     BackgroundWorker,
@@ -22,6 +23,8 @@ from .worker import (
 )
 
 __all__ = [
+    "AsyncDataLoader",
+    "AsyncDataLoaderMixin",
     "TaskExecutor",
     "BackgroundWorker",
     "WorkerPool",
