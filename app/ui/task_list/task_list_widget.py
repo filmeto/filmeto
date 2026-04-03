@@ -1,13 +1,17 @@
 # task_list_widget.py
+from __future__ import annotations
+
 import json
 import yaml
 import logging
+from typing import Optional
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QPushButton, QHBoxLayout, QFrame
-from PySide6.QtCore import Qt, Signal, Slot, QThreadPool, QRect
+from PySide6.QtCore import Qt, Signal, Slot, QRect
 from .enhanced_task_item_widget import EnhancedTaskItemWidget
 import os
 
 from ..base_widget import BaseWidget, BaseTaskWidget
+from app.workers.worker import BackgroundWorker, run_in_background
 from utils.i18n_utils import tr, translation_manager
 
 logger = logging.getLogger(__name__)
@@ -27,8 +31,8 @@ class TaskListWidget(BaseTaskWidget):
         self.page_size = 10
         self.loading = False
         self.selected_task_widget = None  # Track the currently selected task widget
-
-        self.thread_pool = QThreadPool.globalInstance()
+        self._tasks_refresh_worker: Optional[BackgroundWorker] = None
+        self._load_more_worker: Optional[BackgroundWorker] = None
 
         # Connect to workspace task progress updates instead of using file system monitoring
         self.workspace.connect_task_progress(self.on_task_progress_update)
@@ -126,6 +130,7 @@ class TaskListWidget(BaseTaskWidget):
     def on_timeline_switch(self, item):
         """Handle timeline item switch - reload tasks for the new item"""
         if item != self._current_timeline_item:
+            self._cancel_task_list_workers()
             self._current_timeline_item = item
             if item:
                 self.task_manager = item.get_task_manager()
@@ -249,30 +254,75 @@ class TaskListWidget(BaseTaskWidget):
         
         return False  # Let other events propagate normally
 
+    def _cancel_task_list_workers(self):
+        for w in (self._tasks_refresh_worker, self._load_more_worker):
+            if w is not None:
+                w.stop()
+        self._tasks_refresh_worker = None
+        self._load_more_worker = None
+
+    def _apply_loaded_task_page(self, _loaded: list):
+        """After disk load, ``task_manager.tasks`` is filled on the GUI thread; append one UI page."""
+        all_task_ids = sorted(
+            [task_id for task_id in self.task_manager.tasks.keys() if task_id.isdigit()],
+            key=lambda x: int(x),
+            reverse=True,
+        )
+        self.all_task_dirs = all_task_ids
+        page = self.task_manager.get_all_tasks(self.current_index, self.page_size)
+        self.on_tasks_loaded(page)
+
     def load_more_tasks(self):
         if self.loading:
             return
         if self.task_manager is None:
             return
-            
+
+        if self.task_manager.tasks:
+            self.loading = True
+            try:
+                tasks = self.task_manager.get_all_tasks(self.current_index, self.page_size)
+                all_task_ids = sorted(
+                    [task_id for task_id in self.task_manager.tasks.keys() if task_id.isdigit()],
+                    key=lambda x: int(x),
+                    reverse=True,
+                )
+                self.all_task_dirs = all_task_ids
+                self.on_tasks_loaded(tasks)
+            except Exception as e:
+                logger.error(f"加载任务失败: {e}")
+                self.loading = False
+            return
+
         self.loading = True
-        
-        # Load tasks using TaskManager instead of TaskLoader
-        try:
-            # Get tasks from TaskManager as Task objects
-            tasks = self.task_manager.get_all_tasks(self.current_index, self.page_size)
-            
-            # Update the all_task_dirs if needed (for pagination control)
-            all_task_ids = sorted([task_id for task_id in self.task_manager.tasks.keys() if task_id.isdigit()], 
-                                 key=lambda x: int(x), reverse=True)
-            self.all_task_dirs = all_task_ids
-            
-            # Emit the loaded tasks (run in the GUI thread)
-            self.on_tasks_loaded(tasks)
-            
-        except Exception as e:
-            logger.error(f"加载任务失败: {e}")
+        tm = self.task_manager
+
+        def fetch():
+            return tm.load_all_tasks_thread_worker()
+
+        def on_finished(loaded):
+            self._load_more_worker = None
+            try:
+                tm.tasks.clear()
+                for t in loaded:
+                    tm.tasks[t.task_id] = t
+                self._apply_loaded_task_page(loaded)
+            except Exception as e:
+                logger.error(f"加载任务失败: {e}")
+                self.loading = False
+
+        def on_error(msg: str, _exc: Exception):
+            self._load_more_worker = None
+            logger.error(f"加载任务失败: {msg}")
             self.loading = False
+
+        self._load_more_worker = run_in_background(
+            fetch,
+            on_finished=on_finished,
+            on_error=on_error,
+            auto_cleanup=False,
+            task_type="task_list_load_more",
+        )
 
     @Slot(list)
     def on_tasks_loaded(self, tasks):
@@ -336,13 +386,39 @@ class TaskListWidget(BaseTaskWidget):
             logger.warning("No task manager available for current timeline item")
             self.clear_tasks()
             return
-            
-        # Reload all tasks from the task manager
-        self.task_manager.load_all_tasks()
-        self.clear_tasks()
-        self.current_index = 0
-        self.load_all_task_dirs()
-        self.load_more_tasks()
+
+        self._cancel_task_list_workers()
+        tm = self.task_manager
+
+        def fetch():
+            return tm.load_all_tasks_thread_worker()
+
+        def on_finished(loaded):
+            self._tasks_refresh_worker = None
+            try:
+                tm.tasks.clear()
+                for t in loaded:
+                    tm.tasks[t.task_id] = t
+                self.clear_tasks()
+                self.current_index = 0
+                self.load_all_task_dirs()
+                self.load_more_tasks()
+            except Exception as e:
+                logger.error(f"刷新任务失败: {e}")
+                self.loading = False
+
+        def on_error(msg: str, _exc: Exception):
+            self._tasks_refresh_worker = None
+            logger.error(f"刷新任务失败: {msg}")
+            self.loading = False
+
+        self._tasks_refresh_worker = run_in_background(
+            fetch,
+            on_finished=on_finished,
+            on_error=on_error,
+            auto_cleanup=False,
+            task_type="task_list_refresh",
+        )
 
     def clear_tasks(self):
         """清空当前任务列表"""

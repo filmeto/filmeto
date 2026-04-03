@@ -2,243 +2,28 @@
 Main widget for video export functionality
 """
 import os
-from typing import List
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-    QLabel, QGroupBox, QRadioButton, QSpinBox,
-    QFileDialog, QMessageBox, QProgressBar, QFrame
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QPushButton,
+    QLabel,
+    QGroupBox,
+    QSpinBox,
+    QFileDialog,
+    QMessageBox,
+    QProgressBar,
+    QFrame,
 )
-from PySide6.QtCore import Signal, QObject, QRunnable, Qt
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QDesktopServices
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton,    QLabel, QGroupBox, QRadioButton, QSpinBox,     QFileDialog, QMessageBox, QProgressBar, QFrame
+from app.core.task_manager import TaskManager
 from app.ui.base_widget import BaseWidget
+from app.workers import TimelineExportWorker
 from utils.i18n_utils import tr, translation_manager
 
-from utils.ffmpeg_utils import images_to_video, merge_videos, check_ffmpeg, ensure_ffmpeg
-
-
-class ExportWorkerSignals(QObject):
-    """Signals for the export worker"""
-    progress = Signal(int)  # Progress percentage (0-100)
-    finished = Signal()
-    error = Signal(str)
-
-
-import re
-
-
-class ExportWorker(QRunnable):
-    """Worker thread for video export operations"""
-
-    def __init__(self, export_params):
-        super().__init__()
-        self.export_params = export_params
-        self.signals = ExportWorkerSignals()
-
-    def _get_unique_filename(self, base_path):
-        """Generate a unique filename by adding a numeric suffix if the file already exists"""
-        if not os.path.exists(base_path):
-            return base_path
-
-        directory = os.path.dirname(base_path)
-        filename = os.path.basename(base_path)
-        name, ext = os.path.splitext(filename)
-
-        # Look for pattern "name (number).ext" or "name_number.ext"
-        counter = 1
-        while True:
-            # Try format: name (1).ext
-            new_filename = f"{name} ({counter}){ext}"
-            new_path = os.path.join(directory, new_filename)
-            if not os.path.exists(new_path):
-                return new_path
-            counter += 1
-
-    def run(self):
-        import asyncio
-        # Run the async function in a new event loop
-        try:
-            # Import here to avoid circular imports
-            from utils.ffmpeg_utils import images_to_video, merge_videos, ensure_ffmpeg
-
-            # Create a new event loop for this thread
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-            try:
-                loop.run_until_complete(self._async_run())
-            finally:
-                loop.close()
-        except Exception as e:
-            self.signals.error.emit(str(e))
-
-    async def _async_run(self):
-        """Internal async run method"""
-        # Import here to avoid circular imports
-        from utils.ffmpeg_utils import images_to_video, merge_videos, ensure_ffmpeg
-
-        # Ensure FFmpeg is available
-        if not await ensure_ffmpeg():
-            self.signals.error.emit("FFmpeg is required but could not be installed.")
-            return
-
-        # Extract parameters
-        timeline_items = self.export_params['timeline_items']
-        export_mode = self.export_params['export_mode']
-        items_per_video = self.export_params['items_per_video']
-        output_dir = self.export_params['output_dir']
-        fps = self.export_params['fps']
-
-        if export_mode == 'all_as_one':
-            # Export all items as a single video
-            await self._export_all_as_one(timeline_items, output_dir, fps)
-        elif export_mode == 'grouped':
-            # Export in groups of N items
-            await self._export_grouped(timeline_items, items_per_video, output_dir, fps)
-        elif export_mode == 'individual':
-            # Export each item as a separate video
-            await self._export_individual(timeline_items, output_dir, fps)
-
-        self.signals.finished.emit()
-
-    async def _export_all_as_one(self, timeline_items, output_dir, fps):
-        """Export all timeline items as a single video"""
-        # Collect all media paths, prioritizing video over image for each item
-        all_media_paths = []
-        for item in timeline_items:
-            # Prioritize video over image for each timeline item
-            video_path = item.get_video_path()
-            image_path = item.get_image_path()
-
-            # If video exists and is valid, use it
-            if video_path and os.path.exists(video_path):
-                all_media_paths.append(video_path)
-            # If video doesn't exist but image does, use the image (to be converted)
-            elif image_path and os.path.exists(image_path):
-                all_media_paths.append(image_path)
-            # If neither exists, skip this item (don't add anything to the list)
-
-        if not all_media_paths:
-            self.signals.error.emit("No media items found to export.")
-            return
-
-        base_output_path = os.path.join(output_dir, "timeline_export_all.mp4")
-        output_path = self._get_unique_filename(base_output_path)
-
-        # If all items are images, convert to video
-        image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp')
-        all_images = all(path.lower().endswith(image_extensions) for path in all_media_paths)
-
-        if all_images:
-            success = await images_to_video(all_media_paths, output_path, duration_per_image=1.0, fps=fps)
-        else:
-            # Some are images, some are videos - need to handle differently
-            # For now, just merge videos if they exist
-            video_paths = [p for p in all_media_paths if not p.lower().endswith(image_extensions)]
-            if video_paths:
-                success = await merge_videos(video_paths, output_path)
-            else:
-                success = await images_to_video(all_media_paths, output_path, duration_per_image=1.0, fps=fps)
-
-        if not success:
-            self.signals.error.emit("Failed to create video from timeline items.")
-
-    async def _export_grouped(self, timeline_items, items_per_video, output_dir, fps):
-        """Export timeline items in groups of N"""
-        # Group timeline items
-        groups = []
-        for i in range(0, len(timeline_items), items_per_video):
-            group = timeline_items[i:i + items_per_video]
-            groups.append(group)
-
-        total_groups = len(groups)
-
-        for idx, group in enumerate(groups):
-            # Collect media paths for this group, prioritizing video over image for each item
-            group_media_paths = []
-            for item in group:
-                # Prioritize video over image for each timeline item
-                video_path = item.get_video_path()
-                image_path = item.get_image_path()
-
-                # If video exists and is valid, use it
-                if video_path and os.path.exists(video_path):
-                    group_media_paths.append(video_path)
-                # If video doesn't exist but image does, use the image (to be converted)
-                elif image_path and os.path.exists(image_path):
-                    group_media_paths.append(image_path)
-                # If neither exists, skip this item (don't add anything to the list)
-
-            if not group_media_paths:
-                continue
-
-            base_output_path = os.path.join(output_dir, f"timeline_group_{idx + 1:03d}.mp4")
-            output_path = self._get_unique_filename(base_output_path)
-
-            # Determine if all are images
-            image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp')
-            all_images = all(path.lower().endswith(image_extensions) for path in group_media_paths)
-
-            if all_images:
-                success = await images_to_video(group_media_paths, output_path, duration_per_image=1.0, fps=fps)
-            else:
-                video_paths = [p for p in group_media_paths if not p.lower().endswith(image_extensions)]
-                if video_paths:
-                    success = await merge_videos(video_paths, output_path)
-                else:
-                    success = await images_to_video(group_media_paths, output_path, duration_per_image=1.0, fps=fps)
-
-            if not success:
-                self.signals.error.emit(f"Failed to create video for group {idx + 1}")
-                return
-
-            # Update progress
-            progress = int((idx + 1) / total_groups * 100)
-            self.signals.progress.emit(progress)
-
-    async def _export_individual(self, timeline_items, output_dir, fps):
-        """Export each timeline item as a separate video"""
-        total_items = len(timeline_items)
-
-        for idx, item in enumerate(timeline_items):
-            media_path = None
-            video_path = item.get_video_path()
-            image_path = item.get_image_path()
-
-            # Prioritize video over image for each timeline item
-            # If video exists and is valid, use it
-            if video_path and os.path.exists(video_path):
-                media_path = video_path
-            # If video doesn't exist but image does, use the image (to be converted)
-            elif image_path and os.path.exists(image_path):
-                media_path = image_path
-            # If neither exists, skip this item
-            else:
-                continue  # Skip this timeline item if neither video nor image exists
-
-            # For images, create a short video; for videos, copy or process
-            if media_path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')):
-                base_output_path = os.path.join(output_dir, f"item_{item.get_timeline_index():03d}.mp4")
-                output_path = self._get_unique_filename(base_output_path)
-                success = await images_to_video([media_path], output_path, duration_per_image=2.0, fps=fps)
-            else:
-                # For existing videos, we could copy or process them
-                # For now, just copy the video to the output directory with new naming
-                base_output_path = os.path.join(output_dir, f"item_{item.get_timeline_index():03d}_video.mp4")
-                output_path = self._get_unique_filename(base_output_path)
-                # This would require a video copy function - using merge_videos with single video
-                success = await merge_videos([media_path], output_path, codec='copy')
-
-            if not success:
-                self.signals.error.emit(f"Failed to process item {idx + 1}")
-                return
-
-            # Update progress
-            progress = int((idx + 1) / total_items * 100)
-            self.signals.progress.emit(progress)
 
 class ExportVideoWidget(BaseWidget):
     """
@@ -740,18 +525,16 @@ class ExportVideoWidget(BaseWidget):
         # Store the export directory to use after export finishes
         self.last_export_dir = output_dir
         
-        # Start the export worker (using the same worker from export_dialog)
-        self.export_worker = ExportWorker(export_params)
-        
-        # Connect worker signals
-        self.export_worker.signals.progress.connect(self._update_progress)
-        self.export_worker.signals.finished.connect(self._export_finished)
-        self.export_worker.signals.error.connect(self._export_error)
-        
-        # Run the worker using QThreadPool
-        from PySide6.QtCore import QThreadPool
-        pool = QThreadPool.globalInstance()
-        pool.start(self.export_worker)
+        worker = TimelineExportWorker(export_params)
+        worker.signals.progress.connect(
+            lambda _task_id, percent, _msg: self._update_progress(percent)
+        )
+        worker.signals.finished.connect(lambda _task_id, _result: self._export_finished())
+        worker.signals.error.connect(
+            lambda _task_id, msg, _exc: self._export_error(msg)
+        )
+        self.export_worker = worker
+        TaskManager.instance().submit(worker)
 
     def _update_progress(self, value):
         """Update the progress bar"""

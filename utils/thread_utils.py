@@ -9,7 +9,7 @@ import logging
 import traceback
 from typing import Callable, Any, Optional, List
 from PySide6.QtCore import QObject, QTimer
-from app.ui.worker.worker import run_in_background, BackgroundWorker
+from app.workers.worker import BackgroundWorker, run_in_background
 
 logger = logging.getLogger(__name__)
 

@@ -1,7 +1,10 @@
 """Resources panel for managing project resources."""
 
+from __future__ import annotations
+
 import logging
 import os
+from typing import Optional
 from pathlib import Path
 from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
@@ -13,7 +16,7 @@ from PySide6.QtGui import QIcon, QBrush, QColor
 
 from app.ui.panels.base_panel import BasePanel
 from app.data.workspace import Workspace
-from app.ui.worker.worker import run_in_background
+from app.workers.worker import BackgroundWorker, run_in_background
 from utils.i18n_utils import tr
 from .resource_preview import ResourcePreview
 
@@ -192,6 +195,7 @@ class ResourcesPanel(BasePanel):
     def __init__(self, workspace: Workspace, parent=None):
         """Initialize the resources panel."""
         self.resource_manager = None
+        self._resources_load_worker: Optional[BackgroundWorker] = None
         super().__init__(workspace, parent)
     
     def setup_ui(self):
@@ -280,8 +284,14 @@ class ResourcesPanel(BasePanel):
     def on_deactivated(self):
         """Called when panel is hidden."""
         super().on_deactivated()
+        self._cancel_resources_load_worker()
         self._disconnect_signals()
         logger.info("⏸️ Resources panel deactivated")
+
+    def _cancel_resources_load_worker(self) -> None:
+        if self._resources_load_worker is not None:
+            self._resources_load_worker.stop()
+            self._resources_load_worker = None
     
     def _load_resources(self):
         """Load resources from the resource manager asynchronously."""
@@ -297,12 +307,24 @@ class ResourcesPanel(BasePanel):
             # Show loading state
             self.show_loading(tr("正在加载资源..."))
             self.info_label.setText(tr("正在加载资源..."))
-            
-            # Run background task to get resources
-            run_in_background(
+
+            self._cancel_resources_load_worker()
+
+            def _done(resources):
+                self._resources_load_worker = None
+                self._on_resources_loaded(resources)
+
+            def _err(msg: str, exc):
+                self._resources_load_worker = None
+                ex = exc if isinstance(exc, Exception) else Exception(msg)
+                self._on_load_error(msg, ex)
+
+            self._resources_load_worker = run_in_background(
                 self.resource_manager.get_all,
-                on_finished=self._on_resources_loaded,
-                on_error=self._on_load_error
+                on_finished=_done,
+                on_error=_err,
+                auto_cleanup=False,
+                task_type="resources_panel_load",
             )
             
         except Exception as e:

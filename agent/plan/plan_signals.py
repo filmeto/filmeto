@@ -2,7 +2,7 @@
 Global signal manager for plan-related events.
 """
 
-from PySide6.QtCore import QObject, Signal, QThread
+from PySide6.QtCore import QObject, Signal
 
 
 class PlanSignalManager(QObject):
