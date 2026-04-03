@@ -11,6 +11,15 @@ from typing import Dict, Any, List, Optional
 from pathlib import Path
 from dataclasses import dataclass, asdict
 
+from utils.async_file_io import (
+    AsyncFileIoError,
+    glob_paths,
+    load_files_parallel,
+    load_json_async,
+    path_exists,
+    run_coroutine_blocking,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -111,32 +120,40 @@ class WorkflowManager:
         self.workflows_dir.mkdir(parents=True, exist_ok=True)
     
     def list_workflows(self) -> List[WorkflowMetadata]:
-        """
-        List all workflows
-        
-        Returns:
-            List of workflow metadata
-        """
-        workflows = []
-        
-        # Find all JSON files that are not workflow files
-        for metadata_file in self.workflows_dir.glob("*.json"):
-            # Skip workflow files (those ending with _workflow.json)
-            if metadata_file.name.endswith('_workflow.json'):
-                continue
-            
+        """List all workflow metadata files (delegates to async implementation)."""
+        return run_coroutine_blocking(self.list_workflows_async())
+
+    async def list_workflows_async(self) -> List[WorkflowMetadata]:
+        """List workflows using async file I/O (parallel metadata reads)."""
+
+        async def load_one(metadata_file: Path) -> Optional[WorkflowMetadata]:
+            if metadata_file.name.endswith("_workflow.json"):
+                return None
             try:
-                with open(metadata_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    # Check if it's a metadata file (has required fields)
-                    if 'name' in data and 'type' in data and 'node_mapping' in data:
-                        metadata = WorkflowMetadata.from_dict(data)
-                        workflows.append(metadata)
+                data = await load_json_async(metadata_file)
+                if (
+                    data
+                    and "name" in data
+                    and "type" in data
+                    and "node_mapping" in data
+                ):
+                    return WorkflowMetadata.from_dict(data)
+            except AsyncFileIoError as e:
+                logger.error("Failed to load workflow metadata %s: %s", metadata_file, e)
             except Exception as e:
-                logger.error(f"Failed to load workflow metadata {metadata_file}: {e}")
-        
-        return workflows
-    
+                logger.error("Failed to load workflow metadata %s: %s", metadata_file, e)
+            return None
+
+        files = await glob_paths(self.workflows_dir, "*.json")
+        return await load_files_parallel(files, load_one)
+
+    async def get_workflow_async(self, workflow_name: str) -> Optional[WorkflowMetadata]:
+        workflows = await self.list_workflows_async()
+        for workflow in workflows:
+            if workflow.name == workflow_name:
+                return workflow
+        return await self.load_workflow_metadata_async(workflow_name)
+
     def get_workflow(self, workflow_name: str) -> Optional[WorkflowMetadata]:
         """
         Get workflow by name
@@ -294,7 +311,35 @@ class WorkflowManager:
         except Exception as e:
             logger.error(f"Failed to load workflow metadata: {e}")
             return None
-    
+
+    async def load_workflow_metadata_async(
+        self, workflow_name: str
+    ) -> Optional[WorkflowMetadata]:
+        try:
+            safe_name = workflow_name.replace(" ", "_").lower()
+            metadata_files = [
+                self.workflows_dir / f"{safe_name}.json",
+                self.workflows_dir / f"{safe_name}_metadata.json",
+            ]
+            for metadata_file in metadata_files:
+                if await path_exists(metadata_file):
+                    try:
+                        data = await load_json_async(metadata_file)
+                    except AsyncFileIoError as e:
+                        logger.error("Failed to load workflow metadata: %s", e)
+                        return None
+                    if (
+                        data
+                        and "name" in data
+                        and "type" in data
+                        and "node_mapping" in data
+                    ):
+                        return WorkflowMetadata.from_dict(data)
+            return None
+        except Exception as e:
+            logger.error("Failed to load workflow metadata: %s", e)
+            return None
+
     def load_workflow_content(self, workflow_name: str) -> Optional[Dict[str, Any]]:
         """
         Load workflow JSON content
@@ -323,7 +368,27 @@ class WorkflowManager:
         except Exception as e:
             logger.error(f"Failed to load workflow content: {e}", exc_info=True)
             return None
-    
+
+    async def load_workflow_content_async(
+        self, workflow_name: str
+    ) -> Optional[Dict[str, Any]]:
+        try:
+            metadata = await self.get_workflow_async(workflow_name)
+            if not metadata:
+                logger.warning("Metadata not found for workflow: %s", workflow_name)
+                return None
+            workflow_file = self.workflows_dir / metadata.file
+            if not await path_exists(workflow_file):
+                logger.warning("Workflow file not found: %s", workflow_file)
+                return None
+            return await load_json_async(workflow_file)
+        except AsyncFileIoError as e:
+            logger.error("Failed to load workflow content: %s", e, exc_info=True)
+            return None
+        except Exception as e:
+            logger.error("Failed to load workflow content: %s", e, exc_info=True)
+            return None
+
     def prepare_workflow(
         self,
         workflow_name: str,

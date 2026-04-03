@@ -8,6 +8,7 @@ from typing import Dict, Any, List, Optional
 from pathlib import Path
 from blinker import signal
 
+from utils.lazy_load import AsyncLazyLoadMixin
 from utils.yaml_utils import load_yaml, save_yaml
 
 logger = logging.getLogger(__name__)
@@ -65,7 +66,7 @@ class Resource:
         return os.path.exists(self.get_absolute_path(project_path))
 
 
-class ResourceManager:
+class ResourceManager(AsyncLazyLoadMixin):
     """Manages project resources with centralized storage and metadata indexing"""
     
     # Signals for resource events
@@ -99,15 +100,14 @@ class ResourceManager:
         
         # Initialize directories and migrate old index file if needed
         self._ensure_directories()
-    
-    def _ensure_loaded(self):
-        """Ensure resource index is loaded from disk"""
-        if not self._loaded:
-            with self._load_lock:
-                if not self._loaded:
-                    self._migrate_index_if_needed()
-                    self._load_index()
-                    self._loaded = True
+
+    def _do_load(self) -> None:
+        self._migrate_index_if_needed()
+        self._load_index()
+
+    def _clear_internal_state(self) -> None:
+        self._resources_by_name.clear()
+        self._resources_by_id.clear()
 
     def _ensure_directories(self):
         """Create resources directory structure if it doesn't exist"""

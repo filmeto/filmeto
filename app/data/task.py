@@ -14,19 +14,19 @@ This module provides a two-tier task management architecture:
    - Provides task listing and pagination
 """
 
+import asyncio
 import os
 import logging
 from typing import Any, Optional, Dict, List, TYPE_CHECKING
-import threading
-from typing import Any, List
 
 from blinker import signal
 
 from app.spi.model import BaseModelResult
 from utils import dict_utils
 from utils.async_queue_utils import AsyncQueue
+from utils.async_file_io import path_exists, run_coroutine_blocking, to_thread
 from utils.progress_utils import Progress
-from utils.yaml_utils import load_yaml, save_yaml
+from utils.yaml_utils import AsyncFileIoError, load_yaml, load_yaml_async, save_yaml
 
 logger = logging.getLogger(__name__)
 
@@ -173,14 +173,6 @@ class ProjectTaskManager:
         self.create_consumer = AsyncQueue()
         self.create_consumer.connect("create", self._on_create_task)
         self.execute_consumer = AsyncQueue()
-
-    def _ensure_loaded(self):
-        """Ensure tasks are loaded from disk"""
-        if not self._loaded:
-            with self._load_lock:
-                if not self._loaded:
-                    self.load_all_tasks()
-                    self._loaded = True
 
     # Signal connection methods
     def connect_task_create(self, func):
@@ -337,49 +329,60 @@ class TimelineItemTaskManager:
         Returns:
             List of loaded Task objects
         """
+        try:
+            return run_coroutine_blocking(self.load_all_tasks_async())
+        except Exception as e:
+            logger.error(f"❌ Error loading tasks: {e}", exc_info=True)
+            return []
+
+    def _collect_numeric_task_dirs(self) -> List[str]:
         if not os.path.exists(self.tasks_path):
+            return []
+        names: List[str] = []
+        for d in os.listdir(self.tasks_path):
+            dir_path = os.path.join(self.tasks_path, d)
+            if os.path.isdir(dir_path) and d.isdigit():
+                names.append(d)
+        return names
+
+    async def load_all_tasks_async(self) -> List[Task]:
+        """Load tasks with async config reads (parallel I/O)."""
+        if not await path_exists(self.tasks_path):
             logger.warning(f"⚠️ Tasks directory does not exist: {self.tasks_path}")
             return []
 
         try:
-            # Get all task directories (numbered folders)
-            task_dirs = []
-            for d in os.listdir(self.tasks_path):
-                dir_path = os.path.join(self.tasks_path, d)
-                if os.path.isdir(dir_path) and d.isdigit():
-                    task_dirs.append(d)
-
-            # Clear existing tasks before loading
+            task_dir_names = await to_thread(self._collect_numeric_task_dirs)
             self.tasks.clear()
-
-            # Load each task
-            loaded_tasks = []
             project_tm = self.project_task_manager
 
-            for task_dir_name in task_dirs:
+            async def load_one(task_dir_name: str) -> tuple[str, Task]:
                 task_dir_path = os.path.join(self.tasks_path, task_dir_name)
-                
-                # Load config file for the task
                 config_path = os.path.join(task_dir_path, "config.yml")
-                options = {}
-                if os.path.exists(config_path):
-                    options = load_yaml(config_path) or {}
-                
-                # Create Task object
-                task = Task(self, project_tm, task_dir_path, options)
-                self.tasks[task_dir_name] = task
+                options: Dict[str, Any] = {}
+                if await path_exists(config_path):
+                    try:
+                        options = await load_yaml_async(config_path) or {}
+                    except AsyncFileIoError as e:
+                        logger.error("Task config invalid %s: %s", config_path, e)
+                        options = {}
+                return task_dir_name, Task(self, project_tm, task_dir_path, options)
+
+            pairs = await asyncio.gather(*(load_one(d) for d in task_dir_names))
+            loaded_tasks: List[Task] = []
+            for name, task in pairs:
+                self.tasks[name] = task
                 loaded_tasks.append(task)
-            
             logger.info(f"✅ Loaded {len(loaded_tasks)} tasks from {self.tasks_path}")
             return loaded_tasks
-
         except Exception as e:
             logger.error(f"❌ Error loading tasks: {e}", exc_info=True)
             return []
 
     def get_task_by_id(self, task_id: str) -> Optional[Task]:
         """Get a task by its ID"""
-        self._ensure_loaded()
+        if not self.tasks:
+            self.load_all_tasks()
         return self.tasks.get(task_id)
 
     def get_all_tasks(self, start_index: int = 0, count: int = None) -> List[Task]:

@@ -9,11 +9,11 @@ late completions from superseded runs are ignored.
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Dict, Generic, Hashable, Optional, Set, TypeVar, cast
+from typing import Any, Callable, Dict, Generic, Hashable, Iterable, Optional, Set, TypeVar, cast
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
-from app.ui.worker.worker import run_in_background
+from app.ui.worker.worker import BackgroundWorker, run_in_background
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +48,7 @@ class AsyncDataLoader(QObject, Generic[T, K]):
         self._loading: Dict[Any, bool] = {}
         self._debounce_timers: Dict[Any, QTimer] = {}
         self._pending_keys: Set[Any] = set()
+        self._active_workers: Dict[Any, BackgroundWorker] = {}
 
     def schedule_load(self, key: K, force: bool = False) -> None:
         if (
@@ -72,8 +73,17 @@ class AsyncDataLoader(QObject, Generic[T, K]):
         self._debounce_timers[key].start(self._debounce_ms)
         self._pending_keys.add(key)
 
+    def schedule_load_batch(self, keys: Iterable[K], force: bool = False) -> None:
+        """Queue debounced loads for multiple keys (same rules as :meth:`schedule_load`)."""
+        for key in keys:
+            self.schedule_load(key, force=force)
+
     def _execute_load(self, key: K) -> None:
         self._pending_keys.discard(key)
+        prev = self._active_workers.pop(key, None)
+        if prev is not None:
+            prev.stop()
+
         self._load_token[key] = self._load_token.get(key, 0) + 1
         token = self._load_token[key]
         self._loading[key] = True
@@ -83,7 +93,12 @@ class AsyncDataLoader(QObject, Generic[T, K]):
         def load_task() -> T:
             return self._loader_func(key)
 
+        worker: Optional[BackgroundWorker] = None
+
         def on_finished(result: T) -> None:
+            nonlocal worker
+            if self._active_workers.get(key) is worker:
+                self._active_workers.pop(key, None)
             if self._load_token.get(key, 0) != token:
                 return
             if self._cache_enabled:
@@ -93,6 +108,9 @@ class AsyncDataLoader(QObject, Generic[T, K]):
             self.load_finished.emit(key)
 
         def on_error(msg: str, _exc: Exception) -> None:
+            nonlocal worker
+            if self._active_workers.get(key) is worker:
+                self._active_workers.pop(key, None)
             if self._load_token.get(key, 0) != token:
                 return
             logger.debug("AsyncDataLoader load failed for %r: %s", key, msg)
@@ -100,9 +118,13 @@ class AsyncDataLoader(QObject, Generic[T, K]):
             self.load_error.emit(key, msg)
             self.load_finished.emit(key)
 
-        run_in_background(load_task, on_finished=on_finished, on_error=on_error)
+        worker = run_in_background(load_task, on_finished=on_finished, on_error=on_error)
+        self._active_workers[key] = worker
 
     def invalidate(self, key: K) -> None:
+        w = self._active_workers.pop(key, None)
+        if w is not None:
+            w.stop()
         self._load_token[key] = self._load_token.get(key, 0) + 1
         self._cache.pop(key, None)
         self._loading[key] = False
@@ -116,6 +138,7 @@ class AsyncDataLoader(QObject, Generic[T, K]):
             set(self._cache.keys())
             | set(self._debounce_timers.keys())
             | set(self._pending_keys)
+            | set(self._active_workers.keys())
             | {k for k, active in self._loading.items() if active}
         )
         for k in list(keys):
@@ -148,18 +171,45 @@ class AsyncDataLoader(QObject, Generic[T, K]):
         for k in list(keys):
             self.cancel_pending(cast(K, k))
 
+    def cancel_load(self, key: Optional[K] = None) -> None:
+        """Cancel debounced (not yet started) and in-flight loads for ``key`` (or all keys if None)."""
 
-class AsyncDataLoaderMixin:
-    """Attach an :class:`AsyncDataLoader` as a child of ``self`` (expect ``QObject``)."""
+        def _cancel_one(k: Any) -> None:
+            timer = self._debounce_timers.get(k)
+            if timer is not None:
+                timer.stop()
+            self._pending_keys.discard(k)
+            w = self._active_workers.pop(k, None)
+            if w is not None:
+                w.stop()
+            self._load_token[k] = self._load_token.get(k, 0) + 1
+            self._loading[k] = False
 
-    _async_loader: AsyncDataLoader
+        if key is not None:
+            _cancel_one(key)
+            return
+        keys: Set[Any] = (
+            set(self._debounce_timers.keys())
+            | set(self._pending_keys)
+            | set(self._active_workers.keys())
+            | set(self._cache.keys())
+            | {k for k, active in self._loading.items() if active}
+        )
+        for k in list(keys):
+            _cancel_one(k)
+
+
+class AsyncDataLoaderMixin(QObject):
+    """Adds a child :class:`AsyncDataLoader`; the concrete widget must also inherit ``QObject`` (e.g. ``QWidget``)."""
+
+    _async_loader: AsyncDataLoader[Any, Any]
 
     def setup_async_loader(
         self,
-        loader_func: Callable[[Any], Any],
-        on_loaded: Optional[Callable[[Any, Any], None]] = None,
-        on_error: Optional[Callable[[Any, str], None]] = None,
-        on_started: Optional[Callable[[Any], None]] = None,
+        loader_func: Callable[[K], T],
+        on_loaded: Optional[Callable[[K, T], None]] = None,
+        on_error: Optional[Callable[[K, str], None]] = None,
+        on_started: Optional[Callable[[K], None]] = None,
         debounce_ms: int = AsyncDataLoader.DEFAULT_DEBOUNCE_MS,
         cache_enabled: bool = True,
     ) -> None:
@@ -179,6 +229,9 @@ class AsyncDataLoaderMixin:
     def schedule_async_load(self, key: Hashable, force: bool = False) -> None:
         self._async_loader.schedule_load(key, force=force)
 
+    def schedule_async_load_batch(self, keys: Iterable[Hashable], force: bool = False) -> None:
+        self._async_loader.schedule_load_batch(keys, force=force)
+
     def invalidate_async_cache(self, key: Optional[Hashable] = None) -> None:
         if key is None:
             self._async_loader.invalidate_all()
@@ -187,6 +240,9 @@ class AsyncDataLoaderMixin:
 
     def cancel_async_pending(self, key: Optional[Hashable] = None) -> None:
         self._async_loader.cancel_pending(key)
+
+    def cancel_async_load(self, key: Optional[Hashable] = None) -> None:
+        self._async_loader.cancel_load(key)
 
     def is_async_loading(self, key: Hashable) -> bool:
         return self._async_loader.is_loading(key) or self._async_loader.is_pending(key)
