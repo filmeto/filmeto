@@ -12,9 +12,17 @@ from app.data.layer import LayerManager, LayerType
 from blinker import signal
 
 from utils import dict_utils
-from utils.async_file_io import run_coroutine_blocking, shutil_copy2, to_thread
 from utils.opencv_utils import get_video_duration_async
-from utils.yaml_utils import load_yaml, save_yaml
+from utils.yaml_utils import (
+    AsyncFileNotFoundError,
+    AsyncFileParseError,
+    load_yaml,
+    load_yaml_async,
+    run_coroutine_blocking,
+    save_yaml,
+    shutil_copy2,
+    to_thread,
+)
 
 
 def _read_image_bytes(path: str) -> bytes:
@@ -64,11 +72,24 @@ class TimelineItem:
     def _ensure_item_config_loaded(self) -> None:
         if self._item_config_loaded:
             return
-        self._item_config = load_yaml(self.config_path) or {}
+        run_coroutine_blocking(self.ensure_item_config_loaded_async())
+
+    async def ensure_item_config_loaded_async(self) -> None:
+        if self._item_config_loaded:
+            return
+        try:
+            data = await load_yaml_async(self.config_path)
+            self._item_config = data if isinstance(data, dict) else {}
+        except (AsyncFileNotFoundError, AsyncFileParseError):
+            self._item_config = {}
+        except Exception as e:
+            logger.warning("timeline item config load failed (%s): %s", self.config_path, e)
+            self._item_config = {}
         self._item_config_loaded = True
+        await self.timeline.project.ensure_project_config_loaded_async()
         self._migrate_duration_if_needed()
         if not self.timeline.project.has_item_duration(self.index):
-            self._initialize_duration()
+            await self._initialize_duration_async()
 
     @property
     def config(self) -> Dict[str, Any]:
@@ -99,19 +120,18 @@ class TimelineItem:
             # save_yaml(self.config_path, self.config)
     
     def _initialize_duration(self):
-        """Initialize duration based on item type (image or video)"""
+        run_coroutine_blocking(self._initialize_duration_async())
+
+    async def _initialize_duration_async(self) -> None:
+        """Initialize duration based on item type (image or video) without blocking the event loop."""
         if os.path.exists(self.video_path):
-            # Video item - get duration from video file
-            duration = run_coroutine_blocking(get_video_duration_async(self.video_path))
+            duration = await get_video_duration_async(self.video_path)
             if duration is not None:
                 self.timeline.project.set_item_duration(self.index, duration)
             else:
-                # Fallback to default if we can't read video duration
                 self.timeline.project.set_item_duration(self.index, 1.0)
         else:
-            # Image item - default to 1 second
             self.timeline.project.set_item_duration(self.index, 1.0)
-        # Notify timeline to update total duration
         self.timeline._on_item_duration_changed()
 
     def update_image(self, image_path:str):
@@ -249,7 +269,6 @@ class TimelineItem:
 
         # Load the task config
         task_config_path = result.get_task().get_config_path()
-        from utils.yaml_utils import load_yaml, save_yaml
 
         # Load the task configuration data
         task_config_data = load_yaml(task_config_path) or {}

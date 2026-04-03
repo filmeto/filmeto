@@ -11,7 +11,7 @@ from typing import Dict, Any, List, Optional
 from pathlib import Path
 from dataclasses import dataclass, asdict
 
-from utils.async_file_io import (
+from utils.yaml_utils import (
     AsyncFileIoError,
     glob_paths,
     load_files_parallel,

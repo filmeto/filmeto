@@ -21,8 +21,15 @@ from app.data.drawing import Drawing
 from app.data.resource import ResourceManager
 from app.data.character import CharacterManager
 from app.data.screen_play import ScreenPlayManager
-from utils.async_file_io import list_dir_names, path_exists, run_coroutine_blocking
-from utils.yaml_utils import load_yaml, save_yaml
+from utils.yaml_utils import (
+    AsyncFileNotFoundError,
+    list_dir_names,
+    load_yaml,
+    load_yaml_async,
+    path_exists,
+    run_coroutine_blocking,
+    save_yaml,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +91,19 @@ class Project:
     def _ensure_project_config_loaded(self) -> None:
         if self._project_config_loaded:
             return
-        self._project_config = load_yaml(self._config_path) or {}
+        run_coroutine_blocking(self.ensure_project_config_loaded_async())
+
+    async def ensure_project_config_loaded_async(self) -> None:
+        if self._project_config_loaded:
+            return
+        try:
+            data = await load_yaml_async(self._config_path)
+            self._project_config = data if isinstance(data, dict) else {}
+        except AsyncFileNotFoundError:
+            self._project_config = {}
+        except Exception as e:
+            logger.warning("project.yml load failed (%s), using empty config", e)
+            self._project_config = {}
         self._project_config_loaded = True
 
     @property

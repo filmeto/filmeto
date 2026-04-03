@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Union
 
-from utils.async_file_io import glob_paths, to_thread
+from utils.yaml_utils import glob_paths, to_thread
 from utils.md_with_meta_utils import (
     read_md_with_meta,
     write_md_with_meta,
