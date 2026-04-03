@@ -17,6 +17,9 @@ from utils.i18n_utils import tr
 
 logger = logging.getLogger(__name__)
 
+# Right tool-panel column width in startup work area (chat gets the remainder).
+_STARTUP_RIGHT_PANEL_TARGET_PX = 380
+
 
 class ProjectStartupWidget(BaseWidget):
     """
@@ -70,6 +73,8 @@ class ProjectStartupWidget(BaseWidget):
         self.main_splitter.setHandleWidth(0)
 
         self.work_area_splitter = QSplitter(Qt.Horizontal)
+        self.work_area_splitter.setCollapsible(0, False)
+        self.work_area_splitter.setCollapsible(1, False)
 
         if self._defer_components:
             self.agent_chat_component = None
@@ -143,6 +148,25 @@ class ProjectStartupWidget(BaseWidget):
                 lambda: self.right_sidebar.set_selected_button("members", emit_signal=True),
             )
 
+        QTimer.singleShot(0, self._apply_work_area_split_sizes)
+
+    def _apply_work_area_split_sizes(self):
+        """Keep chat vs right panel ratio stable; replaceWidget resets QSplitter sizes (~50/50)."""
+        sp = self.work_area_splitter
+        if sp.count() < 2:
+            return
+        total = sp.width()
+        if total <= 0:
+            QTimer.singleShot(0, self._apply_work_area_split_sizes)
+            return
+        handle = sp.handleWidth()
+        panel_w = min(
+            600,
+            max(300, min(_STARTUP_RIGHT_PANEL_TARGET_PX, int(total * 0.28))),
+        )
+        chat_w = max(200, total - panel_w - handle)
+        sp.setSizes([chat_w, panel_w])
+
     def attach_work_area_components(self):
         """Replace skeleton widgets with chat, panel switcher, and sidebar (main-thread)."""
         if self._work_area_attached:
@@ -179,6 +203,9 @@ class ProjectStartupWidget(BaseWidget):
 
         if self.project_name:
             self.set_project(self.project_name)
+
+        QTimer.singleShot(0, self._apply_work_area_split_sizes)
+        QTimer.singleShot(50, self._apply_work_area_split_sizes)
 
     def _setup_chat_tab(self, tab: QWidget):
         """Set up the chat tab."""
