@@ -12,8 +12,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
 
-from utils.async_file_io import to_thread
-from utils.yaml_utils import load_yaml, load_yaml_async, save_yaml, save_yaml_async
+from utils.yaml_utils import (
+    load_yaml_async,
+    run_coroutine_blocking,
+    save_yaml,
+    save_yaml_async,
+    to_thread,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -92,36 +97,8 @@ class Settings:
             logger.info(f"⏱️  [Settings] Deferred settings loading completed in {load_time:.2f}ms")
     
     def load(self):
-        """Load settings from YML file or create from template if not exists"""
-        # Ensure workspace directory exists
-        os.makedirs(self.workspace_path, exist_ok=True)
-        
-        # Create settings file from template if it doesn't exist
-        if not os.path.exists(self.settings_file):
-            self._create_from_template()
-        
-        # Load settings YAML
-        try:
-            data = load_yaml(self.settings_file)
-            if not data or 'groups' not in data:
-                logger.warning(f"⚠️ Invalid settings file, creating from template")
-                self._create_from_template()
-                data = load_yaml(self.settings_file)
-            
-            self._parse_settings(data)
-            logger.info(f"✅ Settings loaded from {self.settings_file}")
-            
-        except Exception as e:
-            logger.error(f"❌ Error loading settings: {e}")
-            # Backup corrupted file and create from template
-            if os.path.exists(self.settings_file):
-                backup_file = f"{self.settings_file}.backup"
-                shutil.copy(self.settings_file, backup_file)
-                logger.warning(f"⚠️ Backed up corrupted settings to {backup_file}")
-            
-            self._create_from_template()
-            data = load_yaml(self.settings_file)
-            self._parse_settings(data)
+        """Load settings from YML file or create from template if not exists."""
+        run_coroutine_blocking(self.load_async())
 
     async def load_async(self) -> None:
         """Load settings using async YAML I/O; template/backup copies use a worker thread."""
