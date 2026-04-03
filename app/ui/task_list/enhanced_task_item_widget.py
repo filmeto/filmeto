@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt, Signal, QTimer, QPropertyAnimation, QEasingCurve,
 from PySide6.QtGui import QPainter, QColor, QPen, QFont, QPixmap, QMovie, QPainterPath, QBrush
 from utils.i18n_utils import tr
 from utils.yaml_utils import load_yaml
-from app.ui.worker.worker import run_in_background
+from app.ui.worker.async_data_loader import AsyncDataLoaderMixin
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ def _resolve_task_thumbnail_path(
     return None
 
 
-class EnhancedTaskItemWidget(QWidget):
+class EnhancedTaskItemWidget(QWidget, AsyncDataLoaderMixin):
     clicked = Signal(object)  # Signal emitted when task item is clicked
 
     def __init__(self, task, workspace=None, parent=None):
@@ -89,10 +89,8 @@ class EnhancedTaskItemWidget(QWidget):
         self.is_selected = False
         self.status_animation = None
         self.workspace = workspace
-        self._thumb_load_token = 0
         self._thumbnail_pixmap: Optional[QPixmap] = None
         self._thumbnail_source_path: Optional[str] = None
-        self._thumb_debounce: Optional[QTimer] = None
         self._thumbnail_loading = False
         self._thumb_loading_anim_timer: Optional[QTimer] = None
 
@@ -101,6 +99,13 @@ class EnhancedTaskItemWidget(QWidget):
         self.setAttribute(Qt.WA_Hover, True)
 
         self.init_ui()
+        self.setup_async_loader(
+            loader_func=self._load_thumbnail_for_key,
+            on_loaded=self._on_thumbnail_loaded,
+            on_error=self._on_thumbnail_error,
+            debounce_ms=THUMBNAIL_RELOAD_DEBOUNCE_MS,
+            cache_enabled=True,
+        )
         self.update_display(task)
 
     def init_ui(self):
@@ -132,6 +137,46 @@ class EnhancedTaskItemWidget(QWidget):
             return getattr(self.task.task_manager.project, "project_path", None)
         return None
 
+    def _thumbnail_cache_key(self):
+        config_path = getattr(self.task, "config_path", None) or ""
+        mtime = 0
+        if config_path and os.path.isfile(config_path):
+            try:
+                mtime = int(os.path.getmtime(config_path))
+            except OSError:
+                mtime = 0
+        project_path = self._project_path_for_task() or ""
+        task_path = getattr(self.task, "path", None) or ""
+        return (config_path, project_path, task_path, mtime)
+
+    def _load_thumbnail_for_key(self, key):
+        config_path, project_path, task_path, _mtime = key
+        if not config_path:
+            return None
+        pp = project_path or None
+        tp = task_path or None
+        return _resolve_task_thumbnail_path(config_path, pp, tp)
+
+    def _on_thumbnail_loaded(self, key, resolved: Optional[str]):
+        self._thumbnail_source_path = resolved
+        if resolved and os.path.exists(resolved) and resolved.lower().endswith(
+            (".png", ".jpg", ".jpeg", ".gif")
+        ):
+            self._thumbnail_pixmap = QPixmap(resolved)
+            if self._thumbnail_pixmap.isNull():
+                self._thumbnail_pixmap = None
+        else:
+            self._thumbnail_pixmap = None
+        self._stop_thumb_loading_state()
+        self.update()
+
+    def _on_thumbnail_error(self, key, msg: str):
+        logger.error("Thumbnail background load failed: %s", msg)
+        self._thumbnail_pixmap = None
+        self._thumbnail_source_path = None
+        self._stop_thumb_loading_state()
+        self.update()
+
     def _start_thumb_loading_animation(self):
         if self._thumb_loading_anim_timer is None:
             self._thumb_loading_anim_timer = QTimer(self)
@@ -149,61 +194,14 @@ class EnhancedTaskItemWidget(QWidget):
         if self._thumbnail_pixmap is None or self._thumbnail_pixmap.isNull():
             self._thumbnail_loading = True
             self._start_thumb_loading_animation()
-        if self._thumb_debounce is None:
-            self._thumb_debounce = QTimer(self)
-            self._thumb_debounce.setSingleShot(True)
-            self._thumb_debounce.timeout.connect(self._schedule_thumbnail_reload)
-        self._thumb_debounce.stop()
-        self._thumb_debounce.start(THUMBNAIL_RELOAD_DEBOUNCE_MS)
-
-    def _schedule_thumbnail_reload(self):
-        """Load task config / resolve media path off the UI thread; pixmap on main thread."""
-        self._thumb_load_token += 1
-        token = self._thumb_load_token
-        config_path = getattr(self.task, "config_path", None)
-        if not config_path:
+        key = self._thumbnail_cache_key()
+        if not key[0]:
             self._stop_thumb_loading_state()
             self._thumbnail_pixmap = None
             self._thumbnail_source_path = None
             self.update()
             return
-
-        self._thumbnail_loading = True
-        if self._thumbnail_pixmap is None or self._thumbnail_pixmap.isNull():
-            self._start_thumb_loading_animation()
-
-        project_path = self._project_path_for_task()
-        task_path = getattr(self.task, "path", None)
-
-        def load_path():
-            return _resolve_task_thumbnail_path(config_path, project_path, task_path)
-
-        def on_finished(resolved: Optional[str]):
-            if token != self._thumb_load_token:
-                return
-            self._thumbnail_source_path = resolved
-            if resolved and os.path.exists(resolved) and resolved.lower().endswith(
-                (".png", ".jpg", ".jpeg", ".gif")
-            ):
-                self._thumbnail_pixmap = QPixmap(resolved)
-                if self._thumbnail_pixmap.isNull():
-                    self._thumbnail_pixmap = None
-            else:
-                self._thumbnail_pixmap = None
-            self._stop_thumb_loading_state()
-            self.update()
-
-        def on_error(msg: str, _exc: Exception):
-            if token != self._thumb_load_token:
-                return
-            logger.error(f"Thumbnail background load failed: {msg}")
-            self._thumbnail_pixmap = None
-            self._thumbnail_source_path = None
-            self._stop_thumb_loading_state()
-            self.update()
-
-        run_in_background(load_path, on_finished=on_finished, on_error=on_error)
-
+        self.schedule_async_load(key, force=False)
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -288,10 +286,9 @@ class EnhancedTaskItemWidget(QWidget):
             painter.setPen(QColor("#8a8a8a"))
             hint = tr("Loading…")
             tw = painter.fontMetrics().horizontalAdvance(hint)
-            th = painter.fontMetrics().height()
             painter.drawText(
                 rect.x() + (rect.width() - tw) // 2,
-                rect.bottom() - 8 - th + th,
+                rect.bottom() - 8,
                 hint,
             )
         except Exception as e:
@@ -667,13 +664,18 @@ class EnhancedTaskItemWidget(QWidget):
         new_id = getattr(task, "task_id", None)
         if old_id != new_id:
             self._stop_thumb_loading_state()
-            self._thumb_load_token += 1
+            self.cancel_async_pending()
+            self.invalidate_async_cache()
             self._thumbnail_pixmap = None
             self._thumbnail_source_path = None
-            if self._thumb_debounce is not None:
-                self._thumb_debounce.stop()
             self.task = task
-            self._schedule_thumbnail_reload()
+            self._thumbnail_loading = True
+            self._start_thumb_loading_animation()
+            key = self._thumbnail_cache_key()
+            if key[0]:
+                self.schedule_async_load(key, force=True)
+            else:
+                self._stop_thumb_loading_state()
             self.update()
             return
         self.task = task
