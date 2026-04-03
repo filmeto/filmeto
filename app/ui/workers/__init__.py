@@ -9,7 +9,8 @@ Organization
   (:class:`BackgroundWorker`, :class:`AsyncDataLoader`), one domain module per
   feature where applicable:
 
-  - ``worker`` — pool-backed :class:`BackgroundWorker`, :func:`run_in_background`.
+  - ``background_worker`` — :class:`BackgroundWorker`, :func:`run_in_background`.
+  - ``pool_worker`` — :class:`PoolWorker`, :func:`get_worker_pool`.
   - ``async_data_loader`` — debounced loads for UI lists/previews.
   - ``timeline_export`` — FFmpeg timeline export.
 
@@ -23,20 +24,16 @@ Adding a worker
 """
 
 from app.ui.workers.async_data_loader import AsyncDataLoader, AsyncDataLoaderMixin
+from app.ui.workers.background_worker import BackgroundWorker, run_in_background
 from app.ui.workers.timeline_export import TimelineExportWorker
-from app.ui.workers.worker import (
-    BackgroundWorker,
-    WorkerPool,
-    get_worker_pool,
-    run_in_background,
-)
+from app.ui.workers.pool_worker import PoolWorker, get_worker_pool
 
 __all__ = [
     "AsyncDataLoader",
     "AsyncDataLoaderMixin",
     "BackgroundWorker",
+    "PoolWorker",
     "TimelineExportWorker",
-    "WorkerPool",
     "get_worker_pool",
     "run_in_background",
 ]

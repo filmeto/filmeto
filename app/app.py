@@ -421,9 +421,9 @@ class App():
             logger.error("Full stack trace:", exc_info=True)
 
         try:
-            from app.ui.workers.worker import _global_pool
+            from app.ui.workers.pool_worker import _global_pool
             if _global_pool is not None:
-                logger.info("Canceling queued legacy WorkerPool tasks...")
+                logger.info("Canceling queued legacy PoolWorker tasks...")
                 _global_pool.cancel_pending()
         except Exception as e:
             logger.error(f"Error canceling worker pool queue: {e}")
@@ -438,7 +438,7 @@ class App():
 
         try:
             logger.info("Draining global worker pool bookkeeping...")
-            from app.ui.workers.worker import _global_pool
+            from app.ui.workers.pool_worker import _global_pool
             if _global_pool is not None:
                 _global_pool.wait_all()
             logger.info("Global worker pool shutdown complete")

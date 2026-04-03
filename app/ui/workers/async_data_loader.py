@@ -13,7 +13,7 @@ from typing import Any, Callable, Dict, Generic, Hashable, Iterable, Optional, S
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
-from app.ui.workers.worker import BackgroundWorker, run_in_background
+from app.ui.workers.background_worker import BackgroundWorker, run_in_background
 
 logger = logging.getLogger(__name__)
 

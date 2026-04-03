@@ -16,7 +16,7 @@ from typing import Dict, List, Any, Optional, TYPE_CHECKING, Callable
 from PySide6.QtCore import QTimer
 
 from app.ui.chat.list.agent_chat_list_items import LoadState
-from app.ui.workers.worker import BackgroundWorker, run_in_background
+from app.ui.workers.background_worker import BackgroundWorker, run_in_background
 
 if TYPE_CHECKING:
     from app.data.workspace import Workspace
