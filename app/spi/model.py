@@ -13,6 +13,9 @@ class BaseModelResult():
     def get_video_path(self):
         return None
 
+    def get_audio_path(self):
+        return None
+
 class BaseModel():
 
     def __init__(self):

@@ -415,6 +415,24 @@ video_models:
       description: High quality image-to-video generation
       default: false
 
+  speech_to_video:
+    - name: wan2.2-s2v
+      description: Audio-driven lip-sync video from a portrait image and speech audio (Wan 2.2 S2V)
+      default: true
+
+# ============================================================
+# Text-to-music (expressive vocal / scored audio via CosyVoice)
+# ============================================================
+music_models:
+  text_to_music:
+    - name: cosyvoice-v3-flash
+      description: CosyVoice — styled vocal audio from a text prompt (singing-like delivery when supported by voice/instruction)
+      default: true
+
+    - name: cosyvoice-v3-plus
+      description: CosyVoice Plus — higher quality styled vocal audio
+      default: false
+
 # ============================================================
 # Speech Models
 # ============================================================
@@ -425,9 +443,13 @@ speech_models:
   # Text-to-Speech (TTS)
   # --------------------------------------------------------
   tts:
-    - name: qwen-tts
-      description: Qwen text-to-speech model
+    - name: qwen3-tts-flash
+      description: Qwen3 TTS (MultiModalConversation API, fast)
       default: true
+
+    - name: qwen-tts
+      description: Qwen text-to-speech (mapped to qwen3-tts-flash in plugin)
+      default: false
 
     - name: cosyvoice-v1
       description: CosyVoice TTS model
