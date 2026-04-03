@@ -1,21 +1,26 @@
-import sys
 import logging
+import os
+from typing import Optional
+
 from PySide6.QtWidgets import (
-    QApplication, QWidget, QHBoxLayout,
+    QWidget, QHBoxLayout,
     QLabel, QVBoxLayout, QFrame, QSizePolicy
 )
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QKeyEvent, QPixmap
+from PySide6.QtGui import QKeyEvent, QPixmap, QImage
 
 from app.data.timeline import TimelineItem
 from app.data.workspace import Workspace
 from app.ui.base_widget import BaseWidget, BaseTaskWidget
 from app.ui.timeline.video_timeline_scroll import VideoTimelineScroll
 from app.ui.timeline.video_timeline_card import VideoTimelineCard
+from app.ui.worker.async_data_loader import AsyncDataLoaderMixin
 from utils import qt_utils
 from utils.i18n_utils import tr, translation_manager
 
 logger = logging.getLogger(__name__)
+
+TIMELINE_THUMB_DEBOUNCE_MS = 100
 
 
 class AddCardFrame(QFrame):
@@ -68,7 +73,7 @@ class AddCardFrame(QFrame):
                 self.parent.add_new_card()
 
 
-class VideoTimeline(BaseTaskWidget):
+class VideoTimeline(BaseTaskWidget, AsyncDataLoaderMixin):
     """左右滑动的卡片式时间线主窗口"""
     def __init__(self,parent:QWidget,workspace:Workspace):
         super().__init__(workspace)
@@ -108,7 +113,6 @@ class VideoTimeline(BaseTaskWidget):
         timeline_item_count = timeline.get_item_count()
         self.cards = []
         self._timeline = timeline  # 保存 timeline 引用用于延迟加载
-        self._loaded_card_indices = set()  # 跟踪已加载的卡片
 
         for i in range(timeline_item_count):
             index = i + 1
@@ -151,21 +155,65 @@ class VideoTimeline(BaseTaskWidget):
         # Connect to language change signal
         translation_manager.language_changed.connect(self.retranslateUi)
 
-        # Connect timeline switch signal to update card images
-        self.workspace.connect_timeline_switch(self.on_timeline_switch)
-
         # Connect timeline changed signal to update card images when composition completes
         timeline.connect_timeline_changed(self.on_timeline_changed)
 
-        # 设置滚动监听，延迟加载可见区域的卡片图像
-        self.scroll_area.horizontalScrollBar().valueChanged.connect(self._on_scroll_changed)
-        self._scroll_debounce_timer = QTimer(self)
-        self._scroll_debounce_timer.setSingleShot(True)
-        self._scroll_debounce_timer.setInterval(100)
-        self._scroll_debounce_timer.timeout.connect(self._load_visible_cards)
+        self.setup_async_loader(
+            loader_func=self._load_timeline_card_thumbnail,
+            on_loaded=self._on_timeline_card_thumbnail_loaded,
+            on_error=self._on_timeline_card_thumbnail_error,
+            debounce_ms=TIMELINE_THUMB_DEBOUNCE_MS,
+            cache_enabled=True,
+        )
+
+        try:
+            self._timeline.timeline_switch.disconnect(self.on_timeline_switch)
+        except (TypeError, ValueError):
+            pass
+        self.workspace.connect_timeline_switch(self.on_timeline_switch)
+
+        self.scroll_area.horizontalScrollBar().valueChanged.connect(self._load_visible_cards)
 
         # 延迟加载初始可见区域的卡片 (100ms 后)
         QTimer.singleShot(100, self._load_initial_cards)
+
+    def _card_thumbnail_key(self, card_index: int):
+        if card_index < 0 or card_index >= len(self.cards):
+            return None
+        timeline_index = card_index + 1
+        item = self._timeline.get_item(timeline_index)
+        path = item.get_image_path()
+        mtime = 0
+        if path and os.path.isfile(path):
+            try:
+                mtime = int(os.path.getmtime(path))
+            except OSError:
+                mtime = 0
+        return (card_index, path, mtime)
+
+    def _load_timeline_card_thumbnail(self, key):
+        """Background thread: disk + QImage only (no QPixmap here)."""
+        _, image_path, _mtime = key
+        if not image_path or not os.path.isfile(image_path):
+            return None
+        img = QImage(image_path)
+        if img.isNull():
+            return None
+        return img
+
+    def _on_timeline_card_thumbnail_loaded(self, key, image: Optional[QImage]):
+        card_index = key[0]
+        if card_index < 0 or card_index >= len(self.cards):
+            return
+        if image is None or image.isNull():
+            return
+        pixmap = QPixmap.fromImage(image)
+        if pixmap.isNull():
+            return
+        self.cards[card_index].setImage(pixmap)
+
+    def _on_timeline_card_thumbnail_error(self, key, msg: str):
+        logger.warning("Timeline card thumbnail load failed: %s", msg)
 
     def _load_initial_cards(self):
         """加载初始可见区域的卡片（当前选中卡片优先，然后向两侧扩展）"""
@@ -188,11 +236,6 @@ class VideoTimeline(BaseTaskWidget):
                 if idx >= 0:
                     self._load_card_image(idx)
 
-    def _on_scroll_changed(self):
-        """滚动事件防抖处理"""
-        if hasattr(self, '_scroll_debounce_timer'):
-            self._scroll_debounce_timer.start()
-
     def _load_visible_cards(self):
         """加载滚动后可见区域的卡片"""
         if not hasattr(self, '_timeline') or not self.cards:
@@ -212,27 +255,24 @@ class VideoTimeline(BaseTaskWidget):
             self._load_card_image(i)
 
     def _load_card_image(self, card_index: int):
-        """加载单个卡片的图像"""
+        """Schedule debounced async thumbnail load for one card."""
         if card_index < 0 or card_index >= len(self.cards):
             return
-
-        # 如果已经加载过，跳过
-        if card_index in self._loaded_card_indices:
+        key = self._card_thumbnail_key(card_index)
+        if key is None:
             return
-
-        self._loaded_card_indices.add(card_index)
-
         try:
-            # 获取 timeline item 并加载图像
-            timeline_item = self._timeline.get_item(card_index + 1)
-            snapshot_image = timeline_item.get_image()
-
-            # 更新卡片图像
-            card = self.cards[card_index]
-            if snapshot_image is not None and not snapshot_image.isNull():
-                card.setImage(snapshot_image)
+            self.schedule_async_load(key, force=False)
         except Exception as e:
-            logger.warning(f"Failed to load image for card {card_index + 1}: {e}")
+            logger.warning("Failed to schedule image for card %s: %s", card_index + 1, e)
+
+    def _reload_card_image_force(self, card_index: int):
+        if card_index < 0 or card_index >= len(self.cards):
+            return
+        key = self._card_thumbnail_key(card_index)
+        if key is None:
+            return
+        self.schedule_async_load(key, force=True)
 
     def retranslateUi(self):
         """更新所有UI文本当语言变化时"""
@@ -276,10 +316,8 @@ class VideoTimeline(BaseTaskWidget):
             self.timeline_layout.removeWidget(self.add_card_button)
             qt_utils.remove_last_stretch(self.timeline_layout)
             # 修复：使用新索引获取时间线项，然后获取图像
-            new_timeline_item = timeline.get_item(new_index)
-            snapshot_image = new_timeline_item.get_image()
             title = f"# {new_index}"
-            new_card = VideoTimelineCard(self, title, snapshot_image, new_index)
+            new_card = VideoTimelineCard(self, title, None, new_index)
             
             # Add the new card
             self.timeline_layout.addWidget(new_card)
@@ -299,18 +337,16 @@ class VideoTimeline(BaseTaskWidget):
             # Force a layout update
             self.content_widget.update()
             self.update()
-            
+            self._load_card_image(len(self.cards) - 1)
+
         except Exception as e:
             logger.error(f"Error adding new card: {e}", exc_info=True)
 
     def on_timeline_switch(self, item: TimelineItem):
         """Handle timeline switch to update card images"""
-        # Update the image for the card corresponding to the switched timeline item
         index = item.get_index()
         if 1 <= index <= len(self.cards):
-            # Load the new image and update the card
-            pixmap = item.get_image()
-            self.cards[index-1].setImage(pixmap)
+            self._reload_card_image_force(index - 1)
 
         # 取消之前选中卡片的选中状态
         if self.selected_card_index is not None and 1 <= self.selected_card_index <= len(self.cards):
@@ -323,16 +359,16 @@ class VideoTimeline(BaseTaskWidget):
     
     def on_timeline_changed(self, timeline, timeline_item: TimelineItem):
         """Handle timeline changed signal (fired when composition completes)"""
-        # Update the card image for the timeline item that just completed composition
         index = timeline_item.get_index()
         if 1 <= index <= len(self.cards):
-            # Reload the image (image.png has been updated)
-            pixmap = timeline_item.get_image()
-            self.cards[index - 1].setImage(pixmap)
-            logger.info(f"Updated timeline card {index} after composition")
+            self._reload_card_image_force(index - 1)
+            logger.info("Updated timeline card %s after composition", index)
     
     def on_project_switched(self, project_name):
         """处理项目切换"""
+        self.cancel_async_pending()
+        self.invalidate_async_cache()
+
         # 清除现有的卡片
         for card in self.cards:
             self.timeline_layout.removeWidget(card)
@@ -345,14 +381,15 @@ class VideoTimeline(BaseTaskWidget):
         
         # 重新加载新项目的时间线卡片
         timeline = self.workspace.get_project().get_timeline()
+        self._timeline = timeline
+        timeline.connect_timeline_changed(self.on_timeline_changed)
+        self.workspace.connect_timeline_switch(self.on_timeline_switch)
         timeline_item_count = timeline.get_item_count()
         
         for i in range(timeline_item_count):
             index = i + 1
-            timeline_item = timeline.get_item(index)
-            snapshot_image = timeline_item.get_image()
             title = f"# {index}"
-            card = VideoTimelineCard(self, title, snapshot_image, index)
+            card = VideoTimelineCard(self, title, None, index)
             self.timeline_layout.addWidget(card)
             self.cards.append(card)
         
@@ -378,3 +415,5 @@ class VideoTimeline(BaseTaskWidget):
             self.selected_card_index = 1
             if self.cards:
                 self.cards[0].set_selected(True)
+
+        QTimer.singleShot(100, self._load_initial_cards)
