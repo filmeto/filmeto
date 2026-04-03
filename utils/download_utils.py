@@ -38,12 +38,12 @@ class DownloadWorker(QThread):
         self._wire_event_bus()
 
     def _wire_event_bus(self) -> None:
-        """Mirror download lifecycle to :class:`app.core.event_bus.EventBus` (Qt thread–safe)."""
+        """Mirror download lifecycle to :class:`app.ui.core.event_bus.EventBus` (Qt thread–safe)."""
         if getattr(self, "_bus_wired", False):
             return
         self._bus_wired = True
         try:
-            from app.core.event_bus import EventBus
+            from app.ui.core.event_bus import EventBus
         except Exception:
             return
         bus = EventBus.instance()

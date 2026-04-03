@@ -16,7 +16,7 @@ from PySide6.QtGui import QIcon, QBrush, QColor
 
 from app.ui.panels.base_panel import BasePanel
 from app.data.workspace import Workspace
-from app.workers.worker import BackgroundWorker, run_in_background
+from app.ui.workers.worker import BackgroundWorker, run_in_background
 from utils.i18n_utils import tr
 from .resource_preview import ResourcePreview
 

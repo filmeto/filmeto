@@ -36,9 +36,9 @@ from typing import Callable, Optional
 
 from PySide6.QtCore import QObject, Qt
 
-from app.core.base_worker import BaseWorker
-from app.core.event_bus import EventBus
-from app.core.task_manager import TaskManager
+from app.ui.core.base_worker import BaseWorker
+from app.ui.core.event_bus import EventBus
+from app.ui.core.task_manager import TaskManager
 
 logger = logging.getLogger(__name__)
 

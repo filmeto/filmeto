@@ -61,8 +61,8 @@ async def load_files_parallel(
 def run_coroutine_blocking(coro: Coroutine[Any, Any, T]) -> T:
     """Run ``coro`` from sync code: ``asyncio.run`` if no loop on this thread, else a worker thread.
 
-    Uses a one-off ``ThreadPoolExecutor``, not :class:`app.core.task_manager.TaskManager`.
-    Prefer ``TaskManager`` + :class:`app.core.base_worker.FunctionWorker` for Qt UI–driven work.
+    Uses a one-off ``ThreadPoolExecutor``, not :class:`app.ui.core.task_manager.TaskManager`.
+    Prefer ``TaskManager`` + :class:`app.ui.core.base_worker.FunctionWorker` for Qt UI–driven work.
     """
     try:
         asyncio.get_running_loop()

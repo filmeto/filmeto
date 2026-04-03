@@ -12,10 +12,10 @@ Dependency flow (unidirectional):
     Worker -> signals -> EventBus -> UI
 """
 
-from app.core.event_bus import EventBus
-from app.core.base_worker import BaseWorker, FunctionWorker, WorkerSignals, TaskStatus
-from app.core.task_manager import TaskManager
-from app.core.base_service import BaseAppService
+from app.ui.core.event_bus import EventBus
+from app.ui.core.base_worker import BaseWorker, FunctionWorker, WorkerSignals, TaskStatus
+from app.ui.core.task_manager import TaskManager
+from app.ui.core.base_service import BaseAppService
 
 __all__ = [
     "EventBus",

@@ -19,9 +19,9 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QDesktopServices
 
-from app.core.task_manager import TaskManager
+from app.ui.core.task_manager import TaskManager
 from app.ui.base_widget import BaseWidget
-from app.workers import TimelineExportWorker
+from app.ui.workers import TimelineExportWorker
 from utils.i18n_utils import tr, translation_manager
 
 

@@ -16,7 +16,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from utils.i18n_utils import tr
 from utils.yaml_utils import load_yaml
 
-from app.workers.async_data_loader import AsyncDataLoaderMixin
+from app.ui.workers.async_data_loader import AsyncDataLoaderMixin
 
 logger = logging.getLogger(__name__)
 

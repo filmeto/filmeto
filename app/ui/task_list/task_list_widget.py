@@ -11,7 +11,7 @@ from .enhanced_task_item_widget import EnhancedTaskItemWidget
 import os
 
 from ..base_widget import BaseWidget, BaseTaskWidget
-from app.workers.worker import BackgroundWorker, run_in_background
+from app.ui.workers.worker import BackgroundWorker, run_in_background
 from utils.i18n_utils import tr, translation_manager
 
 logger = logging.getLogger(__name__)

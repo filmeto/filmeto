@@ -6,7 +6,7 @@ import asyncio
 import os
 from typing import Any, Dict, List, Optional
 
-from app.core.base_worker import BaseWorker
+from app.ui.core.base_worker import BaseWorker
 
 
 class TimelineExportWorker(BaseWorker):

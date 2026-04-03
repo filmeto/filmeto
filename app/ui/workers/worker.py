@@ -1,4 +1,4 @@
-"""Background execution via app.core TaskManager + FunctionWorker.
+"""Background execution via app.ui.core TaskManager + FunctionWorker.
 
 Legacy API preserved for callers:
 
@@ -7,8 +7,8 @@ Legacy API preserved for callers:
 * :func:`run_in_background` — one-shot helper.
 * :class:`WorkerPool` — bounded concurrent submits with ``all_finished``.
 
-All work runs on the shared :class:`app.core.task_manager.TaskManager` thread pool
-and emits task lifecycle events on :class:`app.core.event_bus.EventBus`.
+All work runs on the shared :class:`app.ui.core.task_manager.TaskManager` thread pool
+and emits task lifecycle events on :class:`app.ui.core.event_bus.EventBus`.
 """
 
 from __future__ import annotations
@@ -19,8 +19,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from PySide6.QtCore import QEventLoop, QObject, QTimer, Signal
 
-from app.core.base_worker import FunctionWorker
-from app.core.task_manager import TaskManager
+from app.ui.core.base_worker import FunctionWorker
+from app.ui.core.task_manager import TaskManager
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,7 @@ class BackgroundWorker(QObject):
         return self._task_id
 
     def set_task_type(self, task_type: str) -> None:
-        """Correlates this worker with :class:`~app.core.event_bus.EventBus` ``task_*`` signals."""
+        """Correlates this worker with :class:`~app.ui.core.event_bus.EventBus` ``task_*`` signals."""
         if not self._started:
             self._task_type = task_type or self._task_type
 

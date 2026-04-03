@@ -26,8 +26,8 @@ from typing import Dict, List, Optional, Set
 
 from PySide6.QtCore import QObject, QThreadPool, QTimer, Signal
 
-from app.core.base_worker import BaseWorker, TaskStatus
-from app.core.event_bus import EventBus
+from app.ui.core.base_worker import BaseWorker, TaskStatus
+from app.ui.core.event_bus import EventBus
 
 logger = logging.getLogger(__name__)
 

@@ -1201,7 +1201,7 @@ class LayerComposeTaskManager:
     
     def _start_qt_background_task(self, task: 'LayerComposeTask'):
         """Start a composition task using Qt background worker."""
-        from app.workers.worker import run_in_background
+        from app.ui.workers.worker import run_in_background
 
         def execute_task_sync():
             """Wrapper to run async task in a new event loop within the background thread."""

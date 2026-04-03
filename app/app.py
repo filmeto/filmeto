@@ -14,8 +14,8 @@ from PySide6.QtGui import QFontDatabase, QIcon
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import qInstallMessageHandler, QtMsgType
 
-from app.core.event_bus import EventBus
-from app.core.task_manager import TaskManager
+from app.ui.core.event_bus import EventBus
+from app.ui.core.task_manager import TaskManager
 from app.data.workspace import Workspace
 from app.ui.window import WindowManager
 from server.server import Server, ServerManager
@@ -421,7 +421,7 @@ class App():
             logger.error("Full stack trace:", exc_info=True)
 
         try:
-            from app.workers.worker import _global_pool
+            from app.ui.workers.worker import _global_pool
             if _global_pool is not None:
                 logger.info("Canceling queued legacy WorkerPool tasks...")
                 _global_pool.cancel_pending()
@@ -438,7 +438,7 @@ class App():
 
         try:
             logger.info("Draining global worker pool bookkeeping...")
-            from app.workers.worker import _global_pool
+            from app.ui.workers.worker import _global_pool
             if _global_pool is not None:
                 _global_pool.wait_all()
             logger.info("Global worker pool shutdown complete")
