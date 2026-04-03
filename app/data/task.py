@@ -111,6 +111,12 @@ class TaskResult:
     def get_video_path(self) -> Optional[str]:
         return self.result.get_video_path()
 
+    def get_audio_path(self) -> Optional[str]:
+        getter = getattr(self.result, "get_audio_path", None)
+        if callable(getter):
+            return getter()
+        return None
+
     def get_task(self) -> Task:
         return self.task
 

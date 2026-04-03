@@ -80,6 +80,36 @@ def build_bailian_ability_catalog() -> List[Dict[str, Any]]:
             }
         )
 
+    for name in models_config.get_speech_to_video_models():
+        rows.append(
+            {
+                "ability": "speak2video",
+                "model_id": name,
+                "label": name,
+                "default_enabled": True,
+            }
+        )
+
+    for name in models_config.get_tts_models():
+        rows.append(
+            {
+                "ability": "text2speak",
+                "model_id": name,
+                "label": name,
+                "default_enabled": True,
+            }
+        )
+
+    for name in models_config.get_text_to_music_models():
+        rows.append(
+            {
+                "ability": "text2music",
+                "model_id": name,
+                "label": name,
+                "default_enabled": True,
+            }
+        )
+
     return rows
 
 

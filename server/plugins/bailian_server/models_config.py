@@ -91,10 +91,19 @@ class ModelsConfig:
                 "image_to_video": [
                     {"name": "wanx2.1-i2v-turbo", "description": "Fast I2V", "default": True},
                 ],
+                "speech_to_video": [
+                    {"name": "wan2.2-s2v", "description": "Wan audio-driven lip-sync", "default": True},
+                ],
+            },
+            "music_models": {
+                "text_to_music": [
+                    {"name": "cosyvoice-v3-flash", "description": "CosyVoice styled vocal", "default": True},
+                ],
             },
             "speech_models": {
                 "tts": [
-                    {"name": "qwen-tts", "description": "Qwen TTS", "default": True},
+                    {"name": "qwen3-tts-flash", "description": "Qwen3 TTS flash", "default": True},
+                    {"name": "qwen-tts", "description": "Legacy name maps to Qwen3 TTS", "default": False},
                 ],
                 "asr": [
                     {"name": "qwen-asr", "description": "Qwen ASR", "default": True},
@@ -312,6 +321,18 @@ class ModelsConfig:
                 return m["name"]
         return models[0]["name"] if models else "wanx2.1-i2v-turbo"
 
+    def get_speech_to_video_models(self) -> List[str]:
+        """Models for speech/audio-driven lip-sync video (e.g. wan2.2-s2v)."""
+        models = self._config.get("video_models", {}).get("speech_to_video", [])
+        return [m["name"] for m in models]
+
+    def get_default_speech_to_video_model(self) -> str:
+        models = self._config.get("video_models", {}).get("speech_to_video", [])
+        for m in models:
+            if m.get("default"):
+                return m["name"]
+        return models[0]["name"] if models else "wan2.2-s2v"
+
     # ============================================================
     # Speech Models
     # ============================================================
@@ -341,6 +362,21 @@ class ModelsConfig:
             if m.get("default"):
                 return m["name"]
         return models[0]["name"] if models else "qwen-asr"
+
+    # ============================================================
+    # Music (styled vocal / prompt-to-audio via CosyVoice)
+    # ============================================================
+
+    def get_text_to_music_models(self) -> List[str]:
+        models = self._config.get("music_models", {}).get("text_to_music", [])
+        return [m["name"] for m in models]
+
+    def get_default_text_to_music_model(self) -> str:
+        models = self._config.get("music_models", {}).get("text_to_music", [])
+        for m in models:
+            if m.get("default"):
+                return m["name"]
+        return models[0]["name"] if models else "cosyvoice-v3-flash"
 
     # ============================================================
     # Embedding Models

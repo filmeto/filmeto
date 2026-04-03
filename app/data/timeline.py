@@ -97,6 +97,15 @@ class TimelineItem:
         # Add the source file as a new IMAGE layer
         layer = layer_manager.add_layer_from_file(image_path, LayerType.IMAGE)
 
+    def update_audio(self, source_path: str):
+        if not source_path or not os.path.exists(source_path):
+            return
+        ext = os.path.splitext(source_path)[1].lower() or ".mp3"
+        dest = os.path.join(self.item_path, f"audio{ext}")
+        shutil.copy2(source_path, dest)
+        layer_manager = self.get_layer_manager()
+        layer_manager.add_layer_from_file(dest, LayerType.AUDIO)
+
     def update_video(self, video_path:str):
         if video_path is None:
             return
@@ -204,6 +213,9 @@ class TimelineItem:
     def update_by_task_result(self, result):
         self.update_image(result.get_image_path())
         self.update_video(result.get_video_path())
+        audio_path = result.get_audio_path()
+        if audio_path:
+            self.update_audio(audio_path)
 
         # Load the task config
         task_config_path = result.get_task().get_config_path()

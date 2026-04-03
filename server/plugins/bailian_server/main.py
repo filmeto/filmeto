@@ -640,6 +640,76 @@ class BailianServerPlugin(BaseServerPlugin):
              "default": 5, "description": "Video duration in seconds (5-10)"}
         ]
 
+        def _catalog_models(names: List[str], display: str, desc: str) -> List[Dict[str, Any]]:
+            out = []
+            for i, name in enumerate(names):
+                out.append({
+                    "name": name,
+                    "display_name": f"{display} ({name})",
+                    "description": desc,
+                    "tags": [],
+                    "specs": {},
+                    "pricing": {},
+                    "is_default": i == 0,
+                })
+            return out
+
+        speak2video_model_names = models_config.get_speech_to_video_models() or ["wan2.2-s2v"]
+        speak2video_models = _catalog_models(
+            speak2video_model_names,
+            "Speech to Video",
+            "Lip-sync video from portrait image + driving audio (Wan 2.2 S2V)",
+        )
+
+        speak2video_params = [
+            {"name": "prompt", "type": "string", "required": False,
+             "description": "Optional hint (API uses image+audio; prompt reserved for future use)"},
+            {"name": "model", "type": "string", "required": False,
+             "default": models_config.get_default_speech_to_video_model(),
+             "description": "Model: wan2.2-s2v"},
+            {"name": "input_image_path", "type": "string", "required": False,
+             "description": "Local path to portrait/reference image"},
+            {"name": "resolution", "type": "string", "required": False,
+             "default": "480P",
+             "description": "480P or 720P"},
+        ]
+
+        tts_catalog = models_config.get_tts_models() or ["qwen3-tts-flash"]
+        text2speak_models = _catalog_models(
+            tts_catalog,
+            "Text to Speech",
+            "Qwen-TTS (MultiModalConversation) or CosyVoice (SpeechSynthesizer HTTP)",
+        )
+
+        text2speak_params = [
+            {"name": "text", "type": "string", "required": True,
+             "description": "Text to synthesize"},
+            {"name": "model", "type": "string", "required": False,
+             "default": models_config.get_default_tts_model(),
+             "description": "TTS model id from models.yml (qwen3-tts-flash, qwen-tts, cosyvoice-*)"},
+            {"name": "voice", "type": "string", "required": False,
+             "default": "Cherry",
+             "description": "Voice name (Qwen-TTS: Cherry, etc.; CosyVoice: longanyang, etc.)"},
+        ]
+
+        music_catalog = models_config.get_text_to_music_models() or ["cosyvoice-v3-flash"]
+        text2music_models = _catalog_models(
+            music_catalog,
+            "Text to Music",
+            "CosyVoice expressive vocal audio from a text prompt",
+        )
+
+        text2music_params = [
+            {"name": "prompt", "type": "string", "required": True,
+             "description": "Describe the music/mood or lyrics-like content"},
+            {"name": "model", "type": "string", "required": False,
+             "default": models_config.get_default_text_to_music_model(),
+             "description": "CosyVoice model id"},
+            {"name": "voice", "type": "string", "required": False,
+             "default": "longanyang",
+             "description": "CosyVoice system voice"},
+        ]
+
         chat_completion_params = [
             {"name": "model", "type": "string", "required": False,
              "default": "qwen-max",
@@ -693,6 +763,24 @@ class BailianServerPlugin(BaseServerPlugin):
                 models=text2video_models
             ),
             AbilityConfig(
+                name="speak2video",
+                description="Generate lip-sync video from a portrait image and driving audio (Wan 2.2 S2V)",
+                parameters=speak2video_params,
+                models=speak2video_models
+            ),
+            AbilityConfig(
+                name="text2speak",
+                description="Text-to-speech via Qwen-TTS or CosyVoice",
+                parameters=text2speak_params,
+                models=text2speak_models
+            ),
+            AbilityConfig(
+                name="text2music",
+                description="Prompt-to-audio via CosyVoice (expressive / singing-style vocal)",
+                parameters=text2music_params,
+                models=text2music_models
+            ),
+            AbilityConfig(
                 name="chat_completion",
                 description="LLM chat via DashScope OpenAI-compatible API",
                 parameters=chat_completion_params,
@@ -708,8 +796,12 @@ class BailianServerPlugin(BaseServerPlugin):
         """Execute a task based on its capability type."""
         task_id = task_data.get("task_id", "unknown")
         ability = task_data.get("ability") or task_data.get("capability", "")
-        parameters = task_data.get("parameters", {})
-        metadata = task_data.get("metadata", {})
+        parameters = dict(task_data.get("parameters", {}))
+        metadata = task_data.get("metadata", {}) or {}
+        if metadata.get("processed_resources") is not None:
+            parameters["processed_resources"] = metadata["processed_resources"]
+        if task_data.get("model_name") and parameters.get("model") is None:
+            parameters["model"] = task_data["model_name"]
         server_config = metadata.get("server_config", {})
 
         # Get workspace_path from metadata and update output directory
@@ -743,8 +835,14 @@ class BailianServerPlugin(BaseServerPlugin):
         height = parameters.get("height", 1024)
         prompt = parameters.get("prompt", "")
         n = parameters.get("n", 1)
-        logger.info(f"[Bailian] {ability} task: task_id={task_id}, model={model}, size={width}x{height}, n={n}")
-        logger.info(f"[Bailian] prompt={prompt[:200]}...")
+        logger.info(
+            f"[Bailian] {ability} task: task_id={task_id}, model={parameters.get('model', model)}, "
+            f"size={width}x{height}, n={n}"
+        )
+        if prompt:
+            logger.info(f"[Bailian] prompt={prompt[:200]}...")
+        elif parameters.get("text"):
+            logger.info(f"[Bailian] text={str(parameters.get('text'))[:200]}...")
 
         try:
             if ability == "text2image":
@@ -770,6 +868,15 @@ class BailianServerPlugin(BaseServerPlugin):
                 return await self._execute_text2video(
                     task_id, api_key, parameters, default_image_model, progress_callback
                 )
+            elif ability == "speak2video":
+                return await self._execute_speak2video(
+                    task_id, api_key, parameters, task_data.get("resources", []),
+                    progress_callback
+                )
+            elif ability == "text2speak":
+                return await self._execute_text2speak(task_id, api_key, parameters, progress_callback)
+            elif ability == "text2music":
+                return await self._execute_text2music(task_id, api_key, parameters, progress_callback)
             elif ability == "chat_completion":
                 return await self._execute_chat_completion(
                     task_id, api_key, parameters, default_model,
@@ -1615,6 +1722,330 @@ class BailianServerPlugin(BaseServerPlugin):
             }
         }
 
+    @staticmethod
+    def _is_cosyvoice_tts_model(model: Optional[str]) -> bool:
+        if not model:
+            return False
+        m = model.lower()
+        return m.startswith("cosyvoice") or m.startswith("sambert")
+
+    def _resolve_qwen_tts_model(self, model: Optional[str]) -> str:
+        if not model or model == "qwen-tts":
+            return "qwen3-tts-flash"
+        if model.startswith("qwen3-tts"):
+            return model
+        return "qwen3-tts-flash"
+
+    async def _execute_qwen_tts(
+        self, task_id: str, api_key: str, parameters: Dict[str, Any], progress_callback
+    ) -> Dict[str, Any]:
+        """Qwen-TTS via MultiModalConversation (non-stream)."""
+        import aiohttp
+
+        if not DASHSCOPE_SDK_AVAILABLE:
+            raise RuntimeError("dashscope SDK is required for Qwen-TTS")
+        from dashscope import MultiModalConversation
+
+        text = (parameters.get("text") or "").strip()
+        if not text:
+            raise ValueError("text is required for text2speak")
+
+        raw_model = parameters.get("model") or models_config.get_default_tts_model()
+        model = self._resolve_qwen_tts_model(raw_model)
+        voice = parameters.get("voice", "Cherry")
+
+        progress_callback(15, f"Calling Qwen-TTS ({model})...", {})
+
+        def call():
+            return MultiModalConversation.call(
+                api_key=api_key,
+                model=model,
+                text=text,
+                voice=voice,
+            )
+
+        loop = asyncio.get_event_loop()
+        rsp = await loop.run_in_executor(None, call)
+
+        if rsp.status_code != 200:
+            raise Exception(f"Qwen-TTS error: {rsp.code} - {rsp.message}")
+
+        out = rsp.output
+        audio_obj = getattr(out, "audio", None)
+        if audio_obj is None and isinstance(out, dict):
+            audio_obj = out.get("audio", {})
+        url = getattr(audio_obj, "url", None) if audio_obj is not None else None
+        if url is None and isinstance(audio_obj, dict):
+            url = audio_obj.get("url")
+        if not url:
+            raise Exception("Qwen-TTS response missing audio URL")
+
+        progress_callback(80, "Downloading synthesized audio...", {})
+
+        local_path = self.output_dir / f"{task_id}.wav"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                if resp.status != 200:
+                    raise Exception(f"Failed to download audio: HTTP {resp.status}")
+                content = await resp.read()
+                with open(local_path, "wb") as f:
+                    f.write(content)
+
+        return {"task_id": task_id, "status": "success", "output_files": [str(local_path)]}
+
+    async def _execute_cosyvoice_tts(
+        self,
+        task_id: str,
+        api_key: str,
+        parameters: Dict[str, Any],
+        progress_callback,
+        *,
+        music_style: bool = False,
+    ) -> Dict[str, Any]:
+        """CosyVoice non-realtime SpeechSynthesizer HTTP API."""
+        import aiohttp
+
+        text = (parameters.get("text") if not music_style else None) or parameters.get("prompt", "") or ""
+        text = text.strip()
+        if not text:
+            raise ValueError("text/prompt is required")
+
+        if music_style:
+            model = parameters.get("model") or models_config.get_default_text_to_music_model()
+            voice = parameters.get("voice", "longanyang")
+            instruction = parameters.get("instruction") or (
+                "用富有节奏感的方式演绎下面内容，语气像演唱或配乐念白，情绪饱满。"
+            )
+        else:
+            model = parameters.get("model") or "cosyvoice-v3-flash"
+            voice = parameters.get("voice", "longanyang")
+            instruction = parameters.get("instruction")
+
+        if instruction and len(instruction) > 100:
+            instruction = instruction[:100]
+
+        url_api = "https://dashscope.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer"
+        body: Dict[str, Any] = {
+            "model": model,
+            "input": {
+                "text": text,
+                "voice": voice,
+                "format": "mp3",
+                "sample_rate": 24000,
+            },
+        }
+        if instruction:
+            body["input"]["instruction"] = instruction
+
+        progress_callback(15, f"Calling CosyVoice ({model})...", {})
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url_api, headers=headers, json=body) as response:
+                if response.status != 200:
+                    err = await response.text()
+                    raise Exception(f"CosyVoice API error: {response.status} - {err}")
+                result = await response.json()
+
+        out = result.get("output") or {}
+        audio = out.get("audio") or {}
+        audio_url = audio.get("url")
+        if not audio_url:
+            raise Exception(f"CosyVoice response missing audio URL: {result}")
+
+        progress_callback(80, "Downloading CosyVoice audio...", {})
+
+        local_path = self.output_dir / f"{task_id}.mp3"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(audio_url) as resp:
+                if resp.status != 200:
+                    raise Exception(f"Failed to download audio: HTTP {resp.status}")
+                content = await resp.read()
+                with open(local_path, "wb") as f:
+                    f.write(content)
+
+        return {"task_id": task_id, "status": "success", "output_files": [str(local_path)]}
+
+    async def _execute_text2speak(
+        self, task_id: str, api_key: str, parameters: Dict[str, Any], progress_callback
+    ) -> Dict[str, Any]:
+        model = parameters.get("model") or models_config.get_default_tts_model()
+        if self._is_cosyvoice_tts_model(model):
+            return await self._execute_cosyvoice_tts(
+                task_id, api_key, parameters, progress_callback, music_style=False
+            )
+        return await self._execute_qwen_tts(task_id, api_key, parameters, progress_callback)
+
+    async def _execute_text2music(
+        self, task_id: str, api_key: str, parameters: Dict[str, Any], progress_callback
+    ) -> Dict[str, Any]:
+        """Map text2music to CosyVoice styled vocal (hosted music models are not exposed on DashScope yet)."""
+        return await self._execute_cosyvoice_tts(
+            task_id, api_key, parameters, progress_callback, music_style=True
+        )
+
+    def _video_url_from_results(self, results_raw: Any) -> Optional[str]:
+        if results_raw is None:
+            return None
+        if isinstance(results_raw, dict):
+            return results_raw.get("video_url")
+        if isinstance(results_raw, list) and results_raw:
+            return results_raw[0].get("video_url")
+        return None
+
+    async def _execute_speak2video(
+        self,
+        task_id: str,
+        api_key: str,
+        parameters: Dict[str, Any],
+        resources: List[Any],
+        progress_callback,
+    ) -> Dict[str, Any]:
+        """Wan 2.2 S2V: lip-sync video from image + driving audio (data URLs)."""
+        import base64
+        import aiohttp
+        import mimetypes
+
+        model = parameters.get("model", models_config.get_default_speech_to_video_model())
+        processed_resources = parameters.get("processed_resources") or []
+
+        audio_path = parameters.get("audio_path")
+        if processed_resources:
+            audio_path = processed_resources[0]
+        elif resources:
+            r0 = resources[0]
+            if isinstance(r0, dict):
+                audio_path = r0.get("data")
+            else:
+                audio_path = getattr(r0, "data", None)
+
+        image_path = parameters.get("input_image_path")
+        if not audio_path or not os.path.isfile(audio_path):
+            raise FileNotFoundError(f"Driving audio not found: {audio_path}")
+        if not image_path or not os.path.isfile(image_path):
+            raise FileNotFoundError(
+                "Portrait image is required for speak2video (input_image_path). "
+                "Use the timeline card image or pass input_image_path in parameters."
+            )
+
+        progress_callback(10, f"Submitting speech-to-video ({model})...", {})
+
+        def _data_url(path: str) -> str:
+            mime, _ = mimetypes.guess_type(path)
+            if not mime:
+                mime = "application/octet-stream"
+            with open(path, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode("utf-8")
+            return f"data:{mime};base64,{b64}"
+
+        image_data_url = _data_url(image_path)
+        audio_data_url = _data_url(audio_path)
+
+        video_endpoint = models_config.get_dashscope_video_endpoint()
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "X-DashScope-Async": "enable",
+        }
+
+        payload = {
+            "model": model,
+            "input": {
+                "image_url": image_data_url,
+                "audio_url": audio_data_url,
+            },
+            "parameters": {
+                "resolution": parameters.get("resolution", "480P"),
+            },
+        }
+
+        progress_callback(20, "Calling Wan S2V API...", {})
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                video_endpoint, headers=headers, json=payload
+            ) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    logger.error(
+                        f"[Bailian Speak2Video] API error: {response.status} - {error_text}"
+                    )
+                    raise Exception(
+                        f"DashScope video API error: {response.status} - {error_text}"
+                    )
+
+                result = await response.json()
+
+            output = result.get("output", {})
+            task_status = output.get("task_status")
+
+            if task_status == "PENDING":
+                task_id_api = output.get("task_id")
+                task_status_url = f"{video_endpoint}/{task_id_api}"
+                progress_callback(30, "Waiting for lip-sync video...", {})
+
+                for _ in range(120):
+                    await asyncio.sleep(2)
+                    async with session.get(
+                        task_status_url,
+                        headers={"Authorization": f"Bearer {api_key}"},
+                    ) as status_response:
+                        status_result = await status_response.json()
+                        out = status_result.get("output", {})
+                        status = out.get("task_status")
+
+                        if status == "SUCCEEDED":
+                            results_raw = out.get("results")
+                            video_url = self._video_url_from_results(results_raw)
+                            if not video_url and isinstance(results_raw, list) and results_raw:
+                                video_url = results_raw[0].get("video_url")
+                            if not video_url:
+                                raise Exception("No video URL in S2V response")
+                            progress_callback(80, "Downloading lip-sync video...", {})
+                            local_path = self.output_dir / f"{task_id}.mp4"
+                            async with session.get(video_url) as video_response:
+                                if video_response.status != 200:
+                                    raise Exception(
+                                        f"Failed to download video: HTTP {video_response.status}"
+                                    )
+                                content = await video_response.read()
+                                with open(local_path, "wb") as f:
+                                    f.write(content)
+                            return {
+                                "task_id": task_id,
+                                "status": "success",
+                                "output_files": [str(local_path)],
+                            }
+                        if status == "FAILED":
+                            error_msg = out.get("message", "Unknown error")
+                            raise Exception(f"Speech-to-video failed: {error_msg}")
+
+                        progress_callback(40, f"Generating video... ({status})", {})
+
+                raise Exception("Speech-to-video generation timeout")
+
+            results_raw = output.get("results")
+            video_url = self._video_url_from_results(results_raw)
+            if not video_url and isinstance(results_raw, list) and results_raw:
+                video_url = results_raw[0].get("video_url")
+            if video_url:
+                progress_callback(80, "Downloading lip-sync video...", {})
+                local_path = self.output_dir / f"{task_id}.mp4"
+                async with session.get(video_url) as video_response:
+                    if video_response.status != 200:
+                        raise Exception(
+                            f"Failed to download video: HTTP {video_response.status}"
+                        )
+                    content = await video_response.read()
+                    with open(local_path, "wb") as f:
+                        f.write(content)
+                return {"task_id": task_id, "status": "success", "output_files": [str(local_path)]}
+
+            raise Exception("No results from Wan S2V API")
 
 
 if __name__ == "__main__":
