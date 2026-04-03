@@ -1,19 +1,21 @@
 """
 Generic async data loader with debouncing, optional caching, and race protection.
 
-Loads run via ``run_in_background`` after a per-key debounce delay. A monotonic
-token per key is incremented when a load actually starts (after debounce), so
-late completions from superseded runs are ignored.
+Loads run via :class:`AsyncDataLoadWorker` on :class:`app.ui.core.task_manager.TaskManager`
+after a per-key debounce delay. A monotonic token per key is incremented when a load
+actually starts (after debounce), so late completions from superseded runs are ignored.
 """
 
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import Any, Callable, Dict, Generic, Hashable, Iterable, Optional, Set, TypeVar, cast
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
-from app.ui.workers.background_worker import BackgroundWorker, run_in_background
+from app.ui.core.task_manager import TaskManager
+from app.ui.workers.async_data_load_worker import AsyncDataLoadWorker
 
 logger = logging.getLogger(__name__)
 
@@ -42,13 +44,14 @@ class AsyncDataLoader(QObject, Generic[T, K]):
         self._loader_func = loader_func
         self._debounce_ms = int(debounce_ms or self.DEFAULT_DEBOUNCE_MS)
         self._cache_enabled = cache_enabled
+        self._tm = TaskManager.instance()
 
         self._load_token: Dict[Any, int] = {}
         self._cache: Dict[Any, T] = {}
         self._loading: Dict[Any, bool] = {}
         self._debounce_timers: Dict[Any, QTimer] = {}
         self._pending_keys: Set[Any] = set()
-        self._active_workers: Dict[Any, BackgroundWorker] = {}
+        self._active_task_ids: Dict[Any, str] = {}
 
     def schedule_load(self, key: K, force: bool = False) -> None:
         if (
@@ -80,9 +83,9 @@ class AsyncDataLoader(QObject, Generic[T, K]):
 
     def _execute_load(self, key: K) -> None:
         self._pending_keys.discard(key)
-        prev = self._active_workers.pop(key, None)
-        if prev is not None:
-            prev.stop()
+        prev_tid = self._active_task_ids.pop(key, None)
+        if prev_tid is not None:
+            self._tm.cancel(prev_tid)
 
         self._load_token[key] = self._load_token.get(key, 0) + 1
         token = self._load_token[key]
@@ -90,47 +93,57 @@ class AsyncDataLoader(QObject, Generic[T, K]):
 
         self.load_started.emit(key)
 
-        def load_task() -> T:
-            return self._loader_func(key)
+        tid = f"adl-{uuid.uuid4().hex[:12]}"
+        worker = AsyncDataLoadWorker(
+            self._loader_func,
+            key,
+            task_id=tid,
+            task_type="async_data_loader",
+        )
+        self._active_task_ids[key] = tid
 
-        worker: Optional[BackgroundWorker] = None
-
-        def on_finished(result: T) -> None:
-            nonlocal worker
-            if self._active_workers.get(key) is worker:
-                self._active_workers.pop(key, None)
+        def on_finished(_wtid: str, result: object) -> None:
+            if self._active_task_ids.get(key) != tid:
+                return
             if self._load_token.get(key, 0) != token:
                 return
+            self._active_task_ids.pop(key, None)
             if self._cache_enabled:
-                self._cache[key] = result
+                self._cache[key] = cast(T, result)
             self._loading[key] = False
             self.data_loaded.emit(key, result)
             self.load_finished.emit(key)
 
-        def on_error(msg: str, _exc: Exception) -> None:
-            nonlocal worker
-            if self._active_workers.get(key) is worker:
-                self._active_workers.pop(key, None)
+        def on_error(_wtid: str, msg: str, _exc: object) -> None:
+            if self._active_task_ids.get(key) != tid:
+                return
             if self._load_token.get(key, 0) != token:
                 return
+            self._active_task_ids.pop(key, None)
             logger.debug("AsyncDataLoader load failed for %r: %s", key, msg)
             self._loading[key] = False
             self.load_error.emit(key, msg)
             self.load_finished.emit(key)
 
-        worker = run_in_background(
-            load_task,
-            on_finished=on_finished,
-            on_error=on_error,
-            task_type="async_data_loader",
-        )
-        self._active_workers[key] = worker
+        def on_cancelled(_wtid: str) -> None:
+            if self._active_task_ids.get(key) != tid:
+                return
+            if self._load_token.get(key, 0) != token:
+                return
+            self._active_task_ids.pop(key, None)
+            self._loading[key] = False
+            self.load_error.emit(key, "Cancelled")
+            self.load_finished.emit(key)
+
+        worker.signals.finished.connect(on_finished)
+        worker.signals.error.connect(on_error)
+        worker.signals.cancelled.connect(on_cancelled)
+        self._tm.submit(worker)
 
     def invalidate(self, key: K) -> None:
-        w = self._active_workers.pop(key, None)
-        if w is not None:
-            # Use stop_and_wait to ensure thread is properly stopped
-            w.stop_and_wait(timeout_ms=1000)
+        tid = self._active_task_ids.pop(key, None)
+        if tid is not None:
+            self._tm.cancel(tid)
         self._load_token[key] = self._load_token.get(key, 0) + 1
         self._cache.pop(key, None)
         self._loading[key] = False
@@ -144,7 +157,7 @@ class AsyncDataLoader(QObject, Generic[T, K]):
             set(self._cache.keys())
             | set(self._debounce_timers.keys())
             | set(self._pending_keys)
-            | set(self._active_workers.keys())
+            | set(self._active_task_ids.keys())
             | {k for k, active in self._loading.items() if active}
         )
         for k in list(keys):
@@ -185,10 +198,9 @@ class AsyncDataLoader(QObject, Generic[T, K]):
             if timer is not None:
                 timer.stop()
             self._pending_keys.discard(k)
-            w = self._active_workers.pop(k, None)
-            if w is not None:
-                # Use stop_and_wait to ensure thread is properly stopped
-                w.stop_and_wait(timeout_ms=1000)
+            tid = self._active_task_ids.pop(k, None)
+            if tid is not None:
+                self._tm.cancel(tid)
             self._load_token[k] = self._load_token.get(k, 0) + 1
             self._loading[k] = False
 
@@ -198,7 +210,7 @@ class AsyncDataLoader(QObject, Generic[T, K]):
         keys: Set[Any] = (
             set(self._debounce_timers.keys())
             | set(self._pending_keys)
-            | set(self._active_workers.keys())
+            | set(self._active_task_ids.keys())
             | set(self._cache.keys())
             | {k for k, active in self._loading.items() if active}
         )

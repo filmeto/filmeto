@@ -14,7 +14,7 @@ from app.data.workspace import Workspace
 from app.ui.base_widget import BaseWidget, BaseTaskWidget
 from app.ui.timeline.video_timeline_scroll import VideoTimelineScroll
 from app.ui.timeline.video_timeline_card import VideoTimelineCard
-from app.ui.workers.async_data_loader import AsyncDataLoaderMixin
+from app.ui.workers import AsyncDataLoaderMixin
 from utils import qt_utils
 from utils.i18n_utils import tr, translation_manager
 

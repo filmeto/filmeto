@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt, Signal, QTimer, QPropertyAnimation, QEasingCurve,
 from PySide6.QtGui import QPainter, QColor, QPen, QFont, QPixmap, QMovie, QPainterPath, QBrush
 from utils.i18n_utils import tr
 from utils.yaml_utils import load_yaml
-from app.ui.workers.async_data_loader import AsyncDataLoaderMixin
+from app.ui.workers import AsyncDataLoaderMixin
 
 logger = logging.getLogger(__name__)
 

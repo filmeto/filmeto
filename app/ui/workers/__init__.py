@@ -11,7 +11,7 @@ Organization
 
   - ``background_worker`` — :class:`BackgroundWorker`, :func:`run_in_background`.
   - ``pool_worker`` — :class:`PoolWorker`, :func:`get_worker_pool`.
-  - ``async_data_loader`` — debounced loads for UI lists/previews.
+  - ``async_data_loader`` / ``async_data_load_worker`` — debounced loads; per-key :class:`AsyncDataLoadWorker`.
   - ``timeline_export`` — FFmpeg timeline export.
 
 Adding a worker
@@ -23,12 +23,14 @@ Adding a worker
 4. Submit via ``TaskManager.instance().submit(worker)`` or a :class:`app.ui.core.base_service.BaseAppService` subclass — not ``QThreadPool.globalInstance()`` for domain work.
 """
 
+from app.ui.workers.async_data_load_worker import AsyncDataLoadWorker
 from app.ui.workers.async_data_loader import AsyncDataLoader, AsyncDataLoaderMixin
 from app.ui.workers.background_worker import BackgroundWorker, run_in_background
 from app.ui.workers.timeline_export import TimelineExportWorker
 from app.ui.workers.pool_worker import PoolWorker, get_worker_pool
 
 __all__ = [
+    "AsyncDataLoadWorker",
     "AsyncDataLoader",
     "AsyncDataLoaderMixin",
     "BackgroundWorker",
