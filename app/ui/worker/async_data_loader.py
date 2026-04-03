@@ -112,7 +112,12 @@ class AsyncDataLoader(QObject, Generic[T, K]):
         self._pending_keys.discard(key)
 
     def invalidate_all(self) -> None:
-        keys: Set[Any] = set(self._cache.keys()) | set(self._debounce_timers.keys()) | set(self._pending_keys)
+        keys: Set[Any] = (
+            set(self._cache.keys())
+            | set(self._debounce_timers.keys())
+            | set(self._pending_keys)
+            | {k for k, active in self._loading.items() if active}
+        )
         for k in list(keys):
             self.invalidate(cast(K, k))
 
@@ -132,8 +137,14 @@ class AsyncDataLoader(QObject, Generic[T, K]):
                 timer.stop()
             self._pending_keys.discard(key)
             self._load_token[key] = self._load_token.get(key, 0) + 1
+            self._loading[key] = False
             return
-        keys = set(self._debounce_timers.keys()) | set(self._pending_keys)
+        keys: Set[Any] = (
+            set(self._debounce_timers.keys())
+            | set(self._pending_keys)
+            | set(self._cache.keys())
+            | {k for k, active in self._loading.items() if active}
+        )
         for k in list(keys):
             self.cancel_pending(cast(K, k))
 
