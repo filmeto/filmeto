@@ -20,7 +20,8 @@ from pathlib import Path
 from blinker import signal
 
 from utils.lazy_load import AsyncLazyLoadMixin
-from utils.yaml_utils import load_yaml, save_yaml
+from utils.async_file_io import path_exists, run_coroutine_blocking, to_thread
+from utils.yaml_utils import AsyncFileIoError, load_yaml, load_yaml_async, save_yaml
 
 
 class Character:
@@ -158,7 +159,26 @@ class CharacterManager(AsyncLazyLoadMixin):
         self._ensure_directories()
 
     def _do_load(self) -> None:
-        self._load_characters()
+        run_coroutine_blocking(self._do_load_async())
+
+    async def _do_load_async(self) -> None:
+        if await path_exists(self.config_path):
+            try:
+                data = await load_yaml_async(self.config_path)
+                if data and "characters" in data:
+                    for char_data in data["characters"]:
+                        character = Character(char_data, self.project_path)
+                        self._characters[character.name] = character
+                    logger.info(
+                        "✅ Loaded %s characters from central config", len(self._characters)
+                    )
+                    return
+            except AsyncFileIoError as e:
+                logger.error("❌ Error loading central actor config: %s", e)
+            except Exception as e:
+                logger.error("❌ Error loading central actor config: %s", e)
+
+        await to_thread(self._load_characters_migration_sync)
 
     def _clear_internal_state(self) -> None:
         self._characters.clear()
@@ -167,67 +187,49 @@ class CharacterManager(AsyncLazyLoadMixin):
         """Create characters directory if it doesn't exist"""
         os.makedirs(self.characters_dir, exist_ok=True)
     
-    def _load_characters(self):
-        """Load all characters from disk"""
-        # 1. Try loading from central config.yml
-        if os.path.exists(self.config_path):
-            try:
-                data = load_yaml(self.config_path)
-                if data and 'characters' in data:
-                    for char_data in data['characters']:
-                        character = Character(char_data, self.project_path)
-                        self._characters[character.name] = character
-                    logger.info(f"✅ Loaded {len(self._characters)} characters from central config")
-                    return
-            except Exception as e:
-                logger.error(f"❌ Error loading central actor config: {e}")
+    def _load_characters_migration_sync(self) -> None:
+        """Directory-based migration (blocking); run via ``to_thread`` from async load."""
+        if not os.path.exists(self.characters_dir):
+            return
+        migrated_count = 0
+        for item in os.listdir(self.characters_dir):
+            if item == "config.yml":
+                continue
+            character_dir = os.path.join(self.characters_dir, item)
+            if os.path.isdir(character_dir):
+                config_path = os.path.join(character_dir, "config.yml")
+                if os.path.exists(config_path):
+                    try:
+                        data = load_yaml(config_path)
+                        if data:
+                            character = Character(data, self.project_path)
 
-        # 2. Fallback: Migration from old directory-based storage
-        if os.path.exists(self.characters_dir):
-            migrated_count = 0
-            for item in os.listdir(self.characters_dir):
-                if item == 'config.yml': continue
-                character_dir = os.path.join(self.characters_dir, item)
-                if os.path.isdir(character_dir):
-                    config_path = os.path.join(character_dir, 'config.yml')
-                    if os.path.exists(config_path):
-                        try:
-                            data = load_yaml(config_path)
-                            if data:
-                                character = Character(data, self.project_path)
+                            if self.resource_manager:
+                                updated_resources = {}
+                                for res_type, rel_path in character.resources.items():
+                                    abs_src = os.path.join(self.project_path, rel_path)
+                                    if os.path.exists(abs_src):
+                                        resource = self.resource_manager.add_resource(
+                                            source_file_path=abs_src,
+                                            source_type="character_resource",
+                                            source_id=character.character_id,
+                                            original_name=os.path.basename(rel_path),
+                                        )
+                                        if resource:
+                                            updated_resources[res_type] = resource.file_path
+                                    else:
+                                        updated_resources[res_type] = rel_path
+                                character.resources = updated_resources
 
-                                # Migrate resources to ResourceManager
-                                if self.resource_manager:
-                                    updated_resources = {}
-                                    for res_type, rel_path in character.resources.items():
-                                        abs_src = os.path.join(self.project_path, rel_path)
-                                        if os.path.exists(abs_src):
-                                            # Add to ResourceManager
-                                            resource = self.resource_manager.add_resource(
-                                                source_file_path=abs_src,
-                                                source_type='character_resource',
-                                                source_id=character.character_id,
-                                                original_name=os.path.basename(rel_path)
-                                            )
-                                            if resource:
-                                                updated_resources[res_type] = resource.file_path
-                                        else:
-                                            # Keep the old path if file not found, though it might be broken
-                                            updated_resources[res_type] = rel_path
-                                    character.resources = updated_resources
+                            self._characters[character.name] = character
+                            migrated_count += 1
+                            logger.info("📦 Migrated actor: %s", character.name)
+                    except Exception as e:
+                        logger.error("❌ Error loading actor %s for migration: %s", item, e)
 
-                                self._characters[character.name] = character
-                                migrated_count += 1
-                                logger.info(f"📦 Migrated actor: {character.name}")
-                        except Exception as e:
-                            logger.error(f"❌ Error loading actor {item} for migration: {e}")
-            
-            if migrated_count > 0:
-                logger.info(f"✅ Migrated {migrated_count} characters to new structure")
-                self._save_all_characters()
-                
-                # Optionally clean up old directories (commented out for safety)
-                # Note: We should only do this if we are SURE all resources are migrated
+        if migrated_count > 0:
+            logger.info("✅ Migrated %s characters to new structure", migrated_count)
+            self._save_all_characters()
 
     def _save_all_characters(self) -> bool:
         """Save all characters to the central config.yml

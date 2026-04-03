@@ -28,6 +28,15 @@ class AsyncLazyLoadMixin(ABC):
         """Clear in-memory caches; called with ``_load_lock`` held."""
         return
 
+    def _get_async_load_lock(self) -> asyncio.Lock:
+        if getattr(self, "_async_load_lock", None) is None:
+            self._async_load_lock = asyncio.Lock()
+        return self._async_load_lock
+
+    async def _do_load_async(self) -> None:
+        """Disk I/O entry point for async callers; override for true async loads."""
+        await asyncio.to_thread(self._do_load)
+
     def _ensure_loaded(self) -> None:
         self._lazy_load_require_attrs()
         if not self._loaded:
@@ -37,7 +46,14 @@ class AsyncLazyLoadMixin(ABC):
                     self._loaded = True
 
     async def ensure_loaded_async(self) -> None:
-        await asyncio.to_thread(self._ensure_loaded)
+        self._lazy_load_require_attrs()
+        if self._loaded:
+            return
+        lock = self._get_async_load_lock()
+        async with lock:
+            if not self._loaded:
+                await self._do_load_async()
+                self._loaded = True
 
     def invalidate_cache(self) -> None:
         self._lazy_load_require_attrs()

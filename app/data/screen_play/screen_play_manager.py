@@ -5,9 +5,12 @@ This module manages screenplays for a project, handling creation, retrieval,
 updating, and deletion of screenplay scenes.
 """
 
+import asyncio
 import os
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Union
+
+from utils.async_file_io import glob_paths, to_thread
 from utils.md_with_meta_utils import (
     read_md_with_meta,
     write_md_with_meta,
@@ -234,6 +237,16 @@ class ScreenPlayManager:
                 scenes.append(scene)
 
         return scenes
+
+    async def list_scenes_async(self) -> List[ScreenPlayScene]:
+        """List all scenes with parallel markdown reads via the asyncio worker pool."""
+        paths = await glob_paths(self.screen_plays_dir, "*.md")
+
+        async def _one(p: Path) -> Optional[ScreenPlayScene]:
+            return await to_thread(self.get_scene, p.stem)
+
+        scenes = await asyncio.gather(*(_one(p) for p in paths))
+        return [s for s in scenes if s is not None]
 
     def get_scene_by_title(self, title: str) -> Optional[ScreenPlayScene]:
         """

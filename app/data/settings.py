@@ -12,7 +12,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
 
-from utils.yaml_utils import load_yaml, save_yaml
+from utils.async_file_io import to_thread
+from utils.yaml_utils import load_yaml, load_yaml_async, save_yaml, save_yaml_async
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +122,30 @@ class Settings:
             self._create_from_template()
             data = load_yaml(self.settings_file)
             self._parse_settings(data)
-    
+
+    async def load_async(self) -> None:
+        """Load settings using async YAML I/O; template/backup copies use a worker thread."""
+        os.makedirs(self.workspace_path, exist_ok=True)
+        if not os.path.exists(self.settings_file):
+            await to_thread(self._create_from_template)
+        try:
+            data = await load_yaml_async(self.settings_file)
+            if not data or "groups" not in data:
+                logger.warning("⚠️ Invalid settings file, creating from template")
+                await to_thread(self._create_from_template)
+                data = await load_yaml_async(self.settings_file)
+            self._parse_settings(data)
+            logger.info("✅ Settings loaded from %s", self.settings_file)
+        except Exception as e:
+            logger.error("❌ Error loading settings: %s", e)
+            if os.path.exists(self.settings_file):
+                backup_file = f"{self.settings_file}.backup"
+                await to_thread(shutil.copy, self.settings_file, backup_file)
+                logger.warning("⚠️ Backed up corrupted settings to %s", backup_file)
+            await to_thread(self._create_from_template)
+            data = await load_yaml_async(self.settings_file)
+            self._parse_settings(data)
+
     def _create_from_template(self):
         """Create settings file from template"""
         if os.path.exists(self.template_file):
@@ -371,7 +395,33 @@ class Settings:
         max_val = validation.get('max', 100)
         
         return min_val <= value <= max_val
-    
+
+    def _build_save_payload(self) -> Dict[str, Any]:
+        groups_data = []
+        for group in self._groups:
+            group_data = {
+                "name": group.name,
+                "label": group.label,
+                "icon": group.icon,
+                "fields": [],
+            }
+            for field in group.fields:
+                field_data = {
+                    "name": field.name,
+                    "label": field.label,
+                    "type": field.type,
+                    "default": field.default,
+                    "value": self.values[group.name][field.name],
+                    "description": field.description,
+                }
+                if field.validation:
+                    field_data["validation"] = field.validation
+                if field.options:
+                    field_data["options"] = field.options
+                group_data["fields"].append(field_data)
+            groups_data.append(group_data)
+        return {"groups": groups_data}
+
     def save(self) -> bool:
         """
         Save current settings to YML file.
@@ -380,41 +430,7 @@ class Settings:
             True if successful, False otherwise
         """
         try:
-            # Build YAML structure
-            groups_data = []
-            
-            for group in self._groups:
-                group_data = {
-                    'name': group.name,
-                    'label': group.label,
-                    'icon': group.icon,
-                    'fields': []
-                }
-                
-                for field in group.fields:
-                    field_data = {
-                        'name': field.name,
-                        'label': field.label,
-                        'type': field.type,
-                        'default': field.default,  # Preserve original default value
-                        'value': self.values[group.name][field.name],  # Save current user value
-                        'description': field.description
-                    }
-                    
-                    if field.validation:
-                        field_data['validation'] = field.validation
-                    
-                    if field.options:
-                        field_data['options'] = field.options
-                    
-                    group_data['fields'].append(field_data)
-                
-                groups_data.append(group_data)
-            
-            data = {'groups': groups_data}
-            
-            # Save to file
-            save_yaml(self.settings_file, data)
+            save_yaml(self.settings_file, self._build_save_payload())
             self._dirty = False
 
             logger.info(f"✅ Settings saved to {self.settings_file}")
@@ -422,6 +438,17 @@ class Settings:
 
         except Exception as e:
             logger.error(f"❌ Error saving settings: {e}")
+            return False
+
+    async def save_async(self) -> bool:
+        """Persist settings with async YAML write."""
+        try:
+            await save_yaml_async(self.settings_file, self._build_save_payload())
+            self._dirty = False
+            logger.info("✅ Settings saved to %s", self.settings_file)
+            return True
+        except Exception as e:
+            logger.error("❌ Error saving settings: %s", e)
             return False
     
     def reload(self):

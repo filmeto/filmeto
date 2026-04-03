@@ -7,11 +7,10 @@ Filmeto projects, including timeline, resources, characters, and tasks.
 
 import os.path
 import os
-from typing import List, Dict, Any, Callable, Optional
 import time
 import logging
-from typing import List, Dict, Any
 from datetime import datetime
+from typing import List, Dict, Any, Callable, Optional
 
 from blinker import signal
 from PySide6.QtCore import QTimer
@@ -22,6 +21,7 @@ from app.data.drawing import Drawing
 from app.data.resource import ResourceManager
 from app.data.character import CharacterManager
 from app.data.screen_play import ScreenPlayManager
+from utils.async_file_io import list_dir_names, path_exists, run_coroutine_blocking
 from utils.yaml_utils import load_yaml, save_yaml
 
 logger = logging.getLogger(__name__)
@@ -53,7 +53,9 @@ class Project:
         self.workspace = workspace
         self.project_path = project_path
         self.project_name = project_name
-        self.config = load_yaml(os.path.join(self.project_path, "project.yml")) or {}
+        self._config_path = os.path.join(self.project_path, "project.yml")
+        self._project_config: Dict[str, Any] = {}
+        self._project_config_loaded = False
 
         # Initialize Timeline first (needed by task manager)
         self.timeline = Timeline(self.workspace, self, os.path.join(self.project_path, 'timeline'))
@@ -78,6 +80,17 @@ class Project:
         self._save_timer.setSingleShot(True)
         self._save_timer.setInterval(500)
         self._save_timer.timeout.connect(self._flush_config)
+
+    def _ensure_project_config_loaded(self) -> None:
+        if self._project_config_loaded:
+            return
+        self._project_config = load_yaml(self._config_path) or {}
+        self._project_config_loaded = True
+
+    @property
+    def config(self) -> Dict[str, Any]:
+        self._ensure_project_config_loaded()
+        return self._project_config
 
     # ==================== Task-related methods (delegate to ProjectTaskManager) ====================
 
@@ -436,18 +449,26 @@ class ProjectManager:
         if not defer_scan:
             self._load_projects()
     
-    def _load_projects(self):
-        """Load all projects from the projects subdirectory"""
-        # Don't create the projects directory here to avoid early creation
-        if not os.path.exists(self.projects_dir):
-            logger.info(f"⏱️  [ProjectManager] Projects directory does not exist: {self.projects_dir}")
+    def _load_projects(self) -> None:
+        """Load all projects from disk (async directory scan + sequential Project init on this thread)."""
+        run_coroutine_blocking(self._load_projects_async())
+
+    async def _load_projects_async(self) -> None:
+        if not await path_exists(self.projects_dir):
+            logger.info(
+                "⏱️  [ProjectManager] Projects directory does not exist: %s", self.projects_dir
+            )
             return
 
         scan_start = time.time()
-        logger.info(f"⏱️  [ProjectManager] Scanning projects directory: {self.projects_dir}")
-        items = os.listdir(self.projects_dir)
+        logger.info("⏱️  [ProjectManager] Scanning projects directory: %s", self.projects_dir)
+        items = await list_dir_names(self.projects_dir)
         scan_time = (time.time() - scan_start) * 1000
-        logger.info(f"⏱️  [ProjectManager] Directory scan completed in {scan_time:.2f}ms (found {len(items)} items)")
+        logger.info(
+            "⏱️  [ProjectManager] Directory scan completed in %.2fms (found %s items)",
+            scan_time,
+            len(items),
+        )
 
         loaded_count = 0
         failed_count = 0
@@ -458,19 +479,27 @@ class ProjectManager:
                 if os.path.exists(project_config_path):
                     try:
                         project_start = time.time()
-                        # 这里我们假设项目目录名就是项目名
-                        # 修改为不自动加载项目数据，只在需要时加载
-                        project = Project(self.workspace_root_path, project_path, item, load_data=False)
+                        project = Project(
+                            self.workspace_root_path, project_path, item, load_data=False
+                        )
                         self.projects[item] = project
                         project_time = (time.time() - project_start) * 1000
-                        logger.info(f"⏱️  [ProjectManager] Loaded project '{item}' in {project_time:.2f}ms")
+                        logger.info(
+                            "⏱️  [ProjectManager] Loaded project '%s' in %.2fms",
+                            item,
+                            project_time,
+                        )
                         loaded_count += 1
                     except Exception as e:
-                        logger.error(f"Failed to load project {item}: {e}")
-                        logger.error(f"⏱️  [ProjectManager] Failed to load project '{item}': {e}")
+                        logger.error("Failed to load project %s: %s", item, e)
+                        logger.error("⏱️  [ProjectManager] Failed to load project '%s': %s", item, e)
                         failed_count += 1
 
-        logger.info(f"⏱️  [ProjectManager] Project loading summary: {loaded_count} loaded, {failed_count} failed")
+        logger.info(
+            "⏱️  [ProjectManager] Project loading summary: %s loaded, %s failed",
+            loaded_count,
+            failed_count,
+        )
 
     def ensure_projects_loaded(self):
         """Ensure projects are loaded (for deferred loading)"""
@@ -498,6 +527,31 @@ class ProjectManager:
             load_time = (time.time() - load_start) * 1000
             project_count = len(self.projects)
             logger.info(f"⏱️  [ProjectManager] Project scan completed in {load_time:.2f}ms (found {project_count} projects)")
+
+    async def ensure_projects_loaded_async(self) -> None:
+        """Async variant of ``ensure_projects_loaded`` (non-blocking directory scan)."""
+        os.makedirs(self.projects_dir, exist_ok=True)
+        projects_already_loaded = bool(self.projects)
+        if self._defer_scan and not projects_already_loaded:
+            load_start = time.time()
+            logger.info("⏱️  [ProjectManager] Starting deferred project scan (async)...")
+            await self._load_projects_async()
+            load_time = (time.time() - load_start) * 1000
+            logger.info(
+                "⏱️  [ProjectManager] Deferred project scan completed in %.2fms (found %s projects)",
+                load_time,
+                len(self.projects),
+            )
+        elif self._defer_scan and projects_already_loaded:
+            load_start = time.time()
+            logger.info("⏱️  [ProjectManager] Loading all projects from disk (some already loaded, async)...")
+            await self._load_projects_async()
+            load_time = (time.time() - load_start) * 1000
+            logger.info(
+                "⏱️  [ProjectManager] Project scan completed in %.2fms (found %s projects)",
+                load_time,
+                len(self.projects),
+            )
 
     def create_project(self, project_name: str) -> Project:
         """
