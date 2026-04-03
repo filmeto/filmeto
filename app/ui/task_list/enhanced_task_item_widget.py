@@ -1,12 +1,82 @@
 # enhanced_task_item_widget.py
 import logging
+import math
+import os
+from typing import Optional
+
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QVBoxLayout, QTextEdit, QFrame
 from PySide6.QtCore import Qt, Signal, QTimer, QPropertyAnimation, QEasingCurve, QTime
 from PySide6.QtGui import QPainter, QColor, QPen, QFont, QPixmap, QMovie, QPainterPath, QBrush
 from utils.i18n_utils import tr
 from utils.yaml_utils import load_yaml
+from app.ui.worker.worker import run_in_background
 
 logger = logging.getLogger(__name__)
+
+# Thumbnail async reload: debounce coalesces rapid progress updates; tweak here if needed.
+THUMBNAIL_RELOAD_DEBOUNCE_MS = 320
+THUMBNAIL_LOADING_ANIM_INTERVAL_MS = 50
+
+
+def _resolve_task_thumbnail_path(
+    config_path: str, project_path: Optional[str], task_path: Optional[str]
+) -> Optional[str]:
+    """
+    Resolve absolute path to an image/video file for task thumbnail (background-thread safe).
+    Mirrors previous paintEvent logic without Qt types.
+    """
+    result_path = None
+    try:
+        task_config = load_yaml(config_path) or {}
+        resources = task_config.get("resources", [])
+        if resources:
+            for resource_info in resources:
+                resource_type = resource_info.get("type", "")
+                resource_rel = resource_info.get("resource_path", "")
+                if resource_rel and project_path:
+                    absolute_path = os.path.join(project_path, resource_rel)
+                    if os.path.exists(absolute_path):
+                        if resource_type == "image" or (
+                            resource_type == "video" and result_path is None
+                        ):
+                            result_path = absolute_path
+                            if resource_type == "image":
+                                break
+        else:
+            image_path = task_config.get("image_resource_path", "")
+            video_path = task_config.get("video_resource_path", "")
+            if image_path and project_path:
+                absolute_path = os.path.join(project_path, image_path)
+                if os.path.exists(absolute_path):
+                    result_path = absolute_path
+            elif video_path and project_path:
+                absolute_path = os.path.join(project_path, video_path)
+                if os.path.exists(absolute_path):
+                    result_path = absolute_path
+
+        if not result_path and task_path and os.path.isdir(task_path):
+            for filename in os.listdir(task_path):
+                if filename.lower().endswith(
+                    (".png", ".jpg", ".jpeg", ".gif", ".mp4", ".avi", ".mov", ".webm")
+                ):
+                    result_path = os.path.join(task_path, filename)
+                    break
+    except Exception as e:
+        logger.error(f"Error resolving thumbnail path for {config_path}: {e}")
+        if task_path and os.path.isdir(task_path):
+            try:
+                for filename in os.listdir(task_path):
+                    if filename.lower().endswith(
+                        (".png", ".jpg", ".jpeg", ".gif", ".mp4", ".avi", ".mov", ".webm")
+                    ):
+                        result_path = os.path.join(task_path, filename)
+                        break
+            except Exception as scan_err:
+                logger.error(f"Error scanning task dir {task_path}: {scan_err}")
+
+    if result_path and os.path.exists(result_path):
+        return result_path
+    return None
 
 
 class EnhancedTaskItemWidget(QWidget):
@@ -19,6 +89,12 @@ class EnhancedTaskItemWidget(QWidget):
         self.is_selected = False
         self.status_animation = None
         self.workspace = workspace
+        self._thumb_load_token = 0
+        self._thumbnail_pixmap: Optional[QPixmap] = None
+        self._thumbnail_source_path: Optional[str] = None
+        self._thumb_debounce: Optional[QTimer] = None
+        self._thumbnail_loading = False
+        self._thumb_loading_anim_timer: Optional[QTimer] = None
 
         # Enable hover events for highlight effect
         self.setMouseTracking(True)
@@ -51,6 +127,84 @@ class EnhancedTaskItemWidget(QWidget):
             # If no valid movie, create a simple placeholder
             self.waiting_movie = None
 
+    def _project_path_for_task(self) -> Optional[str]:
+        if hasattr(self.task, "task_manager") and hasattr(self.task.task_manager, "project"):
+            return getattr(self.task.task_manager.project, "project_path", None)
+        return None
+
+    def _start_thumb_loading_animation(self):
+        if self._thumb_loading_anim_timer is None:
+            self._thumb_loading_anim_timer = QTimer(self)
+            self._thumb_loading_anim_timer.timeout.connect(self.update)
+        if not self._thumb_loading_anim_timer.isActive():
+            self._thumb_loading_anim_timer.start(THUMBNAIL_LOADING_ANIM_INTERVAL_MS)
+
+    def _stop_thumb_loading_state(self):
+        self._thumbnail_loading = False
+        if self._thumb_loading_anim_timer is not None:
+            self._thumb_loading_anim_timer.stop()
+
+    def _debounce_thumbnail_reload(self):
+        """Coalesce rapid update_display calls (e.g. every progress tick)."""
+        if self._thumbnail_pixmap is None or self._thumbnail_pixmap.isNull():
+            self._thumbnail_loading = True
+            self._start_thumb_loading_animation()
+        if self._thumb_debounce is None:
+            self._thumb_debounce = QTimer(self)
+            self._thumb_debounce.setSingleShot(True)
+            self._thumb_debounce.timeout.connect(self._schedule_thumbnail_reload)
+        self._thumb_debounce.stop()
+        self._thumb_debounce.start(THUMBNAIL_RELOAD_DEBOUNCE_MS)
+
+    def _schedule_thumbnail_reload(self):
+        """Load task config / resolve media path off the UI thread; pixmap on main thread."""
+        self._thumb_load_token += 1
+        token = self._thumb_load_token
+        config_path = getattr(self.task, "config_path", None)
+        if not config_path:
+            self._stop_thumb_loading_state()
+            self._thumbnail_pixmap = None
+            self._thumbnail_source_path = None
+            self.update()
+            return
+
+        self._thumbnail_loading = True
+        if self._thumbnail_pixmap is None or self._thumbnail_pixmap.isNull():
+            self._start_thumb_loading_animation()
+
+        project_path = self._project_path_for_task()
+        task_path = getattr(self.task, "path", None)
+
+        def load_path():
+            return _resolve_task_thumbnail_path(config_path, project_path, task_path)
+
+        def on_finished(resolved: Optional[str]):
+            if token != self._thumb_load_token:
+                return
+            self._thumbnail_source_path = resolved
+            if resolved and os.path.exists(resolved) and resolved.lower().endswith(
+                (".png", ".jpg", ".jpeg", ".gif")
+            ):
+                self._thumbnail_pixmap = QPixmap(resolved)
+                if self._thumbnail_pixmap.isNull():
+                    self._thumbnail_pixmap = None
+            else:
+                self._thumbnail_pixmap = None
+            self._stop_thumb_loading_state()
+            self.update()
+
+        def on_error(msg: str, _exc: Exception):
+            if token != self._thumb_load_token:
+                return
+            logger.error(f"Thumbnail background load failed: {msg}")
+            self._thumbnail_pixmap = None
+            self._thumbnail_source_path = None
+            self._stop_thumb_loading_state()
+            self.update()
+
+        run_in_background(load_path, on_finished=on_finished, on_error=on_error)
+
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
@@ -82,93 +236,68 @@ class EnhancedTaskItemWidget(QWidget):
         painter.fillRect(thumb_rect, QColor("#292b2e"))
 
         try:
-            # Try to find and display the result image/video
-            import os
-            from PySide6.QtGui import QPixmap
+            result_path = self._thumbnail_source_path
+            pixmap = self._thumbnail_pixmap
+            has_pixmap = pixmap is not None and not pixmap.isNull()
 
-            # Get resource paths from task config.yml
-            result_path = None
-            try:
-                # Load task config
-                task_config = load_yaml(self.task.config_path) or {}
-                
-                # Get project path to resolve relative resource paths
-                project_path = None
-                if hasattr(self.task, 'task_manager') and hasattr(self.task.task_manager, 'project'):
-                    project_path = self.task.task_manager.project.project_path
-                
-                # Try to get resources from config
-                resources = task_config.get('resources', [])
-                if resources:
-                    # Prefer image over video for thumbnail
-                    for resource_info in resources:
-                        resource_type = resource_info.get('type', '')
-                        resource_path = resource_info.get('resource_path', '')
-                        if resource_path and project_path:
-                            absolute_path = os.path.join(project_path, resource_path)
-                            if os.path.exists(absolute_path):
-                                # Prefer image for thumbnail, but accept video if no image
-                                if resource_type == 'image' or (resource_type == 'video' and result_path is None):
-                                    result_path = absolute_path
-                                    if resource_type == 'image':
-                                        break  # Found image, use it
-                else:
-                    # Fallback to individual resource paths for backward compatibility
-                    image_path = task_config.get('image_resource_path', '')
-                    video_path = task_config.get('video_resource_path', '')
-                    
-                    # Prefer image over video
-                    if image_path and project_path:
-                        absolute_path = os.path.join(project_path, image_path)
-                        if os.path.exists(absolute_path):
-                            result_path = absolute_path
-                    elif video_path and project_path:
-                        absolute_path = os.path.join(project_path, video_path)
-                        if os.path.exists(absolute_path):
-                            result_path = absolute_path
-                
-                # If no resources found in config, fallback to scanning task directory
-                if not result_path and hasattr(self.task, 'path') and os.path.exists(self.task.path):
-                    for filename in os.listdir(self.task.path):
-                        if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.mp4', '.avi', '.mov', '.webm')):
-                            result_path = os.path.join(self.task.path, filename)
-                            break
-            except Exception as e:
-                logger.error(f"Error loading resources from task config in thumbnail: {e}")
-                # Fallback to scanning task directory
-                if hasattr(self.task, 'path') and os.path.exists(self.task.path):
-                    for filename in os.listdir(self.task.path):
-                        if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.mp4', '.avi', '.mov', '.webm')):
-                            result_path = os.path.join(self.task.path, filename)
-                            break
-
-            if result_path and os.path.exists(result_path):
-                # Load and draw the image/video thumbnail
-                if result_path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
-                    pixmap = QPixmap(result_path)
-                    if not pixmap.isNull():
-                        # Scale pixmap to fit in the thumbnail area while maintaining aspect ratio
-                        scaled_pixmap = pixmap.scaled(
-                            thumb_rect.size(),
-                            Qt.KeepAspectRatio,
-                            Qt.SmoothTransformation
-                        )
-
-                        # Calculate position to center the image
-                        x = thumb_rect.x() + (thumb_rect.width() - scaled_pixmap.width()) // 2
-                        y = thumb_rect.y() + (thumb_rect.height() - scaled_pixmap.height()) // 2
-
-                        painter.drawPixmap(x, y, scaled_pixmap)
-                else:
-                    # For video files, just show a generic video icon
+            if has_pixmap:
+                scaled_pixmap = pixmap.scaled(
+                    thumb_rect.size(),
+                    Qt.KeepAspectRatio,
+                    Qt.SmoothTransformation,
+                )
+                x = thumb_rect.x() + (thumb_rect.width() - scaled_pixmap.width()) // 2
+                y = thumb_rect.y() + (thumb_rect.height() - scaled_pixmap.height()) // 2
+                painter.drawPixmap(x, y, scaled_pixmap)
+            elif self._thumbnail_loading:
+                self.draw_thumbnail_loading(painter, thumb_rect)
+            elif result_path and os.path.exists(result_path):
+                if result_path.lower().endswith((".mp4", ".avi", ".mov", ".webm")):
                     self.draw_video_placeholder(painter, thumb_rect)
+                else:
+                    self.draw_placeholder(painter, thumb_rect)
             else:
-                # Draw placeholder when no results exist
                 self.draw_placeholder(painter, thumb_rect)
         except Exception as e:
-            # If there's an error, just draw the placeholder
             logger.error(f"Error in draw_thumbnail_area: {e}")
             self.draw_placeholder(painter, thumb_rect)
+
+    def draw_thumbnail_loading(self, painter, rect):
+        """Lightweight loading hint in the thumbnail area (no extra I/O)."""
+        painter.save()
+        try:
+            pen = QPen(QColor("#7eb8da"), 2)
+            painter.setPen(pen)
+            painter.setBrush(QColor("#7eb8da"))
+            center_x = rect.center().x()
+            center_y = rect.center().y()
+            radius = 12
+            t = QTime.currentTime().msec() / 1000.0
+            rotation = t * 2 * math.pi
+            for i in range(3):
+                angle = rotation + (i * 2 * math.pi / 3)
+                dot_x = center_x + radius * math.cos(angle)
+                dot_y = center_y + radius * math.sin(angle)
+                size = max(3.0, 5.0 - i)
+                painter.drawEllipse(
+                    int(dot_x - size / 2), int(dot_y - size / 2), int(size), int(size)
+                )
+            font = QFont()
+            font.setPointSize(8)
+            painter.setFont(font)
+            painter.setPen(QColor("#8a8a8a"))
+            hint = tr("Loading…")
+            tw = painter.fontMetrics().horizontalAdvance(hint)
+            th = painter.fontMetrics().height()
+            painter.drawText(
+                rect.x() + (rect.width() - tw) // 2,
+                rect.bottom() - 8 - th + th,
+                hint,
+            )
+        except Exception as e:
+            logger.error(f"Error in draw_thumbnail_loading: {e}")
+        finally:
+            painter.restore()
 
     def draw_video_placeholder(self, painter, rect):
         """Draw a video placeholder icon"""
@@ -534,7 +663,21 @@ class EnhancedTaskItemWidget(QWidget):
 
     def update_display(self, task):
         """Update the display with new task information"""
+        old_id = getattr(self.task, "task_id", None)
+        new_id = getattr(task, "task_id", None)
+        if old_id != new_id:
+            self._stop_thumb_loading_state()
+            self._thumb_load_token += 1
+            self._thumbnail_pixmap = None
+            self._thumbnail_source_path = None
+            if self._thumb_debounce is not None:
+                self._thumb_debounce.stop()
+            self.task = task
+            self._schedule_thumbnail_reload()
+            self.update()
+            return
         self.task = task
+        self._debounce_thumbnail_reload()
         self.update()  # Trigger repaint
 
     def enterEvent(self, event):
