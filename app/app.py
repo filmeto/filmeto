@@ -12,7 +12,7 @@ os.environ['QT_QUICK_CONTROLS_STYLE'] = 'Basic'
 from qasync import QEventLoop
 from PySide6.QtGui import QFontDatabase, QIcon
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import qInstallMessageHandler, QtMsgType
+from PySide6.QtCore import QTimer, qInstallMessageHandler, QtMsgType
 
 from app.ui.core.event_bus import EventBus
 from app.ui.core.task_manager import TaskManager
@@ -186,10 +186,6 @@ class App():
                 logger.info("Loading custom font...")
                 load_custom_font(self.main_path)
             
-            with TimingContext("Stylesheet loading"):
-                logger.info("Loading stylesheet...")
-                app.setStyleSheet(load_stylesheet(self.main_path))
-            
             with TimingContext("Core architecture init"):
                 logger.info("Initializing EventBus and TaskManager...")
                 self._bus = EventBus.instance()
@@ -211,6 +207,9 @@ class App():
                 self.window_manager = WindowManager(self.workspace)
                 self.window_manager.show_startup_window()
 
+            logger.info("Scheduling deferred stylesheet (after first frame)...")
+            QTimer.singleShot(0, lambda: app.setStyleSheet(load_stylesheet(self.main_path)))
+
             # Refresh the startup page project list (this triggers project scanning)
             with TimingContext("Project list refresh"):
                 logger.info("Refreshing startup page project list...")
@@ -218,7 +217,6 @@ class App():
 
             with TimingContext("Deferred initializations"):
                 logger.info("Scheduling post-first-frame bootstrap (server + workspace deferrals)...")
-                from PySide6.QtCore import QTimer
                 QTimer.singleShot(0, self._bootstrap_after_first_frame)
 
             # Note: Project data loading (_load_project_tasks) is now deferred to on-demand

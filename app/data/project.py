@@ -7,6 +7,7 @@ Filmeto projects, including timeline, resources, characters, and tasks.
 
 import os.path
 import os
+import asyncio
 import time
 import logging
 from datetime import datetime
@@ -23,7 +24,6 @@ from app.data.character import CharacterManager
 from app.data.screen_play import ScreenPlayManager
 from utils.yaml_utils import (
     AsyncFileNotFoundError,
-    list_dir_names,
     load_yaml,
     load_yaml_async,
     path_exists,
@@ -32,6 +32,28 @@ from utils.yaml_utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def scan_valid_project_names(projects_dir: str) -> List[str]:
+    """List subdirectories that contain project.yml (safe for TaskManager worker threads).
+
+    Project instances must be built on the GUI thread (they own QTimer).
+    """
+    if not os.path.isdir(projects_dir):
+        return []
+    names: List[str] = []
+    try:
+        for item in os.listdir(projects_dir):
+            project_path = os.path.join(projects_dir, item)
+            if os.path.isdir(project_path) and os.path.exists(
+                os.path.join(project_path, "project.yml")
+            ):
+                names.append(item)
+    except OSError as e:
+        logger.warning("Project directory scan failed (%s): %s", projects_dir, e)
+        return []
+    names.sort()
+    return names
 
 
 class Project:
@@ -481,38 +503,42 @@ class ProjectManager:
 
         scan_start = time.time()
         logger.info("⏱️  [ProjectManager] Scanning projects directory: %s", self.projects_dir)
-        items = await list_dir_names(self.projects_dir)
+        names = await asyncio.to_thread(scan_valid_project_names, self.projects_dir)
         scan_time = (time.time() - scan_start) * 1000
         logger.info(
-            "⏱️  [ProjectManager] Directory scan completed in %.2fms (found %s items)",
+            "⏱️  [ProjectManager] Directory scan completed in %.2fms (found %s projects)",
             scan_time,
-            len(items),
+            len(names),
         )
+        self.replace_projects_from_names(names)
 
+    def replace_projects_from_names(self, names: List[str]) -> None:
+        """Rebuild ``self.projects`` from a list of folder names (call from GUI thread only)."""
+        os.makedirs(self.projects_dir, exist_ok=True)
+        self.projects = {}
         loaded_count = 0
         failed_count = 0
-        for item in items:
+        for item in names:
             project_path = os.path.join(self.projects_dir, item)
-            if os.path.isdir(project_path):
-                project_config_path = os.path.join(project_path, "project.yml")
-                if os.path.exists(project_config_path):
-                    try:
-                        project_start = time.time()
-                        project = Project(
-                            self.workspace_root_path, project_path, item, load_data=False
-                        )
-                        self.projects[item] = project
-                        project_time = (time.time() - project_start) * 1000
-                        logger.info(
-                            "⏱️  [ProjectManager] Loaded project '%s' in %.2fms",
-                            item,
-                            project_time,
-                        )
-                        loaded_count += 1
-                    except Exception as e:
-                        logger.error("Failed to load project %s: %s", item, e)
-                        logger.error("⏱️  [ProjectManager] Failed to load project '%s': %s", item, e)
-                        failed_count += 1
+            try:
+                project_start = time.time()
+                project = Project(
+                    self.workspace_root_path, project_path, item, load_data=False
+                )
+                self.projects[item] = project
+                project_time = (time.time() - project_start) * 1000
+                logger.info(
+                    "⏱️  [ProjectManager] Loaded project '%s' in %.2fms",
+                    item,
+                    project_time,
+                )
+                loaded_count += 1
+            except Exception as e:
+                logger.error("Failed to load project %s: %s", item, e)
+                logger.error(
+                    "⏱️  [ProjectManager] Failed to load project '%s': %s", item, e
+                )
+                failed_count += 1
 
         logger.info(
             "⏱️  [ProjectManager] Project loading summary: %s loaded, %s failed",

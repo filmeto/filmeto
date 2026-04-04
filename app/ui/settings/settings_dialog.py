@@ -8,6 +8,7 @@ from PySide6.QtQuickWidgets import QQuickWidget
 
 from app.data.workspace import Workspace
 from app.ui.dialog.custom_dialog import CustomDialog
+from app.ui.qml.shared_qml_engine import shared_qml_engine
 from app.ui.settings.settings_view_model import SettingsViewModel
 from utils.i18n_utils import tr
 
@@ -51,7 +52,7 @@ class SettingsDialog(CustomDialog):
 
         if qml_file.exists():
             # Create QML widget
-            self._qml_widget = QQuickWidget()
+            self._qml_widget = QQuickWidget(shared_qml_engine(), self)
             self._qml_widget.setResizeMode(QQuickWidget.SizeRootObjectToView)
 
             # Add import paths

@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QVBoxLayout
 
 from app.data.workspace import Workspace
 from app.ui.base_widget import BaseWidget
+from app.ui.qml.shared_qml_engine import shared_qml_engine
 from utils.i18n_utils import tr
 
 
@@ -117,7 +118,7 @@ class AgentPromptWidget(BaseWidget):
         self._bridge.contextRemoveRequested.connect(self.remove_context_item)
         self.prompt_submitted.connect(self.message_submitted.emit)
 
-        self._quick = QQuickWidget(self)
+        self._quick = QQuickWidget(shared_qml_engine(), self)
         self._quick.setObjectName("agent_prompt_widget")
         self._quick.setResizeMode(QQuickWidget.SizeRootObjectToView)
         self._quick.setAttribute(Qt.WA_TranslucentBackground, True)

@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtQuickWidgets import QQuickWidget
 from app.ui.base_widget import BaseWidget
+from app.ui.qml.shared_qml_engine import shared_qml_engine
 from app.data.workspace import Workspace
 from app.ui.panels.panel_toolbar_view_model import PanelToolbarViewModel
 
@@ -53,7 +54,7 @@ class BasePanel(BaseWidget):
         # Top toolbar (QML)
         self._toolbar_view_model = PanelToolbarViewModel(self)
         self._toolbar_callbacks = {}
-        self.toolbar = QQuickWidget(self)
+        self.toolbar = QQuickWidget(shared_qml_engine(), self)
         self.toolbar.setObjectName("panelToolbar")
         self.toolbar.setResizeMode(QQuickWidget.SizeRootObjectToView)
         self.toolbar.setFixedHeight(40)

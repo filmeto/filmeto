@@ -143,10 +143,7 @@ class ProjectStartupWidget(BaseWidget):
 
         if not self._defer_components:
             self.right_sidebar.button_clicked.connect(self.right_panel_switcher.switch_to_panel)
-            QTimer.singleShot(
-                0,
-                lambda: self.right_sidebar.set_selected_button("members", emit_signal=True),
-            )
+            QTimer.singleShot(50, lambda: self._preheat_panel("members"))
 
         QTimer.singleShot(0, self._apply_work_area_split_sizes)
 
@@ -166,6 +163,13 @@ class ProjectStartupWidget(BaseWidget):
         )
         chat_w = max(200, total - panel_w - handle)
         sp.setSizes([chat_w, panel_w])
+
+    def _preheat_panel(self, panel_name: str) -> None:
+        """Load default right tool panel after the first frame (keeps initial paint light)."""
+        rs = getattr(self, "right_sidebar", None)
+        if rs is None:
+            return
+        rs.set_selected_button(panel_name, emit_signal=True)
 
     def attach_work_area_components(self):
         """Replace skeleton widgets with chat, panel switcher, and sidebar (main-thread)."""
@@ -196,10 +200,7 @@ class ProjectStartupWidget(BaseWidget):
 
         self.right_sidebar.button_clicked.connect(self.right_panel_switcher.switch_to_panel)
         self._connect_signals()
-        QTimer.singleShot(
-            0,
-            lambda: self.right_sidebar.set_selected_button("members", emit_signal=True),
-        )
+        QTimer.singleShot(50, lambda: self._preheat_panel("members"))
 
         if self.project_name:
             self.set_project(self.project_name)
@@ -213,7 +214,9 @@ class ProjectStartupWidget(BaseWidget):
         from app.ui.chat.agent_chat import AgentChatWidget
 
         # Create the agent chat component
-        self.agent_chat_component = AgentChatWidget(self.workspace, tab)
+        self.agent_chat_component = AgentChatWidget(
+            self.workspace, tab, defer_chat_list=True
+        )
 
         # Set up the layout for the chat tab
         layout = QVBoxLayout(tab)
@@ -323,7 +326,9 @@ class ProjectStartupWidget(BaseWidget):
             # For the same project, we want to preserve the loaded history
             if previous_project and previous_project != project_name:
                 logger.info(f"Switched from project '{previous_project}' to '{project_name}', clearing history")
-                self.agent_chat_component.chat_history_widget.clear()
+                _chw = getattr(self.agent_chat_component, "chat_history_widget", None)
+                if _chw is not None:
+                    _chw.clear()
             elif previous_project == project_name:
                 logger.debug(f"Same project '{project_name}', preserving history")
 

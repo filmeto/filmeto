@@ -262,7 +262,14 @@ class StartupWindow(LeftPanelDialog):
     def _startup_stage_load_projects(self):
         if self._startup_stages_cancelled:
             return
+        self.project_list.projects_reload.connect(self._on_startup_projects_reload_once)
         self.project_list.refresh()
+
+    def _on_startup_projects_reload_once(self):
+        try:
+            self.project_list.projects_reload.disconnect(self._on_startup_projects_reload_once)
+        except (TypeError, RuntimeError):
+            pass
         QTimer.singleShot(0, self._startup_stage_server_status)
 
     def _startup_stage_server_status(self):
@@ -419,9 +426,6 @@ class StartupWindow(LeftPanelDialog):
 
     def _do_refresh_projects(self):
         self.project_list.refresh()
-        selected_project = self.project_list.get_selected_project()
-        if selected_project:
-            self.startup_widget.set_project(selected_project)
 
     def get_selected_project(self) -> str:
         """Get the currently selected project name."""

@@ -22,6 +22,7 @@ from app.ui.dialog.dialog_view_model import (
 )
 
 from ..styles import DIALOG_STYLE, _darken_color, _lighten_color
+from app.ui.qml.shared_qml_engine import shared_qml_engine
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,7 @@ class CustomTitleBar(QFrame):
         row.setContentsMargins(8, 0, 8, 0)
         row.setSpacing(0)
 
-        self._quick = QQuickWidget(self)
+        self._quick = QQuickWidget(shared_qml_engine(), self)
         self._quick.setResizeMode(QQuickWidget.SizeRootObjectToView)
         self._quick.setClearColor(Qt.transparent)
         self._quick.setAttribute(Qt.WA_TranslucentBackground, True)

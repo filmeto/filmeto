@@ -12,6 +12,7 @@ from PySide6.QtQuickWidgets import QQuickWidget
 
 from app.data.screen_play import ScreenPlayManager, ScreenPlayScene
 from app.ui.panels.base_panel import BasePanel
+from app.ui.qml.shared_qml_engine import shared_qml_engine
 from app.ui.panels.screen_play.screen_play_view_model import _SceneRow, ScreenPlayListModel, ScreenPlayViewModel
 
 logger = logging.getLogger(__name__)
@@ -32,7 +33,7 @@ class ScreenPlayPanel(BasePanel):
         self.screen_play_model = ScreenPlayListModel(self)
         self.screen_play_view_model = ScreenPlayViewModel(self)
 
-        self.screen_play_quick = QQuickWidget(self)
+        self.screen_play_quick = QQuickWidget(shared_qml_engine(), self)
         self.screen_play_quick.setResizeMode(QQuickWidget.SizeRootObjectToView)
         self.screen_play_quick.setAttribute(Qt.WA_TranslucentBackground, True)
         self.screen_play_quick.setClearColor(Qt.transparent)

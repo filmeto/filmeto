@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QFileDialog, QMessageBox
 
 from app.data.character import Character, CharacterManager
 from app.ui.dialog.custom_dialog import CustomDialog
+from app.ui.qml.shared_qml_engine import shared_qml_engine
 from utils.i18n_utils import tr
 
 logger = logging.getLogger(__name__)
@@ -164,7 +165,7 @@ class ActorEditDialog(CustomDialog):
         self.setMinimumSize(800, 700)
         self.setModal(True)
 
-        quick = QQuickWidget(self)
+        quick = QQuickWidget(shared_qml_engine(), self)
         quick.setResizeMode(QQuickWidget.SizeRootObjectToView)
         quick.setAttribute(Qt.WA_TranslucentBackground, True)
         quick.setClearColor(Qt.transparent)

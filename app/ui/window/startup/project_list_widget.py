@@ -6,6 +6,8 @@ This widget displays a list of projects in the left panel of the startup mode.
 It includes a logo at the top, project list in the middle, and a toolbar at the bottom.
 """
 import logging
+import uuid
+
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QFrame, QSizePolicy, QLineEdit, QDialog,
@@ -14,8 +16,11 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QSize, QRectF
 from PySide6.QtGui import QColor, QFont, QPixmap, QPainter, QPainterPath, QPen
 
+from app.data.project import scan_valid_project_names
 from app.data.workspace import Workspace
 from app.ui.base_widget import BaseWidget
+from app.ui.core.base_worker import FunctionWorker
+from app.ui.core.task_manager import TaskManager
 from utils.i18n_utils import tr
 
 logger = logging.getLogger(__name__)
@@ -155,7 +160,8 @@ class ProjectListWidget(BaseWidget):
     project_selected = Signal(str)  # Emits project name when selected
     project_edit = Signal(str)  # Emits project name when edit is requested
     project_created = Signal(str)  # Emits project name when a new project is created
-    
+    projects_reload = Signal()  # Emitted after list UI + ProjectManager are in sync
+
     def __init__(self, workspace: Workspace, parent=None, defer_projects_load: bool = False):
         super().__init__(workspace)
         if parent:
@@ -166,7 +172,8 @@ class ProjectListWidget(BaseWidget):
         
         self._selected_project = None
         self._project_items = {}
-        
+        self._project_scan_generation = 0
+
         self._setup_ui()
         if not defer_projects_load:
             self._load_projects()
@@ -327,28 +334,27 @@ class ProjectListWidget(BaseWidget):
         """)
     
     def _load_projects(self):
-        """Load projects from the workspace."""
-        # Ensure projects are loaded before listing them
+        """Load projects from the workspace (blocking scan + build on GUI thread)."""
         self.workspace.project_manager.ensure_projects_loaded()
-        project_names = self.workspace.project_manager.list_projects()
+        self._rebuild_project_list_ui()
 
-        # Clear existing items (but keep the stretch at the end)
-        # Remove all items except the last one (which should be the stretch)
+    def _rebuild_project_list_ui(self):
+        """Rebuild list widgets from ``project_manager.projects`` (GUI thread)."""
+        project_names = sorted(self.workspace.project_manager.projects.keys())
+
         while self.project_list_layout.count() > 1:
             item = self.project_list_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
-        
-        # Clear the project items dictionary
+
         self._project_items.clear()
 
-        # Add project items (they will be inserted before the stretch)
         for name in project_names:
             self._add_project_item(name)
 
-        # Select the first project by default
         if project_names:
             self._select_project(project_names[0])
+        self.projects_reload.emit()
     
     def _add_project_item(self, project_name: str):
         """Add a project item to the list."""
@@ -455,5 +461,39 @@ class ProjectListWidget(BaseWidget):
         return self._selected_project
     
     def refresh(self):
-        """Refresh the project list."""
+        """Scan projects off the UI thread, then build Project + list on GUI thread."""
+        pm = self.workspace.project_manager
+        self._project_scan_generation += 1
+        gen = self._project_scan_generation
+        worker = FunctionWorker(
+            scan_valid_project_names,
+            pm.projects_dir,
+            task_id=f"project-scan-{id(self)}-{gen}-{uuid.uuid4().hex[:8]}",
+            task_type="project_scan",
+        )
+        worker.signals.finished.connect(
+            lambda tid, res, g=gen: self._on_project_scan_finished(tid, res, g)
+        )
+        worker.signals.error.connect(
+            lambda tid, msg, exc, g=gen: self._on_project_scan_error(tid, msg, exc, g)
+        )
+        TaskManager.instance().submit(worker)
+
+    def _on_project_scan_finished(self, task_id: str, names: object, gen: int) -> None:
+        if gen != self._project_scan_generation:
+            return
+        name_list = names if isinstance(names, list) else []
+        try:
+            self.workspace.project_manager.replace_projects_from_names(name_list)
+            self._rebuild_project_list_ui()
+        except Exception as e:
+            logger.error("Failed to apply project scan: %s", e, exc_info=True)
+            self._load_projects()
+
+    def _on_project_scan_error(
+        self, task_id: str, msg: str, exc: object, gen: int
+    ) -> None:
+        if gen != self._project_scan_generation:
+            return
+        logger.error("Project scan task failed: %s", msg, exc_info=exc)
         self._load_projects()

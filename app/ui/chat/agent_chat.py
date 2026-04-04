@@ -9,15 +9,25 @@ and the startup window. Supports tabbed chat with group chat and private
 from typing import Optional, Any, Dict
 import asyncio
 import logging
+import uuid
 from pathlib import Path
-from PySide6.QtWidgets import QVBoxLayout, QWidget, QSplitter, QTabWidget, QTabBar
-from PySide6.QtCore import Qt, QTimer, QObject, Property, Slot, QUrl
+from PySide6.QtWidgets import (
+    QVBoxLayout,
+    QWidget,
+    QSplitter,
+    QTabWidget,
+    QTabBar,
+    QSizePolicy,
+)
+from PySide6.QtCore import Qt, QTimer, QObject, Property, Slot, QUrl, QEvent
 from PySide6.QtCore import Signal
 from PySide6.QtQuickWidgets import QQuickWidget
 from qasync import asyncSlot
 
-from app.ui.base_widget import BaseWidget
 from app.data.workspace import Workspace
+from app.ui.base_widget import BaseWidget
+from app.ui.core.base_worker import FunctionWorker
+from app.ui.core.task_manager import TaskManager
 from app.ui.chat.list import AgentChatListWidget
 from app.ui.chat.plan import AgentChatPlanWidget
 from app.ui.prompt.agent_prompt_widget import AgentPromptWidget
@@ -28,20 +38,44 @@ logger = logging.getLogger(__name__)
 GROUP_CHAT_TAB_INDEX = 0
 
 
+def _filmeto_agent_build_on_pool(
+    workspace: Workspace,
+    project_name: str,
+    model: str,
+    temperature: float,
+):
+    """Construct FilmetoAgent on TaskManager pool thread (heavy path off UI thread)."""
+    from agent.filmeto_agent import FilmetoAgent
+
+    return FilmetoAgent.get_instance(
+        workspace=workspace,
+        project_name=project_name,
+        model=model,
+        temperature=temperature,
+        streaming=True,
+    )
+
+
 class AgentChatWidget(BaseWidget):
     """Agent chat component combining prompt input and chat history."""
 
     error_occurred = Signal(str)
     crew_member_activity = Signal(str, bool)  # member_name, is_active
 
-    def __init__(self, workspace: Workspace, parent=None):
+    def __init__(self, workspace: Workspace, parent=None, defer_chat_list: bool = False):
         super().__init__(workspace)
         if parent:
             self.setParent(parent)
 
+        self._defer_chat_list = defer_chat_list
+        self._chat_list_placeholder: Optional[QWidget] = None
+
         self.agent = None
         self._agent_ready = False
         self._agent_lock = asyncio.Lock()
+        self._agent_init_future: Optional[asyncio.Future] = None
+        self._agent_init_worker_queued = False
+        self._agent_init_generation = 0
         self._private_tabs: Dict[str, int] = {}  # member_id -> tab_index
         # Cached reference for blinker connect/disconnect (same object required)
         self._crew_activity_handler = self._on_crew_member_activity_from_agent
@@ -53,6 +87,13 @@ class AgentChatWidget(BaseWidget):
 
         # Connect tab change to manage active state of private chat widgets
         self.tab_widget.currentChanged.connect(self._on_tab_changed)
+
+        if self._defer_chat_list:
+            QTimer.singleShot(0, self._ensure_chat_list_widget)
+            self.prompt_input_widget.installEventFilter(self)
+            _pq = getattr(self.prompt_input_widget, "_quick", None)
+            if _pq is not None:
+                _pq.installEventFilter(self)
 
         QTimer.singleShot(100, self._auto_initialize_agent)
 
@@ -91,9 +132,21 @@ class AgentChatWidget(BaseWidget):
         self.splitter.setObjectName("agent_chat_splitter")
         self.splitter.setHandleWidth(0)
 
-        self.chat_history_widget = AgentChatListWidget(self.workspace, self)
-        self.chat_history_widget.setObjectName("agent_chat_history_widget")
-        self.splitter.addWidget(self.chat_history_widget)
+        if self._defer_chat_list:
+            self._chat_list_placeholder = QWidget()
+            self._chat_list_placeholder.setObjectName("agent_chat_history_placeholder")
+            self._chat_list_placeholder.setMinimumHeight(120)
+            self._chat_list_placeholder.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Expanding,
+            )
+            self._chat_list_placeholder.setStyleSheet("background-color: #2b2b2b;")
+            self.splitter.addWidget(self._chat_list_placeholder)
+            self.chat_history_widget = None
+        else:
+            self.chat_history_widget = AgentChatListWidget(self.workspace, self)
+            self.chat_history_widget.setObjectName("agent_chat_history_widget")
+            self.splitter.addWidget(self.chat_history_widget)
 
         self.plan_widget = AgentChatPlanWidget(self.workspace, self)
         self.plan_widget.setObjectName("agent_chat_plan_widget")
@@ -112,12 +165,60 @@ class AgentChatWidget(BaseWidget):
 
         group_layout.addWidget(self.splitter)
 
-        self.chat_history_widget.reference_clicked.connect(self._on_reference_clicked)
+        if not self._defer_chat_list:
+            self.chat_history_widget.reference_clicked.connect(self._on_reference_clicked)
+            self.chat_history_widget.crew_member_activity.connect(self.crew_member_activity.emit)
         self.plan_widget.expandedChanged.connect(self._on_plan_expanded_changed)
-        self.chat_history_widget.crew_member_activity.connect(self.crew_member_activity.emit)
 
         self.tab_widget.addTab(group_chat_container, "\ue89e")
         self.tab_widget.setTabToolTip(GROUP_CHAT_TAB_INDEX, tr("Group Chat"))
+
+    def eventFilter(self, obj, event):
+        if (
+            self._defer_chat_list
+            and self.chat_history_widget is None
+            and event.type() == QEvent.Type.FocusIn
+        ):
+            targets = [self.prompt_input_widget]
+            _pq = getattr(self.prompt_input_widget, "_quick", None)
+            if _pq is not None:
+                targets.append(_pq)
+            if obj in targets:
+                self._ensure_chat_list_widget()
+        return super().eventFilter(obj, event)
+
+    def _ensure_chat_list_widget(self) -> None:
+        """Create AgentChatListWidget (QML) after first frame or prompt focus."""
+        if self.chat_history_widget is not None:
+            return
+        ph = self._chat_list_placeholder
+        if ph is None or self.splitter.indexOf(ph) < 0:
+            return
+
+        self.chat_history_widget = AgentChatListWidget(self.workspace, self)
+        self.chat_history_widget.setObjectName("agent_chat_history_widget")
+        self.splitter.replaceWidget(self.splitter.indexOf(ph), self.chat_history_widget)
+        ph.deleteLater()
+        self._chat_list_placeholder = None
+        self._defer_chat_list = False
+        self.prompt_input_widget.removeEventFilter(self)
+        _pq = getattr(self.prompt_input_widget, "_quick", None)
+        if _pq is not None:
+            _pq.removeEventFilter(self)
+
+        self.chat_history_widget.reference_clicked.connect(self._on_reference_clicked)
+        self.chat_history_widget.crew_member_activity.connect(self.crew_member_activity.emit)
+
+        QTimer.singleShot(
+            0,
+            lambda: self.splitter.setSizes(
+                [
+                    600,
+                    self.plan_widget._collapsed_height,
+                    200,
+                ]
+            ),
+        )
 
     def open_private_chat(self, crew_member) -> None:
         """Open a private chat tab for a crew member, or switch to it if already open."""
@@ -191,47 +292,115 @@ class AgentChatWidget(BaseWidget):
         self._private_tabs = new_map
 
     def _auto_initialize_agent(self):
-        if self.workspace and self.workspace.get_project():
-            asyncio.ensure_future(self._initialize_agent())
+        if not self.workspace or not self.workspace.get_project():
+            return
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            QTimer.singleShot(0, self._auto_initialize_agent)
+            return
+        asyncio.ensure_future(self._initialize_agent())
 
     async def _initialize_agent(self) -> bool:
         async with self._agent_lock:
             if self._agent_ready and self.agent:
                 return True
-
             try:
                 project = self.workspace.get_project()
                 if not project:
                     return False
-
-                project_name = self._extract_project_name(project) or "default"
-                model, temperature = self._get_model_config()
-
-                from agent.filmeto_agent import FilmetoAgent
-                self.agent = FilmetoAgent.get_instance(
-                    workspace=self.workspace,
-                    project_name=project_name,
-                    model=model,
-                    temperature=temperature,
-                    streaming=True
-                )
-
-                self._agent_ready = True
-                self.agent.signals.connect_crew_member_activity(
-                    self._crew_activity_handler, weak=False
-                )
-                for member_name, active in self._pending_crew_activity:
-                    self.crew_member_activity.emit(member_name, active)
-                self._pending_crew_activity.clear()
-                logger.info(f"Agent initialized for project '{project_name}'")
-                return True
-
             except Exception as e:
-                logger.error(f"Failed to initialize agent: {e}", exc_info=True)
-                self.agent = None
-                self._agent_ready = False
-                self._pending_crew_activity.clear()
+                logger.error("Failed to get project for agent init: %s", e, exc_info=True)
                 return False
+
+        await self._await_agent_via_task_manager()
+
+        async with self._agent_lock:
+            return bool(self._agent_ready and self.agent)
+
+    async def _await_agent_via_task_manager(self) -> None:
+        if self._agent_ready and self.agent:
+            return
+        loop = asyncio.get_running_loop()
+        if self._agent_init_future is None or self._agent_init_future.done():
+            self._agent_init_future = loop.create_future()
+            self._submit_filmeto_agent_worker()
+        if self._agent_init_future is not None:
+            await self._agent_init_future
+
+    def _submit_filmeto_agent_worker(self) -> None:
+        if self._agent_init_worker_queued:
+            return
+        project = self.workspace.get_project()
+        if not project:
+            if self._agent_init_future and not self._agent_init_future.done():
+                self._agent_init_future.set_result(False)
+            return
+        project_name = self._extract_project_name(project) or "default"
+        model, temperature = self._get_model_config()
+        gen = self._agent_init_generation
+        self._agent_init_worker_queued = True
+        worker = FunctionWorker(
+            _filmeto_agent_build_on_pool,
+            self.workspace,
+            project_name,
+            model,
+            temperature,
+            task_id=f"filmeto-agent-{id(self)}-{gen}-{uuid.uuid4().hex[:8]}",
+            task_type="filmeto_agent_init",
+        )
+        worker.signals.finished.connect(
+            lambda tid, res, g=gen, pn=project_name: self._on_agent_pool_finished(tid, res, g, pn)
+        )
+        worker.signals.error.connect(
+            lambda tid, msg, exc, g=gen, pn=project_name: self._on_agent_pool_error(
+                tid, msg, exc, g, pn
+            )
+        )
+        TaskManager.instance().submit(worker)
+
+    def _on_agent_pool_finished(self, task_id: str, agent: Any, gen: int, project_name: str) -> None:
+        self._agent_init_worker_queued = False
+        if gen != self._agent_init_generation:
+            from agent.filmeto_agent import FilmetoAgent
+
+            try:
+                FilmetoAgent.remove_instance(self.workspace, project_name)
+            except Exception as e:
+                logger.debug("Stale agent init discard: %s", e)
+            return
+        try:
+            self.agent = agent
+            self._agent_ready = True
+            self.agent.signals.connect_crew_member_activity(
+                self._crew_activity_handler, weak=False
+            )
+            for member_name, active in self._pending_crew_activity:
+                self.crew_member_activity.emit(member_name, active)
+            self._pending_crew_activity.clear()
+            logger.info("Agent initialized for project '%s'", project_name)
+            if self._agent_init_future and not self._agent_init_future.done():
+                self._agent_init_future.set_result(True)
+        except Exception as e:
+            logger.error("Failed to finalize agent on main thread: %s", e, exc_info=True)
+            self.agent = None
+            self._agent_ready = False
+            self._pending_crew_activity.clear()
+            if self._agent_init_future and not self._agent_init_future.done():
+                self._agent_init_future.set_result(False)
+
+    def _on_agent_pool_error(
+        self, task_id: str, msg: str, exc: object, gen: int, _project_name: str
+    ) -> None:
+        self._agent_init_worker_queued = False
+        if gen != self._agent_init_generation:
+            return
+        logger.error("Failed to initialize agent in worker: %s", msg, exc_info=exc)
+        self.agent = None
+        self._agent_ready = False
+        self._pending_crew_activity.clear()
+        if self._agent_init_future and not self._agent_init_future.done():
+            self._agent_init_future.set_result(False)
 
     def _on_message_submitted(self, message: str):
         if not message:
@@ -261,6 +430,8 @@ class AgentChatWidget(BaseWidget):
 
     async def _process_message_async(self, message: str):
         try:
+            if self.chat_history_widget is None:
+                self._ensure_chat_list_widget()
             if not self._agent_ready:
                 await self._initialize_agent()
 
@@ -276,6 +447,8 @@ class AgentChatWidget(BaseWidget):
 
     @Slot(str)
     def _on_error(self, error_message: str):
+        if self.chat_history_widget is None:
+            self._ensure_chat_list_widget()
         if self.chat_history_widget:
             self.chat_history_widget.append_message(tr("System"), error_message)
 
@@ -307,6 +480,15 @@ class AgentChatWidget(BaseWidget):
     def on_project_switch(self, project: Any) -> None:
         if not project:
             return
+
+        if self.chat_history_widget is None:
+            self._ensure_chat_list_widget()
+
+        self._agent_init_generation += 1
+        if self._agent_init_future and not self._agent_init_future.done():
+            self._agent_init_future.set_result(False)
+        self._agent_init_future = None
+        self._agent_init_worker_queued = False
 
         self._agent_ready = False
         self._pending_crew_activity.clear()

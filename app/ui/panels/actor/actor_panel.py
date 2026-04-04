@@ -15,6 +15,7 @@ from app.data.workspace import Workspace
 from app.ui.panels.actor.actor_edit_dialog import ActorEditDialog
 from app.ui.panels.actor.actor_panel_view_model import ActorListModel, ActorPanelViewModel, _ActorRow
 from app.ui.panels.base_panel import BasePanel
+from app.ui.qml.shared_qml_engine import shared_qml_engine
 from utils.i18n_utils import tr
 from utils.thread_utils import ThreadSafetyMixin
 
@@ -38,7 +39,7 @@ class ActorPanel(ThreadSafetyMixin, BasePanel):
         self.actor_view_model = ActorPanelViewModel(self)
         self.actor_view_model.set_empty_message(tr("暂无角色，点击新建角色创建。"))
 
-        self.actor_quick = QQuickWidget(self)
+        self.actor_quick = QQuickWidget(shared_qml_engine(), self)
         self.actor_quick.setResizeMode(QQuickWidget.SizeRootObjectToView)
         self.actor_quick.setAttribute(Qt.WA_TranslucentBackground, True)
         self.actor_quick.setClearColor(Qt.transparent)

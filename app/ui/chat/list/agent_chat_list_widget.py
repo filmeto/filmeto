@@ -19,6 +19,7 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout
 from agent.chat.content import StructureContent
 from agent.chat.history.agent_chat_history_service import message_saved
 from app.ui.base_widget import BaseWidget
+from app.ui.qml.shared_qml_engine import shared_qml_engine
 from app.ui.chat.list.agent_chat_list_items import ChatListItem
 from app.ui.chat.list.agent_chat_list_model import AgentChatListModel
 from app.ui.chat.list.managers.history_manager import HistoryManager
@@ -89,7 +90,7 @@ class AgentChatListWidget(BaseWidget):
         self._model = AgentChatListModel(self)
 
         # Initialize QML View widget
-        self._quick_widget = QQuickWidget(self)
+        self._quick_widget = QQuickWidget(shared_qml_engine(), self)
         self._quick_widget.setResizeMode(QQuickWidget.SizeRootObjectToView)
         self._quick_widget.setAttribute(Qt.WA_TranslucentBackground, True)
         self._quick_widget.setClearColor(Qt.transparent)

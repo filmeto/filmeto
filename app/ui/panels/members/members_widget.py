@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 from agent.crew import CrewMember, CrewTitle
 from app.ui.base_widget import BaseWidget
+from app.ui.qml.shared_qml_engine import shared_qml_engine
 from app.ui.panels.members.members_view_model import MembersListModel, MembersViewModel, _MemberRow
 from utils.i18n_utils import tr
 
@@ -39,7 +40,7 @@ class MembersWidget(BaseWidget):
         self._view_model.memberDoubleClicked.connect(self._emit_member_double_clicked)
         self._view_model.addMemberRequested.connect(self.add_member_requested.emit)
 
-        self._quick = QQuickWidget(self)
+        self._quick = QQuickWidget(shared_qml_engine(), self)
         self._quick.setResizeMode(QQuickWidget.SizeRootObjectToView)
         self._quick.setAttribute(Qt.WA_TranslucentBackground, True)
         self._quick.setClearColor(Qt.transparent)

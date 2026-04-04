@@ -13,6 +13,7 @@ from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QSizePolicy
 
 from app.ui.base_widget import BaseWidget
+from app.ui.qml.shared_qml_engine import shared_qml_engine
 from app.ui.chat.plan.plan_view_model import PlanViewModel
 
 logger = logging.getLogger(__name__)
@@ -67,7 +68,7 @@ class AgentChatPlanWidget(BaseWidget):
         self._bridge = PlanViewModel(workspace, self)
 
         # Create QML widget with transparent background
-        self._quick_widget = QQuickWidget(self)
+        self._quick_widget = QQuickWidget(shared_qml_engine(), self)
         self._quick_widget.setResizeMode(QQuickWidget.SizeRootObjectToView)
 
         # Enable transparent background for dark theme compatibility

@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QApplication, QMenu, QVBoxLayout, QLabel, QPushBut
 
 from app.data.workspace import Workspace
 from app.ui.base_widget import BaseWidget
+from app.ui.qml.shared_qml_engine import shared_qml_engine
 from utils.i18n_utils import tr
 
 logger = logging.getLogger(__name__)
@@ -65,7 +66,7 @@ class ProjectMenu(BaseWidget):
         self._bridge.set_dark_mode(self._is_dark_theme_active())
         self._bridge.clicked.connect(self._show_menu)
 
-        self._quick = QQuickWidget(self)
+        self._quick = QQuickWidget(shared_qml_engine(), self)
         self._quick.setObjectName("project_menu_quick")
         self._quick.setFixedSize(120, 32)
         self._quick.setResizeMode(QQuickWidget.SizeRootObjectToView)

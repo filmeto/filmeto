@@ -15,6 +15,7 @@ from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 from app.ui.base_widget import BaseWidget
+from app.ui.qml.shared_qml_engine import shared_qml_engine
 from app.ui.server_status.server_status_view_model import ServerStatusViewModel
 from utils.i18n_utils import tr
 
@@ -40,7 +41,7 @@ class ServerStatusButton(QWidget):
         self._state = ServerStatusViewModel(self)
         self._state.clicked.connect(self.status_clicked.emit)
 
-        self._quick = QQuickWidget(self)
+        self._quick = QQuickWidget(shared_qml_engine(), self)
         self._quick.setResizeMode(QQuickWidget.SizeRootObjectToView)
         self._quick.setFocusPolicy(Qt.ClickFocus)
         self._quick.setAttribute(Qt.WA_AcceptTouchEvents, False)

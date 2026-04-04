@@ -10,6 +10,7 @@ from PySide6.QtCore import QUrl, Qt, Signal
 from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
+from app.ui.qml.shared_qml_engine import shared_qml_engine
 from app.ui.server_list.server_list_view_model import (
     ServerListActionsViewModel,
     ServerListLabelsViewModel,
@@ -46,7 +47,7 @@ class ServerListView(QWidget):
         self._bridge.toggleRequested.connect(self.server_toggled.emit)
         self._bridge.deleteRequested.connect(self.server_deleted.emit)
 
-        self._quick_widget = QQuickWidget(self)
+        self._quick_widget = QQuickWidget(shared_qml_engine(), self)
         self._quick_widget.setResizeMode(QQuickWidget.SizeRootObjectToView)
         self._quick_widget.setFocusPolicy(Qt.ClickFocus)
         self._quick_widget.setAttribute(Qt.WA_AcceptTouchEvents, False)
