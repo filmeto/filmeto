@@ -83,10 +83,34 @@ class EditWidget(BaseWidget):
         self.bottom_bar.setObjectName("main_window_bottom_bar")
         layout.addWidget(self.bottom_bar)
 
+    def _fill_left_right_side_skeleton(self, frame: QFrame):
+        """Stacked chips matching left/right tool icon columns (MainWindowLeft/RightSideBar)."""
+        lay = QVBoxLayout(frame)
+        lay.setContentsMargins(4, 10, 4, 10)
+        lay.setSpacing(10)
+        for _ in range(5):
+            chip = QFrame()
+            chip.setObjectName("edit_shell_side_chip")
+            chip.setFixedSize(28, 28)
+            lay.addWidget(chip, alignment=Qt.AlignHCenter)
+        lay.addStretch()
+
+    def _fill_bottom_bar_skeleton(self, frame: QFrame):
+        """Centered play cluster strip matching MainWindowBottomSideBar (play controls)."""
+        lay = QHBoxLayout(frame)
+        lay.setContentsMargins(10, 3, 10, 3)
+        lay.setSpacing(0)
+        lay.addStretch(1)
+        cluster = QFrame()
+        cluster.setObjectName("edit_shell_play_cluster")
+        cluster.setFixedSize(132, 20)
+        lay.addWidget(cluster, alignment=Qt.AlignVCenter)
+        lay.addStretch(1)
+
     def _setup_ui_shell(self):
         """
         Outer layout matching the real edit UI: top | (left | center | right) | bottom.
-        Center uses a canvas + timeline strip to mirror MainWindowWorkspace split.
+        Left / right / bottom regions are explicit skeleton panels (not just flat color).
         """
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -105,6 +129,9 @@ class EditWidget(BaseWidget):
         self._left_shell = QFrame()
         self._left_shell.setObjectName("edit_shell_left")
         self._left_shell.setFixedWidth(_SIDE_W)
+        self._left_shell.setMinimumWidth(_SIDE_W)
+        self._left_shell.setMaximumWidth(_SIDE_W)
+        self._fill_left_right_side_skeleton(self._left_shell)
 
         self._center_shell = QWidget()
         self._center_shell.setObjectName("edit_shell_center")
@@ -134,6 +161,9 @@ class EditWidget(BaseWidget):
         self._right_shell = QFrame()
         self._right_shell.setObjectName("edit_shell_right")
         self._right_shell.setFixedWidth(_SIDE_W)
+        self._right_shell.setMinimumWidth(_SIDE_W)
+        self._right_shell.setMaximumWidth(_SIDE_W)
+        self._fill_left_right_side_skeleton(self._right_shell)
 
         mid.addWidget(self._left_shell)
         mid.addWidget(self._center_shell, 1)
@@ -142,6 +172,8 @@ class EditWidget(BaseWidget):
         self._bottom_shell = QFrame()
         self._bottom_shell.setObjectName("edit_shell_bottom")
         self._bottom_shell.setFixedHeight(_BOTTOM_BAR_H)
+        self._bottom_shell.setMinimumHeight(_BOTTOM_BAR_H)
+        self._fill_bottom_bar_skeleton(self._bottom_shell)
 
         layout.addWidget(self._top_shell)
         layout.addWidget(self._middle_shell, 1)
@@ -152,10 +184,30 @@ class EditWidget(BaseWidget):
     def _apply_shell_styles(self):
         self.setStyleSheet(
             "QWidget#edit_widget { background-color: #2b2b2b; }"
-            "QFrame#edit_shell_top, QFrame#edit_shell_bottom { "
-            "background-color: rgba(45, 45, 48, 0.92); }"
-            "QFrame#edit_shell_left, QFrame#edit_shell_right { "
-            "background-color: rgba(40, 40, 43, 0.95); }"
+            "QFrame#edit_shell_top { background-color: rgba(45, 45, 48, 0.92); }"
+            "QFrame#edit_shell_left {"
+            " background-color: rgba(36, 37, 40, 0.98);"
+            " border-right: 1px solid #3c3f41;"
+            " min-width: 40px; max-width: 40px;"
+            "}"
+            "QFrame#edit_shell_right {"
+            " background-color: rgba(36, 37, 40, 0.98);"
+            " border-left: 1px solid #3c3f41;"
+            " min-width: 40px; max-width: 40px;"
+            "}"
+            "QFrame#edit_shell_bottom {"
+            " background-color: rgba(42, 43, 46, 0.98);"
+            " border-top: 1px solid #3c3f41;"
+            " min-height: 28px; max-height: 28px;"
+            "}"
+            "QFrame#edit_shell_side_chip {"
+            " background-color: rgba(60, 63, 65, 0.55);"
+            " border-radius: 4px;"
+            "}"
+            "QFrame#edit_shell_play_cluster {"
+            " background-color: rgba(60, 63, 65, 0.5);"
+            " border-radius: 5px;"
+            "}"
             "QWidget#edit_shell_middle { background-color: #2b2b2b; }"
             "QFrame#edit_shell_canvas { background-color: #252526; border: none; }"
             "QFrame#edit_shell_timeline { background-color: #1e1e1e; "

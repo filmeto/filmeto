@@ -83,8 +83,8 @@ class MainWindowHLayout(BaseWidget):
         w.setStyleSheet(
             "QWidget#edit_h_center_skeleton { background-color: #2b2b2b; }"
             "QFrame#edit_center_skeleton_top { background-color: #252526; border: none; }"
-            "QFrame#edit_center_skeleton_timeline { background-color: #1e1e1e; "
-            "border-top: 1px solid #333333; }"
+            "QFrame#edit_center_skeleton_timeline { background-color: #1a1a1c; "
+            "border-top: 1px solid #3c3f41; min-height: 140px; max-height: 260px; }"
         )
         return w
 
