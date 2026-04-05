@@ -6,12 +6,12 @@ This widget contains the edit mode UI (the current main window layout).
 It wraps the existing top bar, h_layout, and bottom bar into a single widget
 that can be swapped with the startup widget.
 """
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QFrame, QLabel
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QFrame
 from PySide6.QtCore import Signal, Qt, QTimer
 
 from app.data.workspace import Workspace
 from app.ui.base_widget import BaseWidget
-from utils.i18n_utils import tr
+from app.ui.skeleton_blocks_pulse import SkeletonBlocksPulseWidget
 from .top_side_bar import MainWindowTopSideBar
 from .bottom_side_bar import MainWindowBottomSideBar
 from .h_layout import MainWindowHLayout
@@ -144,10 +144,8 @@ class EditWidget(BaseWidget):
         cv = QVBoxLayout(self._canvas_shell)
         cv.setContentsMargins(0, 0, 0, 0)
         cv.addStretch()
-        hint = QLabel(tr("Loading"))
-        hint.setAlignment(Qt.AlignCenter)
-        hint.setStyleSheet("color: #808080; font-size: 13px;")
-        cv.addWidget(hint)
+        self._canvas_pulse = SkeletonBlocksPulseWidget(block_size=10, spacing=6, interval_ms=130)
+        cv.addWidget(self._canvas_pulse, alignment=Qt.AlignCenter)
         cv.addStretch()
 
         self._timeline_shell = QFrame()

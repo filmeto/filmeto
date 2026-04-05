@@ -7,13 +7,13 @@ It focuses on a single project with both chat and crew member functionality.
 """
 import logging
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel
+    QWidget, QVBoxLayout, QHBoxLayout,
 )
 from PySide6.QtCore import Signal, Qt, QTimer
 
 from app.data.workspace import Workspace
 from app.ui.base_widget import BaseWidget
-from utils.i18n_utils import tr
+from app.ui.skeleton_blocks_pulse import SkeletonBlocksPulseWidget
 
 logger = logging.getLogger(__name__)
 
@@ -85,11 +85,11 @@ class ProjectStartupWidget(BaseWidget):
             self.chat_tab.setObjectName("startup_chat_skeleton")
             chat_lay = QVBoxLayout(self.chat_tab)
             chat_lay.setContentsMargins(0, 0, 0, 0)
-            chat_hint = QLabel(tr("Loading"))
-            chat_hint.setAlignment(Qt.AlignCenter)
-            chat_hint.setStyleSheet("color: #808080; font-size: 14px;")
             chat_lay.addStretch()
-            chat_lay.addWidget(chat_hint)
+            chat_lay.addWidget(
+                SkeletonBlocksPulseWidget(block_size=10, spacing=6, interval_ms=130),
+                alignment=Qt.AlignCenter,
+            )
             chat_lay.addStretch()
             self.work_area_splitter.addWidget(self.chat_tab)
 
@@ -100,10 +100,10 @@ class ProjectStartupWidget(BaseWidget):
             ps_lay = QVBoxLayout(self._panel_shell)
             ps_lay.setContentsMargins(8, 8, 8, 8)
             ps_lay.addStretch()
-            panel_hint = QLabel(tr("Loading"))
-            panel_hint.setAlignment(Qt.AlignCenter)
-            panel_hint.setStyleSheet("color: #808080; font-size: 14px;")
-            ps_lay.addWidget(panel_hint)
+            ps_lay.addWidget(
+                SkeletonBlocksPulseWidget(block_size=10, spacing=6, interval_ms=130),
+                alignment=Qt.AlignCenter,
+            )
             ps_lay.addStretch()
             self.work_area_splitter.addWidget(self._panel_shell)
         else:
