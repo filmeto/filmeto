@@ -185,8 +185,7 @@ class EditWindow(QMainWindow):
                 return
 
             # Handle spacebar in edit mode with bottom bar available
-            if self.bottom_bar:
-                # Toggle play/pause
+            if self.bottom_bar and self.bottom_bar.play_control:
                 play_control = self.bottom_bar.play_control
                 play_control.set_playing(not play_control.is_playing())
                 event.accept()

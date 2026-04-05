@@ -239,16 +239,27 @@ class EditWidget(BaseWidget):
         self._top_shell.deleteLater()
         self._top_shell = None
 
-    def attach_bottom_bar(self):
+    def attach_bottom_bar_shell(self):
+        """Bottom bar container + play-area skeleton; PlayControlWidget loads in a later stage."""
         if self._bottom_attached or not self._defer_parts:
             return
         self._bottom_attached = True
         lay = self.layout()
-        self.bottom_bar = MainWindowBottomSideBar(self.workspace, self.window)
+        self.bottom_bar = MainWindowBottomSideBar(
+            self.workspace, self.window, defer_play_control=True
+        )
         self.bottom_bar.setObjectName("main_window_bottom_bar")
         lay.replaceWidget(self._bottom_shell, self.bottom_bar)
         self._bottom_shell.deleteLater()
         self._bottom_shell = None
+
+    def attach_bottom_play_control(self):
+        """Instantiate PlayControlWidget in the bottom bar."""
+        if not self._defer_parts or not self.bottom_bar:
+            return
+        if self.bottom_bar.play_control is not None:
+            return
+        self.bottom_bar.attach_play_control()
 
     def attach_h_layout(self):
         """Side skeletons + MainWindowWorkspace (canvas/timeline skeletons inside)."""
@@ -276,7 +287,7 @@ class EditWidget(BaseWidget):
         if idx == 0:
             self.attach_top_bar()
         elif idx == 1:
-            self.attach_bottom_bar()
+            self.attach_bottom_bar_shell()
         elif idx == 2:
             self.attach_h_layout()
         elif idx == 3:
@@ -287,10 +298,18 @@ class EditWidget(BaseWidget):
                 self.h_layout.workspace.attach_workspace_bottom()
         elif idx == 5:
             if self.h_layout:
-                self.h_layout.attach_left_bar()
+                self.h_layout.attach_left_bar_shell()
         elif idx == 6:
             if self.h_layout:
-                self.h_layout.attach_right_bar()
+                self.h_layout.attach_right_bar_shell()
+        elif idx == 7:
+            if self.h_layout:
+                self.h_layout.attach_left_sidebar_content()
+        elif idx == 8:
+            if self.h_layout:
+                self.h_layout.attach_right_sidebar_content()
+        elif idx == 9:
+            self.attach_bottom_play_control()
 
     def _finalize_staged_shell(self) -> None:
         self.setStyleSheet("QWidget#edit_widget { background-color: #2b2b2b; }")

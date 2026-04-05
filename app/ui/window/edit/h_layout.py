@@ -62,29 +62,49 @@ class MainWindowHLayout(BaseWidget):
         )
         return f
 
-    def attach_left_bar(self) -> None:
+    def attach_left_bar_shell(self) -> None:
+        """Replace outer left skeleton with tool-strip shell (chips; buttons load later)."""
         if not self._defer_panels or self.left_bar is not None:
             return
         if self._left_placeholder is None:
             return
-        self.left_bar = LeftBar(self._workspace_data, self)
+        self.left_bar = LeftBar(self._workspace_data, self, defer_sidebar=True)
         lay = self.layout()
-        lay.replaceWidget(self._left_placeholder, self.left_bar.get_widget())
+        idx = lay.indexOf(self._left_placeholder)
+        if idx < 0:
+            return
+        lay.removeWidget(self._left_placeholder)
         self._left_placeholder.deleteLater()
         self._left_placeholder = None
-        self.left_bar.bar.set_selected_button("actor")
+        lay.insertWidget(idx, self.left_bar.get_widget())
 
-    def attach_right_bar(self) -> None:
+    def attach_left_sidebar_content(self) -> None:
+        """Load MainWindowLeftSideBar (buttons) into the strip shell."""
+        if not self._defer_panels or self.left_bar is None:
+            return
+        self.left_bar.attach_sidebar()
+
+    def attach_right_bar_shell(self) -> None:
+        """Replace outer right skeleton with tool-strip shell."""
         if not self._defer_panels or self.right_bar is not None:
             return
         if self._right_placeholder is None:
             return
-        self.right_bar = RightBar(self._workspace_data, self)
+        self.right_bar = RightBar(self._workspace_data, self, defer_sidebar=True)
         lay = self.layout()
-        lay.replaceWidget(self._right_placeholder, self.right_bar.get_widget())
+        idx = lay.indexOf(self._right_placeholder)
+        if idx < 0:
+            return
+        lay.removeWidget(self._right_placeholder)
         self._right_placeholder.deleteLater()
         self._right_placeholder = None
-        self.right_bar.bar.set_selected_button("agent")
+        lay.insertWidget(idx, self.right_bar.get_widget())
+
+    def attach_right_sidebar_content(self) -> None:
+        """Load MainWindowRightSideBar into the strip shell."""
+        if not self._defer_panels or self.right_bar is None:
+            return
+        self.right_bar.attach_sidebar()
 
     def finalize_panel_wiring(self) -> None:
         """Connect tool strips to workspace panel switchers (after workspace_top exists)."""
