@@ -6,72 +6,231 @@ This widget contains the edit mode UI (the current main window layout).
 It wraps the existing top bar, h_layout, and bottom bar into a single widget
 that can be swapped with the startup widget.
 """
-from PySide6.QtWidgets import QWidget, QVBoxLayout
-from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QFrame, QLabel
+from PySide6.QtCore import Signal, Qt, QTimer
 
 from app.data.workspace import Workspace
 from app.ui.base_widget import BaseWidget
+from utils.i18n_utils import tr
 from .top_side_bar import MainWindowTopSideBar
 from .bottom_side_bar import MainWindowBottomSideBar
 from .h_layout import MainWindowHLayout
+
+# Match MainWindowTopSideBar / MainWindowBottomSideBar / side bars
+_TOP_BAR_H = 40
+_BOTTOM_BAR_H = 28
+_SIDE_W = 40
 
 
 class EditWidget(BaseWidget):
     """
     Edit mode container widget.
-    
+
     This wraps the existing edit mode layout:
     - Top bar (with drawing tools, settings, etc.)
     - H layout (left sidebar, workspace, right sidebar)
     - Bottom bar (timeline, playback controls)
     """
-    
+
     go_home = Signal()  # Emitted when home button is clicked
-    
-    def __init__(self, window, workspace: Workspace, parent=None):
+
+    def __init__(
+        self,
+        window,
+        workspace: Workspace,
+        parent=None,
+        defer_parts: bool = False,
+    ):
         super().__init__(workspace)
         if parent:
             self.setParent(parent)
-        
+
         self.window = window
         self.project = workspace.get_project()
         self.setObjectName("edit_widget")
-        
-        self._setup_ui()
-    
-    def _setup_ui(self):
-        """Set up the UI components."""
+        self._defer_parts = defer_parts
+
+        self._top_attached = False
+        self._bottom_attached = False
+        self._h_layout_attached = False
+        self._center_attached = False
+
+        self.top_bar = None
+        self.bottom_bar = None
+        self.h_layout = None
+
+        if defer_parts:
+            self._setup_ui_shell()
+        else:
+            self._setup_ui_full()
+
+    def _setup_ui_full(self):
+        """Immediate full construction (non–lazy-init path)."""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        
-        # Top bar
+
         self.top_bar = MainWindowTopSideBar(self.window, self.workspace)
         self.top_bar.setObjectName("main_window_top_bar")
-        
-        # Connect home button signal (will be set up by top bar)
-        if hasattr(self.top_bar, 'home_clicked'):
+        if hasattr(self.top_bar, "home_clicked"):
             self.top_bar.home_clicked.connect(self.go_home.emit)
-        
         layout.addWidget(self.top_bar)
-        
-        # Main horizontal layout
+
         self.h_layout = MainWindowHLayout(self.window, self.workspace)
         layout.addWidget(self.h_layout, 1)
-        
-        # Bottom bar
+
         self.bottom_bar = MainWindowBottomSideBar(self.workspace, self.window)
         self.bottom_bar.setObjectName("main_window_bottom_bar")
         layout.addWidget(self.bottom_bar)
-    
+
+    def _setup_ui_shell(self):
+        """
+        Outer layout matching the real edit UI: top | (left | center | right) | bottom.
+        Center uses a canvas + timeline strip to mirror MainWindowWorkspace split.
+        """
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        self._top_shell = QFrame()
+        self._top_shell.setObjectName("edit_shell_top")
+        self._top_shell.setFixedHeight(_TOP_BAR_H)
+
+        self._middle_shell = QWidget()
+        self._middle_shell.setObjectName("edit_shell_middle")
+        mid = QHBoxLayout(self._middle_shell)
+        mid.setContentsMargins(0, 0, 0, 0)
+        mid.setSpacing(0)
+
+        self._left_shell = QFrame()
+        self._left_shell.setObjectName("edit_shell_left")
+        self._left_shell.setFixedWidth(_SIDE_W)
+
+        self._center_shell = QWidget()
+        self._center_shell.setObjectName("edit_shell_center")
+        c_lay = QVBoxLayout(self._center_shell)
+        c_lay.setContentsMargins(0, 0, 0, 0)
+        c_lay.setSpacing(0)
+
+        self._canvas_shell = QFrame()
+        self._canvas_shell.setObjectName("edit_shell_canvas")
+        cv = QVBoxLayout(self._canvas_shell)
+        cv.setContentsMargins(0, 0, 0, 0)
+        cv.addStretch()
+        hint = QLabel(tr("Loading"))
+        hint.setAlignment(Qt.AlignCenter)
+        hint.setStyleSheet("color: #808080; font-size: 13px;")
+        cv.addWidget(hint)
+        cv.addStretch()
+
+        self._timeline_shell = QFrame()
+        self._timeline_shell.setObjectName("edit_shell_timeline")
+        self._timeline_shell.setMinimumHeight(120)
+        self._timeline_shell.setMaximumHeight(220)
+
+        c_lay.addWidget(self._canvas_shell, 1)
+        c_lay.addWidget(self._timeline_shell)
+
+        self._right_shell = QFrame()
+        self._right_shell.setObjectName("edit_shell_right")
+        self._right_shell.setFixedWidth(_SIDE_W)
+
+        mid.addWidget(self._left_shell)
+        mid.addWidget(self._center_shell, 1)
+        mid.addWidget(self._right_shell)
+
+        self._bottom_shell = QFrame()
+        self._bottom_shell.setObjectName("edit_shell_bottom")
+        self._bottom_shell.setFixedHeight(_BOTTOM_BAR_H)
+
+        layout.addWidget(self._top_shell)
+        layout.addWidget(self._middle_shell, 1)
+        layout.addWidget(self._bottom_shell)
+
+        self._apply_shell_styles()
+
+    def _apply_shell_styles(self):
+        self.setStyleSheet(
+            "QWidget#edit_widget { background-color: #2b2b2b; }"
+            "QFrame#edit_shell_top, QFrame#edit_shell_bottom { "
+            "background-color: rgba(45, 45, 48, 0.92); }"
+            "QFrame#edit_shell_left, QFrame#edit_shell_right { "
+            "background-color: rgba(40, 40, 43, 0.95); }"
+            "QWidget#edit_shell_middle { background-color: #2b2b2b; }"
+            "QFrame#edit_shell_canvas { background-color: #252526; border: none; }"
+            "QFrame#edit_shell_timeline { background-color: #1e1e1e; "
+            "border-top: 1px solid #333333; }"
+        )
+
+    def attach_top_bar(self):
+        if self._top_attached or not self._defer_parts:
+            return
+        self._top_attached = True
+        lay = self.layout()
+        self.top_bar = MainWindowTopSideBar(self.window, self.workspace)
+        self.top_bar.setObjectName("main_window_top_bar")
+        if hasattr(self.top_bar, "home_clicked"):
+            self.top_bar.home_clicked.connect(self.go_home.emit)
+        lay.replaceWidget(self._top_shell, self.top_bar)
+        self._top_shell.deleteLater()
+        self._top_shell = None
+
+    def attach_bottom_bar(self):
+        if self._bottom_attached or not self._defer_parts:
+            return
+        self._bottom_attached = True
+        lay = self.layout()
+        self.bottom_bar = MainWindowBottomSideBar(self.workspace, self.window)
+        self.bottom_bar.setObjectName("main_window_bottom_bar")
+        lay.replaceWidget(self._bottom_shell, self.bottom_bar)
+        self._bottom_shell.deleteLater()
+        self._bottom_shell = None
+
+    def attach_h_layout(self):
+        """Left / right tool strips + center skeleton (workspace loads next)."""
+        if self._h_layout_attached or not self._defer_parts:
+            return
+        self._h_layout_attached = True
+        lay = self.layout()
+        self.h_layout = MainWindowHLayout(self.window, self.workspace, defer_center=True)
+        lay.replaceWidget(self._middle_shell, self.h_layout)
+        self._middle_shell.deleteLater()
+        self._middle_shell = None
+
+    def attach_center_workspace(self):
+        """Heavy center: canvas + timeline (MainWindowWorkspace)."""
+        if self._center_attached or not self._defer_parts:
+            return
+        if not self.h_layout:
+            return
+        self._center_attached = True
+        self.h_layout.attach_center_workspace()
+
+    def run_staged_load(self):
+        """Sequential load: top → bottom → h-layout (sides + center skel) → workspace."""
+        self.attach_top_bar()
+        QTimer.singleShot(0, self._stage_after_top)
+
+    def _stage_after_top(self):
+        self.attach_bottom_bar()
+        QTimer.singleShot(0, self._stage_after_bottom)
+
+    def _stage_after_bottom(self):
+        self.attach_h_layout()
+        QTimer.singleShot(0, self._stage_after_h)
+
+    def _stage_after_h(self):
+        self.attach_center_workspace()
+        self.setStyleSheet("QWidget#edit_widget { background-color: #2b2b2b; }")
+
     def get_top_bar(self):
         """Get the top bar widget."""
         return self.top_bar
-    
+
     def get_bottom_bar(self):
         """Get the bottom bar widget."""
         return self.bottom_bar
-    
+
     def get_h_layout(self):
         """Get the horizontal layout widget."""
         return self.h_layout
