@@ -4,10 +4,11 @@ import QtQuick.Layouts 1.15
 
 Rectangle {
     id: root
-    required property string name
-    required property string description
-    required property string imagePath
-    required property bool selected
+    // Defaults: Loader creates the item before onLoaded binds model (required* would warn).
+    property string name: ""
+    property string description: ""
+    property string imagePath: ""
+    property bool selected: false
     signal clicked()
     signal doubleClicked()
     signal selectionToggled(bool selected)
