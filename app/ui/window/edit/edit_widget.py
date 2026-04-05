@@ -10,7 +10,7 @@ import logging
 import uuid
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QFrame
-from PySide6.QtCore import Signal, Qt, QTimer
+from PySide6.QtCore import Signal, Qt, QTimer, Slot
 
 from app.data.workspace import Workspace
 from app.ui.base_widget import BaseWidget
@@ -69,6 +69,7 @@ class EditWidget(BaseWidget):
 
         self._preflight_cancelled = False
         self._preflight_task_ids = []
+        self._pending_preflight_stage = 0
         self._edit_shell_stages_complete = False
 
         if defer_parts:
@@ -306,24 +307,46 @@ class EditWidget(BaseWidget):
         task_id = f"edit-preflight-{idx}-{uuid.uuid4().hex[:8]}"
         worker = FunctionWorker(fn, task_id=task_id, task_type="edit_preflight")
         self._preflight_task_ids.append(task_id)
+        self._pending_preflight_stage = idx
 
-        def _on_finished(tid: str, _result: object) -> None:
-            try:
-                self._preflight_task_ids.remove(tid)
-            except ValueError:
-                pass
-            if self._preflight_cancelled:
-                return
-            self._attach_stage(idx)
-            QTimer.singleShot(0, lambda: self._submit_stage(idx + 1))
-
-        def _on_error(tid: str, msg: str, _exc: object) -> None:
-            logger.warning("Edit shell preflight stage %s failed: %s", idx, msg)
-            _on_finished(tid, None)
-
-        worker.signals.finished.connect(_on_finished, Qt.ConnectionType.QueuedConnection)
-        worker.signals.error.connect(_on_error, Qt.ConnectionType.QueuedConnection)
+        worker.signals.finished.connect(
+            self._on_preflight_worker_finished,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        worker.signals.error.connect(
+            self._on_preflight_worker_error,
+            Qt.ConnectionType.QueuedConnection,
+        )
         TaskManager.instance().submit(worker)
+
+    @Slot(str, object)
+    def _on_preflight_worker_finished(self, task_id: str, result: object) -> None:
+        try:
+            self._preflight_task_ids.remove(task_id)
+        except ValueError:
+            pass
+        if self._preflight_cancelled:
+            return
+        idx = self._pending_preflight_stage
+        self._attach_stage(idx)
+        QTimer.singleShot(0, lambda: self._submit_stage(idx + 1))
+
+    @Slot(str, str, object)
+    def _on_preflight_worker_error(self, task_id: str, msg: str, exc: object) -> None:
+        logger.warning(
+            "Edit shell preflight stage %s failed: %s",
+            self._pending_preflight_stage,
+            msg,
+        )
+        try:
+            self._preflight_task_ids.remove(task_id)
+        except ValueError:
+            pass
+        if self._preflight_cancelled:
+            return
+        idx = self._pending_preflight_stage
+        self._attach_stage(idx)
+        QTimer.singleShot(0, lambda: self._submit_stage(idx + 1))
 
     def run_staged_load(self):
         """
