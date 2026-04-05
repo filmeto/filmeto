@@ -31,29 +31,56 @@ def preflight_edit_bottom_bar() -> None:
         logger.debug("preflight_edit_bottom_bar: %s", e)
 
 
-def preflight_edit_h_layout() -> None:
-    """Warm imports for MainWindowHLayout and side bars."""
+def preflight_edit_h_layout_shell() -> None:
+    """Warm imports for deferred H layout shell (workspace container + side skeletons)."""
     try:
         import app.ui.window.edit.h_layout  # noqa: F401
+        import app.ui.window.edit.workspace  # noqa: F401
+    except Exception as e:
+        logger.debug("preflight_edit_h_layout_shell: %s", e)
+
+
+def preflight_workspace_top() -> None:
+    """Warm imports for editor / canvas (MainWindowWorkspaceTop)."""
+    try:
+        import app.ui.window.edit.workspace_top  # noqa: F401
+        import app.ui.editor  # noqa: F401
+        import app.ui.panels  # noqa: F401
+    except Exception as e:
+        logger.debug("preflight_workspace_top: %s", e)
+
+
+def preflight_workspace_bottom() -> None:
+    """Warm imports for timeline (MainWindowWorkspaceBottom)."""
+    try:
+        import app.ui.window.edit.workspace_bottom  # noqa: F401
+        import app.ui.timeline.timeline_container  # noqa: F401
+    except Exception as e:
+        logger.debug("preflight_workspace_bottom: %s", e)
+
+
+def preflight_left_tool_strip() -> None:
+    """Warm imports for left tool strip."""
+    try:
         import app.ui.window.edit.left_side_bar  # noqa: F401
+    except Exception as e:
+        logger.debug("preflight_left_tool_strip: %s", e)
+
+
+def preflight_right_tool_strip() -> None:
+    """Warm imports for right tool strip."""
+    try:
         import app.ui.window.edit.right_side_bar  # noqa: F401
     except Exception as e:
-        logger.debug("preflight_edit_h_layout: %s", e)
-
-
-def preflight_edit_center_workspace() -> None:
-    """Warm imports for MainWindowWorkspace subtree."""
-    try:
-        import app.ui.window.edit.workspace  # noqa: F401
-        import app.ui.window.edit.workspace_top  # noqa: F401
-        import app.ui.window.edit.workspace_bottom  # noqa: F401
-    except Exception as e:
-        logger.debug("preflight_edit_center_workspace: %s", e)
+        logger.debug("preflight_right_tool_strip: %s", e)
 
 
 PREFLIGHT_BY_STAGE = (
     preflight_edit_top_bar,
     preflight_edit_bottom_bar,
-    preflight_edit_h_layout,
-    preflight_edit_center_workspace,
+    preflight_edit_h_layout_shell,
+    preflight_workspace_top,
+    preflight_workspace_bottom,
+    preflight_left_tool_strip,
+    preflight_right_tool_strip,
 )

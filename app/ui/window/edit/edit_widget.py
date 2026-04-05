@@ -61,7 +61,6 @@ class EditWidget(BaseWidget):
         self._top_attached = False
         self._bottom_attached = False
         self._h_layout_attached = False
-        self._center_attached = False
 
         self.top_bar = None
         self.bottom_bar = None
@@ -252,24 +251,15 @@ class EditWidget(BaseWidget):
         self._bottom_shell = None
 
     def attach_h_layout(self):
-        """Left / right tool strips + center skeleton (workspace loads next)."""
+        """Side skeletons + MainWindowWorkspace (canvas/timeline skeletons inside)."""
         if self._h_layout_attached or not self._defer_parts:
             return
         self._h_layout_attached = True
         lay = self.layout()
-        self.h_layout = MainWindowHLayout(self.window, self.workspace, defer_center=True)
+        self.h_layout = MainWindowHLayout(self.window, self.workspace, defer_panels=True)
         lay.replaceWidget(self._middle_shell, self.h_layout)
         self._middle_shell.deleteLater()
         self._middle_shell = None
-
-    def attach_center_workspace(self):
-        """Heavy center: canvas + timeline (MainWindowWorkspace)."""
-        if self._center_attached or not self._defer_parts:
-            return
-        if not self.h_layout:
-            return
-        self._center_attached = True
-        self.h_layout.attach_center_workspace()
 
     def _on_edit_widget_destroyed(self):
         self.cancel_staged_load()
@@ -290,17 +280,32 @@ class EditWidget(BaseWidget):
         elif idx == 2:
             self.attach_h_layout()
         elif idx == 3:
-            self.attach_center_workspace()
+            if self.h_layout and self.h_layout.workspace:
+                self.h_layout.workspace.attach_workspace_top()
+        elif idx == 4:
+            if self.h_layout and self.h_layout.workspace:
+                self.h_layout.workspace.attach_workspace_bottom()
+        elif idx == 5:
+            if self.h_layout:
+                self.h_layout.attach_left_bar()
+        elif idx == 6:
+            if self.h_layout:
+                self.h_layout.attach_right_bar()
 
     def _finalize_staged_shell(self) -> None:
         self.setStyleSheet("QWidget#edit_widget { background-color: #2b2b2b; }")
         self._edit_shell_stages_complete = True
 
+    def _finalize_middle_and_shell(self) -> None:
+        if self.h_layout:
+            self.h_layout.finalize_panel_wiring()
+        self._finalize_staged_shell()
+
     def _submit_stage(self, idx: int) -> None:
         if not self._defer_parts or self._preflight_cancelled:
             return
         if idx >= len(PREFLIGHT_BY_STAGE):
-            self._finalize_staged_shell()
+            self._finalize_middle_and_shell()
             return
 
         fn = PREFLIGHT_BY_STAGE[idx]
