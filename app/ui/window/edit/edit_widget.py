@@ -6,15 +6,23 @@ This widget contains the edit mode UI (the current main window layout).
 It wraps the existing top bar, h_layout, and bottom bar into a single widget
 that can be swapped with the startup widget.
 """
+import logging
+import uuid
+
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QFrame
 from PySide6.QtCore import Signal, Qt, QTimer
 
 from app.data.workspace import Workspace
 from app.ui.base_widget import BaseWidget
+from app.ui.core.base_worker import FunctionWorker
+from app.ui.core.task_manager import TaskManager
 from app.ui.skeleton_blocks_pulse import SkeletonBlocksPulseWidget
+from .edit_preflight import PREFLIGHT_BY_STAGE
 from .top_side_bar import MainWindowTopSideBar
 from .bottom_side_bar import MainWindowBottomSideBar
 from .h_layout import MainWindowHLayout
+
+logger = logging.getLogger(__name__)
 
 # Match MainWindowTopSideBar / MainWindowBottomSideBar / side bars
 _TOP_BAR_H = 40
@@ -59,10 +67,16 @@ class EditWidget(BaseWidget):
         self.bottom_bar = None
         self.h_layout = None
 
+        self._preflight_cancelled = False
+        self._preflight_task_ids = []
+        self._edit_shell_stages_complete = False
+
         if defer_parts:
             self._setup_ui_shell()
+            self.destroyed.connect(self._on_edit_widget_destroyed)
         else:
             self._setup_ui_full()
+            self._edit_shell_stages_complete = True
 
     def _setup_ui_full(self):
         """Immediate full construction (non–lazy-init path)."""
@@ -256,22 +270,72 @@ class EditWidget(BaseWidget):
         self._center_attached = True
         self.h_layout.attach_center_workspace()
 
-    def run_staged_load(self):
-        """Sequential load: top → bottom → h-layout (sides + center skel) → workspace."""
-        self.attach_top_bar()
-        QTimer.singleShot(0, self._stage_after_top)
+    def _on_edit_widget_destroyed(self):
+        self.cancel_staged_load()
 
-    def _stage_after_top(self):
-        self.attach_bottom_bar()
-        QTimer.singleShot(0, self._stage_after_bottom)
+    def cancel_staged_load(self):
+        """Stop pending preflight workers (cooperative); further attach steps are skipped."""
+        self._preflight_cancelled = True
+        tm = TaskManager.instance()
+        for tid in list(self._preflight_task_ids):
+            tm.cancel(tid)
+        self._preflight_task_ids.clear()
 
-    def _stage_after_bottom(self):
-        self.attach_h_layout()
-        QTimer.singleShot(0, self._stage_after_h)
+    def _attach_stage(self, idx: int) -> None:
+        if idx == 0:
+            self.attach_top_bar()
+        elif idx == 1:
+            self.attach_bottom_bar()
+        elif idx == 2:
+            self.attach_h_layout()
+        elif idx == 3:
+            self.attach_center_workspace()
 
-    def _stage_after_h(self):
-        self.attach_center_workspace()
+    def _finalize_staged_shell(self) -> None:
         self.setStyleSheet("QWidget#edit_widget { background-color: #2b2b2b; }")
+        self._edit_shell_stages_complete = True
+
+    def _submit_stage(self, idx: int) -> None:
+        if not self._defer_parts or self._preflight_cancelled:
+            return
+        if idx >= len(PREFLIGHT_BY_STAGE):
+            self._finalize_staged_shell()
+            return
+
+        fn = PREFLIGHT_BY_STAGE[idx]
+        task_id = f"edit-preflight-{idx}-{uuid.uuid4().hex[:8]}"
+        worker = FunctionWorker(fn, task_id=task_id, task_type="edit_preflight")
+        self._preflight_task_ids.append(task_id)
+
+        def _on_finished(tid: str, _result: object) -> None:
+            try:
+                self._preflight_task_ids.remove(tid)
+            except ValueError:
+                pass
+            if self._preflight_cancelled:
+                return
+            self._attach_stage(idx)
+            QTimer.singleShot(0, lambda: self._submit_stage(idx + 1))
+
+        def _on_error(tid: str, msg: str, _exc: object) -> None:
+            logger.warning("Edit shell preflight stage %s failed: %s", idx, msg)
+            _on_finished(tid, None)
+
+        worker.signals.finished.connect(_on_finished, Qt.ConnectionType.QueuedConnection)
+        worker.signals.error.connect(_on_error, Qt.ConnectionType.QueuedConnection)
+        TaskManager.instance().submit(worker)
+
+    def run_staged_load(self):
+        """
+        For each region: run import preflight on TaskManager's pool, then attach widgets
+        on the GUI thread (Qt objects must stay on the main thread).
+        """
+        if not self._defer_parts:
+            return
+        if self._edit_shell_stages_complete:
+            return
+        self._preflight_cancelled = False
+        self._submit_stage(0)
 
     def get_top_bar(self):
         """Get the top bar widget."""

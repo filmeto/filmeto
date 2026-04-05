@@ -55,6 +55,11 @@ class EditWindow(QMainWindow):
         # Set initial window size (fullscreen/maximized)
         self.showMaximized()
 
+    def hideEvent(self, event):
+        if self.edit_widget and hasattr(self.edit_widget, "cancel_staged_load"):
+            self.edit_widget.cancel_staged_load()
+        super().hideEvent(event)
+
     def _complete_lazy_init(self):
         """Progressively replace shell regions with real widgets (after first paint)."""
         if self._lazy_init and self.edit_widget:
