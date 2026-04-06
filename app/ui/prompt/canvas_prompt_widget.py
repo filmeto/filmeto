@@ -101,8 +101,8 @@ class CanvasPromptWidget(BaseTaskWidget):
         self.bottom_toolbar.setObjectName("prompt_bottom_toolbar")
         self.bottom_toolbar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         bottom_layout = QHBoxLayout(self.bottom_toolbar)
-        bottom_layout.setContentsMargins(8, 4, 8, 6)
-        bottom_layout.setSpacing(8)
+        bottom_layout.setContentsMargins(8, 2, 8, 3)
+        bottom_layout.setSpacing(6)
 
         self.config_panel_holder = QWidget()
         self.config_panel_holder.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
@@ -113,7 +113,7 @@ class CanvasPromptWidget(BaseTaskWidget):
 
         self.send_button = QPushButton("\ue83e")
         self.send_button.setObjectName("prompt_send_button")
-        self.send_button.setFixedSize(44, 44)
+        self.send_button.setFixedSize(28, 28)
         self.send_button.setToolTip(tr("Submit prompt"))
         self.send_button.setCursor(QCursor(Qt.PointingHandCursor))
 
@@ -187,9 +187,9 @@ class CanvasPromptWidget(BaseTaskWidget):
                 font-family: iconfont;
                 background-color: #3d3f4e;
                 border: none;
-                border-radius: 22px;
+                border-radius: 14px;
                 color: #E1E1E1;
-                font-size: 16px;
+                font-size: 11px;
             }
             QPushButton#prompt_send_button:hover {
                 background-color: #4080ff;
@@ -430,7 +430,7 @@ class CanvasPromptWidget(BaseTaskWidget):
                 w.deleteLater()
 
         if widget:
-            widget.setMaximumHeight(120)
+            widget.setMaximumHeight(72)
             self._config_panel_holder_layout.addWidget(widget, 0, Qt.AlignLeft | Qt.AlignVCenter)
     
     @Slot()

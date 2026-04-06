@@ -24,13 +24,13 @@ class Image2Image(BaseTool, BaseTaskWidget):
         widget = QWidget()
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
+        layout.setSpacing(4)
 
         # Create media selector for input image with 9:16 aspect ratio
         self.media_selector = MediaSelector()
         # Set size with 9:16 aspect ratio (portrait) - height 54px, width 30px
-        self.media_selector.preview_widget.setFixedSize(30, 54)
-        self.media_selector.placeholder_widget.setFixedSize(30, 54)
+        self.media_selector.preview_widget.setFixedSize(22, 40)
+        self.media_selector.placeholder_widget.setFixedSize(22, 40)
 
         # Set supported types to image formats only
         self.media_selector.set_supported_types(['png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp'])

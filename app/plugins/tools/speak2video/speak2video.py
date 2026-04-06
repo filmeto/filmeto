@@ -38,11 +38,11 @@ class Speak2Video(BaseTool, BaseTaskWidget):
         panel = QWidget()
         layout = QHBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
+        layout.setSpacing(4)
 
         self.media_selector = MediaSelector()
-        self.media_selector.preview_widget.setFixedSize(30, 54)
-        self.media_selector.placeholder_widget.setFixedSize(30, 54)
+        self.media_selector.preview_widget.setFixedSize(22, 40)
+        self.media_selector.placeholder_widget.setFixedSize(22, 40)
         self.media_selector.set_supported_types(
             ["mp3", "wav", "ogg", "m4a", "flac", "aac"]
         )

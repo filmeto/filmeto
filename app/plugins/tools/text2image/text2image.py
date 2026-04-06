@@ -23,15 +23,15 @@ class Text2Image(BaseTool,BaseTaskWidget):
         # Create widget for tool configuration
         widget = QWidget()
         layout = QHBoxLayout(widget)
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(4)
+        layout.setContentsMargins(2, 2, 2, 2)
+        layout.setSpacing(3)
         
         # Create media selector for reference image with 9:16 aspect ratio
         self.media_selector = MediaSelector()
         # Set size with 9:16 aspect ratio (portrait) - height 54px, width 30px
         # This fits within the 60px max height constraint of prompt input config panel
-        self.media_selector.preview_widget.setFixedSize(30, 54)
-        self.media_selector.placeholder_widget.setFixedSize(30, 54)
+        self.media_selector.preview_widget.setFixedSize(22, 40)
+        self.media_selector.placeholder_widget.setFixedSize(22, 40)
         
         # Set supported types to image formats only
         self.media_selector.set_supported_types(['png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp'])

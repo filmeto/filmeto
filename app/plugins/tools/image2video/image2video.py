@@ -42,7 +42,7 @@ class Image2Video(BaseTool,BaseTaskWidget):
         panel = QWidget()
         layout = QHBoxLayout(panel)  # Changed to QHBoxLayout for left-right layout
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
+        layout.setSpacing(4)
         
         # Start frame selector with 9:16 aspect ratio
         self.start_frame_selector = MediaSelector()
@@ -50,8 +50,8 @@ class Image2Video(BaseTool,BaseTaskWidget):
         self.start_frame_selector.set_supported_types(['png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp'])
         # Set size with 9:16 aspect ratio (portrait) - height 54px, width 30px
         # This fits within the 60px max height constraint of prompt input config panel
-        self.start_frame_selector.preview_widget.setFixedSize(30, 54)
-        self.start_frame_selector.placeholder_widget.setFixedSize(30, 54)
+        self.start_frame_selector.preview_widget.setFixedSize(22, 40)
+        self.start_frame_selector.placeholder_widget.setFixedSize(22, 40)
         
         # Connect signal for start frame
         self.start_frame_selector.file_selected.connect(self._on_start_frame_selected)
@@ -63,8 +63,8 @@ class Image2Video(BaseTool,BaseTaskWidget):
         self.end_frame_selector.set_supported_types(['png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp'])
         # Set size with 9:16 aspect ratio (portrait) - height 54px, width 30px
         # This fits within the 60px max height constraint of prompt input config panel
-        self.end_frame_selector.preview_widget.setFixedSize(30, 54)
-        self.end_frame_selector.placeholder_widget.setFixedSize(30, 54)
+        self.end_frame_selector.preview_widget.setFixedSize(22, 40)
+        self.end_frame_selector.placeholder_widget.setFixedSize(22, 40)
         
         # Connect signal for end frame
         self.end_frame_selector.file_selected.connect(self._on_end_frame_selected)
