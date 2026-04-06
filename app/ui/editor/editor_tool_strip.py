@@ -105,7 +105,7 @@ class EditorToolStripWidget(QFrame):
             page = QWidget()
             page_layout = QHBoxLayout(page)
             page_layout.setContentsMargins(0, 0, 0, 0)
-            page_layout.setSpacing(6)
+            page_layout.setSpacing(4)
             page_layouts[cat] = page_layout
             self.tools_stack.addWidget(page)
 
@@ -142,7 +142,7 @@ class EditorToolStripWidget(QFrame):
         btn.setToolTip(tool_info.name)
         btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         btn.setCheckable(True)
-        btn.setFixedSize(40, 40)
+        btn.setFixedSize(28, 28)
         btn.setProperty("tool_id", tool_id)
         btn.clicked.connect(self._on_tool_button_clicked)
         self.tool_buttons[tool_id] = btn
@@ -218,25 +218,25 @@ class EditorToolStripWidget(QFrame):
         tool_button_style = """
             QPushButton#editor_tool_button {
                 font-family: iconfont;
-                font-size: 18px;
+                font-size: 13px;
                 background-color: #3d3f4e;
-                border: 2px solid #505254;
-                border-radius: 6px;
+                border: 1px solid #505254;
+                border-radius: 4px;
                 color: #888888;
             }
             QPushButton#editor_tool_button:hover {
                 background-color: #4a4c5e;
-                border: 2px solid #5a5c6e;
+                border: 1px solid #5a5c6e;
                 color: #E1E1E1;
             }
             QPushButton#editor_tool_button:checked {
                 background-color: #4080ff;
-                border: 2px solid #4080ff;
+                border: 1px solid #4080ff;
                 color: #ffffff;
             }
             QPushButton#editor_tool_button:checked:hover {
                 background-color: #5090ff;
-                border: 2px solid #5090ff;
+                border: 1px solid #5090ff;
             }
         """
         for btn in self.tool_buttons.values():

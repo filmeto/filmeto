@@ -77,8 +77,8 @@ class CanvasPromptWidget(BaseTaskWidget):
         self.top_toolbar.setObjectName("prompt_top_toolbar")
         self.top_toolbar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         self.top_toolbar_layout = QHBoxLayout(self.top_toolbar)
-        self.top_toolbar_layout.setContentsMargins(8, 6, 8, 4)
-        self.top_toolbar_layout.setSpacing(8)
+        self.top_toolbar_layout.setContentsMargins(8, 3, 8, 2)
+        self.top_toolbar_layout.setSpacing(6)
 
         self.tool_strip_holder = QWidget()
         self.tool_strip_holder.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
@@ -201,10 +201,11 @@ class CanvasPromptWidget(BaseTaskWidget):
         self._sync_prompt_text_height()
 
     def _sync_prompt_text_height(self) -> None:
-        """One visible line: fixed height from font + vertical padding (scroll for more lines)."""
+        """Two visible lines: extra vertical space after compact top tool row (scroll for more)."""
         vpad = 8 if self._has_focus else 6
         fm = self.text_edit.fontMetrics()
-        h = max(26, fm.lineSpacing() + 2 * vpad + 4)
+        line = fm.lineSpacing()
+        h = max(40, 2 * line + 2 * vpad + 4)
         self.text_edit.setFixedHeight(h)
 
     
