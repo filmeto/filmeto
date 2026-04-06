@@ -5,22 +5,21 @@ A comprehensive editor widget that dynamically loads tools from plugins/tools di
 
 import logging
 from typing import Dict, Optional
-from dataclasses import dataclass
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QFrame, QSplitter, QSizePolicy
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
+    QFrame, QSplitter, QSizePolicy,
 )
 from app.ui.layers import LayersWidget
 from app.ui.task_list import TaskListWidget
 from PySide6.QtCore import Qt, Signal, Slot
-from PySide6.QtGui import QCursor
 from qasync import asyncSlot
 
 from app.ui.base_widget import BaseTaskWidget
 from app.ui.canvas.canvas_editor import CanvasEditor  # 替换导入
 from app.ui.frame_selector.frame_selector import FrameSelectorWidget
 from app.ui.prompt.canvas_prompt_widget import CanvasPromptWidget
+from app.ui.editor.editor_tool_strip import EditorToolStripWidget
 from app.data.workspace import Workspace
 from app.data.task import TaskResult, Task
 from app.data.timeline import TimelineItem
@@ -68,16 +67,16 @@ class MainEditorWidget(BaseTaskWidget):
         self.workspace = workspace
         self._is_processing = False
         self._tool_instances: Dict[str, BaseTool] = {}  # tool_id -> tool instance
-        self._tool_buttons: Dict[str, QPushButton] = {}  # tool_id -> button
+        self.tool_strip: Optional[EditorToolStripWidget] = None
         
         # Load available tools from shared plugins instance in workspace
         self.plugins = self.workspace.plugins
         self._tools = self.plugins.get_tool_registry()
-        
+        self.current_tool = None
+
         self._setup_ui()
         self._connect_signals()
         self._apply_styles()
-        self.current_tool = None
         current_timeline_item = self.workspace.get_project().get_timeline().get_current_item()
         self.update_current_tool(current_timeline_item)
 
@@ -216,28 +215,26 @@ class MainEditorWidget(BaseTaskWidget):
         control_main_layout.setContentsMargins(0, 0, 0, 0)
         control_main_layout.setSpacing(0)
         
-        # Create horizontal layout for tool buttons and prompt input
+        # Prompt spans control row; tool strip and reference config live inside CanvasPromptWidget
         control_h_layout = QHBoxLayout()
-        control_h_layout.setSpacing(12)
-        control_h_layout.setContentsMargins(0, 0, 0, 0)
-        
-        # Tool buttons section (left)
-        tool_section = self._create_tool_section()
-        control_h_layout.addWidget(tool_section, 0)  # Don't stretch
-        
-        # Prompt input section (right)
+        control_h_layout.setSpacing(0)
+        control_h_layout.setContentsMargins(8, 10, 8, 10)
+
         self.prompt_input = CanvasPromptWidget(self.workspace)
-        # Override the get_current_tool_name method to return the current tool
-        original_get_current_tool_name = self.prompt_input.get_current_tool_name
+
         def get_current_tool_name_override():
             return self.current_tool
         self.prompt_input.get_current_tool_name = get_current_tool_name_override
-        control_h_layout.addWidget(self.prompt_input, 1)  # Stretch to fill
+
+        self.tool_strip = EditorToolStripWidget(self._tools, self)
+        self.tool_strip.set_current_tool_getter(lambda: self.current_tool)
+        self.prompt_input.set_editor_tool_strip(self.tool_strip)
+
+        control_h_layout.addWidget(self.prompt_input, 1, Qt.AlignmentFlag.AlignTop)
         
         control_main_layout.addLayout(control_h_layout)
 
-        # Set fixed height for control container to accommodate the new 44px input height
-        self.control_container.setFixedHeight(76)  # 44px content + 12px top + 12px bottom + 8px spacing
+        self.control_container.setMinimumHeight(172)
         self.frame_selector = FrameSelectorWidget()
         self.frame_selector.load_frames(200)
         # Add containers to splitter
@@ -252,43 +249,11 @@ class MainEditorWidget(BaseTaskWidget):
         #main_layout.addWidget(self.splitter)
         #self.setLayout(main_layout)
     
-    def _create_tool_section(self) -> QWidget:
-        """Create tool switching section with icon buttons"""
-        tool_widget = QFrame()
-        tool_widget.setObjectName("editor_tool_section")
-        tool_layout = QHBoxLayout(tool_widget)
-        tool_layout.setContentsMargins(0, 0, 0, 0)
-        tool_layout.setSpacing(8)
-        
-        # Tool buttons container
-        buttons_container = QWidget()
-        buttons_layout = QHBoxLayout(buttons_container)
-        buttons_layout.setContentsMargins(0, 0, 0, 0)
-        buttons_layout.setSpacing(4)
-        
-        # Create tool buttons dynamically
-        for tool_id, tool_info in self._tools.items():
-            btn = QPushButton(tool_info.icon)
-            btn.setObjectName("editor_tool_button")
-            btn.setToolTip(tool_info.name)  # Tooltip shows text on hover, but not visible text on button
-            btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            btn.setCheckable(True)
-            btn.setFixedSize(40, 40)
-            btn.setProperty("tool_id", tool_id)
-            btn.clicked.connect(self._handle_tool_button_click)
-            self._tool_buttons[tool_id] = btn
-            buttons_layout.addWidget(btn)
-        
-        # Layout
-        tool_layout.addWidget(buttons_container)
-        tool_layout.addStretch()
-        
-        return tool_widget
-    
     def _connect_signals(self):
         """Connect signals and slots"""
-        # Prompt submission
         self.prompt_input.prompt_submitted.connect(self._on_prompt_submitted)
+        if self.tool_strip:
+            self.tool_strip.toolButtonClicked.connect(self._select_tool)
 
     def resizeEvent(self, event):
         """Handle resize events to reposition floating panels"""
@@ -447,58 +412,23 @@ class MainEditorWidget(BaseTaskWidget):
             }
         """)
 
-        # Tool buttons
-        tool_button_style = """
-            QPushButton#editor_tool_button {
-                font-family: iconfont;
-                font-size: 18px;
-                background-color: #3d3f4e;
-                border: 2px solid #505254;
-                border-radius: 6px;
-                color: #888888;
-            }
-            QPushButton#editor_tool_button:hover {
-                background-color: #4a4c5e;
-                border: 2px solid #5a5c6e;
-                color: #E1E1E1;
-            }
-            QPushButton#editor_tool_button:checked {
-                background-color: #4080ff;
-                border: 2px solid #4080ff;
-                color: #ffffff;
-            }
-            QPushButton#editor_tool_button:checked:hover {
-                background-color: #5090ff;
-                border: 2px solid #5090ff;
-            }
-        """
-
-        for btn in self._tool_buttons.values():
-            btn.setStyleSheet(tool_button_style)
+        if self.tool_strip:
+            self.tool_strip.apply_styles()
 
     
     # ========== Signal Handlers ==========
-    
-    def _handle_tool_button_click(self):
-        """Handle tool button click"""
-        button = self.sender()
-        if button:
-            tool_id = button.property("tool_id")
-            self._select_tool(tool_id)
-    
+
     def _select_tool(self, tool_id: str):
         """Select a tool"""
         if tool_id not in self._tools:
             return
         old_tool=self.current_tool
         self.current_tool = tool_id
-        # Uncheck all buttons
-        for btn in self._tool_buttons.values():
-            btn.setChecked(False)
-        
-        # Check the selected button
-        if tool_id in self._tool_buttons:
-            self._tool_buttons[tool_id].setChecked(True)
+        if self.tool_strip:
+            for btn in self.tool_strip.tool_buttons.values():
+                btn.setChecked(False)
+            if tool_id in self.tool_strip.tool_buttons:
+                self.tool_strip.tool_buttons[tool_id].setChecked(True)
         # Update placeholder
         tool_info = self._tools[tool_id]
         placeholder = tr("Enter prompt for {tool}...").replace("{tool}", tool_info.name)
@@ -522,6 +452,9 @@ class MainEditorWidget(BaseTaskWidget):
         # Emit signal if changed
         if old_tool != tool_id:
             self.tool_changed.emit(tool_id)
+
+        if self.tool_strip:
+            self.tool_strip.sync_ui_for_tool(tool_id)
 
     def _update_prompt(self,tool_id):
         # Get the current timeline item

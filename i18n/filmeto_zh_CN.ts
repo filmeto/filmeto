@@ -362,6 +362,18 @@
         <translation>Submit prompt</translation>
     </message>
     <message>
+        <source>Image tools</source>
+        <translation>图片工具</translation>
+    </message>
+    <message>
+        <source>Video tools</source>
+        <translation>视频工具</translation>
+    </message>
+    <message>
+        <source>Audio tools</source>
+        <translation>音频工具</translation>
+    </message>
+    <message>
         <source>{count} characters</source>
         <translation>{count} characters</translation>
     </message>

@@ -1,11 +1,14 @@
+from typing import Optional
+
 from PySide6.QtCore import Qt, Signal, QTimer, QEvent, Slot, QRect, QPoint
 from PySide6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QTextEdit, 
                                QPushButton, QLabel, QListWidget, QDialog, 
                                QFileDialog, QLineEdit, QMessageBox, QScrollArea,
-                               QFrame, QStackedWidget, QSizePolicy)
+                               QFrame, QSizePolicy)
 from PySide6.QtGui import QCursor, QTextCursor, QKeyEvent
 
 from app.ui.base_widget import BaseWidget, BaseTaskWidget
+from app.ui.editor.editor_tool_strip import EditorToolStripWidget
 from app.ui.prompt.template_item_widget import TemplateItemWidget
 from app.data.workspace import Workspace, PromptTemplate, PromptManager
 from utils.i18n_utils import tr, translation_manager
@@ -36,7 +39,8 @@ class CanvasPromptWidget(BaseTaskWidget):
         self._filter_timer.setSingleShot(True)
         self._filter_timer.setInterval(300)  # 300ms debounce
         self._in_input_mode = False  # Track if user is actually inputting text
-        
+        self._editor_tool_strip: Optional[EditorToolStripWidget] = None
+
         self._setup_ui()
         self._connect_signals()
         self._apply_initial_style()
@@ -49,57 +53,81 @@ class CanvasPromptWidget(BaseTaskWidget):
         translation_manager.language_changed.connect(lambda lang: self._update_ui_text())
     
     def _setup_ui(self):
-        """Initialize UI components with horizontal split layout"""
-        # Main horizontal layout
-        main_layout = QHBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)  # Remove spacing between panels
-        
-        # Left panel - Tool configuration container with scroll support
-        self.left_panel = QWidget()
-        self.left_panel.setObjectName("prompt_left_panel")
-        # Don't set fixed width - let it adapt to content
+        """Left: narrow category bar. Right work area: top tools, text, bottom config + send."""
+        root = QHBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(8)
 
-        self.left_panel_layout = QVBoxLayout(self.left_panel)
-        self.left_panel_layout.setContentsMargins(0, 0, 0, 0)
-        self.left_panel_layout.setSpacing(4)
+        self.left_toolbar = QFrame()
+        self.left_toolbar.setObjectName("prompt_left_toolbar")
+        self.left_toolbar.setFixedWidth(56)
+        self.left_toolbar.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        self._left_toolbar_layout = QVBoxLayout(self.left_toolbar)
+        self._left_toolbar_layout.setContentsMargins(4, 6, 4, 6)
+        self._left_toolbar_layout.setSpacing(0)
+        self.left_toolbar.hide()
 
-        # Right panel - Prompt input container
-        self.right_panel = QWidget()
-        self.right_panel.setObjectName("prompt_right_panel")
-        right_panel_layout = QHBoxLayout(self.right_panel)
-        right_panel_layout.setContentsMargins(0, 0, 0, 0)
-        right_panel_layout.setSpacing(4)
-        
-        # Text edit field
+        self.body = QFrame()
+        self.body.setObjectName("prompt_right_panel")
+        body_layout = QVBoxLayout(self.body)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(0)
+
+        self.top_toolbar = QWidget()
+        self.top_toolbar.setObjectName("prompt_top_toolbar")
+        self.top_toolbar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+        self.top_toolbar_layout = QHBoxLayout(self.top_toolbar)
+        self.top_toolbar_layout.setContentsMargins(8, 6, 8, 4)
+        self.top_toolbar_layout.setSpacing(8)
+
+        self.tool_strip_holder = QWidget()
+        self.tool_strip_holder.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
+        self._tool_strip_holder_layout = QHBoxLayout(self.tool_strip_holder)
+        self._tool_strip_holder_layout.setContentsMargins(0, 0, 0, 0)
+        self._tool_strip_holder_layout.setSpacing(0)
+        self.top_toolbar_layout.addWidget(self.tool_strip_holder, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        self.top_toolbar_layout.addStretch(1)
+
         self.text_edit = QTextEdit()
         self.text_edit.setObjectName("prompt_text_edit")
         self.text_edit.setPlaceholderText(tr("Enter your prompt here..."))
         self.text_edit.setMinimumWidth(200)
-        self.text_edit.setFixedHeight(64)
+        self.text_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
         self.text_edit.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.text_edit.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.text_edit.installEventFilter(self)
-        
-        # Send button (square, 44x44)
-        self.send_button = QPushButton("\ue83e")  # Play icon for send button
+
+        self.bottom_toolbar = QWidget()
+        self.bottom_toolbar.setObjectName("prompt_bottom_toolbar")
+        self.bottom_toolbar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+        bottom_layout = QHBoxLayout(self.bottom_toolbar)
+        bottom_layout.setContentsMargins(8, 4, 8, 6)
+        bottom_layout.setSpacing(8)
+
+        self.config_panel_holder = QWidget()
+        self.config_panel_holder.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
+        self._config_panel_holder_layout = QHBoxLayout(self.config_panel_holder)
+        self._config_panel_holder_layout.setContentsMargins(0, 0, 0, 0)
+        self._config_panel_holder_layout.setSpacing(0)
+        bottom_layout.addWidget(self.config_panel_holder, 0, Qt.AlignLeft | Qt.AlignVCenter)
+
+        self.send_button = QPushButton("\ue83e")
         self.send_button.setObjectName("prompt_send_button")
         self.send_button.setFixedSize(44, 44)
         self.send_button.setToolTip(tr("Submit prompt"))
         self.send_button.setCursor(QCursor(Qt.PointingHandCursor))
-        
-        # Add widgets to input layout
-        right_panel_layout.addWidget(self.text_edit, 1)
-        right_panel_layout.addWidget(self.send_button, 0)
-        
-        # Add to right panel layout
-        #right_panel_layout.addWidget(self.input_layout)
-        
-        # Add panels to main layout
-        main_layout.addWidget(self.left_panel, 1)
-        main_layout.addWidget(self.right_panel, 1)
-        
-        self.setLayout(main_layout)
+
+        bottom_layout.addStretch(1)
+        bottom_layout.addWidget(self.send_button, 0, Qt.AlignRight | Qt.AlignVCenter)
+
+        body_layout.addWidget(self.top_toolbar, 0)
+        body_layout.addWidget(self.text_edit, 0)
+        body_layout.addWidget(self.bottom_toolbar, 0)
+        self.top_toolbar.hide()
+
+        root.addWidget(self.left_toolbar, 0)
+        root.addWidget(self.body, 1)
+        self.setLayout(root)
     
     def _connect_signals(self):
         """Connect signals and slots"""
@@ -108,34 +136,55 @@ class CanvasPromptWidget(BaseTaskWidget):
 
     def _apply_initial_style(self):
         """Apply initial styling"""
-        # Apply overall border to the widget itself
-        self.setStyleSheet("""
-            PromptInputWidget {
-                background-color: #2d2d2d;
-                border: 0px solid #505254;
-                border-radius: 4px;
+        self.setObjectName("CanvasPromptWidget")
+        self.setStyleSheet(
+            "QWidget#CanvasPromptWidget { background-color: transparent; }"
+        )
+
+        self.body.setStyleSheet("""
+            QFrame#prompt_right_panel {
+                background-color: #2b2d30;
+                border: 1px solid #505254;
+                border-radius: 8px;
             }
         """)
-        
+
+        self.top_toolbar.setStyleSheet("""
+            QWidget#prompt_top_toolbar {
+                background-color: #2b2d30;
+                border: none;
+            }
+        """)
+        self.bottom_toolbar.setStyleSheet("""
+            QWidget#prompt_bottom_toolbar {
+                background-color: #2b2d30;
+                border: none;
+            }
+        """)
+
+        self.left_toolbar.setStyleSheet("""
+            QFrame#prompt_left_toolbar {
+                background-color: transparent;
+                border: none;
+            }
+        """)
+
         self.text_edit.setStyleSheet("""
             QTextEdit#prompt_text_edit {
                 background-color: #2b2d30;
-                border: none;  /* Remove border */
-                border-radius: 4px;
-                padding: 0px;
-                margin: 4px;
+                border: none;
+                border-radius: 0px;
+                padding: 6px 10px;
+                margin: 0px;
                 color: #E1E1E1;
                 font-size: 14px;
                 selection-background-color: #4080ff;
-                height:76px;
-            }
-            QTextEdit#prompt_text_edit:focus {
-                border: none;  /* Remove border */
             }
         """)
-        
+
         self.send_button.setStyleSheet("""
             QPushButton#prompt_send_button {
+                font-family: iconfont;
                 background-color: #3d3f4e;
                 border: none;
                 border-radius: 22px;
@@ -149,27 +198,15 @@ class CanvasPromptWidget(BaseTaskWidget):
                 background-color: #3060cc;
             }
         """)
+        self._sync_prompt_text_height()
 
-        self.right_panel.setStyleSheet("""
-            QWidget#prompt_right_panel {
-                background-color: #2d2d2d;
-                border: 2px solid #505254;
-                border-radius: 4px;
-            }
-        """)
-        
-        self.left_panel.setStyleSheet("""
-            QWidget#prompt_left_panel {
-                background-color: #2d2d2d;
-                border: none;
-                border-radius: 0px;
-            }
-            QFrame#prompt_left_panel_content {
-                background-color: #2d2d2d;
-                border: none;
-                border-radius: 0px;
-            }
-        """)
+    def _sync_prompt_text_height(self) -> None:
+        """One visible line: fixed height from font + vertical padding (scroll for more lines)."""
+        vpad = 8 if self._has_focus else 6
+        fm = self.text_edit.fontMetrics()
+        h = max(26, fm.lineSpacing() + 2 * vpad + 4)
+        self.text_edit.setFixedHeight(h)
+
     
     def eventFilter(self, obj, event):
         """Filter events for text edit widget"""
@@ -207,30 +244,20 @@ class CanvasPromptWidget(BaseTaskWidget):
     
     def _update_text_edit_style(self):
         """Update text edit style based on focus state only"""
-        if self._has_focus:
-            self.text_edit.setStyleSheet("""
-                QTextEdit#prompt_text_edit {
-                    background-color: #2b2d30;
-                    border: none;  /* Remove border */
-                    border-radius: 8px;
-                    padding: 8px;
-                    color: #E1E1E1;
-                    font-size: 14px;
-                    selection-background-color: #4080ff;
-                }
-            """)
-        else:
-            self.text_edit.setStyleSheet("""
-                QTextEdit#prompt_text_edit {
-                    background-color: #2b2d30;
-                    border: none;  /* Remove border */
-                    border-radius: 8px;
-                    padding: 8px;
-                    color: #E1E1E1;
-                    font-size: 14px;
-                    selection-background-color: #4080ff;
-                }
-            """)
+        pad = "8px 10px" if self._has_focus else "6px 10px"
+        self.text_edit.setStyleSheet(f"""
+            QTextEdit#prompt_text_edit {{
+                background-color: #2b2d30;
+                border: none;
+                border-radius: 0px;
+                padding: {pad};
+                margin: 0px;
+                color: #E1E1E1;
+                font-size: 14px;
+                selection-background-color: #4080ff;
+            }}
+        """)
+        self._sync_prompt_text_height()
     
     def _on_text_changed(self):
         """Handle text change event"""
@@ -348,57 +375,62 @@ class CanvasPromptWidget(BaseTaskWidget):
             self.template_dropdown_container.hide()
         self._in_input_mode = False  # Reset input mode when switching projects
     
-    def set_config_panel_widget(self, widget):
-        """
-        Set a custom widget for the left configuration panel.
-        
-        Args:
-            widget: QWidget to display in the left panel
-        """
-        if not hasattr(self, 'left_panel_layout'):
+    def set_editor_tool_strip(self, strip: Optional[EditorToolStripWidget]):
+        """Place category toggles in the left bar; tool icon stack in the top row of the work area."""
+        if not hasattr(self, "_tool_strip_holder_layout") or not hasattr(self, "_left_toolbar_layout"):
             return
-            
-        # Clear existing widgets from left panel layout
-        while self.left_panel_layout.count():
-            item = self.left_panel_layout.takeAt(0)
+
+        if self._editor_tool_strip and self._editor_tool_strip is not strip:
+            old = self._editor_tool_strip
+            if old.category_bar:
+                old.category_bar.setParent(old)
+            if old.tools_stack:
+                old.tools_stack.setParent(old)
+            old.show()
+
+        while self._left_toolbar_layout.count():
+            self._left_toolbar_layout.takeAt(0)
+
+        while self._tool_strip_holder_layout.count():
+            item = self._tool_strip_holder_layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.setParent(None)
+
+        self._editor_tool_strip = strip
+
+        if strip and strip.category_bar and strip.tools_stack:
+            strip.category_bar.setParent(self.left_toolbar)
+            self._left_toolbar_layout.addWidget(
+                strip.category_bar, 0, Qt.AlignHCenter | Qt.AlignTop
+            )
+            self._left_toolbar_layout.addStretch(1)
+
+            strip.tools_stack.setParent(self.tool_strip_holder)
+            self._tool_strip_holder_layout.addWidget(strip.tools_stack, 0, Qt.AlignLeft | Qt.AlignVCenter)
+
+            strip.hide()
+            self.left_toolbar.show()
+            self.top_toolbar.show()
+        else:
+            self.left_toolbar.hide()
+            self.top_toolbar.hide()
+
+    def set_config_panel_widget(self, widget):
+        """Place reference image / tool-specific media controls in the bottom toolbar (left of send)."""
+        if not hasattr(self, "_config_panel_holder_layout"):
+            return
+
+        while self._config_panel_holder_layout.count():
+            item = self._config_panel_holder_layout.takeAt(0)
             w = item.widget()
             if w:
                 w.setParent(None)
                 w.deleteLater()
-        
-        # Add new widget if provided
+
         if widget:
-            # Set maximum height to prevent overflow
-            # Ensure widget doesn't exceed the available height
-            widget.setMaximumHeight(60)  # Limit height to prevent covering input area
-            
-            # Add stretch before and after widget to center it vertically
-            self.left_panel_layout.addStretch()
-            self.left_panel_layout.addWidget(widget, 0, Qt.AlignCenter)
-            self.left_panel_layout.addStretch()
-            
-            # Adjust left panel width based on widget's size hint or minimum width
-            # Allow the widget to determine the width naturally
-            widget_width = widget.sizeHint().width()
-            if widget_width > 0:
-                # Add margins and scrollbar space to the width (8px left + 8px right + scrollbar)
-                self.left_panel.setFixedWidth(widget_width + 25)
-            else:
-                # Fallback to minimum size if size hint is not available
-                widget.adjustSize()
-                min_width = widget.minimumSizeHint().width()
-                if min_width > 0:
-                    self.left_panel.setFixedWidth(min_width + 25)
-                else:
-                    # Final fallback to default width
-                    self.left_panel.setFixedWidth(250)
-        else:
-            # Show placeholder if no widget provided and reset to default width
-            self.left_panel.setFixedWidth(250)
-            self.config_placeholder = QLabel(tr("Configuration options will appear here"))
-            self.config_placeholder.setStyleSheet("color: #CCCCCC; font-size: 12px;")
-            self.config_placeholder.setAlignment(Qt.AlignCenter)
-            self.left_panel_layout.addWidget(self.config_placeholder)
+            widget.setMaximumHeight(120)
+            self._config_panel_holder_layout.addWidget(widget, 0, Qt.AlignLeft | Qt.AlignVCenter)
     
     @Slot()
     def _update_ui_text(self):

@@ -27,7 +27,7 @@ class BaseTool(BaseWidget,Progress):
         Subclasses may override.
         If a QWidget is returned or set, use either:
         1. main_editor.set_tool_panel(widget) for persistent tool panels, or 
-        2. main_editor.prompt.set_config_panel_widget(widget) for prompt input config panels."""
+        2. main_editor.prompt_input.set_config_panel_widget(widget) for the prompt bottom toolbar (e.g. reference image)."""
         try:
             from PySide6.QtWidgets import QLabel
             # By default, set an empty panel to the tool panel
