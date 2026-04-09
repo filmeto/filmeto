@@ -643,7 +643,7 @@ class Timeline:
                 item.update_video(video_path)
 
             # Emit timeline_changed signal to refresh UI
-            self.timeline_changed.send(self, item)
+            self.timeline_changed.send(sender=self, timeline_item=item)
 
             logger.info(f"Updated timeline item at index {index}")
             return True
