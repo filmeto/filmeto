@@ -6,6 +6,7 @@ soul: isabella_rodriguez_soul
 skills:
   - read_scene
   - read_screen_play
+  - screenplay_to_storyboard
 model: gpt-4o-mini
 temperature: 0.4
 max_steps: 5
