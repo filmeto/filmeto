@@ -74,6 +74,7 @@ class AgentChatListWidget(BaseWidget):
     message_complete = Signal(str, str)  # message_id, agent_name
     load_more_requested = Signal()
     crew_member_activity = Signal(str, bool)  # member_name, is_active
+    crew_avatar_double_clicked = Signal(str)  # sender_name
 
     def __init__(self, workspace: "Workspace", parent=None):
         """Initialize the chat list widget.
@@ -188,6 +189,7 @@ class AgentChatListWidget(BaseWidget):
         # QmlHandler callbacks
         self._qml_handler.set_callbacks(
             on_reference_clicked=lambda ref_type, ref_id: self.reference_clicked.emit(ref_type, ref_id),
+            on_avatar_double_clicked=lambda sender_name: self.crew_avatar_double_clicked.emit(sender_name),
             on_message_completed=lambda msg_id, agent_name: self.message_complete.emit(msg_id, agent_name),
             on_load_more=lambda: self.load_more_requested.emit(),
         )

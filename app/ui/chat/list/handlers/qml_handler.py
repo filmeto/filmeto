@@ -54,6 +54,7 @@ class QmlHandler:
 
         # Callbacks (to be set by widget)
         self._on_reference_clicked_callback: Optional[Callable] = None
+        self._on_avatar_double_clicked_callback: Optional[Callable] = None
         self._on_message_completed_callback: Optional[Callable] = None
         self._on_load_more_callback: Optional[Callable] = None
 
@@ -71,6 +72,7 @@ class QmlHandler:
         # Connect QML signals to Python
         if self._qml_root:
             self._qml_root.referenceClicked.connect(self._on_qml_reference_clicked)
+            self._qml_root.avatarDoubleClicked.connect(self._on_qml_avatar_double_clicked)
             self._qml_root.messageCompleted.connect(self._on_qml_message_completed)
             self._qml_root.loadMoreRequested.connect(self._on_qml_load_more)
             self._qml_root.scrollPositionChanged.connect(self._on_qml_scroll_position_changed)
@@ -80,6 +82,7 @@ class QmlHandler:
     def set_callbacks(
         self,
         on_reference_clicked: Optional[Callable] = None,
+        on_avatar_double_clicked: Optional[Callable] = None,
         on_message_completed: Optional[Callable] = None,
         on_load_more: Optional[Callable] = None,
     ) -> None:
@@ -91,6 +94,7 @@ class QmlHandler:
             on_load_more: Called when user scrolls to top and more messages should load
         """
         self._on_reference_clicked_callback = on_reference_clicked
+        self._on_avatar_double_clicked_callback = on_avatar_double_clicked
         self._on_message_completed_callback = on_message_completed
         self._on_load_more_callback = on_load_more
 
@@ -111,6 +115,11 @@ class QmlHandler:
         """
         if self._on_reference_clicked_callback:
             self._on_reference_clicked_callback(ref_type, ref_id)
+
+    def _on_qml_avatar_double_clicked(self, sender_name: str) -> None:
+        """Handle crew avatar double-click from QML."""
+        if self._on_avatar_double_clicked_callback:
+            self._on_avatar_double_clicked_callback(sender_name)
 
     def _on_qml_message_completed(self, message_id: str, agent_name: str) -> None:
         """Handle message completion from QML.

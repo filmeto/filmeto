@@ -11,6 +11,7 @@ ListView {
     // Signals
     signal loadMoreRequested()
     signal referenceClicked(string refType, string refId)
+    signal avatarDoubleClicked(string senderName)
     signal messageCompleted(string messageId, string agentName)
     signal scrollPositionChanged(bool atBottom)
 
@@ -132,6 +133,9 @@ ListView {
 
                 onReferenceClicked: function(refType, refId) {
                     root.referenceClicked(refType, refId)
+                }
+                onAvatarDoubleClicked: function(senderName) {
+                    root.avatarDoubleClicked(senderName)
                 }
             }
         }

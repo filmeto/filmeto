@@ -168,6 +168,7 @@ class AgentChatWidget(BaseWidget):
         if not self._defer_chat_list:
             self.chat_history_widget.reference_clicked.connect(self._on_reference_clicked)
             self.chat_history_widget.crew_member_activity.connect(self.crew_member_activity.emit)
+            self.chat_history_widget.crew_avatar_double_clicked.connect(self._on_crew_avatar_double_clicked)
         self.plan_widget.expandedChanged.connect(self._on_plan_expanded_changed)
 
         self.tab_widget.addTab(group_chat_container, "\ue89e")
@@ -208,6 +209,7 @@ class AgentChatWidget(BaseWidget):
 
         self.chat_history_widget.reference_clicked.connect(self._on_reference_clicked)
         self.chat_history_widget.crew_member_activity.connect(self.crew_member_activity.emit)
+        self.chat_history_widget.crew_avatar_double_clicked.connect(self._on_crew_avatar_double_clicked)
 
         QTimer.singleShot(
             0,
@@ -414,6 +416,29 @@ class AgentChatWidget(BaseWidget):
 
     def _on_reference_clicked(self, ref_type: str, ref_id: str):
         logger.info(f"Reference clicked: {ref_type} / {ref_id}")
+
+    def _on_crew_avatar_double_clicked(self, sender_name: str) -> None:
+        """Open private chat when double-clicking a crew avatar in chat list."""
+        if not sender_name:
+            return
+        try:
+            from agent.crew import CrewService
+
+            project = self.workspace.get_project() if self.workspace else None
+            if not project:
+                return
+
+            crew_members = CrewService().get_project_crew_members(project)
+            normalized = sender_name.strip().lower()
+            target = None
+            for member in crew_members.values():
+                if (member.config.name or "").strip().lower() == normalized:
+                    target = member
+                    break
+            if target:
+                self.open_private_chat(target)
+        except Exception as e:
+            logger.error("Failed to open private chat for avatar '%s': %s", sender_name, e, exc_info=True)
 
     @Slot(bool)
     def _on_plan_expanded_changed(self, is_expanded: bool):

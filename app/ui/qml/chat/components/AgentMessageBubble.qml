@@ -19,6 +19,7 @@ Item {
     property var crewReadBy: []       // List of crew members who read this message
 
     signal referenceClicked(string refType, string refId)
+    signal avatarDoubleClicked(string senderName)
 
     // Theme colors
     readonly property color backgroundColor: "#353535"
@@ -60,6 +61,16 @@ Item {
             radius: width / 2
             color: root.agentColor
             anchors.verticalCenter: parent.verticalCenter
+
+            MouseArea {
+                anchors.fill: parent
+                acceptedButtons: Qt.LeftButton
+                onDoubleClicked: {
+                    if (root.senderName && root.senderName.length > 0) {
+                        root.avatarDoubleClicked(root.senderName)
+                    }
+                }
+            }
 
             Text {
                 anchors.centerIn: parent
