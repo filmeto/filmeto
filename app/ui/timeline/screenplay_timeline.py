@@ -18,6 +18,7 @@ from PySide6.QtGui import QMouseEvent, QKeyEvent
 from app.data.screen_play import ScreenPlayManager, ScreenPlayScene
 from app.data.workspace import Workspace
 from app.ui.base_widget import BaseWidget
+from app.ui.signals import Signals
 from app.ui.timeline.screenplay_timeline_card import ScreenplayTimelineCard
 from app.ui.timeline.screenplay_timeline_scroll import ScreenplayTimelineScroll
 from utils import qt_utils
@@ -187,6 +188,7 @@ class ScreenplayTimeline(BaseWidget):
     def select_scene(self, scene_id: str) -> None:
         self.selected_scene_id = scene_id
         self._apply_selection_highlight()
+        Signals().send(Signals.SCREENPLAY_SCENE_SELECTED, params=scene_id)
 
     def _apply_selection_highlight(self) -> None:
         for card in self.cards:
@@ -215,6 +217,7 @@ class ScreenplayTimeline(BaseWidget):
         if ok:
             self.selected_scene_id = scene_id
             self._rebuild_cards()
+            Signals().send(Signals.SCREENPLAY_SCENE_SELECTED, params=scene_id)
         else:
             logger.error("Failed to create screenplay scene %s", scene_id)
 

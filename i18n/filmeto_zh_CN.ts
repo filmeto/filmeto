@@ -82,6 +82,10 @@
         <translation>分镜时间线（敬请期待）</translation>
     </message>
     <message>
+        <source>Storyboard editor — coming soon</source>
+        <translation>分镜编辑（敬请期待）</translation>
+    </message>
+    <message>
         <source>Screenplay</source>
         <translation>剧本</translation>
     </message>

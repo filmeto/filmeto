@@ -1,9 +1,23 @@
-from PySide6.QtWidgets import QHBoxLayout, QSplitter
-from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QSplitter,
+    QStackedWidget,
+    QWidget,
+    QLabel,
+    QVBoxLayout,
+)
+from PySide6.QtCore import Qt, QTimer
 
 from app.data.workspace import Workspace
 from app.ui.base_widget import BaseWidget
 from app.ui.editor import MainEditorWidget
+from app.ui.signals import Signals
+from app.ui.workspace import ScreenPlayCenterWidget
+from utils.i18n_utils import tr
+
+CENTER_PAGE_VIDEO = 0
+CENTER_PAGE_SCREENPLAY = 1
+CENTER_PAGE_STORYBOARD = 2
 
 
 class MainWindowWorkspaceTop(BaseWidget):
@@ -11,17 +25,15 @@ class MainWindowWorkspaceTop(BaseWidget):
     def __init__(self, parent, workspace):
         super(MainWindowWorkspaceTop, self).__init__(workspace)
         self.setObjectName("main_window_workspace_top")
-        self.parent = parent
-        # 主布局
+        # Do not use name "parent" — it shadows QObject.parent().
+        self._workspace_parent = parent
         self.layout = QHBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(0)
         self.splitter = QSplitter(Qt.Horizontal)
         self.setObjectName("main_window_workspace_top_splitter")
-        # Disable stretching on splitter to maintain fixed sizes
         self.splitter.setChildrenCollapsible(False)
 
-        # Left panel - switchable tool panels
         from app.ui.panels import MainWindowWorkspaceTopLeftBar
         self.left = MainWindowWorkspaceTopLeftBar(workspace, self)
         self.left.setObjectName("main_window_workspace_top_left")
@@ -29,11 +41,16 @@ class MainWindowWorkspaceTop(BaseWidget):
         self.left.setMaximumWidth(240)
         self.splitter.addWidget(self.left)
 
-        # Center panel - preview (this should expand)
-        self.center: MainEditorWidget = MainEditorWidget(workspace)
-        self.splitter.addWidget(self.center)
+        self.center_stack = QStackedWidget()
+        self.center_stack.setObjectName("main_window_workspace_center_stack")
+        self.canvas_editor = MainEditorWidget(workspace)
+        self.screenplay_center = ScreenPlayCenterWidget(workspace)
+        self.storyboard_center = self._build_storyboard_placeholder()
+        self.center_stack.addWidget(self.canvas_editor)
+        self.center_stack.addWidget(self.screenplay_center)
+        self.center_stack.addWidget(self.storyboard_center)
+        self.splitter.addWidget(self.center_stack)
 
-        # Right panel - switchable tool panels
         from app.ui.panels.workspace_top_right_bar import MainWindowWorkspaceTopRightBar
         self.right = MainWindowWorkspaceTopRightBar(workspace, self)
         self.right.setObjectName("main_window_workspace_top_right")
@@ -41,12 +58,60 @@ class MainWindowWorkspaceTop(BaseWidget):
         self.right.setMaximumWidth(350)
         self.splitter.addWidget(self.right)
 
-        # Set initial sizes and stretch factors
-        # Left panel: 200px, Center: expand, Right panel: 300px
         self.splitter.setSizes([200, 1000, 350])
-        self.splitter.setStretchFactor(0, 0)  # Left panel: don't stretch
-        self.splitter.setStretchFactor(1, 1)  # Center panel: stretch
-        self.splitter.setStretchFactor(2, 0)  # Right panel: don't stretch
+        self.splitter.setStretchFactor(0, 0)
+        self.splitter.setStretchFactor(1, 1)
+        self.splitter.setStretchFactor(2, 0)
 
         self.layout.addWidget(self.splitter)
 
+        self.center = self.canvas_editor
+
+        Signals().connect(Signals.TIMELINE_MODE_CHANGED, self._on_timeline_mode_changed_ui)
+        Signals().connect(Signals.SCREENPLAY_SCENE_SELECTED, self._on_screenplay_scene_selected_ui)
+
+    def _build_storyboard_placeholder(self) -> QWidget:
+        w = QWidget()
+        w.setObjectName("storyboard_center_placeholder")
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(12, 12, 12, 12)
+        lab = QLabel(tr("Storyboard editor — coming soon"))
+        lab.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lab.setWordWrap(True)
+        lay.addWidget(lab)
+        return w
+
+    def _on_timeline_mode_changed_ui(self, sender, params=None, **kwargs):
+        if params is None:
+            return
+        mode = params
+        if mode == "video":
+            self.center_stack.setCurrentIndex(CENTER_PAGE_VIDEO)
+        elif mode == "script":
+            self.center_stack.setCurrentIndex(CENTER_PAGE_SCREENPLAY)
+            self.screenplay_center.load_data()
+            QTimer.singleShot(0, self._sync_screenplay_editor_from_timeline)
+        elif mode == "storyboard":
+            self.center_stack.setCurrentIndex(CENTER_PAGE_STORYBOARD)
+
+    def _sync_screenplay_editor_from_timeline(self):
+        parent_ws = self._workspace_parent
+        if not parent_ws:
+            return
+        bottom = getattr(parent_ws, "workspace_bottom", None)
+        if not bottom:
+            return
+        tc = getattr(bottom, "timeline_container", None)
+        if not tc or not tc.script_timeline:
+            return
+        sid = tc.script_timeline.selected_scene_id
+        if sid:
+            self.screenplay_center.open_scene(sid)
+
+    def _on_screenplay_scene_selected_ui(self, sender, params=None, **kwargs):
+        if params is None:
+            return
+        scene_id = params
+        if not isinstance(scene_id, str) or not scene_id:
+            return
+        self.screenplay_center.open_scene(scene_id)

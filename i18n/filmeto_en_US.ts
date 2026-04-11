@@ -82,6 +82,10 @@
         <translation>Storyboard timeline — coming soon</translation>
     </message>
     <message>
+        <source>Storyboard editor — coming soon</source>
+        <translation>Storyboard editor — coming soon</translation>
+    </message>
+    <message>
         <source>Screenplay</source>
         <translation>Screenplay</translation>
     </message>
