@@ -1,68 +1,94 @@
 """
 Screenplay manager module for Filmeto.
 
-This module manages screenplays for a project, handling creation, retrieval,
-updating, and deletion of screenplay scenes.
+Scenes live under project/screen_plays/<scene_id>/scene.md with a sibling shots/
+directory for storyboard material (see app.data.story_board).
+Legacy single-file screen_plays/<scene_id>.md is migrated on read.
 """
 
 import asyncio
 import os
+import shutil
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
-from utils.yaml_utils import glob_paths, to_thread
+from utils.yaml_utils import to_thread
 from utils.md_with_meta_utils import (
     read_md_with_meta,
     write_md_with_meta,
     update_md_with_meta,
     get_metadata,
-    get_content
+    get_content,
 )
 from .screen_play_scene import ScreenPlayScene
+from .scene_paths import SCENE_MD_NAME, SHOTS_DIR_NAME
 
 
 class ScreenPlayManager:
     """Manages screenplays for a project."""
 
     def __init__(self, project_path: Union[str, Path]):
-        """
-        Initialize the ScreenPlayManager for a specific project.
-
-        Args:
-            project_path: Path to the project directory
-        """
         self.project_path = Path(project_path)
         self.screen_plays_dir = self.project_path / "screen_plays"
         self.screen_plays_dir.mkdir(parents=True, exist_ok=True)
+
+    def scene_root_path(self, scene_id: str) -> Path:
+        return self.screen_plays_dir / scene_id
+
+    def scene_md_path(self, scene_id: str) -> Path:
+        return self.scene_root_path(scene_id) / SCENE_MD_NAME
+
+    def shots_dir_path(self, scene_id: str) -> Path:
+        return self.scene_root_path(scene_id) / SHOTS_DIR_NAME
+
+    def legacy_scene_file_path(self, scene_id: str) -> Path:
+        return self.screen_plays_dir / f"{scene_id}.md"
+
+    def _migrate_legacy_if_needed(self, scene_id: str) -> None:
+        legacy = self.legacy_scene_file_path(scene_id)
+        if not legacy.is_file():
+            return
+        target_md = self.scene_md_path(scene_id)
+        if target_md.exists():
+            return
+        root = self.scene_root_path(scene_id)
+        root.mkdir(parents=True, exist_ok=True)
+        legacy.rename(target_md)
+        self.shots_dir_path(scene_id).mkdir(exist_ok=True)
+
+    def _resolve_scene_md(self, scene_id: str) -> Optional[Path]:
+        self._migrate_legacy_if_needed(scene_id)
+        p = self.scene_md_path(scene_id)
+        return p if p.is_file() else None
+
+    def _iter_scene_ids(self) -> List[str]:
+        ids: List[str] = []
+        if not self.screen_plays_dir.exists():
+            return ids
+        for md in sorted(self.screen_plays_dir.glob(f"*/{SCENE_MD_NAME}")):
+            ids.append(md.parent.name)
+        for legacy in sorted(self.screen_plays_dir.glob("*.md")):
+            sid = legacy.stem
+            self._migrate_legacy_if_needed(sid)
+            if sid not in ids:
+                ids.append(sid)
+        ids.sort()
+        return ids
 
     def create_scene(
         self,
         scene_id: str,
         title: str,
         content: str,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> bool:
-        """
-        Create a new screenplay scene.
-
-        Args:
-            scene_id: Unique identifier for the scene
-            title: Title of the scene
-            content: Content of the scene in markdown format
-            metadata: Additional metadata for the scene
-
-        Returns:
-            True if creation was successful, False otherwise
-        """
         if metadata is None:
             metadata = {}
 
-        # Create a ScreenPlayScene instance with the provided data
         scene = ScreenPlayScene(
             scene_id=scene_id,
             title=title,
             content=content,
-            # Override defaults with provided metadata
             scene_number=metadata.get("scene_number", ""),
             location=metadata.get("location", ""),
             time_of_day=metadata.get("time_of_day", ""),
@@ -76,34 +102,47 @@ class ScreenPlayManager:
             status=metadata.get("status", "draft"),
             revision_number=metadata.get("revision_number", 1),
             created_at=metadata.get("created_at", self._get_timestamp()),
-            updated_at=metadata.get("updated_at", self._get_timestamp())
+            updated_at=metadata.get("updated_at", self._get_timestamp()),
         )
 
-        # Get the metadata from the scene instance using to_dict
         scene_data = scene.to_dict()
-
-        # Extract only the metadata fields (excluding scene_id, title, content)
         metadata_for_storage = {
-            k: v for k, v in scene_data.items()
-            if k not in ["scene_id", "title", "content"]
+            k: v for k, v in scene_data.items() if k not in ["scene_id", "title", "content"]
         }
-
-        # Include any additional custom fields from metadata that aren't in the standard schema
         standard_fields = {
-            "scene_number", "location", "time_of_day", "genre", "logline",
-            "characters", "story_beat", "page_count", "duration_minutes",
-            "tags", "status", "revision_number", "created_at", "updated_at"
+            "scene_number",
+            "location",
+            "time_of_day",
+            "genre",
+            "logline",
+            "characters",
+            "story_beat",
+            "page_count",
+            "duration_minutes",
+            "tags",
+            "status",
+            "revision_number",
+            "created_at",
+            "updated_at",
         }
         for key, value in metadata.items():
             if key not in standard_fields and key not in metadata_for_storage:
                 metadata_for_storage[key] = value
 
-        # Ensure scene_id, title, and content are properly set
         metadata_for_storage["scene_id"] = scene_id
         metadata_for_storage["title"] = title
 
-        scene_file_path = self.screen_plays_dir / f"{scene_id}.md"
+        root = self.scene_root_path(scene_id)
+        root.mkdir(parents=True, exist_ok=True)
+        self.shots_dir_path(scene_id).mkdir(exist_ok=True)
+        legacy = self.legacy_scene_file_path(scene_id)
+        if legacy.exists():
+            try:
+                legacy.unlink()
+            except OSError:
+                pass
 
+        scene_file_path = self.scene_md_path(scene_id)
         try:
             write_md_with_meta(scene_file_path, metadata_for_storage, content)
             return True
@@ -111,25 +150,14 @@ class ScreenPlayManager:
             return False
 
     def get_scene(self, scene_id: str) -> Optional[ScreenPlayScene]:
-        """
-        Retrieve a screenplay scene by ID.
-
-        Args:
-            scene_id: Unique identifier for the scene
-
-        Returns:
-            ScreenPlayScene object if found, None otherwise
-        """
-        scene_file_path = self.screen_plays_dir / f"{scene_id}.md"
-
-        if not scene_file_path.exists():
+        scene_file_path = self._resolve_scene_md(scene_id)
+        if scene_file_path is None:
             return None
 
         try:
             metadata, content = read_md_with_meta(scene_file_path)
             title = metadata.get("title", scene_id)
 
-            # Extract individual meta attributes from the metadata dictionary
             return ScreenPlayScene(
                 scene_id=scene_id,
                 title=title,
@@ -147,7 +175,7 @@ class ScreenPlayManager:
                 status=metadata.get("status", "draft"),
                 revision_number=metadata.get("revision_number", 1),
                 created_at=metadata.get("created_at", ""),
-                updated_at=metadata.get("updated_at", "")
+                updated_at=metadata.get("updated_at", ""),
             )
         except Exception:
             return None
@@ -157,31 +185,16 @@ class ScreenPlayManager:
         scene_id: str,
         title: Optional[str] = None,
         content: Optional[str] = None,
-        metadata_updates: Optional[Dict[str, Any]] = None
+        metadata_updates: Optional[Dict[str, Any]] = None,
     ) -> bool:
-        """
-        Update an existing screenplay scene.
-
-        Args:
-            scene_id: Unique identifier for the scene
-            title: New title for the scene (optional)
-            content: New content for the scene (optional)
-            metadata_updates: Additional metadata updates (optional)
-
-        Returns:
-            True if update was successful, False otherwise
-        """
-        scene_file_path = self.screen_plays_dir / f"{scene_id}.md"
-
-        if not scene_file_path.exists():
+        scene_file_path = self._resolve_scene_md(scene_id)
+        if scene_file_path is None:
             return False
 
         try:
-            # Get current metadata and content
             current_metadata, current_content = read_md_with_meta(scene_file_path)
 
-            # Prepare updates
-            updates = {}
+            updates: Dict[str, Any] = {}
             if title is not None:
                 updates["title"] = title
                 current_metadata["title"] = title
@@ -189,97 +202,62 @@ class ScreenPlayManager:
                 updates.update(metadata_updates)
                 current_metadata.update(metadata_updates)
 
-            # Update timestamp
             updates["updated_at"] = self._get_timestamp()
             current_metadata["updated_at"] = self._get_timestamp()
 
-            # Determine content to use
             final_content = content if content is not None else current_content
 
-            # Update the file
             return update_md_with_meta(scene_file_path, updates, final_content)
         except Exception:
             return False
 
     def delete_scene(self, scene_id: str) -> bool:
-        """
-        Delete a screenplay scene.
-
-        Args:
-            scene_id: Unique identifier for the scene
-
-        Returns:
-            True if deletion was successful, False otherwise
-        """
-        scene_file_path = self.screen_plays_dir / f"{scene_id}.md"
-
+        root = self.scene_root_path(scene_id)
+        legacy = self.legacy_scene_file_path(scene_id)
         try:
-            if scene_file_path.exists():
-                os.remove(scene_file_path)
+            if root.is_dir() and self.scene_md_path(scene_id).exists():
+                shutil.rmtree(root)
+                if legacy.exists():
+                    legacy.unlink()
+                return True
+            if legacy.exists():
+                os.remove(legacy)
                 return True
             return False
         except Exception:
             return False
 
     def list_scenes(self) -> List[ScreenPlayScene]:
-        """
-        List all screenplay scenes in the project.
-
-        Returns:
-            List of ScreenPlayScene objects
-        """
-        scenes = []
-
-        for file_path in self.screen_plays_dir.glob("*.md"):
-            scene_id = file_path.stem
+        scenes: List[ScreenPlayScene] = []
+        for scene_id in self._iter_scene_ids():
             scene = self.get_scene(scene_id)
             if scene:
                 scenes.append(scene)
-
         return scenes
 
     async def list_scenes_async(self) -> List[ScreenPlayScene]:
-        """List all scenes with parallel markdown reads via the asyncio worker pool."""
-        paths = await glob_paths(self.screen_plays_dir, "*.md")
+        scene_ids = await to_thread(self._iter_scene_ids)
 
-        async def _one(p: Path) -> Optional[ScreenPlayScene]:
-            return await to_thread(self.get_scene, p.stem)
+        async def _one(sid: str) -> Optional[ScreenPlayScene]:
+            return await to_thread(self.get_scene, sid)
 
-        scenes = await asyncio.gather(*(_one(p) for p in paths))
-        return [s for s in scenes if s is not None]
+        loaded = await asyncio.gather(*(_one(sid) for sid in scene_ids))
+        return [s for s in loaded if s is not None]
 
     def get_scene_by_title(self, title: str) -> Optional[ScreenPlayScene]:
-        """
-        Find a scene by its title.
-
-        Args:
-            title: Title of the scene to find
-
-        Returns:
-            ScreenPlayScene object if found, None otherwise
-        """
         for scene in self.list_scenes():
             if scene.title.lower() == title.lower():
                 return scene
         return None
 
     def _get_timestamp(self) -> str:
-        """Get current timestamp in ISO format."""
         from datetime import datetime
+
         return datetime.now().isoformat()
 
     def get_scene_metadata(self, scene_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Get only the metadata for a specific scene.
-
-        Args:
-            scene_id: Unique identifier for the scene
-
-        Returns:
-            Metadata dictionary if found, None otherwise
-        """
-        scene_file_path = self.screen_plays_dir / f"{scene_id}.md"
-        if not scene_file_path.exists():
+        scene_file_path = self._resolve_scene_md(scene_id)
+        if scene_file_path is None:
             return None
 
         try:
@@ -288,17 +266,8 @@ class ScreenPlayManager:
             return None
 
     def get_scene_content(self, scene_id: str) -> Optional[str]:
-        """
-        Get only the content for a specific scene.
-
-        Args:
-            scene_id: Unique identifier for the scene
-
-        Returns:
-            Content string if found, None otherwise
-        """
-        scene_file_path = self.screen_plays_dir / f"{scene_id}.md"
-        if not scene_file_path.exists():
+        scene_file_path = self._resolve_scene_md(scene_id)
+        if scene_file_path is None:
             return None
 
         try:
@@ -307,43 +276,21 @@ class ScreenPlayManager:
             return None
 
     def update_scene_metadata(self, scene_id: str, metadata_updates: Dict[str, Any]) -> bool:
-        """
-        Update only the metadata for a specific scene.
-
-        Args:
-            scene_id: Unique identifier for the scene
-            metadata_updates: Dictionary containing metadata fields to update
-
-        Returns:
-            True if update was successful, False otherwise
-        """
-        scene_file_path = self.screen_plays_dir / f"{scene_id}.md"
-        if not scene_file_path.exists():
+        scene_file_path = self._resolve_scene_md(scene_id)
+        if scene_file_path is None:
             return False
 
         try:
-            # Get current content
             current_content = self.get_scene_content(scene_id)
             if current_content is None:
                 return False
 
-            # Update metadata
             metadata_updates["updated_at"] = self._get_timestamp()
             return update_md_with_meta(scene_file_path, metadata_updates, current_content)
         except Exception:
             return False
 
     def bulk_create_scenes(self, scenes_data: List[Dict[str, Any]]) -> Dict[str, bool]:
-        """
-        Create multiple scenes in bulk.
-
-        Args:
-            scenes_data: List of dictionaries containing scene data
-                         Each dict should have: scene_id, title, content, and optional metadata
-
-        Returns:
-            Dictionary mapping scene_id to success status
-        """
         results = {}
         for scene_data in scenes_data:
             scene_id = scene_data.get("scene_id")
@@ -357,57 +304,28 @@ class ScreenPlayManager:
         return results
 
     def get_scenes_by_character(self, character_name: str) -> List[ScreenPlayScene]:
-        """
-        Find all scenes that include a specific character.
-
-        Args:
-            character_name: Name of the character to search for
-
-        Returns:
-            List of ScreenPlayScene objects that include the character
-        """
         matching_scenes = []
         all_scenes = self.list_scenes()
 
         for scene in all_scenes:
-            # Use the characters attribute directly
-            characters = scene.characters if hasattr(scene, 'characters') else []
+            characters = scene.characters if hasattr(scene, "characters") else []
             if character_name in characters:
                 matching_scenes.append(scene)
 
         return matching_scenes
 
     def get_scenes_by_location(self, location: str) -> List[ScreenPlayScene]:
-        """
-        Find all scenes that take place at a specific location.
-
-        Args:
-            location: Location to search for
-
-        Returns:
-            List of ScreenPlayScene objects that take place at the location
-        """
         matching_scenes = []
         all_scenes = self.list_scenes()
 
         for scene in all_scenes:
-            # Use the location attribute directly
-            scene_location = scene.location if hasattr(scene, 'location') else ""
+            scene_location = scene.location if hasattr(scene, "location") else ""
             if location.lower() in scene_location.lower():
                 matching_scenes.append(scene)
 
         return matching_scenes
 
     def delete_all_scenes(self) -> Dict[str, Any]:
-        """
-        Delete all screenplay scenes in the project.
-
-        Returns:
-            Dictionary containing:
-            - deleted_count: Number of scenes deleted
-            - deleted_scene_ids: List of deleted scene IDs
-            - failed_scene_ids: List of scene IDs that failed to delete
-        """
         scenes = self.list_scenes()
         deleted_scene_ids = []
         failed_scene_ids = []
@@ -423,29 +341,15 @@ class ScreenPlayManager:
             "deleted_count": len(deleted_scene_ids),
             "deleted_scene_ids": deleted_scene_ids,
             "failed_scene_ids": failed_scene_ids,
-            "total_count": len(scenes)
+            "total_count": len(scenes),
         }
 
     def delete_scenes(self, scene_ids: List[str]) -> Dict[str, Any]:
-        """
-        Delete multiple screenplay scenes by their IDs.
-
-        Args:
-            scene_ids: List of scene identifiers to delete
-
-        Returns:
-            Dictionary containing:
-            - deleted_count: Number of scenes deleted
-            - deleted_scene_ids: List of deleted scene IDs
-            - not_found_ids: List of scene IDs that were not found
-            - failed_scene_ids: List of scene IDs that failed to delete
-        """
         deleted_scene_ids = []
         not_found_ids = []
         failed_scene_ids = []
 
         for scene_id in scene_ids:
-            # Check if scene exists
             scene = self.get_scene(scene_id)
             if scene is None:
                 not_found_ids.append(scene_id)
@@ -461,5 +365,5 @@ class ScreenPlayManager:
             "deleted_scene_ids": deleted_scene_ids,
             "not_found_ids": not_found_ids,
             "failed_scene_ids": failed_scene_ids,
-            "requested_count": len(scene_ids)
+            "requested_count": len(scene_ids),
         }
