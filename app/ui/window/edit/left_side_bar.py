@@ -60,7 +60,7 @@ class MainWindowLeftSideBar(BaseWidget):
 
         self.layout.addStretch(0)
 
-        # Timeline modes (top to bottom): screenplay, storyboard, video, voice, subtitles
+        # Timeline modes: screenplay, storyboard, video (subtitle + dubbing sit inside video stack)
         self.script_mode_button = QPushButton("\ue993", self)
         self.script_mode_button.setFixedSize(30, 30)
         self.script_mode_button.setCheckable(True)
@@ -90,26 +90,6 @@ class MainWindowLeftSideBar(BaseWidget):
         )
         self.layout.addWidget(self.video_mode_button, alignment=Qt.AlignCenter)
         self.timeline_mode_button_map["video"] = self.video_mode_button
-
-        self.voice_mode_button = QPushButton("\ue709", self)
-        self.voice_mode_button.setFixedSize(30, 30)
-        self.voice_mode_button.setCheckable(True)
-        self.voice_mode_button.setToolTip(tr("Voice / dubbing timeline"))
-        self.voice_mode_button.clicked.connect(
-            lambda: self._on_timeline_mode_button_clicked("voice")
-        )
-        self.layout.addWidget(self.voice_mode_button, alignment=Qt.AlignCenter)
-        self.timeline_mode_button_map["voice"] = self.voice_mode_button
-
-        self.subtitle_mode_button = QPushButton("\ue6b7", self)
-        self.subtitle_mode_button.setFixedSize(30, 30)
-        self.subtitle_mode_button.setCheckable(True)
-        self.subtitle_mode_button.setToolTip(tr("Subtitle timeline"))
-        self.subtitle_mode_button.clicked.connect(
-            lambda: self._on_timeline_mode_button_clicked("subtitle")
-        )
-        self.layout.addWidget(self.subtitle_mode_button, alignment=Qt.AlignCenter)
-        self.timeline_mode_button_map["subtitle"] = self.subtitle_mode_button
 
         self._set_selected_panel_internal("actor")
         self._set_selected_timeline_mode_internal("video")

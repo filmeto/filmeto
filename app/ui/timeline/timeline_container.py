@@ -305,7 +305,7 @@ class TimelineContainer(BaseWidget):
         self.set_timeline_mode(params)
 
     def set_timeline_mode(self, mode: str) -> None:
-        valid = frozenset({"script", "storyboard", "video", "voice", "subtitle"})
+        valid = frozenset({"script", "storyboard", "video"})
         if mode not in valid:
             return
         self._timeline_mode = mode
@@ -320,11 +320,12 @@ class TimelineContainer(BaseWidget):
             self.script_timeline.setVisible(mode == "script")
         if self.storyboard_strip is not None:
             self.storyboard_strip.setVisible(mode == "storyboard")
-        self.video_timeline.setVisible(mode == "video")
+        show_video_stack = mode == "video"
+        self.video_timeline.setVisible(show_video_stack)
         if self.subtitle_timeline is not None:
-            self.subtitle_timeline.setVisible(mode == "subtitle")
+            self.subtitle_timeline.setVisible(show_video_stack)
         if self.voice_timeline is not None:
-            self.voice_timeline.setVisible(mode == "voice")
+            self.voice_timeline.setVisible(show_video_stack)
         self._update_divider_positions()
 
     def _load_secondary_timelines(self):
@@ -355,11 +356,11 @@ class TimelineContainer(BaseWidget):
         self._install_event_filters_recursively(self.subtitle_timeline)
         self._install_event_filters_recursively(self.voice_timeline)
 
-        # Vertical order: screenplay, storyboard, video, voice, subtitles
+        # Vertical order: screenplay, storyboard, then subtitle → video → voice (merged video stack)
         self.main_layout.insertWidget(0, self.script_timeline)
         self.main_layout.insertWidget(1, self.storyboard_strip)
-        self.main_layout.insertWidget(3, self.voice_timeline)
-        self.main_layout.insertWidget(4, self.subtitle_timeline)
+        self.main_layout.insertWidget(2, self.subtitle_timeline)
+        self.main_layout.insertWidget(4, self.voice_timeline)
 
         self.setup_scroll_synchronization()
         self._apply_timeline_mode_visibility()
@@ -733,8 +734,21 @@ class TimelineContainer(BaseWidget):
         return int(final_x), last_card_index
 
     def _update_divider_positions(self):
-        """Update divider overlay (single-track mode uses no section dividers)."""
-        self.divider_overlay.set_divider_positions(0, 0)
+        """Draw dividers between subtitle / video / voice when the merged video stack is visible."""
+        if (
+            not self._secondary_timelines_loaded
+            or self._timeline_mode != "video"
+            or not self.subtitle_timeline
+            or not self.voice_timeline
+        ):
+            self.divider_overlay.set_divider_positions(0, 0)
+            return
+        if self.subtitle_timeline.isHidden() or self.video_timeline.isHidden():
+            self.divider_overlay.set_divider_positions(0, 0)
+            return
+        subtitle_height = self.subtitle_timeline.height()
+        voiceover_top = self.height() - self.voice_timeline.height()
+        self.divider_overlay.set_divider_positions(subtitle_height, voiceover_top)
     
     def resizeEvent(self, event):
         """Update overlay size and position when container is resized"""
