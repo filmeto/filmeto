@@ -2,6 +2,7 @@ from PySide6.QtWidgets import QFrame, QVBoxLayout
 from PySide6.QtCore import Qt
 
 from app.data.workspace import Workspace
+from app.ui.signals import Signals
 from .left_side_bar import MainWindowLeftSideBar
 
 
@@ -71,3 +72,6 @@ class LeftBar:
         self.workspace_top_left = workspace_top_left
         self.bar.button_clicked.connect(workspace_top_left.switch_to_panel)
         workspace_top_left.panel_switched.connect(self.bar.set_selected_button)
+        self.bar.timeline_mode_clicked.connect(
+            lambda mode: Signals().send(Signals.TIMELINE_MODE_CHANGED, params=mode)
+        )

@@ -7,10 +7,10 @@ including cards, and mouse tracking works across all child widgets.
 """
 
 import logging
-from PySide6.QtWidgets import QWidget, QVBoxLayout
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QFrame, QLabel, QSizePolicy
 from PySide6.QtCore import Qt, QPoint, QEvent, QPointF, QTimer
 from PySide6.QtGui import QPainter, QPen, QColor, QHoverEvent, QPolygonF, QMouseEvent
-from typing import Tuple
+from typing import Tuple, Optional
 
 from app.data.workspace import Workspace
 from app.ui.base_widget import BaseWidget
@@ -18,6 +18,7 @@ from app.ui.signals import Signals
 from app.ui.timeline.video_timeline import VideoTimeline
 from app.ui.timeline.subtitle_timeline import SubtitleTimeline
 from app.ui.timeline.voice_timeline import VoiceTimeline
+from utils.i18n_utils import tr
 
 logger = logging.getLogger(__name__)
 
@@ -228,10 +229,13 @@ class TimelineContainer(BaseWidget):
         # Create the main timeline widget (VideoTimeline - immediately required)
         self.video_timeline = VideoTimeline(self, workspace)
 
-        # Create placeholders for secondary timelines (lazy loaded)
+        # Placeholders for secondary timelines (lazy loaded)
         self.subtitle_timeline = None
         self.voice_timeline = None
+        self.script_strip: Optional[QFrame] = None
+        self.storyboard_strip: Optional[QFrame] = None
         self._secondary_timelines_loaded = False
+        self._timeline_mode = "video"
 
         # Scroll synchronization state
         self._scroll_sync_active = False  # Flag to prevent feedback loops
@@ -278,13 +282,57 @@ class TimelineContainer(BaseWidget):
         # This speeds up initial window display
         QTimer.singleShot(100, self._load_secondary_timelines)
 
+        Signals().connect(Signals.TIMELINE_MODE_CHANGED, self._on_timeline_mode_signal)
+
+    def _make_timeline_mode_placeholder(self, object_name: str, message: str) -> QFrame:
+        frame = QFrame(self)
+        frame.setObjectName(object_name)
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(8, 8, 8, 8)
+        label = QLabel(message, frame)
+        label.setObjectName(f"{object_name}_label")
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setWordWrap(True)
+        layout.addWidget(label)
+        frame.setMinimumHeight(120)
+        frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        return frame
+
+    def _on_timeline_mode_signal(self, sender, params=None, **kwargs):
+        if params is None:
+            return
+        self.set_timeline_mode(params)
+
+    def set_timeline_mode(self, mode: str) -> None:
+        valid = frozenset({"script", "storyboard", "video", "voice", "subtitle"})
+        if mode not in valid:
+            return
+        self._timeline_mode = mode
+        self._apply_timeline_mode_visibility()
+
+    def _apply_timeline_mode_visibility(self) -> None:
+        if not self._secondary_timelines_loaded:
+            self.video_timeline.setVisible(True)
+            return
+        mode = self._timeline_mode
+        if self.script_strip is not None:
+            self.script_strip.setVisible(mode == "script")
+        if self.storyboard_strip is not None:
+            self.storyboard_strip.setVisible(mode == "storyboard")
+        self.video_timeline.setVisible(mode == "video")
+        if self.subtitle_timeline is not None:
+            self.subtitle_timeline.setVisible(mode == "subtitle")
+        if self.voice_timeline is not None:
+            self.voice_timeline.setVisible(mode == "voice")
+        self._update_divider_positions()
+
     def _load_secondary_timelines(self):
-        """Load secondary timelines (subtitle, voice) in the background after initial display"""
+        """Load screenplay/storyboard placeholders and subtitle/voice timelines after first paint."""
         if self._secondary_timelines_loaded:
             return
 
         self._secondary_timelines_loaded = True
-        logger.info("Loading secondary timelines (subtitle, voice)...")
+        logger.info("Loading secondary timelines (script, storyboard, subtitle, voice)...")
 
         # Timer to detect when scrolling has stopped (for cursor show/hide)
         self._scroll_stop_timer = QTimer(self)
@@ -292,20 +340,31 @@ class TimelineContainer(BaseWidget):
         self._scroll_stop_timer.setInterval(100)  # 100ms delay after scroll stops
         self._scroll_stop_timer.timeout.connect(self._on_scroll_stopped)
 
-        # Create secondary timelines
+        self.script_strip = self._make_timeline_mode_placeholder(
+            "timeline_script_strip",
+            tr("Screenplay timeline — coming soon"),
+        )
+        self.storyboard_strip = self._make_timeline_mode_placeholder(
+            "timeline_storyboard_strip",
+            tr("Storyboard timeline — coming soon"),
+        )
+
         self.subtitle_timeline = SubtitleTimeline(self, self.workspace)
         self.voice_timeline = VoiceTimeline(self, self.workspace)
 
-        # Install event filters for secondary timelines
+        self._install_event_filters_recursively(self.script_strip)
+        self._install_event_filters_recursively(self.storyboard_strip)
         self._install_event_filters_recursively(self.subtitle_timeline)
         self._install_event_filters_recursively(self.voice_timeline)
 
-        # Add to layout in the correct order
-        self.main_layout.insertWidget(0, self.subtitle_timeline)
-        self.main_layout.insertWidget(2, self.voice_timeline)
+        # Vertical order: screenplay, storyboard, video, voice, subtitles
+        self.main_layout.insertWidget(0, self.script_strip)
+        self.main_layout.insertWidget(1, self.storyboard_strip)
+        self.main_layout.insertWidget(3, self.voice_timeline)
+        self.main_layout.insertWidget(4, self.subtitle_timeline)
 
-        # Setup scroll synchronization
         self.setup_scroll_synchronization()
+        self._apply_timeline_mode_visibility()
 
         logger.info("Secondary timelines loaded successfully")
 
@@ -676,18 +735,8 @@ class TimelineContainer(BaseWidget):
         return int(final_x), last_card_index
 
     def _update_divider_positions(self):
-        """Update divider line positions based on component heights"""
-        subtitle_height = 0
-        voiceover_top = 0
-        
-        if self.subtitle_timeline and not self.subtitle_timeline.isHidden():
-            subtitle_height = self.subtitle_timeline.height()
-            
-        if self.voice_timeline and not self.voice_timeline.isHidden():
-            # Calculate position of voiceover timeline
-            voiceover_top = self.height() - self.voice_timeline.height()
-            
-        self.divider_overlay.set_divider_positions(subtitle_height, voiceover_top)
+        """Update divider overlay (single-track mode uses no section dividers)."""
+        self.divider_overlay.set_divider_positions(0, 0)
     
     def resizeEvent(self, event):
         """Update overlay size and position when container is resized"""

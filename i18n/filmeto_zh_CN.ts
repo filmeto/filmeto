@@ -37,6 +37,50 @@
         <source>Tip: Drag with mouse or use arrow keys to scroll timeline</source>
         <translation>提示：鼠标拖动或使用左右方向键滑动时间线</translation>
     </message>
+    <message>
+        <source>Actors / characters</source>
+        <translation>角色</translation>
+    </message>
+    <message>
+        <source>Resources</source>
+        <translation>资源</translation>
+    </message>
+    <message>
+        <source>Models</source>
+        <translation>模型</translation>
+    </message>
+    <message>
+        <source>Attachments</source>
+        <translation>附件</translation>
+    </message>
+    <message>
+        <source>Screenplay timeline</source>
+        <translation>剧本时间线</translation>
+    </message>
+    <message>
+        <source>Storyboard timeline</source>
+        <translation>分镜时间线</translation>
+    </message>
+    <message>
+        <source>Video timeline</source>
+        <translation>视频时间线</translation>
+    </message>
+    <message>
+        <source>Voice / dubbing timeline</source>
+        <translation>配音时间线</translation>
+    </message>
+    <message>
+        <source>Subtitle timeline</source>
+        <translation>字幕时间线</translation>
+    </message>
+    <message>
+        <source>Screenplay timeline — coming soon</source>
+        <translation>剧本时间线（敬请期待）</translation>
+    </message>
+    <message>
+        <source>Storyboard timeline — coming soon</source>
+        <translation>分镜时间线（敬请期待）</translation>
+    </message>
     
     <!-- Preview Widget -->
     <message>

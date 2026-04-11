@@ -37,6 +37,50 @@
         <source>提示：鼠标拖动或使用左右方向键滑动时间线</source>
         <translation>Tip: Drag with mouse or use arrow keys to scroll timeline</translation>
     </message>
+    <message>
+        <source>Actors / characters</source>
+        <translation>Actors / characters</translation>
+    </message>
+    <message>
+        <source>Resources</source>
+        <translation>Resources</translation>
+    </message>
+    <message>
+        <source>Models</source>
+        <translation>Models</translation>
+    </message>
+    <message>
+        <source>Attachments</source>
+        <translation>Attachments</translation>
+    </message>
+    <message>
+        <source>Screenplay timeline</source>
+        <translation>Screenplay timeline</translation>
+    </message>
+    <message>
+        <source>Storyboard timeline</source>
+        <translation>Storyboard timeline</translation>
+    </message>
+    <message>
+        <source>Video timeline</source>
+        <translation>Video timeline</translation>
+    </message>
+    <message>
+        <source>Voice / dubbing timeline</source>
+        <translation>Voice / dubbing timeline</translation>
+    </message>
+    <message>
+        <source>Subtitle timeline</source>
+        <translation>Subtitle timeline</translation>
+    </message>
+    <message>
+        <source>Screenplay timeline — coming soon</source>
+        <translation>Screenplay timeline — coming soon</translation>
+    </message>
+    <message>
+        <source>Storyboard timeline — coming soon</source>
+        <translation>Storyboard timeline — coming soon</translation>
+    </message>
     
     <!-- Preview Widget -->
     <message>
