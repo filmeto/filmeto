@@ -81,6 +81,14 @@
         <source>Storyboard timeline — coming soon</source>
         <translation>Storyboard timeline — coming soon</translation>
     </message>
+    <message>
+        <source>Screenplay</source>
+        <translation>Screenplay</translation>
+    </message>
+    <message>
+        <source>Add Scene</source>
+        <translation>Add Scene</translation>
+    </message>
     
     <!-- Preview Widget -->
     <message>

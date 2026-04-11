@@ -16,6 +16,7 @@ from app.data.workspace import Workspace
 from app.ui.base_widget import BaseWidget
 from app.ui.signals import Signals
 from app.ui.timeline.video_timeline import VideoTimeline
+from app.ui.timeline.screenplay_timeline import ScreenplayTimeline
 from app.ui.timeline.subtitle_timeline import SubtitleTimeline
 from app.ui.timeline.voice_timeline import VoiceTimeline
 from utils.i18n_utils import tr
@@ -232,7 +233,7 @@ class TimelineContainer(BaseWidget):
         # Placeholders for secondary timelines (lazy loaded)
         self.subtitle_timeline = None
         self.voice_timeline = None
-        self.script_strip: Optional[QFrame] = None
+        self.script_timeline: Optional[ScreenplayTimeline] = None
         self.storyboard_strip: Optional[QFrame] = None
         self._secondary_timelines_loaded = False
         self._timeline_mode = "video"
@@ -315,8 +316,8 @@ class TimelineContainer(BaseWidget):
             self.video_timeline.setVisible(True)
             return
         mode = self._timeline_mode
-        if self.script_strip is not None:
-            self.script_strip.setVisible(mode == "script")
+        if self.script_timeline is not None:
+            self.script_timeline.setVisible(mode == "script")
         if self.storyboard_strip is not None:
             self.storyboard_strip.setVisible(mode == "storyboard")
         self.video_timeline.setVisible(mode == "video")
@@ -340,10 +341,7 @@ class TimelineContainer(BaseWidget):
         self._scroll_stop_timer.setInterval(100)  # 100ms delay after scroll stops
         self._scroll_stop_timer.timeout.connect(self._on_scroll_stopped)
 
-        self.script_strip = self._make_timeline_mode_placeholder(
-            "timeline_script_strip",
-            tr("Screenplay timeline — coming soon"),
-        )
+        self.script_timeline = ScreenplayTimeline(self, self.workspace)
         self.storyboard_strip = self._make_timeline_mode_placeholder(
             "timeline_storyboard_strip",
             tr("Storyboard timeline — coming soon"),
@@ -352,13 +350,13 @@ class TimelineContainer(BaseWidget):
         self.subtitle_timeline = SubtitleTimeline(self, self.workspace)
         self.voice_timeline = VoiceTimeline(self, self.workspace)
 
-        self._install_event_filters_recursively(self.script_strip)
+        self._install_event_filters_recursively(self.script_timeline)
         self._install_event_filters_recursively(self.storyboard_strip)
         self._install_event_filters_recursively(self.subtitle_timeline)
         self._install_event_filters_recursively(self.voice_timeline)
 
         # Vertical order: screenplay, storyboard, video, voice, subtitles
-        self.main_layout.insertWidget(0, self.script_strip)
+        self.main_layout.insertWidget(0, self.script_timeline)
         self.main_layout.insertWidget(1, self.storyboard_strip)
         self.main_layout.insertWidget(3, self.voice_timeline)
         self.main_layout.insertWidget(4, self.subtitle_timeline)
@@ -384,18 +382,18 @@ class TimelineContainer(BaseWidget):
         Setup scroll synchronization between all three timelines.
         Connects scrollbar valueChanged signals to the synchronization handler.
         """
-        # Get scrollbars from all three timelines
         video_scrollbar = self.video_timeline.scroll_area.get_horizontal_scrollbar()
+        script_scrollbar = self.script_timeline.scroll_area.get_horizontal_scrollbar()
         subtitle_scrollbar = self.subtitle_timeline.scroll_area.get_horizontal_scrollbar()
         voice_scrollbar = self.voice_timeline.scroll_area.get_horizontal_scrollbar()
-        
-        # Connect scroll events to synchronization handler
+
         video_scrollbar.valueChanged.connect(lambda value: self._on_scroll_value_changed('video', value))
+        script_scrollbar.valueChanged.connect(lambda value: self._on_scroll_value_changed('script', value))
         subtitle_scrollbar.valueChanged.connect(lambda value: self._on_scroll_value_changed('subtitle', value))
         voice_scrollbar.valueChanged.connect(lambda value: self._on_scroll_value_changed('voice', value))
-        
-        # Connect scroll start/stop signals from scroll areas to hide/show cursor
+
         self.video_timeline.scroll_area.scroll_started.connect(self._on_scroll_started)
+        self.script_timeline.scroll_area.scroll_started.connect(self._on_scroll_started)
         self.subtitle_timeline.scroll_area.scroll_started.connect(self._on_scroll_started)
         self.voice_timeline.scroll_area.scroll_started.connect(self._on_scroll_started)
         
@@ -431,6 +429,8 @@ class TimelineContainer(BaseWidget):
             # Sync to other timelines
             if source_timeline != 'video':
                 self.video_timeline.scroll_area.get_horizontal_scrollbar().setValue(new_value)
+            if source_timeline != 'script' and self.script_timeline:
+                self.script_timeline.scroll_area.get_horizontal_scrollbar().setValue(new_value)
             if source_timeline != 'subtitle' and self.subtitle_timeline:
                 self.subtitle_timeline.scroll_area.get_horizontal_scrollbar().setValue(new_value)
             if source_timeline != 'voice' and self.voice_timeline:
@@ -471,37 +471,35 @@ class TimelineContainer(BaseWidget):
         # Set content width for video timeline (always available)
         self.video_timeline.content_widget.setMinimumWidth(width)
 
-        # Set content width for secondary timelines if loaded
         if self._secondary_timelines_loaded:
+            if self.script_timeline:
+                self.script_timeline.set_content_width(width)
             if self.subtitle_timeline:
                 self.subtitle_timeline.set_content_width(width)
             if self.voice_timeline:
                 self.voice_timeline.set_content_width(width)
-    
+
+    def _width_for_horizontal_cards(self, card_count: int) -> int:
+        if card_count == 0:
+            return 800
+        total_width = (self.card_width + self.card_spacing) * card_count
+        total_width += self.content_margin_left * 2
+        total_width += 100
+        total_width += 100
+        return total_width
+
     def get_timeline_content_width(self) -> int:
         """
-        Calculate the unified content width based on video timeline cards.
-        
-        Returns:
-            int: The minimum width for all timeline content widgets
+        Unified scroll width: max of video-strip and screenplay-strip (same card geometry).
         """
-        # Get card count from video timeline
-        if not hasattr(self.video_timeline, 'cards'):
-            return 800  # Default minimum width
-        
-        card_count = len(self.video_timeline.cards)
-        if card_count == 0:
-            return 800  # Default minimum width
-        
-        # Calculate total width based on card layout
-        # Formula: (card_width + spacing) × card_count + left_margin + right_margin + add_button_width + stretch
-        total_width = (self.card_width + self.card_spacing) * card_count
-        total_width += self.content_margin_left  # Left margin
-        total_width += self.content_margin_left  # Right margin (same as left)
-        total_width += 100  # Add card button width
-        total_width += 100  # Extra space for comfort
-        
-        return total_width
+        vcount = len(self.video_timeline.cards) if hasattr(self.video_timeline, "cards") else 0
+        w = self._width_for_horizontal_cards(vcount)
+        if self._secondary_timelines_loaded and self.script_timeline and hasattr(
+            self.script_timeline, "cards"
+        ):
+            scount = len(self.script_timeline.cards)
+            w = max(w, self._width_for_horizontal_cards(scount))
+        return w
     
     def eventFilter(self, watched, event):
         """Filter events from all child widgets to handle timeline position clicks"""
