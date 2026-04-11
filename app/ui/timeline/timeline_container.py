@@ -227,8 +227,21 @@ class TimelineContainer(BaseWidget):
         self.card_width = 90  # Fixed width of each card
         self.card_spacing = 5  # Spacing between cards (from timeline_layout.setSpacing(5))
         self.content_margin_left = 5  # Left margin from timeline_layout.setContentsMargins(5, 5, 5, 5)
+        # All timeline rows live under _timeline_content so indicator overlays (direct
+        # children of self) stay above them in the stacking order without raise()/timers.
+        self._timeline_content = QWidget(self)
+        self.main_layout = QVBoxLayout(self._timeline_content)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
+
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+        root_layout.addWidget(self._timeline_content)
+
         # Create the main timeline widget (VideoTimeline - immediately required)
-        self.video_timeline = VideoTimeline(self, workspace)
+        self.video_timeline = VideoTimeline(self._timeline_content, workspace)
+        self.main_layout.addWidget(self.video_timeline)
 
         # Placeholders for secondary timelines (lazy loaded)
         self.subtitle_timeline = None
@@ -242,20 +255,14 @@ class TimelineContainer(BaseWidget):
         self._scroll_sync_active = False  # Flag to prevent feedback loops
         self._last_scroll_position = 0  # Cache last synchronized scroll value
 
-        # Setup the layout - only add video timeline initially
-        self.main_layout = QVBoxLayout(self)
-        self.main_layout.setContentsMargins(0, 0, 0, 0)
-        self.main_layout.setSpacing(0)
-        # Only add video timeline initially for fast display
-        self.main_layout.addWidget(self.video_timeline)
-
-        # Create the overlay widget for drawing position line
+        # Overlays are siblings of _timeline_content; create after content exists.
+        # Divider under playhead: create divider first, then position line (last = topmost).
+        self.divider_overlay = TimelineDividerLinesOverlay(self)
         timeline_position = self.workspace.get_project().get_timeline_position()
         timeline_x, card_index = self.calculate_timeline_x(timeline_position)
-        self.timeline_position_overlay = TimelinePositionLineOverlay(self, timeline_position,timeline_x)
-
-        # Create the overlay widget for drawing divider lines
-        self.divider_overlay = TimelineDividerLinesOverlay(self)
+        self.timeline_position_overlay = TimelinePositionLineOverlay(
+            self, timeline_position, timeline_x
+        )
 
         # Enable hover events to track mouse globally
         self.setAttribute(Qt.WidgetAttribute.WA_Hover)
@@ -286,7 +293,7 @@ class TimelineContainer(BaseWidget):
         Signals().connect(Signals.TIMELINE_MODE_CHANGED, self._on_timeline_mode_signal)
 
     def _make_timeline_mode_placeholder(self, object_name: str, message: str) -> QFrame:
-        frame = QFrame(self)
+        frame = QFrame(self._timeline_content)
         frame.setObjectName(object_name)
         layout = QVBoxLayout(frame)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -342,14 +349,14 @@ class TimelineContainer(BaseWidget):
         self._scroll_stop_timer.setInterval(100)  # 100ms delay after scroll stops
         self._scroll_stop_timer.timeout.connect(self._on_scroll_stopped)
 
-        self.script_timeline = ScreenplayTimeline(self, self.workspace)
+        self.script_timeline = ScreenplayTimeline(self._timeline_content, self.workspace)
         self.storyboard_strip = self._make_timeline_mode_placeholder(
             "timeline_storyboard_strip",
             tr("Storyboard timeline — coming soon"),
         )
 
-        self.subtitle_timeline = SubtitleTimeline(self, self.workspace)
-        self.voice_timeline = VoiceTimeline(self, self.workspace)
+        self.subtitle_timeline = SubtitleTimeline(self._timeline_content, self.workspace)
+        self.voice_timeline = VoiceTimeline(self._timeline_content, self.workspace)
 
         self._install_event_filters_recursively(self.script_timeline)
         self._install_event_filters_recursively(self.storyboard_strip)
@@ -758,7 +765,7 @@ class TimelineContainer(BaseWidget):
         #self.cursor_overlay.setGeometry(self.rect())
         self.divider_overlay.setGeometry(self.rect())
         self._update_divider_positions()
-    
+
     def event(self, event):
         """
         Override event to track mouse position globally across all child widgets.

@@ -16,6 +16,7 @@ from app.ui.timeline.video_timeline_scroll import VideoTimelineScroll
 from app.ui.timeline.video_timeline_card import VideoTimelineCard
 from app.ui.workers import AsyncDataLoaderMixin
 from utils import qt_utils
+from utils.qt_utils import ancestor_widget_with_attr
 from utils.i18n_utils import tr, translation_manager
 
 logger = logging.getLogger(__name__)
@@ -326,8 +327,9 @@ class VideoTimeline(BaseTaskWidget, AsyncDataLoaderMixin):
             timeline.set_item_index(new_index)
             
             # Update unified scroll range for all timelines
-            if hasattr(self.parent(), 'update_unified_scroll_range'):
-                self.parent().update_unified_scroll_range()
+            c = ancestor_widget_with_attr(self, "update_unified_scroll_range")
+            if c is not None:
+                c.update_unified_scroll_range()
             
             # Force a layout update
             self.content_widget.update()
@@ -393,8 +395,9 @@ class VideoTimeline(BaseTaskWidget, AsyncDataLoaderMixin):
         self.timeline_layout.addStretch()
         
         # Update unified scroll range for all timelines
-        if hasattr(self.parent(), 'update_unified_scroll_range'):
-            self.parent().update_unified_scroll_range()
+        c = ancestor_widget_with_attr(self, "update_unified_scroll_range")
+        if c is not None:
+            c.update_unified_scroll_range()
         
         # 重置选中状态
         self.selected_card_index = None

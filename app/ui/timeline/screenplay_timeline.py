@@ -21,6 +21,7 @@ from app.ui.base_widget import BaseWidget
 from app.ui.timeline.screenplay_timeline_card import ScreenplayTimelineCard
 from app.ui.timeline.screenplay_timeline_scroll import ScreenplayTimelineScroll
 from utils import qt_utils
+from utils.qt_utils import ancestor_widget_with_attr
 from utils.i18n_utils import tr, translation_manager
 
 logger = logging.getLogger(__name__)
@@ -179,8 +180,9 @@ class ScreenplayTimeline(BaseWidget):
         else:
             self.selected_scene_id = None
 
-        if hasattr(self.parent(), "update_unified_scroll_range"):
-            self.parent().update_unified_scroll_range()
+        c = ancestor_widget_with_attr(self, "update_unified_scroll_range")
+        if c is not None:
+            c.update_unified_scroll_range()
 
     def select_scene(self, scene_id: str) -> None:
         self.selected_scene_id = scene_id
