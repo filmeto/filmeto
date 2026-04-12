@@ -6,6 +6,8 @@ from .story_board_shot import (
     VisualLayerMeta,
 )
 from .story_board_manager import StoryBoardManager
+from .shot_task_manager import ShotTaskManager
+from .shot_task_executor import ShotTaskExecutor
 
 __all__ = [
     "AudioLayerMeta",
@@ -14,4 +16,6 @@ __all__ = [
     "UxLogicLayerMeta",
     "VisualLayerMeta",
     "StoryBoardManager",
+    "ShotTaskManager",
+    "ShotTaskExecutor",
 ]

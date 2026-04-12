@@ -25,25 +25,25 @@ class Text2Image(BaseTool,BaseTaskWidget):
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(2, 2, 2, 2)
         layout.setSpacing(3)
-        
+
         # Create media selector for reference image with 9:16 aspect ratio
         self.media_selector = MediaSelector()
         # Set size with 9:16 aspect ratio (portrait) - height 54px, width 30px
         # This fits within the 60px max height constraint of prompt input config panel
         self.media_selector.preview_widget.setFixedSize(22, 40)
         self.media_selector.placeholder_widget.setFixedSize(22, 40)
-        
+
         # Set supported types to image formats only
         self.media_selector.set_supported_types(['png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp'])
-        
+
         # Connect signals
         self.media_selector.file_selected.connect(self._on_image_selected)
         self.media_selector.file_cleared.connect(self._on_image_cleared)
-        
+
         # Add to layout
         layout.addWidget(self.media_selector)
         layout.addSpacerItem(QSpacerItem(0, 0, QSizePolicy.Expanding, QSizePolicy.Minimum))
-        
+
         # Set the widget in the prompt input's config panel
         main_editor.prompt_input.set_config_panel_widget(widget)
 
@@ -58,25 +58,26 @@ class Text2Image(BaseTool,BaseTaskWidget):
     @classmethod
     def get_tool_name(cls):
         return "text2image"
-    
+
     @classmethod
     def get_tool_icon(cls):
         return "\ue60b"  # Text to image icon from iconfont.json
-    
+
     @classmethod
     def get_tool_display_name(cls):
         return tr("Text to Image")
-    
+
     @classmethod
     def uses_prompt_config_panel(cls):
         """This tool uses the prompt input config panel"""
         return True
-    
+
     def get_media_path(self, timeline_item):
         """Get media path for text2image tool"""
         return timeline_item.get_image_path()
 
     def params(self):
+        """Get parameters for timeline-based tasks."""
         timeline_index = self.workspace.get_project().get_timeline_index()
         timeline_item = self.workspace.get_project().get_timeline().get_item(timeline_index)
         prompt = self.editor.get_prompt() if self.editor else ""
@@ -94,6 +95,26 @@ class Text2Image(BaseTool,BaseTaskWidget):
             "height": height
         }
 
+    def params_for_shot(self, shot, prompt: str, options: dict = None) -> dict:
+        """
+        Get parameters for shot-based tasks (keyframe generation).
+
+        Args:
+            shot: StoryBoardShot instance
+            prompt: Generation prompt
+            options: Additional options (width, height, etc.)
+
+        Returns:
+            Task parameters dict
+        """
+        return {
+            "tool": "text2image",
+            "prompt": prompt,
+            "reference_image_path": self.reference_image_path,
+            "width": (options or {}).get("width", 1024),
+            "height": (options or {}).get("height", 1024),
+        }
+
     @asyncSlot()
     async def execute(self, task):
         # Only process text2image tasks to avoid conflicts with other tools
@@ -102,7 +123,7 @@ class Text2Image(BaseTool,BaseTaskWidget):
         try:
             import logging
             logger = logging.getLogger(__name__)
-            logger.info(f"Processing text2image task with FilmetoApi: {task.options}")
+            logger.info(f"Processing text2image task: {task.options}")
             from server.api import FilmetoApi, FilmetoTask, Ability, ResourceInput, ResourceType
             from server.api.types import SelectionConfig, SelectionMode
             from app.data.task import TaskResult as AppTaskResult, TaskProgress as AppTaskProgress
@@ -119,10 +140,11 @@ class Text2Image(BaseTool,BaseTaskWidget):
 
             # Create input resources if any (e.g., reference image)
             resources = []
-            if self.reference_image_path:
+            reference_image_path = task.options.get('reference_image_path') or self.reference_image_path
+            if reference_image_path:
                 resources.append(ResourceInput(
                     type=ResourceType.LOCAL_PATH,
-                    data=self.reference_image_path,
+                    data=reference_image_path,
                     mime_type="image/png"
                 ))
 
@@ -168,6 +190,13 @@ class Text2Image(BaseTool,BaseTaskWidget):
 
                     result_wrapper = FilmetoResultWrapper(update)
                     task_result = AppTaskResult(task, result_wrapper)
-                    self.workspace.on_task_finished(task_result)
+
+                    # Route result to appropriate handler
+                    if task.is_shot_task():
+                        # Shot task: route to ShotTaskExecutor
+                        task.project_task_manager.on_task_finished(task_result)
+                    else:
+                        # Timeline task: route to workspace
+                        self.workspace.on_task_finished(task_result)
         except Exception as e:
             logger.error(f"Error in Text2Image.execute: {e}", exc_info=True)

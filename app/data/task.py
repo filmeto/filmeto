@@ -49,6 +49,9 @@ class Task:
 
     A Task belongs to a TimelineItemTaskManager for storage,
     but reports progress through the ProjectTaskManager.
+
+    Also supports Shot tasks (is_shot_task=True) for storyboard keyframes,
+    which use ShotTaskManager instead of TimelineItemTaskManager.
     """
 
     def __init__(self, timeline_item_task_manager: 'TimelineItemTaskManager',
@@ -68,7 +71,7 @@ class Task:
         self.path = path
         self.config_path = os.path.join(self.path, "config.yml")
         self.options = options or {}
-        
+
         # Extract properties from options
         self.task_id = os.path.basename(path)
         self.title = f'Task {self.task_id}'
@@ -77,6 +80,9 @@ class Task:
         self.percent = self.options.get("percent", 0)
         self.status = self.options.get("status", "running")
         self.log = self.options.get("log", "")
+
+        # Detect if this is a shot task
+        self._is_shot_task = self.options.get("is_shot_task", False) or "shot_id" in self.options
 
     @property
     def task_manager(self) -> 'ProjectTaskManager':
@@ -99,6 +105,22 @@ class Task:
             self.status = config.get("status", "running")
             self.log = config.get("log", "")
 
+    def is_shot_task(self) -> bool:
+        """Check if this task is a shot keyframe task (not timeline-based)."""
+        return self._is_shot_task
+
+    def get_shot_id(self) -> Optional[str]:
+        """Get the shot ID if this is a shot task."""
+        return self.options.get("shot_id")
+
+    def get_scene_id(self) -> Optional[str]:
+        """Get the scene ID if this is a shot task."""
+        return self.options.get("scene_id")
+
+    def get_shot_path(self) -> Optional[str]:
+        """Get the shot directory path if this is a shot task."""
+        return self.options.get("shot_path")
+
 
 class TaskResult:
     """Represents the result of a completed task."""
@@ -108,10 +130,24 @@ class TaskResult:
         self.result = result
 
     def get_timeline_index(self) -> int:
-        return self.task.options['timeline_index']
+        """Get timeline index (only for timeline-based tasks)."""
+        return self.task.options.get('timeline_index', -1)
 
     def get_timeline_item_id(self) -> int:
-        return self.task.options.get('timeline_item_id', self.task.options.get('timeline_index'))
+        """Get timeline item ID (only for timeline-based tasks)."""
+        return self.task.options.get('timeline_item_id', self.task.options.get('timeline_index', -1))
+
+    def get_shot_id(self) -> Optional[str]:
+        """Get shot ID (only for shot-based tasks)."""
+        return self.task.get_shot_id()
+
+    def get_scene_id(self) -> Optional[str]:
+        """Get scene ID (only for shot-based tasks)."""
+        return self.task.get_scene_id()
+
+    def is_shot_result(self) -> bool:
+        """Check if this result is from a shot task."""
+        return self.task.is_shot_task()
 
     def get_image_path(self) -> Optional[str]:
         return self.result.get_image_path()
