@@ -226,9 +226,13 @@ class StoryBoardEditorViewModel(QObject):
 
     def _validate_shot_selection(self, scene_id: str, shot_ids: List[str]) -> None:
         if not self._selected_shot_id:
+            # 自动选择第一个 shot（如果有）
+            if shot_ids:
+                self._set_selected_shot(shot_ids[0])
             return
         if self._selected_shot_id not in shot_ids:
-            self._set_selected_shot("")
+            # 选中 shot 不存在时，选择第一个可用的
+            self._set_selected_shot(shot_ids[0] if shot_ids else "")
 
     @Slot(int)
     def set_current_scene_index(self, index: int) -> None:
