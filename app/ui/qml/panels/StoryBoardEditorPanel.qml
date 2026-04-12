@@ -42,6 +42,13 @@ Rectangle {
             Layout.bottomMargin: 8
             spacing: 8
 
+            Label {
+                text: typeof sbShotsSectionTitle !== "undefined" ? sbShotsSectionTitle : "Shots"
+                color: "#d0d0d0"
+                font.pixelSize: 13
+                font.bold: true
+            }
+
             IconToolButton {
                 text: "\ue6b8"
                 onClicked: if (storyBoardViewModel) storyBoardViewModel.on_refresh_clicked()

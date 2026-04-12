@@ -117,6 +117,18 @@
         <source>Set a valid timeline clip (video mode) so image generation can run.</source>
         <translation>Set a valid timeline clip (video mode) so image generation can run.</translation>
     </message>
+    <message>
+        <source>Shots</source>
+        <translation>Shots</translation>
+    </message>
+    <message>
+        <source>Key frame prompt</source>
+        <translation>Key frame prompt</translation>
+    </message>
+    <message>
+        <source>Select a shot above to edit the key frame prompt.</source>
+        <translation>Select a shot above to edit the key frame prompt.</translation>
+    </message>
     
     <!-- Preview Widget -->
     <message>

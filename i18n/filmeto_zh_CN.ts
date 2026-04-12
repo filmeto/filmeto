@@ -117,6 +117,18 @@
         <source>Set a valid timeline clip (video mode) so image generation can run.</source>
         <translation>请先在视频模式下设置有效的时间线片段，以便执行生图任务。</translation>
     </message>
+    <message>
+        <source>Shots</source>
+        <translation>镜头</translation>
+    </message>
+    <message>
+        <source>Key frame prompt</source>
+        <translation>关键帧提示词</translation>
+    </message>
+    <message>
+        <source>Select a shot above to edit the key frame prompt.</source>
+        <translation>在上方网格中选择一个镜头以编辑关键帧提示词。</translation>
+    </message>
     
     <!-- Preview Widget -->
     <message>
