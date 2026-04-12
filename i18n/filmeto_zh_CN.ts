@@ -93,6 +93,30 @@
         <source>Add Scene</source>
         <translation>添加场景</translation>
     </message>
+    <message>
+        <source>No project</source>
+        <translation>无项目</translation>
+    </message>
+    <message>
+        <source>No screenplay scenes</source>
+        <translation>暂无剧本场景</translation>
+    </message>
+    <message>
+        <source>No shots in this scene</source>
+        <translation>该场景暂无镜头</translation>
+    </message>
+    <message>
+        <source>Storyboard</source>
+        <translation>分镜</translation>
+    </message>
+    <message>
+        <source>Describe key frame for this shot…</source>
+        <translation>描述本镜头的关键帧画面…</translation>
+    </message>
+    <message>
+        <source>Set a valid timeline clip (video mode) so image generation can run.</source>
+        <translation>请先在视频模式下设置有效的时间线片段，以便执行生图任务。</translation>
+    </message>
     
     <!-- Preview Widget -->
     <message>

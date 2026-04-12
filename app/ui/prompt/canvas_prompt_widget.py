@@ -318,6 +318,12 @@ class CanvasPromptWidget(BaseTaskWidget):
         """Retrieve current prompt text"""
         return self._current_text
     
+    def set_prompt_plain_text(self, text: str) -> None:
+        """Replace prompt text (e.g. when switching context)."""
+        self.text_edit.setPlainText(text or "")
+        self._current_text = text or ""
+        self._in_input_mode = bool((text or "").strip())
+
     def clear_prompt(self):
         """Clear input field content"""
         self.text_edit.clear()

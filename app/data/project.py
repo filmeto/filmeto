@@ -22,6 +22,7 @@ from app.data.drawing import Drawing
 from app.data.resource import ResourceManager
 from app.data.character import CharacterManager
 from app.data.screen_play import ScreenPlayManager
+from app.data.story_board import StoryBoardManager
 from utils.yaml_utils import (
     AsyncFileNotFoundError,
     load_yaml,
@@ -97,6 +98,7 @@ class Project:
         self.resource_manager = ResourceManager(self.project_path)
         self.character_manager = CharacterManager(self.project_path, self.resource_manager)
         self.screenplay_manager = ScreenPlayManager(self.project_path)
+        self.story_board_manager = StoryBoardManager(self.project_path)
 
         # If load_data is True, ensure actor data is loaded
         if load_data:
@@ -421,6 +423,10 @@ class Project:
     def get_screenplay_manager(self) -> 'ScreenPlayManager':
         """Get the screenplay manager instance"""
         return self.screenplay_manager
+
+    def get_story_board_manager(self) -> 'StoryBoardManager':
+        """Get the storyboard manager instance (shots under screenplay scene dirs)."""
+        return self.story_board_manager
 
     def get_current_timeline_item_task_manager(self) -> Optional[TimelineItemTaskManager]:
         """Get the task manager for the current timeline item"""

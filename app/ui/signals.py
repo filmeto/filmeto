@@ -24,6 +24,7 @@ class Signals:
     PLAYBACK_STATE_CHANGED:str = "playback_state_changed"
     TIMELINE_MODE_CHANGED: str = "timeline_mode_changed"
     SCREENPLAY_SCENE_SELECTED: str = "screenplay_scene_selected"
+    STORYBOARD_SHOT_SELECTED: str = "storyboard_shot_selected"
 
     # UI Component Signals
     signals = {
@@ -32,6 +33,7 @@ class Signals:
         PLAYBACK_STATE_CHANGED:signal(PLAYBACK_STATE_CHANGED),
         TIMELINE_MODE_CHANGED: signal(TIMELINE_MODE_CHANGED),
         SCREENPLAY_SCENE_SELECTED: signal(SCREENPLAY_SCENE_SELECTED),
+        STORYBOARD_SHOT_SELECTED: signal(STORYBOARD_SHOT_SELECTED),
     }
 
 

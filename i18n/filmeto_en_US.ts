@@ -93,6 +93,30 @@
         <source>Add Scene</source>
         <translation>Add Scene</translation>
     </message>
+    <message>
+        <source>No project</source>
+        <translation>No project</translation>
+    </message>
+    <message>
+        <source>No screenplay scenes</source>
+        <translation>No screenplay scenes</translation>
+    </message>
+    <message>
+        <source>No shots in this scene</source>
+        <translation>No shots in this scene</translation>
+    </message>
+    <message>
+        <source>Storyboard</source>
+        <translation>Storyboard</translation>
+    </message>
+    <message>
+        <source>Describe key frame for this shot…</source>
+        <translation>Describe key frame for this shot…</translation>
+    </message>
+    <message>
+        <source>Set a valid timeline clip (video mode) so image generation can run.</source>
+        <translation>Set a valid timeline clip (video mode) so image generation can run.</translation>
+    </message>
     
     <!-- Preview Widget -->
     <message>

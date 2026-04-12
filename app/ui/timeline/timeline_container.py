@@ -17,6 +17,7 @@ from app.ui.base_widget import BaseWidget
 from app.ui.signals import Signals
 from app.ui.timeline.video_timeline import VideoTimeline
 from app.ui.timeline.screenplay_timeline import ScreenplayTimeline
+from app.ui.timeline.story_board_timeline import StoryBoardTimeline
 from app.ui.timeline.subtitle_timeline import SubtitleTimeline
 from app.ui.timeline.voice_timeline import VoiceTimeline
 from utils.i18n_utils import tr
@@ -247,7 +248,7 @@ class TimelineContainer(BaseWidget):
         self.subtitle_timeline = None
         self.voice_timeline = None
         self.script_timeline: Optional[ScreenplayTimeline] = None
-        self.storyboard_strip: Optional[QFrame] = None
+        self.story_board_timeline: Optional[StoryBoardTimeline] = None
         self._secondary_timelines_loaded = False
         self._timeline_mode = "video"
 
@@ -325,8 +326,8 @@ class TimelineContainer(BaseWidget):
         mode = self._timeline_mode
         if self.script_timeline is not None:
             self.script_timeline.setVisible(mode == "script")
-        if self.storyboard_strip is not None:
-            self.storyboard_strip.setVisible(mode == "storyboard")
+        if self.story_board_timeline is not None:
+            self.story_board_timeline.setVisible(mode == "storyboard")
         show_video_stack = mode == "video"
         self.video_timeline.setVisible(show_video_stack)
         if self.subtitle_timeline is not None:
@@ -350,22 +351,19 @@ class TimelineContainer(BaseWidget):
         self._scroll_stop_timer.timeout.connect(self._on_scroll_stopped)
 
         self.script_timeline = ScreenplayTimeline(self._timeline_content, self.workspace)
-        self.storyboard_strip = self._make_timeline_mode_placeholder(
-            "timeline_storyboard_strip",
-            tr("Storyboard timeline — coming soon"),
-        )
+        self.story_board_timeline = StoryBoardTimeline(self._timeline_content, self.workspace)
 
         self.subtitle_timeline = SubtitleTimeline(self._timeline_content, self.workspace)
         self.voice_timeline = VoiceTimeline(self._timeline_content, self.workspace)
 
         self._install_event_filters_recursively(self.script_timeline)
-        self._install_event_filters_recursively(self.storyboard_strip)
+        self._install_event_filters_recursively(self.story_board_timeline)
         self._install_event_filters_recursively(self.subtitle_timeline)
         self._install_event_filters_recursively(self.voice_timeline)
 
         # Vertical order: screenplay, storyboard, then subtitle → video → voice (merged video stack)
         self.main_layout.insertWidget(0, self.script_timeline)
-        self.main_layout.insertWidget(1, self.storyboard_strip)
+        self.main_layout.insertWidget(1, self.story_board_timeline)
         self.main_layout.insertWidget(2, self.subtitle_timeline)
         self.main_layout.insertWidget(4, self.voice_timeline)
 
@@ -392,16 +390,19 @@ class TimelineContainer(BaseWidget):
         """
         video_scrollbar = self.video_timeline.scroll_area.get_horizontal_scrollbar()
         script_scrollbar = self.script_timeline.scroll_area.get_horizontal_scrollbar()
+        story_scrollbar = self.story_board_timeline.scroll_area.get_horizontal_scrollbar()
         subtitle_scrollbar = self.subtitle_timeline.scroll_area.get_horizontal_scrollbar()
         voice_scrollbar = self.voice_timeline.scroll_area.get_horizontal_scrollbar()
 
         video_scrollbar.valueChanged.connect(lambda value: self._on_scroll_value_changed('video', value))
         script_scrollbar.valueChanged.connect(lambda value: self._on_scroll_value_changed('script', value))
+        story_scrollbar.valueChanged.connect(lambda value: self._on_scroll_value_changed('storyboard', value))
         subtitle_scrollbar.valueChanged.connect(lambda value: self._on_scroll_value_changed('subtitle', value))
         voice_scrollbar.valueChanged.connect(lambda value: self._on_scroll_value_changed('voice', value))
 
         self.video_timeline.scroll_area.scroll_started.connect(self._on_scroll_started)
         self.script_timeline.scroll_area.scroll_started.connect(self._on_scroll_started)
+        self.story_board_timeline.scroll_area.scroll_started.connect(self._on_scroll_started)
         self.subtitle_timeline.scroll_area.scroll_started.connect(self._on_scroll_started)
         self.voice_timeline.scroll_area.scroll_started.connect(self._on_scroll_started)
         
@@ -439,6 +440,8 @@ class TimelineContainer(BaseWidget):
                 self.video_timeline.scroll_area.get_horizontal_scrollbar().setValue(new_value)
             if source_timeline != 'script' and self.script_timeline:
                 self.script_timeline.scroll_area.get_horizontal_scrollbar().setValue(new_value)
+            if source_timeline != 'storyboard' and self.story_board_timeline:
+                self.story_board_timeline.scroll_area.get_horizontal_scrollbar().setValue(new_value)
             if source_timeline != 'subtitle' and self.subtitle_timeline:
                 self.subtitle_timeline.scroll_area.get_horizontal_scrollbar().setValue(new_value)
             if source_timeline != 'voice' and self.voice_timeline:
@@ -482,6 +485,8 @@ class TimelineContainer(BaseWidget):
         if self._secondary_timelines_loaded:
             if self.script_timeline:
                 self.script_timeline.set_content_width(width)
+            if self.story_board_timeline:
+                self.story_board_timeline.set_content_width(width)
             if self.subtitle_timeline:
                 self.subtitle_timeline.set_content_width(width)
             if self.voice_timeline:
@@ -507,6 +512,10 @@ class TimelineContainer(BaseWidget):
         ):
             scount = len(self.script_timeline.cards)
             w = max(w, self._width_for_horizontal_cards(scount))
+        if self._secondary_timelines_loaded and self.story_board_timeline and hasattr(
+            self.story_board_timeline, "compute_content_width"
+        ):
+            w = max(w, self.story_board_timeline.compute_content_width())
         return w
     
     def eventFilter(self, watched, event):
