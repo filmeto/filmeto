@@ -297,7 +297,13 @@ class StoryBoardEditorViewModel(QObject):
             return None
         return self._scene_ids[self._current_index]
 
-    def open_scene(self, scene_id: str) -> None:
+    def open_scene(self, scene_id: str, shot_id: Optional[str] = None) -> None:
+        """Open a scene and optionally select a shot.
+
+        Args:
+            scene_id: Scene ID to open
+            shot_id: Optional shot ID to select after opening scene
+        """
         if not scene_id:
             return
         if scene_id not in self._scene_ids:
@@ -310,4 +316,4 @@ class StoryBoardEditorViewModel(QObject):
             self._current_index = idx
             self.currentSceneIndexChanged.emit()
             self._set_selected_shot("")
-        self.reload_shots_for_current_scene()
+        self.reload_shots_for_current_scene(preserve_shot_id=shot_id)

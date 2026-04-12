@@ -167,6 +167,7 @@ class StoryBoardTimeline(BaseWidget):
         self.content_widget.setMinimumWidth(width)
 
     def select_shot(self, scene_id: str, shot_id: str) -> None:
+        """Select a shot and emit signal to sync with editor."""
         self.selected_scene_id = scene_id
         self.selected_shot_id = shot_id
         self._apply_shot_selection_highlight()
@@ -174,6 +175,12 @@ class StoryBoardTimeline(BaseWidget):
             Signals.STORYBOARD_SHOT_SELECTED,
             params={"scene_id": scene_id, "shot_id": shot_id},
         )
+
+    def select_shot_no_signal(self, scene_id: str, shot_id: str) -> None:
+        """Select a shot WITHOUT emitting signal (used when syncing from editor to prevent circular)."""
+        self.selected_scene_id = scene_id
+        self.selected_shot_id = shot_id
+        self._apply_shot_selection_highlight()
 
     def _pick_shot_for_content_x(
         self, card: StoryBoardSceneCard, content_x: float, cw: QWidget

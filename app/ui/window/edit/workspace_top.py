@@ -84,6 +84,7 @@ class MainWindowWorkspaceTop(BaseWidget):
             QTimer.singleShot(0, self._sync_storyboard_from_timeline)
 
     def _sync_storyboard_from_timeline(self):
+        """Sync storyboard center with timeline selection (scene + shot)."""
         parent_ws = self._workspace_parent
         if not parent_ws:
             return
@@ -94,8 +95,9 @@ class MainWindowWorkspaceTop(BaseWidget):
         if not tc or not tc.story_board_timeline:
             return
         sid = tc.story_board_timeline.selected_scene_id
+        shot_id = tc.story_board_timeline.selected_shot_id
         if sid:
-            self.storyboard_center.open_scene(sid)
+            self.storyboard_center.open_scene(sid, shot_id)
 
     def _sync_screenplay_editor_from_timeline(self):
         parent_ws = self._workspace_parent
@@ -120,8 +122,10 @@ class MainWindowWorkspaceTop(BaseWidget):
         self.screenplay_center.open_scene(scene_id)
 
     def _on_storyboard_shot_selected_ui(self, sender, params=None, **kwargs):
+        """Handle storyboard shot selection from timeline - sync both scene and shot."""
         if not params or not isinstance(params, dict):
             return
         scene_id = params.get("scene_id")
+        shot_id = params.get("shot_id")
         if isinstance(scene_id, str) and scene_id:
-            self.storyboard_center.open_scene(scene_id)
+            self.storyboard_center.open_scene(scene_id, shot_id)
