@@ -186,9 +186,15 @@ class ScreenplayTimeline(BaseWidget):
             c.update_unified_scroll_range()
 
     def select_scene(self, scene_id: str) -> None:
+        """Select a scene and emit signal to sync with editor."""
         self.selected_scene_id = scene_id
         self._apply_selection_highlight()
         Signals().send(Signals.SCREENPLAY_SCENE_SELECTED, params=scene_id)
+
+    def select_scene_no_signal(self, scene_id: str) -> None:
+        """Select a scene WITHOUT emitting signal (used when syncing from editor to prevent circular)."""
+        self.selected_scene_id = scene_id
+        self._apply_selection_highlight()
 
     def _apply_selection_highlight(self) -> None:
         for card in self.cards:

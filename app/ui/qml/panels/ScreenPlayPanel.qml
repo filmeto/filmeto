@@ -116,7 +116,8 @@ Item {
                         height: 64
                         radius: 8
                         color: rowMouse.pressed ? "#414141" : (rowMouse.containsMouse ? "#3f3f3f" : "#363636")
-                        border.color: "#2f2f2f"
+                        border.color: (screenPlayViewModel && screenPlayViewModel.selectedSceneId === model.sceneId) ? "#4080ff" : "#2f2f2f"
+                        border.width: (screenPlayViewModel && screenPlayViewModel.selectedSceneId === model.sceneId) ? 3 : 1
 
                         ColumnLayout {
                             anchors.fill: parent

@@ -100,6 +100,7 @@ class MainWindowWorkspaceTop(BaseWidget):
             self.storyboard_center.open_scene(sid, shot_id)
 
     def _sync_screenplay_editor_from_timeline(self):
+        """Sync screenplay center with timeline selection (scene)."""
         parent_ws = self._workspace_parent
         if not parent_ws:
             return

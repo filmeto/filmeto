@@ -73,6 +73,7 @@ class ScreenPlayViewModel(QObject):
 
     modeChanged = Signal()
     editingSceneIdChanged = Signal()
+    selectedSceneIdChanged = Signal()
     editorTextChanged = Signal()
     editorTextUpdated = Signal(str)
     emptyMessageChanged = Signal()
@@ -80,6 +81,7 @@ class ScreenPlayViewModel(QObject):
     addSceneRequested = Signal()
     refreshRequested = Signal()
     openSceneRequested = Signal(str)
+    sceneSelectionChanged = Signal(str)
     returnRequested = Signal()
     saveRequested = Signal(str, str)
     insertActionRequested = Signal()
@@ -90,6 +92,7 @@ class ScreenPlayViewModel(QObject):
         super().__init__(parent)
         self._mode = "list"
         self._editing_scene_id = ""
+        self._selected_scene_id = ""
         self._editor_text = ""
         self._empty_message = ""
 
@@ -108,6 +111,10 @@ class ScreenPlayViewModel(QObject):
     @Property(str, notify=emptyMessageChanged)
     def emptyMessage(self) -> str:
         return self._empty_message
+
+    @Property(str, notify=selectedSceneIdChanged)
+    def selectedSceneId(self) -> str:
+        return self._selected_scene_id
 
     def set_mode(self, mode: str) -> None:
         if self._mode != mode:
@@ -130,6 +137,12 @@ class ScreenPlayViewModel(QObject):
             self._empty_message = text
             self.emptyMessageChanged.emit()
 
+    def set_selected_scene_id(self, scene_id: str) -> None:
+        """Set selected scene ID without emitting sceneSelectionChanged signal (used for syncing from timeline)."""
+        if self._selected_scene_id != scene_id:
+            self._selected_scene_id = scene_id
+            self.selectedSceneIdChanged.emit()
+
     @Slot()
     def on_add_scene_clicked(self) -> None:
         self.addSceneRequested.emit()
@@ -140,6 +153,10 @@ class ScreenPlayViewModel(QObject):
 
     @Slot(str)
     def on_scene_clicked(self, scene_id: str) -> None:
+        """Handle scene click from list view - emit signals for opening and selection sync."""
+        self._selected_scene_id = scene_id
+        self.selectedSceneIdChanged.emit()
+        self.sceneSelectionChanged.emit(scene_id)
         self.openSceneRequested.emit(scene_id)
 
     @Slot()
