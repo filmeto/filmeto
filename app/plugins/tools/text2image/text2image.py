@@ -100,19 +100,26 @@ class Text2Image(BaseTool,BaseTaskWidget):
         Get parameters for shot-based tasks (keyframe generation).
 
         Args:
-            shot: StoryBoardShot instance
+            shot: StoryBoardShot instance (used for validation/consistency check)
             prompt: Generation prompt
             options: Additional options (width, height, etc.)
 
         Returns:
             Task parameters dict
         """
+        # Validate shot consistency (optional but helps catch bugs)
+        options = options or {}
+        if "shot_id" in options and options["shot_id"] != shot.shot_id:
+            logger.warning(f"shot_id mismatch: options={options['shot_id']}, shot={shot.shot_id}")
+        if "scene_id" in options and options["scene_id"] != shot.scene_id:
+            logger.warning(f"scene_id mismatch: options={options['scene_id']}, shot={shot.scene_id}")
+
         return {
             "tool": "text2image",
             "prompt": prompt,
             "reference_image_path": self.reference_image_path,
-            "width": (options or {}).get("width", 1024),
-            "height": (options or {}).get("height", 1024),
+            "width": options.get("width", 1024),
+            "height": options.get("height", 1024),
         }
 
     @asyncSlot()

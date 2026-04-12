@@ -12,8 +12,7 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
-from app.data.task import Task, TaskProgress
-from utils.async_queue_utils import AsyncQueue
+from app.data.task import Task
 from utils.yaml_utils import save_yaml_async, load_yaml_async, path_exists, to_thread
 
 logger = logging.getLogger(__name__)
@@ -116,10 +115,10 @@ class ShotTaskManager:
             await save_yaml_async(config_path, options)
 
             # Create Task instance (reuse existing Task class)
-            # Pass executor as project_task_manager for progress callbacks
+            # Pass executor as progress_callback_manager for progress callbacks
             task = Task(
-                timeline_item_task_manager=self,
-                project_task_manager=self.executor,
+                task_storage_manager=self,
+                progress_callback_manager=self.executor,
                 path=task_fold_path,
                 options=options,
             )

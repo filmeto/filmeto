@@ -170,7 +170,18 @@ class Project:
         self.task_manager.submit_task(params, timeline_item_id)
 
     def on_task_finished(self, result: TaskResult):
-        """Handle task completion - register resources and update timeline"""
+        """Handle task completion - register resources and update timeline.
+
+        Note: Shot tasks bypass this path entirely (handled by ShotTaskExecutor).
+        If a shot TaskResult accidentally reaches here, skip timeline updates.
+        """
+        # Guard: skip shot results (they don't have valid timeline_index)
+        if result.is_shot_result():
+            logger.warning("Shot task result reached Project.on_task_finished, skipping timeline update")
+            # Still emit signal for any listeners
+            self.task_manager.on_task_finished(result)
+            return
+
         self._register_task_resources(result)
         self.timeline.on_task_finished(result)
         self.task_manager.on_task_finished(result)

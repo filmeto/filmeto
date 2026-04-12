@@ -7,6 +7,7 @@ reusing existing Task module but without Timeline dependency.
 
 from __future__ import annotations
 
+import os
 import logging
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from app.data.story_board.story_board_manager import StoryBoardManager
+    from app.data.workspace import Workspace
     from app.spi.tool import BaseTool
     from .shot_task_manager import ShotTaskManager
 
@@ -32,6 +34,7 @@ class ShotTaskExecutor:
     - Independent task queue (create + execute)
     - Reuses Task, TaskResult, TaskProgress classes
     - Results written to shot.key_moment_image
+    - Resources registered in project ResourceManager (Option B)
     - No Timeline dependency
 
     Signals (similar to ProjectTaskManager):
@@ -45,14 +48,20 @@ class ShotTaskExecutor:
     task_progress = signal("shot_task_progress")
     task_finished = signal("shot_task_finished")
 
-    def __init__(self, story_board_manager: "StoryBoardManager"):
+    def __init__(
+        self,
+        story_board_manager: "StoryBoardManager",
+        workspace: Optional["Workspace"] = None,
+    ):
         """
         Initialize ShotTaskExecutor.
 
         Args:
             story_board_manager: StoryBoardManager for shot CRUD operations
+            workspace: Workspace for accessing ResourceManager (required for Option B)
         """
         self.manager = story_board_manager
+        self.workspace = workspace
 
         # Independent task queues (reuse AsyncQueue)
         self.create_queue = AsyncQueue()
@@ -63,6 +72,10 @@ class ShotTaskExecutor:
 
         # ShotTaskManager cache: key = "scene_id/shot_id"
         self._shot_task_managers: Dict[str, "ShotTaskManager"] = {}
+
+    def set_workspace(self, workspace: "Workspace"):
+        """Set workspace reference (e.g., after project load)."""
+        self.workspace = workspace
 
     def get_shot_task_manager(
         self,
@@ -207,11 +220,14 @@ class ShotTaskExecutor:
         """
         Handle task completion.
 
-        Writes result to shot.key_moment_image and emits signal.
-        """
-        # Emit finished signal first
-        self.task_finished.send(result)
+        Implements Option B:
+        1. Register resources in project ResourceManager
+        2. Persist result to shot.key_moment_image
+        3. Emit finished signal
 
+        This ordering ensures listeners see the updated keyframe when signal fires,
+        and generated content is available in project resource library.
+        """
         # Get shot info from task
         shot_id = result.task.options.get("shot_id")
         scene_id = result.task.options.get("scene_id")
@@ -219,9 +235,14 @@ class ShotTaskExecutor:
 
         if not all([shot_id, scene_id, image_path]):
             logger.warning("Missing shot info or image path in task result")
+            # Still emit signal so listeners know task finished (even if persist failed)
+            self.task_finished.send(result)
             return
 
-        # Write to shot's key_moment_image
+        # Step 1: Register resources in project ResourceManager (Option B)
+        self._register_task_resources(result)
+
+        # Step 2: Write to shot's key_moment_image BEFORE emitting signal
         try:
             success = self.manager.set_key_moment_image(
                 scene_id=scene_id,
@@ -234,6 +255,80 @@ class ShotTaskExecutor:
                 logger.warning(f"Failed to save keyframe for shot {scene_id}/{shot_id}")
         except Exception as e:
             logger.error(f"Error saving keyframe: {e}", exc_info=True)
+
+        # Step 3: Emit finished signal AFTER persistence (listeners assume keyframe is available)
+        self.task_finished.send(result)
+
+    def _register_task_resources(self, result: TaskResult):
+        """
+        Register AI-generated outputs as project resources (Option B).
+
+        Similar to Project._register_task_resources, but for shot tasks.
+        """
+        if not self.workspace:
+            logger.warning("No workspace available for resource registration")
+            return
+
+        project = self.workspace.get_project()
+        if not project:
+            logger.warning("No project available for resource registration")
+            return
+
+        resource_manager = project.get_resource_manager()
+        if not resource_manager:
+            logger.warning("No resource_manager available for registration")
+            return
+
+        task = result.get_task()
+        task_id = result.get_task_id()
+
+        task_options = task.options
+        tool = task_options.get("tool", "")
+        model = task_options.get("model", "")
+        prompt = task_options.get("prompt", "")
+        shot_id = task_options.get("shot_id", "")
+        scene_id = task_options.get("scene_id", "")
+
+        # Additional metadata for shot keyframe
+        additional_metadata = {
+            "prompt": prompt,
+            "model": model,
+            "tool": tool,
+            "task_id": task_id,
+            "shot_id": shot_id,
+            "scene_id": scene_id,
+            "source": "shot_keyframe",  # Mark as shot-generated
+        }
+
+        # Register image output if exists
+        image_path = result.get_image_path()
+        if image_path and os.path.exists(image_path):
+            try:
+                resource = resource_manager.add_resource(
+                    source_file_path=image_path,
+                    source_type="ai_generated",
+                    source_id=task_id,
+                    additional_metadata=additional_metadata,
+                )
+                if resource:
+                    logger.info(f"Registered shot keyframe resource: {resource.name}")
+            except Exception as e:
+                logger.error(f"Failed to register shot keyframe resource: {e}", exc_info=True)
+
+        # Register video output if exists (for future video keyframes)
+        video_path = result.get_video_path()
+        if video_path and os.path.exists(video_path):
+            try:
+                resource = resource_manager.add_resource(
+                    source_file_path=video_path,
+                    source_type="ai_generated",
+                    source_id=task_id,
+                    additional_metadata=additional_metadata,
+                )
+                if resource:
+                    logger.info(f"Registered shot video resource: {resource.name}")
+            except Exception as e:
+                logger.error(f"Failed to register shot video resource: {e}", exc_info=True)
 
     def _on_task_failed(self, task: Task, error: str):
         """Handle task failure."""

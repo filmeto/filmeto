@@ -17,7 +17,7 @@ This module provides a two-tier task management architecture:
 import asyncio
 import os
 import logging
-from typing import Any, Optional, Dict, List, TYPE_CHECKING
+from typing import Any, Optional, Dict, List, Union, TYPE_CHECKING
 
 from blinker import signal
 
@@ -41,33 +41,41 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from app.data.timeline import TimelineItem
     from app.data.project import Project
+    from app.data.story_board.shot_task_manager import ShotTaskManager
 
 
 class Task:
     """
     Represents a single task with its configuration and state.
 
-    A Task belongs to a TimelineItemTaskManager for storage,
-    but reports progress through the ProjectTaskManager.
+    A Task belongs to a TimelineItemTaskManager (for timeline tasks) or
+    ShotTaskManager (for shot keyframe tasks) for storage, and reports
+    progress through the ProjectTaskManager or ShotTaskExecutor.
 
-    Also supports Shot tasks (is_shot_task=True) for storyboard keyframes,
-    which use ShotTaskManager instead of TimelineItemTaskManager.
+    Shot tasks are identified by the explicit 'is_shot_task' flag in options.
     """
 
-    def __init__(self, timeline_item_task_manager: 'TimelineItemTaskManager',
-                 project_task_manager: 'ProjectTaskManager',
-                 path: str, options: Any):
+    def __init__(
+        self,
+        task_storage_manager: Union['TimelineItemTaskManager', 'ShotTaskManager'],
+        progress_callback_manager: Union['ProjectTaskManager', 'ShotTaskExecutor'],
+        path: str,
+        options: Any,
+    ):
         """
         Initialize a Task.
 
         Args:
-            timeline_item_task_manager: The TimelineItemTaskManager for storage
-            project_task_manager: The ProjectTaskManager for progress callbacks
+            task_storage_manager: TimelineItemTaskManager or ShotTaskManager for storage
+            progress_callback_manager: ProjectTaskManager or ShotTaskExecutor for progress callbacks
             path: Path to the task directory
-            options: Task configuration options
+            options: Task configuration options. For shot tasks, must contain 'is_shot_task': True
         """
-        self.timeline_item_task_manager = timeline_item_task_manager
-        self.project_task_manager = project_task_manager
+        self.task_storage_manager = task_storage_manager
+        self.progress_callback_manager = progress_callback_manager
+        # Backward compatibility aliases
+        self.timeline_item_task_manager = task_storage_manager
+        self.project_task_manager = progress_callback_manager
         self.path = path
         self.config_path = os.path.join(self.path, "config.yml")
         self.options = options or {}
@@ -81,12 +89,12 @@ class Task:
         self.status = self.options.get("status", "running")
         self.log = self.options.get("log", "")
 
-        # Detect if this is a shot task
-        self._is_shot_task = self.options.get("is_shot_task", False) or "shot_id" in self.options
+        # Detect shot task ONLY from explicit flag (not from presence of shot_id)
+        self._is_shot_task = bool(self.options.get("is_shot_task", False))
 
     @property
     def task_manager(self) -> 'ProjectTaskManager':
-        """Backward compatibility: return project task manager for progress callbacks"""
+        """Backward compatibility: return progress callback manager"""
         return self.project_task_manager
 
     def get_config_path(self) -> str:
@@ -106,7 +114,7 @@ class Task:
             self.log = config.get("log", "")
 
     def is_shot_task(self) -> bool:
-        """Check if this task is a shot keyframe task (not timeline-based)."""
+        """Check if this task is a shot keyframe task (requires explicit is_shot_task=True in options)."""
         return self._is_shot_task
 
     def get_shot_id(self) -> Optional[str]:
