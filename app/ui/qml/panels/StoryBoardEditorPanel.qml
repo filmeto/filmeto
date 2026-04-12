@@ -56,12 +56,31 @@ Rectangle {
                 ToolTip.text: "Refresh"
             }
 
-            IconToolButton {
-                text: "\ue145"
+            Button {
+                id: addShotButton
+                text: qsTr("Add shot")
                 enabled: storyBoardViewModel && storyBoardViewModel.sceneLabels.length > 0
+                implicitHeight: 30
+                Layout.minimumWidth: 96
                 onClicked: if (storyBoardViewModel) storyBoardViewModel.on_add_shot_clicked()
                 ToolTip.visible: hovered
-                ToolTip.text: "Add shot"
+                ToolTip.text: qsTr("Create a new shot in the current scene")
+                background: Rectangle {
+                    implicitHeight: 30
+                    implicitWidth: addShotButton.implicitWidth
+                    radius: 4
+                    color: !addShotButton.enabled ? "#3a3a3a"
+                        : (addShotButton.down ? "#2d5aa8" : (addShotButton.hovered ? "#3d6ec4" : "#4080ff"))
+                    border.width: 1
+                    border.color: addShotButton.enabled ? "#5a8fff" : "#555555"
+                }
+                contentItem: Text {
+                    text: addShotButton.text
+                    font.pixelSize: 12
+                    color: addShotButton.enabled ? "#ffffff" : "#888888"
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
             }
 
             Label {
