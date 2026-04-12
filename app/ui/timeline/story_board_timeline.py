@@ -1,6 +1,6 @@
 """Storyboard timeline: wide scene cards, each containing video-style shot cards."""
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QKeyEvent
@@ -15,7 +15,7 @@ from app.ui.timeline.story_board_scene_card import StoryBoardSceneCard
 from app.ui.timeline.story_board_timeline_scroll import StoryBoardTimelineScroll
 from utils import qt_utils
 from utils.i18n_utils import tr, translation_manager
-from utils.qt_utils import ancestor_widget_with_attr
+from utils.qt_utils import ancestor_widget_with_attr, widget_left_x_in_content
 
 
 def _sort_scenes(scenes: List[ScreenPlayScene]) -> List[ScreenPlayScene]:
@@ -174,6 +174,86 @@ class StoryBoardTimeline(BaseWidget):
             Signals.STORYBOARD_SHOT_SELECTED,
             params={"scene_id": scene_id, "shot_id": shot_id},
         )
+
+    def _pick_shot_for_content_x(
+        self, card: StoryBoardSceneCard, content_x: float, cw: QWidget
+    ) -> Optional[Tuple[str, str]]:
+        """Map horizontal content_x to (scene_id, shot_id) within one scene card."""
+        shots = card.shot_widgets
+        if not shots:
+            return None
+        for sh in shots:
+            sl = widget_left_x_in_content(sh, cw)
+            sr = sl + float(sh.width())
+            if sl <= content_x < sr:
+                return (card.scene_id, sh.shot_id)
+        best_pair = None
+        best_d = float("inf")
+        for sh in shots:
+            sl = widget_left_x_in_content(sh, cw)
+            sr = sl + float(sh.width())
+            mid = 0.5 * (sl + sr)
+            d = abs(content_x - mid)
+            if d < best_d:
+                best_d = d
+                best_pair = (card.scene_id, sh.shot_id)
+        return best_pair
+
+    def select_at_content_x(self, content_x: float) -> bool:
+        """
+        Select the shot whose card best matches horizontal position in content_widget coords.
+
+        Handles scene headers, rail, gaps between scenes, and padding before/after the strip.
+        """
+        cw = self.content_widget
+        if not self.scene_cards:
+            return False
+
+        bounds = []
+        for card in self.scene_cards:
+            left = widget_left_x_in_content(card, cw)
+            right = left + float(card.width())
+            bounds.append((card, left, right))
+
+        for card, left, right in bounds:
+            if left <= content_x < right:
+                pair = self._pick_shot_for_content_x(card, content_x, cw)
+                if pair:
+                    self.select_shot(pair[0], pair[1])
+                    return True
+                return False
+
+        first_card, first_left, _ = bounds[0]
+        last_card, _, last_right = bounds[-1]
+
+        if content_x < first_left:
+            if first_card.shot_widgets:
+                self.select_shot(first_card.scene_id, first_card.shot_widgets[0].shot_id)
+                return True
+            return False
+
+        if content_x >= last_right:
+            if last_card.shot_widgets:
+                self.select_shot(last_card.scene_id, last_card.shot_widgets[-1].shot_id)
+                return True
+            return False
+
+        for i in range(len(bounds) - 1):
+            _ca, _la, r0 = bounds[i]
+            _cb, l1, _rb = bounds[i + 1]
+            if r0 <= content_x < l1:
+                mid = 0.5 * (r0 + l1)
+                pick = _ca if content_x < mid else _cb
+                if pick.shot_widgets:
+                    if content_x < mid:
+                        sid = pick.shot_widgets[-1].shot_id
+                    else:
+                        sid = pick.shot_widgets[0].shot_id
+                    self.select_shot(pick.scene_id, sid)
+                    return True
+                return False
+
+        return False
 
     def _apply_shot_selection_highlight(self) -> None:
         for card in self.scene_cards:

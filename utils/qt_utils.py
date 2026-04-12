@@ -1,4 +1,11 @@
 from PySide6 import QtWidgets
+from PySide6.QtCore import QPoint
+
+
+def widget_left_x_in_content(w: QtWidgets.QWidget, cw: QtWidgets.QWidget) -> float:
+    """Left edge of w in cw's coords; uses global mapping so layout reparenting cannot break the chain."""
+    g = w.mapToGlobal(QPoint(0, 0))
+    return float(cw.mapFromGlobal(g).x())
 
 
 def ancestor_widget_with_attr(widget: QtWidgets.QWidget, attr: str):

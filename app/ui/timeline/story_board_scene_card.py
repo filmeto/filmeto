@@ -55,17 +55,8 @@ class StoryBoardSceneCard(QFrame):
 
         inner = QFrame(self)
         inner.setObjectName("storyBoardSceneInner")
-        inner.setStyleSheet(
-            """
-            QFrame#storyBoardSceneInner {
-                background-color: #25262a;
-                border: 2px solid #4a4d57;
-                border-left: none;
-                border-top-right-radius: 10px;
-                border-bottom-right-radius: 10px;
-            }
-            """
-        )
+        self.inner = inner
+        self._scene_selected = False
         inner_layout = QVBoxLayout(inner)
         inner_layout.setContentsMargins(_SCENE_H_PAD, _SCENE_V_PAD, _SCENE_H_PAD, _SCENE_V_PAD)
         inner_layout.setSpacing(_SCENE_HEADER_SHOT_GAP)
@@ -127,7 +118,62 @@ class StoryBoardSceneCard(QFrame):
             + SHOT_H
             + 2
         )
+        self._update_scene_chrome()
+
+    def set_scene_selected(self, selected: bool) -> None:
+        if self._scene_selected != selected:
+            self._scene_selected = selected
+            self._update_scene_chrome()
+
+    def _update_scene_chrome(self) -> None:
+        """Rail + inner frame reflect whether this scene is the active selection."""
+        sel = self._scene_selected
+        if sel:
+            self.rail.setStyleSheet(
+                """
+                QFrame {
+                    background-color: #6b7ae8;
+                    border: none;
+                    border-top-left-radius: 10px;
+                    border-bottom-left-radius: 10px;
+                }
+                """
+            )
+            self.inner.setStyleSheet(
+                """
+                QFrame#storyBoardSceneInner {
+                    background-color: #2c2f3a;
+                    border: 2px solid #4080ff;
+                    border-left: none;
+                    border-top-right-radius: 10px;
+                    border-bottom-right-radius: 10px;
+                }
+                """
+            )
+        else:
+            self.rail.setStyleSheet(
+                """
+                QFrame {
+                    background-color: #5c6bc0;
+                    border: none;
+                    border-top-left-radius: 10px;
+                    border-bottom-left-radius: 10px;
+                }
+                """
+            )
+            self.inner.setStyleSheet(
+                """
+                QFrame#storyBoardSceneInner {
+                    background-color: #25262a;
+                    border: 2px solid #4a4d57;
+                    border-left: none;
+                    border-top-right-radius: 10px;
+                    border-bottom-right-radius: 10px;
+                }
+                """
+            )
 
     def apply_shot_selection(self, scene_id: str, shot_id: Optional[str]) -> None:
         for w in self.shot_widgets:
             w.set_selected(scene_id == self.scene_id and w.shot_id == shot_id)
+        self.set_scene_selected(bool(scene_id) and scene_id == self.scene_id)

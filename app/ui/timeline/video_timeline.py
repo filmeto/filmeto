@@ -241,10 +241,10 @@ class VideoTimeline(BaseTaskWidget, AsyncDataLoaderMixin):
         scroll_value = self.scroll_area.horizontalScrollBar().value()
         viewport_width = self.scroll_area.viewport().width()
 
-        # 卡片宽度 + 间距 = 95px
-        card_width = 95
-        start_index = max(0, scroll_value // card_width - 1)  # 稍微提前一点开始加载
-        end_index = min(len(self.cards), (scroll_value + viewport_width) // card_width + 2)  # 稍微延后结束
+        # Match VideoTimelineCard fixed width (90) + timeline_layout spacing (5)
+        card_stride = 95
+        start_index = max(0, scroll_value // card_stride - 1)
+        end_index = min(len(self.cards), (scroll_value + viewport_width) // card_stride + 2)
 
         # 加载可见区域内的卡片
         for i in range(start_index, end_index):
