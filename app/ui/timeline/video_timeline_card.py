@@ -25,8 +25,8 @@ class VideoTimelineCard(QFrame):
         # --- 基本配置 ---
         self.setFrameStyle(QFrame.NoFrame)  # Use CSS for all styling to avoid Qt's frame affecting size
         self.setLineWidth(0)  # Use CSS for borders
-        # 设置初始大小 - keep the original visual size
-        self.setFixedSize(90, 160)  # Use fixed size to prevent any fluctuations
+        # Fixed footprint; keep in sync with story_board_shot_card.SHOT_W / SHOT_H (same strip geometry).
+        self.setFixedSize(90, 160)
         self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
         # 启用鼠标跟踪

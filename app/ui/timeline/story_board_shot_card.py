@@ -1,9 +1,10 @@
-"""Storyboard shot card: same footprint and chrome as video timeline cards (keyframe + caption)."""
+"""Storyboard shot card: same outer size as VideoTimelineCard; image fills card, shot id overlays."""
 
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import Qt, QSize, QPoint
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QFrame, QLabel, QSizePolicy, QVBoxLayout
 
@@ -12,14 +13,23 @@ from app.data.story_board.story_board_shot import StoryBoardShot
 if TYPE_CHECKING:
     from app.ui.timeline.story_board_timeline import StoryBoardTimeline
 
+logger = logging.getLogger(__name__)
+
+# Strictly aligned with video_timeline_card.VideoTimelineCard: setFixedSize(90, 160), 3px border.
 SHOT_W = 90
 SHOT_H = 160
-IMAGE_H = 128
-CAPTION_H = 32
+SHOT_BORDER = 3
 
 
 class StoryBoardShotCard(QFrame):
-    """One shot: key moment image (or placeholder) with title strip; borders match VideoTimelineCard."""
+    """
+    One shot: key moment image fills the frame; shot id overlays on bottom.
+
+    Simplified layout matching VideoTimelineCard:
+    - Single QLabel for image content, fills entire card
+    - Border radius matches between frame and content (8px)
+    - Overlay label positioned absolutely within card
+    """
 
     def __init__(
         self,
@@ -35,66 +45,80 @@ class StoryBoardShotCard(QFrame):
         self._is_hovered = False
         self._is_selected = False
 
+        # --- Basic setup (matching VideoTimelineCard) ---
         self.setFrameStyle(QFrame.NoFrame)
         self.setLineWidth(0)
         self.setFixedSize(SHOT_W, SHOT_H)
         self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.setMouseTracking(True)
 
+        # --- Layout (zero margins, single content label) ---
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
 
-        self.image_label = QLabel(self)
-        self.image_label.setFixedSize(SHOT_W, IMAGE_H)
-        self.image_label.setScaledContents(True)
-        self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.image_label.setStyleSheet(
-            "QLabel { background-color: #2c2c2c; border: none; border-top-left-radius: 8px; border-top-right-radius: 8px; }"
+        # Content label for image (fills entire card, same as VideoTimelineCard)
+        self.content_label = QLabel(self)
+        self.content_label.setStyleSheet(
+            "QLabel { background-color: #2c2c2c; border: none; border-radius: 8px; }"
         )
+        self.content_label.setScaledContents(True)
+        self.content_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Make label transparent to mouse events so clicks pass through to parent card
+        self.content_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
 
-        title = (shot.title or "").strip() or shot.shot_id
-        self.caption_label = QLabel(title, self)
-        self.caption_label.setFixedHeight(CAPTION_H)
-        self.caption_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.caption_label.setWordWrap(True)
-        cf = self.caption_label.font()
-        cf.setPointSize(8)
-        self.caption_label.setFont(cf)
-        self.caption_label.setStyleSheet("color: #c8c8c8; background-color: transparent;")
-        self.image_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        self.caption_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-
-        layout.addWidget(self.image_label)
-        layout.addWidget(self.caption_label)
-
-        self._apply_image(key_moment_path)
-        self._update_style()
-
-    def _apply_image(self, path: Optional[Path]) -> None:
-        if path is not None and path.is_file():
-            pix = QPixmap(str(path))
+        # Load image
+        if key_moment_path is not None and key_moment_path.is_file():
+            pix = QPixmap(str(key_moment_path))
             if not pix.isNull():
                 scaled = pix.scaled(
-                    QSize(SHOT_W, IMAGE_H),
+                    QSize(SHOT_W, SHOT_H),
                     Qt.AspectRatioMode.KeepAspectRatioByExpanding,
                     Qt.TransformationMode.SmoothTransformation,
                 )
-                self.image_label.setPixmap(scaled)
-                return
-        self.image_label.setText("")
-        self.image_label.setStyleSheet(
-            """
+                self.content_label.setPixmap(scaled)
+            else:
+                self._set_placeholder()
+        else:
+            self._set_placeholder()
+
+        layout.addWidget(self.content_label)
+
+        # --- Shot number overlay (absolute positioned, on top of image) ---
+        display_text = shot.shot_id
+        self.caption_label = QLabel(display_text, self)
+        self.caption_label.setFixedSize(SHOT_W, 18)
+        # Position at bottom of card
+        self.caption_label.move(0, SHOT_H - 18)
+        cf = self.caption_label.font()
+        cf.setPointSize(7)
+        cf.setBold(True)
+        self.caption_label.setFont(cf)
+        self.caption_label.setAlignment(
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
+        )
+        self.caption_label.setWordWrap(False)
+        self.caption_label.setStyleSheet(
+            "QLabel { color: #f2f2f2; background-color: rgba(0, 0, 0, 0.5); border: none; "
+            "border-radius: 0px; padding: 0px 4px; }"
+        )
+        self.caption_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.caption_label.raise_()
+
+        # --- Initial style ---
+        self._update_style()
+
+    def _set_placeholder(self) -> None:
+        """Set placeholder style when no image available."""
+        self.content_label.setText("")
+        self.content_label.setStyleSheet("""
             QLabel {
                 background-color: #2c2c2c;
                 border: 1px dashed #555555;
-                border-top-left-radius: 8px;
-                border-top-right-radius: 8px;
+                border-radius: 8px;
                 color: #666666;
             }
-            """
-        )
-        self.image_label.setPixmap(QPixmap())
+        """)
+        self.content_label.setPixmap(QPixmap())
 
     def set_selected(self, selected: bool) -> None:
         if self._is_selected != selected:
@@ -117,18 +141,28 @@ class StoryBoardShotCard(QFrame):
         super().mousePressEvent(event)
 
     def _update_style(self) -> None:
+        """Update border style based on hover and selection state (matching VideoTimelineCard)."""
         if self._is_selected:
-            border = "#4080ff"
+            self.setStyleSheet("""
+                QFrame {
+                    background-color: #2c2c2c;
+                    border: 3px solid #4080ff;
+                    border-radius: 8px;
+                }
+            """)
         elif self._is_hovered:
-            border = "#6a9eff"
+            self.setStyleSheet("""
+                QFrame {
+                    background-color: #2c2c2c;
+                    border: 3px solid #6a9eff;
+                    border-radius: 8px;
+                }
+            """)
         else:
-            border = "#a0a0a0"
-        self.setStyleSheet(
-            f"""
-            QFrame {{
-                background-color: #2c2c2c;
-                border: 3px solid {border};
-                border-radius: 8px;
-            }}
-            """
-        )
+            self.setStyleSheet("""
+                QFrame {
+                    background-color: #2c2c2c;
+                    border: 3px solid #a0a0a0;
+                    border-radius: 8px;
+                }
+            """)

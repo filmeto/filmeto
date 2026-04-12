@@ -15,10 +15,13 @@ from .story_board_shot_card import SHOT_H, SHOT_W, StoryBoardShotCard
 if TYPE_CHECKING:
     from app.ui.timeline.story_board_timeline import StoryBoardTimeline
 
-_SCENE_H_PAD = 12
-_SCENE_V_PAD = 6
-_SCENE_HEADER_SHOT_GAP = 4
-_SCENE_INNER_SPACING = 5
+_SCENE_H_PAD = 10
+_SCENE_V_PAD = 4
+_SCENE_HEADER_SHOT_GAP = 3
+# Gap between shot cards inside a scene. Video timeline uses layout spacing 5 between
+# VideoTimelineCard; here we use 10 to match story_board_timeline._scene_row_layout (spacing 10)
+# so shot borders do not visually stack, and to leave margin vs. the inner frame border.
+_SCENE_INNER_SPACING = 10
 _LEFT_RAIL = 5
 
 
@@ -72,12 +75,12 @@ class StoryBoardSceneCard(QFrame):
 
         self.header = QLabel(header_text, inner)
         hf = self.header.font()
-        hf.setPointSize(9)
+        hf.setPointSize(7)
         hf.setBold(True)
         self.header.setFont(hf)
         self.header.setWordWrap(False)
         _fm = QFontMetrics(hf)
-        _header_line_h = _fm.height()
+        _header_line_h = max(_fm.height(), 11)
         self.header.setFixedHeight(_header_line_h)
         self.header.setStyleSheet("color: #e8e8e8; background: transparent;")
         self.header.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
@@ -109,14 +112,15 @@ class StoryBoardSceneCard(QFrame):
         else:
             row_w = n * SHOT_W + max(0, n - 1) * _SCENE_INNER_SPACING
         inner_min = _SCENE_H_PAD * 2 + row_w
-        self.setMinimumWidth(_LEFT_RAIL + inner_min + 4)
-        # One-line header + gap + shot row + vertical padding
+        # Inner frame uses a 2px border on top/right/bottom; keep a few px slack so the
+        # layout never under-allocates width and squeezes shot spacing (which caused borders to overlap).
+        self.setMinimumWidth(_LEFT_RAIL + inner_min + 8)
+        # Header + gap + shot row (SHOT_H matches VideoTimeline card height) + vertical padding; no extra slack.
         self.setMinimumHeight(
             _SCENE_V_PAD * 2
             + _header_line_h
             + _SCENE_HEADER_SHOT_GAP
             + SHOT_H
-            + 2
         )
         self._update_scene_chrome()
 
