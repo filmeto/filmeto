@@ -84,11 +84,14 @@ class StoryBoardShotCard(QFrame):
         layout.addWidget(self.content_label)
 
         # --- Shot number overlay (absolute positioned, on top of image) ---
+        # Overlay width: card width minus border margins to stay inside
+        overlay_w = SHOT_W - 2 * SHOT_BORDER  # 84px
+        overlay_h = 18
         display_text = shot.shot_id
         self.caption_label = QLabel(display_text, self)
-        self.caption_label.setFixedSize(SHOT_W, 18)
-        # Position at bottom of card
-        self.caption_label.move(0, SHOT_H - 18)
+        self.caption_label.setFixedSize(overlay_w, overlay_h)
+        # Position inside border: x offset by SHOT_BORDER, y at bottom inside border
+        self.caption_label.move(SHOT_BORDER, SHOT_H - overlay_h - SHOT_BORDER)
         cf = self.caption_label.font()
         cf.setPointSize(7)
         cf.setBold(True)
@@ -97,9 +100,10 @@ class StoryBoardShotCard(QFrame):
             Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
         )
         self.caption_label.setWordWrap(False)
+        # Bottom corners rounded to match card's bottom border-radius (8px outer, 4px inner for overlay)
         self.caption_label.setStyleSheet(
             "QLabel { color: #f2f2f2; background-color: rgba(0, 0, 0, 0.5); border: none; "
-            "border-radius: 0px; padding: 0px 4px; }"
+            "border-radius: 4px; padding: 0px 4px; }"
         )
         self.caption_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.caption_label.raise_()

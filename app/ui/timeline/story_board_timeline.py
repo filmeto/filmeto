@@ -66,7 +66,7 @@ class StoryBoardTimeline(BaseWidget):
         self._strip = QWidget(self.content_widget)
         self._scene_row_layout = QHBoxLayout(self._strip)
         self._scene_row_layout.setContentsMargins(5, 4, 5, 4)
-        self._scene_row_layout.setSpacing(10)
+        self._scene_row_layout.setSpacing(5)  # Match video_timeline.timeline_layout spacing
 
         outer = QVBoxLayout(self.content_widget)
         outer.setContentsMargins(0, 0, 0, 0)

@@ -211,7 +211,7 @@ Rectangle {
                                         Image {
                                             id: kmImage
                                             anchors.fill: parent
-                                            fillMode: Image.PreserveAspectCrop
+                                            fillMode: Image.PreserveAspectFit  // Fit to show complete image centered
                                             source: (model.imageUrl !== undefined && model.imageUrl) ? model.imageUrl : ""
                                             asynchronous: true
                                             visible: source !== ""

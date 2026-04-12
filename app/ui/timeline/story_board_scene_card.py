@@ -18,10 +18,9 @@ if TYPE_CHECKING:
 _SCENE_H_PAD = 10
 _SCENE_V_PAD = 4
 _SCENE_HEADER_SHOT_GAP = 3
-# Gap between shot cards inside a scene. Video timeline uses layout spacing 5 between
-# VideoTimelineCard; here we use 10 to match story_board_timeline._scene_row_layout (spacing 10)
-# so shot borders do not visually stack, and to leave margin vs. the inner frame border.
-_SCENE_INNER_SPACING = 10
+# Gap between shot cards inside a scene. Match video_timeline.timeline_layout.setSpacing(5)
+# for consistent card spacing across all timeline modes.
+_SCENE_INNER_SPACING = 5
 _LEFT_RAIL = 5
 
 
@@ -75,10 +74,12 @@ class StoryBoardSceneCard(QFrame):
 
         self.header = QLabel(header_text, inner)
         hf = self.header.font()
-        hf.setPointSize(7)
+        hf.setPointSize(6)  # Smaller font for scene header to fit longer titles
         hf.setBold(True)
         self.header.setFont(hf)
         self.header.setWordWrap(False)
+        # Enable elide mode to show "..." when text is too long
+        self.header.setTextFormat(Qt.TextFormat.PlainText)
         _fm = QFontMetrics(hf)
         _header_line_h = max(_fm.height(), 11)
         self.header.setFixedHeight(_header_line_h)
@@ -115,6 +116,12 @@ class StoryBoardSceneCard(QFrame):
         # Inner frame uses a 2px border on top/right/bottom; keep a few px slack so the
         # layout never under-allocates width and squeezes shot spacing (which caused borders to overlap).
         self.setMinimumWidth(_LEFT_RAIL + inner_min + 8)
+
+        # Elide header text if too long for available width
+        available_header_w = row_w  # Header width equals shot row width
+        elided_text = _fm.elidedText(header_text, Qt.TextElideMode.ElideRight, available_header_w)
+        self.header.setText(elided_text)
+
         # Header + gap + shot row (SHOT_H matches VideoTimeline card height) + vertical padding; no extra slack.
         self.setMinimumHeight(
             _SCENE_V_PAD * 2
