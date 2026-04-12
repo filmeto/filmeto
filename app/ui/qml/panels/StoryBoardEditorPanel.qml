@@ -192,11 +192,13 @@ Rectangle {
                                         property string subLineText: model.subLine !== undefined ? model.subLine : ""
                                         visible: subLineText.length > 0
                                         width: topCol.width
+                                        height: 36
                                         text: subLineText
                                         color: "#888888"
                                         font.pixelSize: 10
                                         wrapMode: Text.WordWrap
-                                        maximumHeight: 36
+                                        elide: Text.ElideRight
+                                        clip: true
                                     }
 
                                     Rectangle {
