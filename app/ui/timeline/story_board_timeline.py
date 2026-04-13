@@ -182,6 +182,16 @@ class StoryBoardTimeline(BaseWidget):
         self.selected_shot_id = shot_id
         self._apply_shot_selection_highlight()
 
+    def select_scene(self, scene_id: str) -> None:
+        """Select a scene when no shot is available and emit sync signal."""
+        self.selected_scene_id = scene_id
+        self.selected_shot_id = None
+        self._apply_shot_selection_highlight()
+        Signals().send(
+            Signals.STORYBOARD_SHOT_SELECTED,
+            params={"scene_id": scene_id, "shot_id": None},
+        )
+
     def _pick_shot_for_content_x(
         self, card: StoryBoardSceneCard, content_x: float, cw: QWidget
     ) -> Optional[Tuple[str, str]]:
@@ -228,7 +238,8 @@ class StoryBoardTimeline(BaseWidget):
                 if pair:
                     self.select_shot(pair[0], pair[1])
                     return True
-                return False
+                self.select_scene(card.scene_id)
+                return True
 
         first_card, first_left, _ = bounds[0]
         last_card, _, last_right = bounds[-1]
@@ -237,13 +248,15 @@ class StoryBoardTimeline(BaseWidget):
             if first_card.shot_widgets:
                 self.select_shot(first_card.scene_id, first_card.shot_widgets[0].shot_id)
                 return True
-            return False
+            self.select_scene(first_card.scene_id)
+            return True
 
         if content_x >= last_right:
             if last_card.shot_widgets:
                 self.select_shot(last_card.scene_id, last_card.shot_widgets[-1].shot_id)
                 return True
-            return False
+            self.select_scene(last_card.scene_id)
+            return True
 
         for i in range(len(bounds) - 1):
             _ca, _la, r0 = bounds[i]
@@ -258,7 +271,8 @@ class StoryBoardTimeline(BaseWidget):
                         sid = pick.shot_widgets[0].shot_id
                     self.select_shot(pick.scene_id, sid)
                     return True
-                return False
+                self.select_scene(pick.scene_id)
+                return True
 
         return False
 
