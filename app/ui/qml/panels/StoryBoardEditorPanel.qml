@@ -91,10 +91,87 @@ Rectangle {
 
             ComboBox {
                 id: sceneCombo
-                Layout.fillWidth: true
+                Layout.fillWidth: false
+                Layout.minimumWidth: 110
+                Layout.maximumWidth: 260
+                implicitWidth: Math.min(
+                    Layout.maximumWidth,
+                    Math.max(Layout.minimumWidth, contentItem.implicitWidth + 38)
+                )
+                implicitHeight: 30
                 visible: storyBoardViewModel && storyBoardViewModel.sceneLabels.length > 0
                 model: storyBoardViewModel ? storyBoardViewModel.sceneLabels : []
                 currentIndex: storyBoardViewModel ? storyBoardViewModel.currentSceneIndex : 0
+                leftPadding: 10
+                rightPadding: 26
+                font.pixelSize: 12
+
+                delegate: ItemDelegate {
+                    width: sceneCombo.width
+                    highlighted: sceneCombo.highlightedIndex === index
+                    contentItem: Text {
+                        text: modelData
+                        color: "#d8d8d8"
+                        font.pixelSize: 12
+                        elide: Text.ElideRight
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    background: Rectangle {
+                        color: parent.highlighted ? "#3b3d44" : "#2a2b2f"
+                    }
+                }
+
+                indicator: Canvas {
+                    x: sceneCombo.width - width - 10
+                    y: (sceneCombo.height - height) / 2
+                    width: 10
+                    height: 6
+                    contextType: "2d"
+                    onPaint: {
+                        context.reset()
+                        context.moveTo(0, 0)
+                        context.lineTo(width, 0)
+                        context.lineTo(width / 2, height)
+                        context.closePath()
+                        context.fillStyle = "#bdbdbd"
+                        context.fill()
+                    }
+                }
+
+                contentItem: Text {
+                    text: sceneCombo.displayText
+                    color: "#e2e2e2"
+                    font.pixelSize: 12
+                    elide: Text.ElideRight
+                    verticalAlignment: Text.AlignVCenter
+                    leftPadding: sceneCombo.leftPadding
+                    rightPadding: sceneCombo.rightPadding
+                }
+
+                background: Rectangle {
+                    radius: 4
+                    color: "#2a2b2f"
+                    border.width: 1
+                    border.color: sceneCombo.activeFocus ? "#5a8fff" : "#4a4d57"
+                }
+
+                popup: Popup {
+                    y: sceneCombo.height + 2
+                    width: sceneCombo.width
+                    padding: 1
+                    contentItem: ListView {
+                        clip: true
+                        implicitHeight: contentHeight
+                        model: sceneCombo.popup.visible ? sceneCombo.delegateModel : null
+                        currentIndex: sceneCombo.highlightedIndex
+                    }
+                    background: Rectangle {
+                        radius: 4
+                        color: "#2a2b2f"
+                        border.width: 1
+                        border.color: "#4a4d57"
+                    }
+                }
                 onActivated: function (i) {
                     if (storyBoardViewModel)
                         storyBoardViewModel.set_current_scene_index(i)
