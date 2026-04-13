@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, List, Optional
 import logging
 
 from .react import React
+from .constants import ReactConfig
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,7 @@ class ReactService:
         *,
         workspace=None,
         chat_service=None,
-        max_steps: int = 20,
+        max_steps: int = ReactConfig.DEFAULT_MAX_STEPS,
     ) -> React:
         instance_key = self._generate_instance_key(project_name, react_type)
 

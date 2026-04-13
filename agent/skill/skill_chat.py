@@ -10,6 +10,7 @@ from typing import AsyncGenerator, Any, Dict, Optional, TYPE_CHECKING
 
 from agent.skill.skill_models import Skill
 from agent.event.agent_event import AgentEventType
+from agent.react.constants import ReactConfig
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ class SkillChat:
         project: Any = None,
         args: Optional[Dict[str, Any]] = None,
         chat_service=None,
-        max_steps: int = 10,
+        max_steps: int = ReactConfig.DEFAULT_MAX_STEPS,
         crew_member_name: Optional[str] = None,
         conversation_id: Optional[str] = None,
         message_id: Optional[str] = None,

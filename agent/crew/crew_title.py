@@ -6,6 +6,7 @@ from typing import List, Optional, Dict, Any
 from pathlib import Path
 import yaml
 from utils.i18n_utils import translation_manager
+from agent.react.constants import ReactConfig
 
 
 class CrewTitle:
@@ -35,7 +36,7 @@ class CrewTitle:
         self.skills = self.metadata.get('skills', [])
         self.model = self.metadata.get('model', 'gpt-4o-mini')
         self.temperature = self.metadata.get('temperature', 0.4)
-        self.max_steps = self.metadata.get('max_steps', 5)
+        self.max_steps = self.metadata.get('max_steps', ReactConfig.DEFAULT_MAX_STEPS)
         self.color = self.metadata.get('color', '#4a90e2')
         self.icon = self.metadata.get('icon', '🤖')
         self.display_names = self.metadata.get('display_names', {})

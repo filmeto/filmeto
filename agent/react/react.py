@@ -31,6 +31,7 @@ from .types import (
     ActionType,
     TodoState,
 )
+from .constants import ReactConfig
 
 
 class React:
@@ -47,7 +48,7 @@ class React:
         build_prompt_function: Callable[[str], str],
         available_tool_names: Optional[List[str]] = None,
         chat_service=None,
-        max_steps: int = 20,
+        max_steps: int = ReactConfig.DEFAULT_MAX_STEPS,
         run_id: Optional[str] = None,
         message_id: Optional[str] = None,
     ):
@@ -57,7 +58,7 @@ class React:
         self.build_prompt_function = build_prompt_function
         self.available_tool_names = available_tool_names or []
         self.chat_service = chat_service
-        self.max_steps = max_steps
+        self.max_steps = max(1, int(max_steps or 1))
         self.tool_service = ToolService()
         self.message_id = message_id or ""  # For UI event grouping
 
@@ -363,7 +364,7 @@ class React:
 
         skill_name = tool_args.get("skill_name")
         prompt = tool_args.get("prompt") or tool_args.get("message")
-        max_steps = tool_args.get("max_steps", 10)
+        max_steps = tool_args.get("max_steps", ReactConfig.DEFAULT_MAX_STEPS)
 
         if not skill_name:
             error_msg = "skill_name is required"

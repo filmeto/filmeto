@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Any
 
 from agent.crew.crew_member import CrewMember
 from agent.crew.crew_title import sort_crew_members_by_title_importance, CrewTitle
+from agent.react.constants import ReactConfig
 from agent.soul.soul_service import SoulService
 from utils.i18n_utils import translation_manager
 
@@ -127,7 +128,9 @@ class CrewService:
                     'skills': final_skills,
                     'model': selected_soul.metadata.get('model', crew_title_metadata.get('model', 'gpt-4o-mini')),
                     'temperature': selected_soul.metadata.get('temperature', crew_title_metadata.get('temperature', 0.4)),
-                    'max_steps': selected_soul.metadata.get('max_steps', crew_title_metadata.get('max_steps', 5)),
+                    'max_steps': selected_soul.metadata.get(
+                        'max_steps', crew_title_metadata.get('max_steps', ReactConfig.DEFAULT_MAX_STEPS)
+                    ),
                     'color': selected_soul.metadata.get('color', crew_title_metadata.get('color', '#4a90e2')),  # Soul color takes priority
                     'icon': selected_soul.metadata.get('icon', crew_title_metadata.get('icon', '🤖')),      # Soul icon takes priority
                     'prompt': ''  # Leave blank for user to customize later, will use soul knowledge dynamically
@@ -144,7 +147,7 @@ class CrewService:
                     'skills': crew_title_metadata.get('skills', []),
                     'model': crew_title_metadata.get('model', 'gpt-4o-mini'),
                     'temperature': crew_title_metadata.get('temperature', 0.4),
-                    'max_steps': crew_title_metadata.get('max_steps', 5),
+                    'max_steps': crew_title_metadata.get('max_steps', ReactConfig.DEFAULT_MAX_STEPS),
                     'color': crew_title_metadata.get('color', '#4a90e2'),  # Use crew title color as fallback
                     'icon': crew_title_metadata.get('icon', '🤖'),        # Use crew title icon as fallback
                     'prompt': ''  # Leave blank for user to customize later
@@ -231,7 +234,7 @@ class CrewService:
             'skills': crew_member_data.get('skills', []),
             'model': crew_member_data.get('model', 'gpt-4o-mini'),
             'temperature': crew_member_data.get('temperature', 0.4),
-            'max_steps': crew_member_data.get('max_steps', 5),
+            'max_steps': crew_member_data.get('max_steps', ReactConfig.DEFAULT_MAX_STEPS),
             'color': crew_member_data.get('color', '#4a90e2'),
             'icon': crew_member_data.get('icon', '🤖')
         }
@@ -298,7 +301,7 @@ class CrewService:
             'skills': crew_member_data.get('skills', []),
             'model': crew_member_data.get('model', 'gpt-4o-mini'),
             'temperature': crew_member_data.get('temperature', 0.4),
-            'max_steps': crew_member_data.get('max_steps', 5),
+            'max_steps': crew_member_data.get('max_steps', ReactConfig.DEFAULT_MAX_STEPS),
             'color': crew_member_data.get('color', '#4a90e2'),
             'icon': crew_member_data.get('icon', '🤖')
         }

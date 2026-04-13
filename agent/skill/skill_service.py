@@ -11,6 +11,7 @@ from typing import AsyncGenerator, Dict, List, Optional, Any, TYPE_CHECKING
 
 # Import data models
 from agent.skill.skill_models import Skill
+from agent.react.constants import ReactConfig
 
 logger = logging.getLogger(__name__)
 
@@ -481,7 +482,7 @@ class SkillService:
         project: Any = None,
         args: Optional[Dict[str, Any]] = None,
         chat_service=None,
-        max_steps: int = 10,
+        max_steps: int = ReactConfig.DEFAULT_MAX_STEPS,
         crew_member_name: Optional[str] = None,
         conversation_id: Optional[str] = None,
         message_id: Optional[str] = None,

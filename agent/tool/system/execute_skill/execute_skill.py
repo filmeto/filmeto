@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, TYPE_CHECKING, AsyncGenerator
 import logging
 from ...base_tool import BaseTool, ToolMetadata, ToolParameter
+from agent.react.constants import ReactConfig
 
 # Tool directory for metadata loading
 _tool_dir = Path(__file__).parent
@@ -80,7 +81,7 @@ class ExecuteSkillTool(BaseTool):
 
         skill_name = parameters.get("skill_name")
         prompt = parameters.get("prompt") or parameters.get("message")
-        max_steps = parameters.get("max_steps", 10)
+        max_steps = parameters.get("max_steps", ReactConfig.DEFAULT_MAX_STEPS)
 
         if not skill_name:
             yield self._create_event(

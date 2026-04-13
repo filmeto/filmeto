@@ -12,6 +12,7 @@ import yaml
 from agent.chat.agent_chat_message import AgentMessage, StructureContent
 from agent.chat.agent_chat_signals import AgentChatSignals
 from agent.chat.agent_chat_types import ContentType
+from agent.react.constants import ReactConfig
 from agent.plan.plan_service import PlanService
 from agent.skill.skill_service import SkillService, Skill
 from agent.soul import soul_service as soul_service_instance, SoulService
@@ -36,7 +37,7 @@ class CrewMemberConfig:
     prompt: str = ""
     model: str = "gpt-4o-mini"
     temperature: float = 0.4
-    max_steps: int = 5
+    max_steps: int = ReactConfig.DEFAULT_MAX_STEPS
     color: str = "#4a90e2"  # Default color for the agent's icon
     icon: str = "🤖"  # Default icon for the agent
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -54,7 +55,7 @@ class CrewMemberConfig:
         skills = _normalize_list(metadata.get("skills", []))
         model = metadata.get("model", "gpt-4o-mini")
         temperature = float(metadata.get("temperature", 0.4))
-        max_steps = int(metadata.get("max_steps", 5))
+        max_steps = int(metadata.get("max_steps", ReactConfig.DEFAULT_MAX_STEPS))
         color = metadata.get("color", "#4a90e2")  # Get color from metadata, default to blue
         icon = metadata.get("icon", "🤖")  # Get icon from metadata, default to robot
 
