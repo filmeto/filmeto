@@ -186,6 +186,12 @@ class StoryBoardTimeline(BaseWidget):
         if c is not None:
             c.update_unified_scroll_range()
 
+        # TimelineContainer installs click hit-test via event filters.
+        # Rebuilding scene/shot widgets creates new children that must be re-registered.
+        filter_host = ancestor_widget_with_attr(self, "_install_event_filters_recursively")
+        if filter_host is not None:
+            filter_host._install_event_filters_recursively(self)
+
     def set_content_width(self, width: int) -> None:
         self.content_widget.setMinimumWidth(width)
 
