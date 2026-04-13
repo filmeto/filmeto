@@ -11,6 +11,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+from blinker import signal
+
 from utils.md_with_meta_utils import read_md_with_meta, write_md_with_meta, update_md_with_meta
 
 from app.data.screen_play.scene_paths import SHOT_MD_NAME
@@ -54,6 +56,15 @@ class StoryBoardManager:
 
     def __init__(self, project_path: Union[str, Path]):
         self._screenplay = ScreenPlayManager(project_path)
+        self._shot_changed = signal("storyboard_shot_changed")
+
+    def connect_shot_changed(self, func) -> None:
+        """Connect a listener for storyboard shot create/update/delete events."""
+        self._shot_changed.connect(func)
+
+    def disconnect_shot_changed(self, func) -> None:
+        """Disconnect a previously connected shot-changed listener."""
+        self._shot_changed.disconnect(func)
 
     def _scene_exists(self, scene_id: str) -> bool:
         return self._screenplay.get_scene(scene_id) is not None
@@ -187,6 +198,10 @@ class StoryBoardManager:
             _apply_shot_updates(shot, metadata)
         try:
             write_md_with_meta(self.shot_md_path(scene_id, shot_id), shot.to_metadata(), content)
+            self._shot_changed.send(
+                self,
+                params={"action": "created", "scene_id": scene_id, "shot_id": shot_id},
+            )
             return True
         except Exception:
             try:
@@ -212,7 +227,13 @@ class StoryBoardManager:
             updates["updated_at"] = datetime.now().isoformat()
             _apply_shot_updates(base, updates)
             final_body = content if content is not None else base.content
-            return update_md_with_meta(md, base.to_metadata(), final_body)
+            ok = update_md_with_meta(md, base.to_metadata(), final_body)
+            if ok:
+                self._shot_changed.send(
+                    self,
+                    params={"action": "updated", "scene_id": scene_id, "shot_id": shot_id},
+                )
+            return ok
         except Exception:
             return False
 
@@ -221,6 +242,10 @@ class StoryBoardManager:
         try:
             if sdir.is_dir():
                 shutil.rmtree(sdir)
+                self._shot_changed.send(
+                    self,
+                    params={"action": "deleted", "scene_id": scene_id, "shot_id": shot_id},
+                )
                 return True
             return False
         except Exception:

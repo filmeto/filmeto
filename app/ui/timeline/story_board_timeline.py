@@ -50,6 +50,7 @@ class StoryBoardTimeline(BaseWidget):
 
         self._screenplay_manager: Optional[ScreenPlayManager] = None
         self.story_board_manager: Optional[StoryBoardManager] = None
+        self._connected_story_board_manager: Optional[StoryBoardManager] = None
 
         self.scroll_area = StoryBoardTimelineScroll()
         self.scroll_area.setWidgetResizable(True)
@@ -96,6 +97,28 @@ class StoryBoardTimeline(BaseWidget):
         else:
             self._screenplay_manager = None
             self.story_board_manager = None
+        self._connect_storyboard_events()
+
+    def _connect_storyboard_events(self) -> None:
+        """Keep a single active subscription to storyboard shot changes."""
+        if self._connected_story_board_manager is self.story_board_manager:
+            return
+        if self._connected_story_board_manager is not None:
+            try:
+                self._connected_story_board_manager.disconnect_shot_changed(
+                    self._on_storyboard_shot_changed
+                )
+            except Exception:
+                pass
+        self._connected_story_board_manager = self.story_board_manager
+        if self._connected_story_board_manager is not None:
+            self._connected_story_board_manager.connect_shot_changed(
+                self._on_storyboard_shot_changed
+            )
+
+    def _on_storyboard_shot_changed(self, sender, params=None, **kwargs) -> None:
+        """Refresh timeline immediately when shots are mutated in storyboard editor."""
+        self._rebuild_scene_strip()
 
     def _retranslate_ui(self) -> None:
         self.setWindowTitle(tr("Storyboard timeline"))
