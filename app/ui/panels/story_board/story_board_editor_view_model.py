@@ -17,15 +17,16 @@ def _sort_shot_ids(ids: List[str]) -> List[str]:
 
 def _shot_subline(shot: StoryBoardShot) -> str:
     parts: List[str] = []
-    cm = (shot.tech_director.camera_move or "").strip()
-    if cm:
-        parts.append(cm)
-    pc = (shot.visual.picture_content or "").strip()
-    if pc:
-        parts.append(pc[:100] + ("…" if len(pc) > 100 else ""))
-    dlg = (shot.audio.dialogue or "").strip()
-    if dlg:
-        parts.append(dlg[:80] + ("…" if len(dlg) > 80 else ""))
+    ctx = shot.keyframe_context or {}
+    prompt = str(ctx.get("prompt", "") or "").strip()
+    ability_model = str(ctx.get("ability_model", "") or ctx.get("model", "") or "").strip()
+    refs = ctx.get("reference_images") or ctx.get("references") or []
+    if prompt:
+        parts.append(prompt[:100] + ("…" if len(prompt) > 100 else ""))
+    if ability_model:
+        parts.append(f"model: {ability_model}")
+    if isinstance(refs, list) and refs:
+        parts.append(f"refs: {len(refs)}")
     return " · ".join(parts) if parts else ""
 
 
@@ -77,8 +78,7 @@ class StoryBoardShotListModel(QAbstractListModel):
         if role == self.SceneIdRole:
             return shot.scene_id
         if role == self.HeaderRole:
-            title = (shot.title or "").strip()
-            return f"Shot {shot.shot_id}" + (f" · {title}" if title else "")
+            return f"Shot {shot.shot_no or shot.shot_id}"
         if role == self.SublineRole:
             return _shot_subline(shot)
         if role == self.ImageUrlRole:
@@ -86,7 +86,7 @@ class StoryBoardShotListModel(QAbstractListModel):
                 return self._image_urls[index.row()]
             return ""
         if role == self.BodyRole:
-            return shot.content or ""
+            return shot.description or ""
         return None
 
     def set_rows(self, scene_id: str, shots: List[StoryBoardShot], image_urls: List[str]) -> None:
@@ -259,7 +259,7 @@ class StoryBoardEditorViewModel(QObject):
         if self._current_index < 0 or self._current_index >= len(self._scene_ids):
             return
         scene_id = self._scene_ids[self._current_index]
-        self._storyboard.update_shot(scene_id, shot_id, {}, content=body)
+        self._storyboard.update_shot(scene_id, shot_id, {"description": body}, content=body)
         self.reload_shots_for_current_scene(preserve_shot_id=shot_id)
 
     @Slot(str)
@@ -288,7 +288,7 @@ class StoryBoardEditorViewModel(QObject):
         if not self._storyboard or not self._scene_ids:
             return
         scene_id = self._scene_ids[self._current_index]
-        self._storyboard.update_shot(scene_id, shot_id, {"title": title})
+        self._storyboard.update_shot(scene_id, shot_id, {"description": title})
 
     def current_scene_id(self) -> Optional[str]:
         if not self._scene_ids or self._current_index < 0:

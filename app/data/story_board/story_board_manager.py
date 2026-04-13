@@ -19,11 +19,7 @@ from app.data.screen_play.scene_paths import SHOT_MD_NAME
 from app.data.screen_play.screen_play_manager import ScreenPlayManager
 
 from .story_board_shot import (
-    AudioLayerMeta,
     StoryBoardShot,
-    TechDirectorLayerMeta,
-    UxLogicLayerMeta,
-    VisualLayerMeta,
 )
 
 _KEY_MOMENT_PREFIX = "key_moment"
@@ -31,22 +27,28 @@ _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
 
 def _apply_shot_updates(base: StoryBoardShot, updates: Dict[str, Any]) -> None:
+    if "shot_no" in updates and updates["shot_no"] is not None:
+        base.shot_no = str(updates["shot_no"])
     if "title" in updates and updates["title"] is not None:
-        base.title = str(updates["title"])
+        # Backward compatibility: map legacy title to description when needed.
+        if not base.description:
+            base.description = str(updates["title"])
+    if "description" in updates and updates["description"] is not None:
+        base.description = str(updates["description"])
     if "content" in updates and updates["content"] is not None:
-        base.content = str(updates["content"])
-    if "visual" in updates and isinstance(updates["visual"], dict):
-        base.visual = VisualLayerMeta.from_dict({**base.visual.to_dict(), **updates["visual"]})
-    if "audio" in updates and isinstance(updates["audio"], dict):
-        base.audio = AudioLayerMeta.from_dict({**base.audio.to_dict(), **updates["audio"]})
-    if "tech_director" in updates and isinstance(updates["tech_director"], dict):
-        base.tech_director = TechDirectorLayerMeta.from_dict(
-            {**base.tech_director.to_dict(), **updates["tech_director"]}
-        )
-    if "ux_logic" in updates and isinstance(updates["ux_logic"], dict):
-        base.ux_logic = UxLogicLayerMeta.from_dict({**base.ux_logic.to_dict(), **updates["ux_logic"]})
+        base.description = str(updates["content"])
     if "key_moment_relpath" in updates and updates["key_moment_relpath"] is not None:
         base.key_moment_relpath = str(updates["key_moment_relpath"])
+    if "keyframe_context" in updates and isinstance(updates["keyframe_context"], dict):
+        merged = dict(base.keyframe_context or {})
+        merged.update(updates["keyframe_context"])
+        base.keyframe_context = merged
+
+
+def _derive_shot_no(screenplay: ScreenPlayManager, scene_id: str, shot_id: str) -> str:
+    scene = screenplay.get_scene(scene_id)
+    scene_number = (scene.scene_number if scene else "") or scene_id
+    return f"{scene_number}.{shot_id}"
 
 
 class StoryBoardManager:
@@ -189,15 +191,17 @@ class StoryBoardManager:
         shot = StoryBoardShot(
             scene_id=scene_id,
             shot_id=shot_id,
-            title=title,
-            content=content,
+            shot_no=_derive_shot_no(self._screenplay, scene_id, shot_id),
+            description=str(content or title or ""),
             created_at=ts,
             updated_at=ts,
         )
         if metadata:
             _apply_shot_updates(shot, metadata)
         try:
-            write_md_with_meta(self.shot_md_path(scene_id, shot_id), shot.to_metadata(), content)
+            write_md_with_meta(
+                self.shot_md_path(scene_id, shot_id), shot.to_metadata(), shot.description
+            )
             self._shot_changed.send(
                 self,
                 params={"action": "created", "scene_id": scene_id, "shot_id": shot_id},
@@ -226,7 +230,7 @@ class StoryBoardManager:
             updates = dict(updates)
             updates["updated_at"] = datetime.now().isoformat()
             _apply_shot_updates(base, updates)
-            final_body = content if content is not None else base.content
+            final_body = content if content is not None else base.description
             ok = update_md_with_meta(md, base.to_metadata(), final_body)
             if ok:
                 self._shot_changed.send(

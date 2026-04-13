@@ -87,7 +87,7 @@ class StoryBoardShotCard(QFrame):
         # Overlay width: card width minus border margins to stay inside
         overlay_w = SHOT_W - 2 * SHOT_BORDER  # 84px
         overlay_h = 18
-        display_text = shot.shot_id
+        display_text = shot.shot_no or shot.shot_id
         self.caption_label = QLabel(display_text, self)
         self.caption_label.setFixedSize(overlay_w, overlay_h)
         # Position inside border: x offset by SHOT_BORDER, y at bottom inside border

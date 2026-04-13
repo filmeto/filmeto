@@ -153,6 +153,20 @@ class ShotTaskExecutor:
         task_options.setdefault("width", 1024)
         task_options.setdefault("height", 1024)
 
+        # Persist prompt context in shot metadata for prompt/canvas display.
+        keyframe_context = {
+            "prompt": prompt,
+            "ability_model": task_options.get("ability_model", "") or task_options.get("model", ""),
+            "model": task_options.get("model", ""),
+            "reference_images": task_options.get("reference_images", []) or task_options.get("references", []),
+            "tool": task_options.get("tool", ""),
+        }
+        self.manager.update_shot(
+            shot.scene_id,
+            shot.shot_id,
+            {"keyframe_context": keyframe_context},
+        )
+
         # Attach manager and tool for async handler
         task_options["_shot_task_manager"] = shot_task_manager
         task_options["_tool_instance"] = tool
