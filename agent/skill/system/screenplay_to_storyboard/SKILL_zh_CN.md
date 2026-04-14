@@ -1,14 +1,14 @@
 ---
 name: screenplay_to_storyboard
-description: 将剧本场景转换为分镜时间线卡片，并为每个分镜提交文生图任务。适用于用户要求把 screenplay/script 转为 storyboard、shot card、timeline 分镜草图的场景。
+description: 将剧本场景转换为分镜镜头（shot），并为每个镜头生成关键帧。适用于用户要求把 screenplay/script 转为 storyboard、shot card、分镜草图的场景。
 tools:
   - screen_play
-  - timeline_item
+  - story_board
 ---
 
 # Screenplay To Storyboard
 
-该技能用于把剧本场景转换为分镜卡片：每个分镜对应一个 timeline item，并触发一次文生图生成。
+该技能用于把剧本场景转换为分镜镜头：每个分镜先创建为 storyboard shot，再触发一次关键帧生成。
 
 ## 执行流程
 
@@ -33,22 +33,41 @@ tools:
 - 默认每个场景生成一个分镜；若用户要求可生成多分镜。
 - 提示词保持视觉化、简洁。
 
-4. 对每个分镜调用 `timeline_item` 创建/编辑并提交文生图：
+4. 对每个分镜先调用 `story_board` 创建 shot：
 
 ```json
 {
   "type": "tool",
-  "tool_name": "timeline_item",
+  "tool_name": "story_board",
   "tool_args": {
     "operation": "create",
-    "prompt": "cinematic storyboard frame, ...",
-    "ability": "text2image",
-    "submit_task": true
+    "scene_id": "scene_001",
+    "description": "Storyboard shot for scene ...",
+    "keyframe_context": {
+      "prompt": "cinematic storyboard frame, ..."
+    }
   }
 }
 ```
 
-5. 按场景顺序处理全部分镜，最后一个处理的 timeline item 保持选中状态。
+5. 然后调用 `story_board` 为该 shot 生成关键帧：
+
+```json
+{
+  "type": "tool",
+  "tool_name": "story_board",
+  "tool_args": {
+    "operation": "text2image",
+    "scene_id": "scene_001",
+    "shot_id": "scene_001_shot_001",
+    "prompt": "cinematic storyboard frame, ...",
+    "width": 1024,
+    "height": 1024
+  }
+}
+```
+
+6. 按场景顺序处理全部分镜，确保每个生成结果都绑定到对应的 storyboard shot。
 
 ## 提示词模板
 
@@ -60,6 +79,6 @@ tools:
 
 ## 约束
 
-- 一个分镜对应一个 timeline item。
-- 除非用户明确要求其他能力，否则统一使用 `text2image`。
-- 必须通过 `timeline_item` 工具保持与界面一致的时间线行为，不直接修改底层文件。
+- 一个计划分镜对应一个 storyboard shot。
+- 必须使用 `story_board` 工具完成 shot 创建与关键帧生成，不使用 `timeline_item`。
+- 除非用户明确要求 `image2image`，默认使用 `text2image`。

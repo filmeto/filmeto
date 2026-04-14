@@ -3,12 +3,12 @@ name: screenplay_to_storyboard
 description: Convert screenplay scenes into storyboard timeline items and submit text-to-image generation for each shot. Use when the user asks to transform script/screenplay into storyboard, shot cards, or timeline visual drafts.
 tools:
   - screen_play
-  - timeline_item
+  - story_board
 ---
 
 # Screenplay To Storyboard
 
-This skill converts screenplay scenes into storyboard cards. Each shot maps to one timeline item, and each timeline item triggers image generation.
+This skill converts screenplay scenes into storyboard shots. Each shot is created in storyboard data, then triggers keyframe generation.
 
 ## Workflow
 
@@ -33,22 +33,41 @@ This skill converts screenplay scenes into storyboard cards. Each shot maps to o
 - Default to one shot per scene unless the user asks for multiple shots.
 - Keep prompts visual and concise.
 
-4. For each shot, create/edit one timeline item and submit image generation:
+4. For each shot, create one storyboard shot:
 
 ```json
 {
   "type": "tool",
-  "tool_name": "timeline_item",
+  "tool_name": "story_board",
   "tool_args": {
     "operation": "create",
-    "prompt": "cinematic storyboard frame, ...",
-    "ability": "text2image",
-    "submit_task": true
+    "scene_id": "scene_001",
+    "description": "Storyboard shot for scene ...",
+    "keyframe_context": {
+      "prompt": "cinematic storyboard frame, ..."
+    }
   }
 }
 ```
 
-5. Ensure all shots are processed in scene order. The last processed item should remain selected.
+5. Then generate keyframe for that shot with `story_board`:
+
+```json
+{
+  "type": "tool",
+  "tool_name": "story_board",
+  "tool_args": {
+    "operation": "text2image",
+    "scene_id": "scene_001",
+    "shot_id": "scene_001_shot_001",
+    "prompt": "cinematic storyboard frame, ...",
+    "width": 1024,
+    "height": 1024
+  }
+}
+```
+
+6. Ensure all shots are processed in scene order, and each generated image is bound to its corresponding storyboard shot.
 
 ## Prompt Pattern
 
@@ -60,6 +79,6 @@ If key fields are missing, omit them instead of inventing plot facts.
 
 ## Constraints
 
-- One timeline item per shot.
-- Always set `ability` to `text2image` for storyboard generation unless user requests another ability.
-- Keep execution consistent with UI behavior by using `timeline_item` tool only (do not mutate timeline files directly).
+- One storyboard shot per planned shot.
+- Always use `story_board` tool for shot creation and image generation; do not use `timeline_item` for this skill.
+- Default generation operation is `text2image` unless user explicitly requests `image2image`.
