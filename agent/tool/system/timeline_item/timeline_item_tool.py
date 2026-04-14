@@ -131,8 +131,8 @@ class TimelineItemTool(BaseTool):
                 item.set_config_value("current_tool", ability_tool)
 
             # Trigger thumbnail refresh path used by timeline cards.
-            # Blinker Signal.send() accepts only one positional sender argument.
-            timeline.timeline_changed.send(sender=timeline, timeline_item=item)
+            # Blinker Signal.send() expects sender as positional argument.
+            timeline.timeline_changed.send(timeline, timeline_item=item)
 
             yield self._create_event(
                 "tool_progress",

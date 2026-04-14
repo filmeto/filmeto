@@ -1092,7 +1092,7 @@ class LayerComposeTask:
                 timeline = timeline_item.timeline
                 if hasattr(timeline, 'timeline_changed'):
                     # Send signal with timeline_item as parameter
-                    timeline.timeline_changed.send(sender=timeline, timeline_item=timeline_item)
+                    timeline.timeline_changed.send(timeline, timeline_item=timeline_item)
                     logger.info(f"Fired timeline_changed signal for timeline item {timeline_item.index}")
         except Exception as e:
             logger.warning(f"Failed to fire timeline_changed signal: {e}")
