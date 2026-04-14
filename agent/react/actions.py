@@ -83,6 +83,8 @@ class ToolAction(ReactAction):
     tool_name: str = ""
     tool_args: Dict[str, Any] = None
     thinking: Optional[str] = None
+    need_compress_context: bool = False
+    compressed_context: Optional[Any] = None
 
     def __post_init__(self):
         if self.tool_args is None:
@@ -147,6 +149,8 @@ class FinalAction(ReactAction):
     thinking: Optional[str] = None
     stop_reason: str = "final_action"
     speak_to: Optional[str] = None
+    need_compress_context: bool = False
+    compressed_context: Optional[Any] = None
 
     def get_thinking(self) -> Optional[str]:
         return self.thinking

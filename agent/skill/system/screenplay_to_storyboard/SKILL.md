@@ -176,13 +176,16 @@ For each planned shot:
 
 - Define `shot_purpose` (orientation, action clarity, reaction emphasis, reveal, transition).
 - Keep one dominant purpose per shot.
+- Shot body text must use standard storyboard prose, not only list what appears visually.
 - Prefer concrete visual language:
   - framing size (WS/MS/CU/ECU)
   - angle (eye-level/high/low)
-  - movement (static/pan/tilt/push/pull/handheld)
+  - movement (static/pan/tilt/push/pull/track/handheld) plus movement motivation
+  - shooting method (subjective/objective POV, focus pull/rack focus, long-take vs cut strategy)
   - subject and action
-  - lighting/mood keywords
+  - lighting/mood keywords and audience-facing narrative information
 - Avoid vague words like "nice cinematic look" without story function.
+- Descriptions should be detailed enough to be directly shootable by camera/staging teams.
 
 ## Create vs Update Decision Rules
 

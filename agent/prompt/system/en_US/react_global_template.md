@@ -18,6 +18,8 @@ Your response **MUST** be a valid JSON object with one of the following structur
 {
   "type": "tool",
   "thinking": "Your reasoning for choosing this action",
+  "need_compress_context": false,
+  "compressed_context": "",
   "tool_name": "exact_tool_name_from_above_list",
   "tool_args": {
     "parameter_name": "parameter_value"
@@ -30,6 +32,8 @@ Your response **MUST** be a valid JSON object with one of the following structur
 {
   "type": "final",
   "thinking": "Task completed, ready to respond",
+  "need_compress_context": false,
+  "compressed_context": "",
   "speak_to": "Target recipient name (e.g., 'You' for user, or crew member name like 'producer', 'screenwriter'). This field is REQUIRED.",
   "final": "Your final response to the user"
 }
@@ -48,6 +52,10 @@ Your response **MUST** be a valid JSON object with one of the following structur
    - `"final"` contains your actual response content
    - The system will automatically prepend the appropriate @mention to your text based on `speak_to`
 5. **The `"thinking"` field** - Always include your reasoning process
+6. **Context compression marker is required in every round**:
+   - `"need_compress_context"` must always be present as `true` or `false`
+   - If `true`, you must provide `"compressed_context"` with a concise compressed history summary that can replace prior chat history
+   - If `false`, set `"compressed_context"` to an empty string
 
 ## Common Errors to Avoid
 - ❌ Do NOT output plain text without JSON structure

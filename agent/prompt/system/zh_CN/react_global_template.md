@@ -18,6 +18,8 @@ version: 3.0
 {
   "type": "tool",
   "thinking": "您选择此操作的原因",
+  "need_compress_context": false,
+  "compressed_context": "",
   "tool_name": "上方列表中的精确工具名称",
   "tool_args": {
     "parameter_name": "parameter_value"
@@ -30,6 +32,8 @@ version: 3.0
 {
   "type": "final",
   "thinking": "任务已完成，准备回复",
+  "need_compress_context": false,
+  "compressed_context": "",
   "speak_to": "目标接收者名称（例如：'You' 表示用户，或团队成员名称如 'producer'、'screenwriter'）。此字段是必需的。",
   "final": "您对用户的最终回复"
 }
@@ -48,6 +52,10 @@ version: 3.0
    - `"final"` 包含您的实际回复内容
    - 系统将根据 `speak_to` 自动在您的文本前添加适当的 @提及
 5. **`"thinking"` 字段** - 始终包含您的推理过程
+6. **每一轮都必须输出上下文压缩判断标记**：
+   - `"need_compress_context"` 必须始终存在，值为 `true` 或 `false`
+   - 当为 `true` 时，必须提供 `"compressed_context"`，内容为可替换历史消息的精简上下文摘要
+   - 当为 `false` 时，`"compressed_context"` 设为空字符串
 
 ## 常见错误避免
 - ❌ 请勿输出没有JSON结构的纯文本

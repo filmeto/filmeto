@@ -19,6 +19,8 @@ class ReactActionParser:
     TOOL_ARGS_ALIASES = ["tool_args", "arguments", "args", "input"]
     FINAL_ALIASES = ["final", "response", "answer", "output"]
     THINKING_ALIASES = ["thinking", "thought", "reasoning", "reasoning"]
+    NEED_COMPRESS_CONTEXT_ALIASES = ["need_compress_context", "compress_context", "should_compress_context"]
+    COMPRESSED_CONTEXT_ALIASES = ["compressed_context", "context_summary", "compressed_messages"]
 
     @classmethod
     def get_default_stop_reason(cls) -> str:
@@ -123,6 +125,8 @@ class ReactActionParser:
         tool_name = cls._get_field(payload, cls.TOOL_NAME_ALIASES, default="")
         tool_args = cls._get_field(payload, cls.TOOL_ARGS_ALIASES, default={})
         thinking = cls._get_field(payload, cls.THINKING_ALIASES)
+        need_compress_context = bool(cls._get_field(payload, cls.NEED_COMPRESS_CONTEXT_ALIASES, default=False))
+        compressed_context = cls._get_field(payload, cls.COMPRESSED_CONTEXT_ALIASES)
 
         if not isinstance(tool_args, dict):
             tool_args = {}
@@ -131,6 +135,8 @@ class ReactActionParser:
             tool_name=tool_name or "",
             tool_args=tool_args,
             thinking=thinking,
+            need_compress_context=need_compress_context,
+            compressed_context=compressed_context,
         )
 
     @classmethod
@@ -144,6 +150,8 @@ class ReactActionParser:
         final = cls._get_field(payload, cls.FINAL_ALIASES)
         thinking = cls._get_field(payload, cls.THINKING_ALIASES)
         speak_to = cls._get_field(payload, ["speak_to"])
+        need_compress_context = bool(cls._get_field(payload, cls.NEED_COMPRESS_CONTEXT_ALIASES, default=False))
+        compressed_context = cls._get_field(payload, cls.COMPRESSED_CONTEXT_ALIASES)
 
         if not final:
             final = response_text
@@ -153,6 +161,8 @@ class ReactActionParser:
             thinking=thinking,
             stop_reason=stop_reason,
             speak_to=speak_to,
+            need_compress_context=need_compress_context,
+            compressed_context=compressed_context,
         )
 
     @classmethod

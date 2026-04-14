@@ -170,6 +170,55 @@ class React:
 
         self.messages = [{"role": "user", "content": user_prompt}]
 
+    @staticmethod
+    def _normalize_compressed_messages(compressed_context: Any) -> List[Dict[str, str]]:
+        """Normalize model-provided compressed context to chat message format."""
+        if isinstance(compressed_context, str):
+            content = compressed_context.strip()
+            if content:
+                return [{"role": "user", "content": f"Compressed context:\n{content}"}]
+            return []
+
+        if isinstance(compressed_context, list):
+            normalized: List[Dict[str, str]] = []
+            for item in compressed_context:
+                if not isinstance(item, dict):
+                    continue
+                role = item.get("role")
+                content = item.get("content")
+                if role in {"user", "assistant", "system"} and isinstance(content, str) and content.strip():
+                    normalized.append({"role": role, "content": content})
+            return normalized
+
+        return []
+
+    def _apply_context_compression_if_needed(self, action: ReactAction) -> bool:
+        """Apply model-requested context compression by replacing historical messages."""
+        need_compress = bool(getattr(action, "need_compress_context", False))
+        if not need_compress:
+            return False
+
+        compressed_context = getattr(action, "compressed_context", None)
+        compressed_messages = self._normalize_compressed_messages(compressed_context)
+        if not compressed_messages:
+            logger.warning(
+                "ReAct requested context compression but compressed_context is missing or invalid. "
+                "History is unchanged."
+            )
+            return False
+
+        if not self.messages:
+            self.messages = compressed_messages
+            return True
+
+        # Keep the initial task prompt and replace the rest with compressed history.
+        self.messages = [self.messages[0], *compressed_messages]
+        logger.info(
+            "Applied context compression in ReAct loop. compressed_messages=%s",
+            len(compressed_messages),
+        )
+        return True
+
     async def _call_llm(
         self, messages: List[Dict[str, str]]
     ) -> Tuple[str, Optional[str], Optional[str]]:
@@ -637,6 +686,7 @@ class React:
                         if action.tool_name == "execute_skill":
                             async for event in self._execute_skill_as_primary_action(action.tool_args, response_text):
                                 yield event
+                            self._apply_context_compression_if_needed(action)
                             continue
 
                         # Execute tool and forward all events from ToolService
@@ -676,12 +726,14 @@ class React:
 
                         self.messages.append({"role": "assistant", "content": response_text})
                         self.messages.append({"role": "user", "content": f"Observation: {tool_result}"})
+                        self._apply_context_compression_if_needed(action)
                         logger.debug(f"Tool execution completed, continuing to next step. step_id={self.step_id}")
                         continue
 
                     if action.is_final():
                         logger.debug(f"Final action received, breaking loop. final={action.final[:100] if hasattr(action, 'final') else 'N/A'}...")
                         assert isinstance(action, FinalAction), f"Expected FinalAction, got {type(action)}"
+                        self._apply_context_compression_if_needed(action)
                         self.status = ReactStatus.FINAL
                         final_payload = action.to_final_payload()
 
