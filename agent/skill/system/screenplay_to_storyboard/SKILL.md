@@ -86,6 +86,7 @@ When translating screenplay to storyboard, follow a director-style pipeline inst
 4. For the current scene, analyze diff and make a shot plan:
    - Decide which shots should be **created** (missing coverage).
    - Decide which shots should be **updated** (existing shot but description/prompt no longer aligned).
+   - Decide which shots should be **deleted** (empty, redundant, or clearly mismatched with screenplay intent).
    - Keep stable shot ids when updating; do not recreate unchanged shots.
 
 5. Execute adjustments shot by shot (not batch):
@@ -120,6 +121,20 @@ When translating screenplay to storyboard, follow a director-style pipeline inst
     "keyframe_context": {
       "prompt": "updated cinematic storyboard frame prompt..."
     }
+  }
+}
+```
+
+   - **Delete path**:
+
+```json
+{
+  "type": "tool",
+  "tool_name": "story_board",
+  "tool_args": {
+    "operation": "delete",
+    "scene_id": "scene_001",
+    "shot_id": "scene_001_shot_003"
   }
 }
 ```
@@ -184,6 +199,19 @@ For each planned shot:
 - **Keep unchanged** when:
   - Existing shot already matches beat purpose and continuity constraints.
 
+## Delete Decision Rules (Important)
+
+- **Delete shot** when:
+  - Shot description is empty/invalid and has no meaningful storyboard value.
+  - Shot content contradicts current screenplay scene objective or blocking.
+  - Shot is redundant and harms pacing/continuity (duplicate purpose without clear variation).
+  - Shot breaks continuity (screen direction, eyeline, spatial logic) and is not intentionally designed.
+
+- **Before deleting**:
+  - Confirm neighboring shots still provide complete visual coverage.
+  - If delete creates a narrative gap, create a replacement shot first, then delete.
+  - Prefer minimal destructive edits: only delete shots that are clearly unfit.
+
 ## Per-Scene Execution Checklist
 
 Before moving to next scene, ensure:
@@ -191,7 +219,7 @@ Before moving to next scene, ensure:
 1. Every key beat in screenplay has storyboard coverage.
 2. Shot order follows narrative logic.
 3. Updated/new shots all have regenerated keyframes when needed.
-4. No duplicated shots with same purpose unless intentional variation.
+4. Empty, redundant, or unfit shots are deleted when necessary.
 5. Shot descriptions are production-usable and visually specific.
 
 ## Prompt Pattern
@@ -205,6 +233,7 @@ If key fields are missing, omit them instead of inventing plot facts.
 ## Constraints
 
 - Must follow loop: single-scene screenplay read -> single-scene storyboard read -> diff -> per-shot create/update.
+- Per-shot operations may include create, update, and delete based on scene-fit analysis.
 - Perform shot operations one by one; do not skip read-before-write for each scene.
 - Keep existing good shots; only create or update where needed.
 - Always use `story_board` tool for shot creation and image generation; do not use `timeline_item` for this skill.

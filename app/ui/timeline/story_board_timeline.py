@@ -132,6 +132,8 @@ class StoryBoardTimeline(BaseWidget):
 
     def _rebuild_scene_strip(self) -> None:
         self._attach_managers()
+        prev_scene_id = self.selected_scene_id
+        prev_shot_id = self.selected_shot_id
         for card in self.scene_cards:
             self._scene_row_layout.removeWidget(card)
             card.deleteLater()
@@ -171,16 +173,35 @@ class StoryBoardTimeline(BaseWidget):
             self.scene_cards.append(card)
 
         self._scene_row_layout.addStretch()
-        if self.scene_cards:
-            first = self.scene_cards[0]
-            if first.shot_widgets:
-                self.select_shot(first.scene_id, first.shot_widgets[0].shot_id)
+        restored = False
+        if self.scene_cards and prev_scene_id:
+            for card in self.scene_cards:
+                if card.scene_id != prev_scene_id:
+                    continue
+                if prev_shot_id:
+                    for shot_widget in card.shot_widgets:
+                        if shot_widget.shot_id == prev_shot_id:
+                            # Restore previous selection silently to avoid forcing editor jump.
+                            self.select_shot_no_signal(prev_scene_id, prev_shot_id)
+                            restored = True
+                            break
+                if not restored and not prev_shot_id and card.shot_widgets:
+                    self.select_shot_no_signal(card.scene_id, card.shot_widgets[0].shot_id)
+                    restored = True
+                if restored:
+                    break
+
+        if not restored:
+            if self.scene_cards:
+                first = self.scene_cards[0]
+                if first.shot_widgets:
+                    self.select_shot(first.scene_id, first.shot_widgets[0].shot_id)
+                else:
+                    self.selected_scene_id = None
+                    self.selected_shot_id = None
+                    self._apply_shot_selection_highlight()
             else:
-                self.selected_scene_id = None
-                self.selected_shot_id = None
                 self._apply_shot_selection_highlight()
-        else:
-            self._apply_shot_selection_highlight()
 
         c = ancestor_widget_with_attr(self, "update_unified_scroll_range")
         if c is not None:

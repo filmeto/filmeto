@@ -26,7 +26,7 @@ Rectangle {
 
     Layout.fillWidth: true
 
-    property bool expanded: false
+    property bool expanded: true
 
     ColumnLayout {
         id: column
