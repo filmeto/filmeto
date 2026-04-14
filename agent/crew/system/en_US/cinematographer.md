@@ -6,7 +6,7 @@ soul: alexandra_petrova_soul
 skills: []
 model: gpt-4o-mini
 temperature: 0.4
-max_steps: 5
+max_steps: 100
 color: "#ff6347"
 icon: "📷"
 ---

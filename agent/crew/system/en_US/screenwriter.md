@@ -11,7 +11,7 @@ skills:
   - rewrite_screen_play
 model: gpt-4o-mini
 temperature: 0.5
-max_steps: 15
+max_steps: 100
 color: "#32cd32"
 icon: "✍️"
 ---

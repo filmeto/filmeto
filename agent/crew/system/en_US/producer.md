@@ -7,7 +7,7 @@ skills:
   - production_plan
 model: gpt-4o-mini
 temperature: 0.3
-max_steps: 5
+max_steps: 100
 color: "#7b68ee"
 icon: "💼"
 ---

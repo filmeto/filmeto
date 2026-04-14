@@ -46,6 +46,12 @@ Rectangle {
         return widgetColor;
     }
 
+    function stringifyForText(value) {
+        if (value === undefined) return "undefined";
+        var s = JSON.stringify(value);
+        return s === undefined ? "undefined" : s;
+    }
+
     color: bgColor
     radius: 6
     border.color: borderColor
@@ -195,7 +201,7 @@ Rectangle {
                         // SelectableText for argument values with copy support
                         SelectableText {
                             width: parent.width - modelData.length * 8 - parent.spacing - 24
-                            text: JSON.stringify(root.toolArgs[modelData])
+                            text: root.stringifyForText(root.toolArgs[modelData])
                             textColor: "#d0d0d0"
                             fontPixelSize: 11
                             wrapMode: true
@@ -209,7 +215,7 @@ Rectangle {
             SelectableText {
                 visible: root.toolStatus === "completed" && root.result !== null
                 width: parent.width
-                text: "✓ " + (typeof root.result === "string" ? root.result : JSON.stringify(root.result))
+                text: "✓ " + (typeof root.result === "string" ? root.result : root.stringifyForText(root.result))
                 textColor: "#4ecdc4"
                 fontPixelSize: 12
                 wrapMode: true

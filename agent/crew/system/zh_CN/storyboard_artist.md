@@ -6,7 +6,7 @@ soul: liam_o_connor_soul
 skills: []
 model: gpt-4o-mini
 temperature: 0.4
-max_steps: 5
+max_steps: 100
 color: "#ff69b4"
 icon: "🎨"
 ---

@@ -13,7 +13,7 @@ skills:
   - screenplay_to_storyboard
 model: gpt-4o-mini
 temperature: 0.4
-max_steps: 5
+max_steps: 100
 color: "#4a90e2"
 icon: "🎬"
 ---
