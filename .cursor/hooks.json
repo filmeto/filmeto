@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": ".cursor/hooks/enforce_tdd_flow.sh",
+        "matcher": "pytest|python\\s+-m\\s+pytest",
+        "failClosed": true
+      }
+    ]
+  }
+}
+
