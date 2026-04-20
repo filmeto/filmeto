@@ -23,7 +23,7 @@ class TestShotTaskManager:
         shot = StoryBoardShot(
             scene_id="scene_01",
             shot_id="01",
-            title="Test Shot",
+            description="Test Shot",
         )
 
         # Create temp directory

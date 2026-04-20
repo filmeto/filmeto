@@ -47,16 +47,18 @@ def test_storyboard_shot_roundtrip_and_key_moment(tmp_path: Path) -> None:
         "Opening",
         "Action line",
         {
-            "visual": {"picture_content": "Wide city", "composition": " thirds"},
-            "audio": {"dialogue": "None", "ambient": "rain"},
-            "tech_director": {"camera_move": "Dolly in", "vfx_tags": ["lens_flare"]},
-            "ux_logic": {"user_flow": "Tap continue"},
+            "keyframe_context": {
+                "visual": {"picture_content": "Wide city", "composition": " thirds"},
+                "audio": {"dialogue": "None", "ambient": "rain"},
+                "tech_director": {"camera_move": "Dolly in", "vfx_tags": ["lens_flare"]},
+                "ux_logic": {"user_flow": "Tap continue"},
+            },
         },
     )
     shot = bm.get_shot("s1", "01")
     assert shot is not None
-    assert shot.visual.picture_content == "Wide city"
-    assert shot.tech_director.vfx_tags == ["lens_flare"]
+    assert shot.keyframe_context["visual"]["picture_content"] == "Wide city"
+    assert shot.keyframe_context["tech_director"]["vfx_tags"] == ["lens_flare"]
     img = root / "ref.png"
     img.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 8)
     assert bm.set_key_moment_image("s1", "01", img)
