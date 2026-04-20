@@ -295,6 +295,8 @@ class Timeline:
         self.workspace = workspace
         self.project = project
         self.time_line_path = timelinePath
+        # Always initialize item_count so get_item_count() is safe even when path checks fail.
+        self.item_count = 0
         self._item_cache = {}  # Cache for TimelineItem instances to prevent duplicate signal connections
         try:
             p = Path(self.time_line_path)
@@ -430,6 +432,7 @@ class Timeline:
         try:
             p = Path(self.time_line_path)
             if not p.exists() or not p.is_dir():
+                self.item_count = 0
                 return
             directories = [item.name for item in p.iterdir() if item.is_dir()]
             self.item_count = len(directories)

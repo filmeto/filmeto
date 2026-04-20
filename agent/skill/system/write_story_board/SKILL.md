@@ -24,6 +24,14 @@ Use this skill for non-destructive storyboard editing (create/update).
 - Avoid only restating what is visible; state how to shoot it, why this approach is used, and what audience information it delivers.
 - Wording should be directly shootable and generation-ready, avoiding vague phrases like "very cinematic."
 
+## Keyframe `prompt` (mandatory style)
+
+When setting `keyframe_context.prompt`, always begin with the same **comic line art storyboard** English prefix used in `screenplay_to_storyboard`, then add shot-specific panel content:
+
+`Comic line art storyboard, clean black ink linework on off-white paper, monochrome sketch, clear readable composition, production storyboard panel, no photorealism, no full color;`
+
+Do not default to photoreal or full-color cinematic still wording.
+
 ## Create shot
 
 ```json
@@ -32,7 +40,7 @@ Use this skill for non-destructive storyboard editing (create/update).
   "scene_id": "scene_001",
   "description": "CU at eye level: protagonist opens a rusted metal box under flickering streetlight; camera starts static, then slowly pushes in with focus pull to the revealed object to emphasize the story reveal.",
   "keyframe_context": {
-    "prompt": "cinematic close-up, noir lighting, rain droplets",
+    "prompt": "Comic line art storyboard, clean black ink linework on off-white paper, monochrome sketch, clear readable composition, production storyboard panel, no photorealism, no full color; close-up, protagonist opens rusted metal box under streetlight, rain suggested with light hatching only",
     "ability_model": "wanx",
     "reference_images": []
   }

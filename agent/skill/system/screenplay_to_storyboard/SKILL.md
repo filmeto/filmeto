@@ -101,7 +101,7 @@ When translating screenplay to storyboard, follow a director-style pipeline inst
     "scene_id": "scene_001",
     "description": "Storyboard shot for scene ...",
     "keyframe_context": {
-      "prompt": "cinematic storyboard frame, ..."
+      "prompt": "Comic line art storyboard, clean black ink linework on off-white paper, monochrome sketch, clear readable composition, production storyboard panel, no photorealism, no full color; ..."
     }
   }
 }
@@ -119,7 +119,7 @@ When translating screenplay to storyboard, follow a director-style pipeline inst
     "shot_id": "scene_001_shot_001",
     "description": "Revised storyboard shot description...",
     "keyframe_context": {
-      "prompt": "updated cinematic storyboard frame prompt..."
+      "prompt": "Comic line art storyboard, clean black ink linework on off-white paper, monochrome sketch, clear readable composition, production storyboard panel, no photorealism, no full color; ..."
     }
   }
 }
@@ -149,7 +149,7 @@ When translating screenplay to storyboard, follow a director-style pipeline inst
     "operation": "text2image",
     "scene_id": "scene_001",
     "shot_id": "scene_001_shot_001",
-    "prompt": "cinematic storyboard frame, ...",
+    "prompt": "Comic line art storyboard, clean black ink linework on off-white paper, monochrome sketch, clear readable composition, production storyboard panel, no photorealism, no full color; ...",
     "width": 1024,
     "height": 1024
   }
@@ -225,11 +225,23 @@ Before moving to next scene, ensure:
 4. Empty, redundant, or unfit shots are deleted when necessary.
 5. Shot descriptions are production-usable and visually specific.
 
+## Keyframe prompt style (mandatory)
+
+Every `keyframe_context.prompt` and every `text2image` / `image2image` `prompt` for storyboard shots must use **comic line art / storyboard sketch** wording suited to panels (not photoreal or fully painted stills).
+
+1. **Always start** with this exact English style prefix (before any shot-specific content):
+
+`Comic line art storyboard, clean black ink linework on off-white paper, monochrome sketch, clear readable composition, production storyboard panel, no photorealism, no full color;`
+
+2. After the prefix, append shot-specific content: framing, angle, subject, action, environment, and key props — still described in terms that read as a **line-drawn board**, not a finished film frame.
+
+3. Do not replace this prefix with “cinematic”, “movie still”, “8k”, “hyperreal”, or full-color rendering cues unless the user explicitly overrides project rules.
+
 ## Prompt Pattern
 
 Use this template per shot and fill scene details:
 
-`Storyboard shot for scene {scene_number}: {title}. {logline}. Location: {location}. Time: {time_of_day}. Characters: {characters}. Visual style: cinematic, clear composition, storyboarding frame, production-ready framing.`
+`Storyboard shot for scene {scene_number}: {title}. {logline}. Location: {location}. Time: {time_of_day}. Characters: {characters}. Keyframe image prompt: [mandatory comic line art prefix] + [shot-specific line-art panel content].`
 
 If key fields are missing, omit them instead of inventing plot facts.
 

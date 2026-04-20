@@ -24,6 +24,14 @@ tools:
 - 避免仅写“某人站在某处”这类画面复述；要写清楚“怎么拍、为何这么拍、观众会接收到什么信息”。
 - 文字应可直接指导拍摄与生成，不使用空泛词（如“很有电影感”）。
 
+## 关键帧 `prompt`（强制风格）
+
+填写 `keyframe_context.prompt` 时，必须与 `screenplay_to_storyboard` 一致：先写**漫画线稿分镜**英文前缀，再写该镜头画面内容（前缀便于图像模型解析）：
+
+`Comic line art storyboard, clean black ink linework on off-white paper, monochrome sketch, clear readable composition, production storyboard panel, no photorealism, no full color;`
+
+不要默认写照片级剧照或全彩成片描述。
+
 ## 创建镜头
 
 ```json
@@ -32,7 +40,7 @@ tools:
   "scene_id": "scene_001",
   "description": "CU，平视近距离，主角在闪烁街灯下缓慢打开生锈金属盒；镜头由静止轻推近并跟焦到盒内关键物件，以强化信息揭示时刻。",
   "keyframe_context": {
-    "prompt": "cinematic close-up, noir lighting, rain droplets",
+    "prompt": "Comic line art storyboard, clean black ink linework on off-white paper, monochrome sketch, clear readable composition, production storyboard panel, no photorealism, no full color; 特写，主角在街灯下打开生锈金属盒，雨仅用线条排线暗示",
     "ability_model": "wanx",
     "reference_images": []
   }

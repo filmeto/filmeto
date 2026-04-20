@@ -21,6 +21,7 @@ Use this skill to revise existing shots while keeping shot identity stable.
   - shooting method (subjective/objective POV, focus handling, long-take vs cut intent)
   - subject action, narrative function, and emotional direction
 - Preserve the original narrative intent and scene facts; improve directability and production usefulness.
+- If you update `keyframe_context.prompt`, use the mandatory **comic line art storyboard** prefix from `write_story_board` / `screenplay_to_storyboard` before shot-specific panel content (no photoreal default).
 
 ## Recommended flow
 

@@ -101,7 +101,7 @@ tools:
     "scene_id": "scene_001",
     "description": "Storyboard shot for scene ...",
     "keyframe_context": {
-      "prompt": "cinematic storyboard frame, ..."
+      "prompt": "Comic line art storyboard, clean black ink linework on off-white paper, monochrome sketch, clear readable composition, production storyboard panel, no photorealism, no full color; ..."
     }
   }
 }
@@ -119,7 +119,7 @@ tools:
     "shot_id": "scene_001_shot_001",
     "description": "更新后的分镜描述...",
     "keyframe_context": {
-      "prompt": "updated cinematic storyboard frame prompt..."
+      "prompt": "Comic line art storyboard, clean black ink linework on off-white paper, monochrome sketch, clear readable composition, production storyboard panel, no photorealism, no full color; ..."
     }
   }
 }
@@ -149,7 +149,7 @@ tools:
     "operation": "text2image",
     "scene_id": "scene_001",
     "shot_id": "scene_001_shot_001",
-    "prompt": "cinematic storyboard frame, ...",
+    "prompt": "Comic line art storyboard, clean black ink linework on off-white paper, monochrome sketch, clear readable composition, production storyboard panel, no photorealism, no full color; ...",
     "width": 1024,
     "height": 1024
   }
@@ -224,11 +224,23 @@ tools:
 4. 对空镜头、冗余镜头、不贴合剧本镜头进行必要删除。
 5. 镜头描述可直接用于制作与生成。
 
+## 关键帧提示词风格（强制）
+
+所有分镜镜头的 `keyframe_context.prompt` 以及 `text2image` / `image2image` 的 `prompt` 必须统一为**适合分镜的漫画线稿 / 线描分镜板**表述，不得默认写成照片级剧照或厚涂彩色成片画面。
+
+1. **必须以**下列英文风格前缀开头（再接镜头内容，便于图像模型解析）：
+
+`Comic line art storyboard, clean black ink linework on off-white paper, monochrome sketch, clear readable composition, production storyboard panel, no photorealism, no full color;`
+
+2. 前缀之后写镜头专属内容：景别、角度、主体、动作、环境、关键道具等；措辞仍应读起来像**线稿分格**，而非成片光影炫技。
+
+3. 不要用 “cinematic still”“movie frame”“8k”“hyperreal” 或默认全彩写实渲染替掉上述前缀，除非用户明确覆盖项目规则。
+
 ## 提示词模板
 
 按镜头使用以下模板填充场景信息：
 
-`Storyboard shot for scene {scene_number}: {title}. {logline}. Location: {location}. Time: {time_of_day}. Characters: {characters}. Visual style: cinematic, clear composition, storyboarding frame, production-ready framing.`
+`Storyboard shot for scene {scene_number}: {title}. {logline}. Location: {location}. Time: {time_of_day}. Characters: {characters}. Keyframe image prompt: [强制漫画线稿前缀] + [该镜头线稿分格内容].`
 
 如果关键字段缺失，直接省略，不要编造剧情事实。
 
