@@ -7,6 +7,53 @@ Rectangle {
     anchors.fill: parent
     color: "#1e1e1e"
 
+    function ensureSelectedShotVisible() {
+        if (!storyBoardViewModel || !storyBoardViewModel.selectedShotId || !scrollView.visible)
+            return
+        var flick = scrollView.contentItem
+        if (!flick)
+            return
+        var target = null
+        for (var i = 0; i < grid.children.length; ++i) {
+            var child = grid.children[i]
+            if (child && child.shotId !== undefined && child.shotId === storyBoardViewModel.selectedShotId) {
+                target = child
+                break
+            }
+        }
+        if (!target)
+            return
+
+        var viewportHeight = flick.height > 0 ? flick.height : scrollView.availableHeight
+        if (viewportHeight <= 0)
+            return
+        var padding = 12
+        var targetTop = target.y
+        var targetBottom = targetTop + target.height
+        var viewTop = flick.contentY
+        var viewBottom = viewTop + viewportHeight
+
+        if (targetTop - padding < viewTop) {
+            flick.contentY = Math.max(0, targetTop - padding)
+            return
+        }
+        if (targetBottom + padding > viewBottom) {
+            var desired = targetBottom + padding - viewportHeight
+            var maxY = Math.max(0, flick.contentHeight - viewportHeight)
+            flick.contentY = Math.min(maxY, desired)
+        }
+    }
+
+    Connections {
+        target: storyBoardViewModel
+        function onSelectedShotIdChanged() {
+            Qt.callLater(root.ensureSelectedShotVisible)
+        }
+        function onShotsReloaded() {
+            Qt.callLater(root.ensureSelectedShotVisible)
+        }
+    }
+
     component IconToolButton: ToolButton {
         id: iconButton
         implicitWidth: 32
@@ -229,6 +276,7 @@ Rectangle {
                         id: cell
                         Layout.fillWidth: true
                         Layout.minimumWidth: (grid.width - grid.columnSpacing) / 2 - 1
+                        property string shotId: model.shotId !== undefined ? model.shotId : ""
                         property bool shotSelected: storyBoardViewModel
                             && model.shotId !== undefined
                             && storyBoardViewModel.selectedShotId === model.shotId
