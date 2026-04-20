@@ -280,8 +280,12 @@ class AgentChatWidget(BaseWidget):
             if isinstance(widget, PrivateChatWidget):
                 widget.set_active(i == index)
 
-        # The newly active tab (if it's a private chat) will load incremental messages
-        # via its set_active(True) call
+        # Ensure group chat also catches up when returning from private tabs.
+        if index == GROUP_CHAT_TAB_INDEX and self.chat_history_widget is not None:
+            try:
+                self.chat_history_widget.on_became_active()
+            except Exception as e:
+                logger.debug("Failed to refresh group chat on tab activate: %s", e)
 
     def _rebuild_tab_index_map(self):
         """Rebuild the member_id->index mapping after tab removal."""

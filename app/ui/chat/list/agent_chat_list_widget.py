@@ -501,6 +501,16 @@ class AgentChatListWidget(BaseWidget):
         self._metadata_resolver.load_crew_member_metadata()
         self._history_manager.on_project_switched()
 
+    def on_became_active(self) -> None:
+        """Refresh group chat messages when the tab becomes active.
+
+        Group chat can receive messages while a private tab is focused; reloading
+        from storage ensures the visible list catches up immediately on return.
+        """
+        if not hasattr(self, "_history_manager") or self._history_manager is None:
+            return
+        self._history_manager.load_recent_conversation()
+
     def refresh_crew_member_metadata(self) -> None:
         """Reload crew member metadata."""
         if not hasattr(self, '_metadata_resolver') or self._metadata_resolver is None:
