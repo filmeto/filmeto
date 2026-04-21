@@ -15,11 +15,11 @@
 
 | Category | Specialized Tests | AST-Only | Total |
 |----------|------------------|----------|-------|
-| agent/ | 23 | 102 | 125 |
+| agent/ | 33 | 92 | 125 |
 | app/ | 23 | 231 | 254 |
 | server/ | 5 | 28 | 33 |
 | utils/ | 7 | 17 | 24 |
-| **Total** | **58** | **378** | **436** |
+| **Total** | **68** | **368** | **436** |
 
 ## File Coverage Matrix
 
@@ -39,17 +39,17 @@
 - [x] `agent/chat/content/data_content.py` ✅
 - [x] `agent/chat/content/error_content.py` ✅
 - [x] `agent/chat/content/file_content.py` ✅
-- [x] `agent/chat/content/form_content.py` 📋
-- [x] `agent/chat/content/link_content.py` 📋
-- [x] `agent/chat/content/llm_output_content.py` 📋
-- [x] `agent/chat/content/media_content.py` 📋
-- [x] `agent/chat/content/metadata_content.py` 📋
-- [x] `agent/chat/content/plan_content.py` 📋
-- [x] `agent/chat/content/progress_content.py` 📋
-- [x] `agent/chat/content/skill_content.py` 📋
-- [x] `agent/chat/content/structure_content.py` 📋
-- [x] `agent/chat/content/text_content.py` 📋
-- [x] `agent/chat/content/thinking_content.py` 📋
+- [x] `agent/chat/content/form_content.py` ✅
+- [x] `agent/chat/content/link_content.py` ✅
+- [x] `agent/chat/content/llm_output_content.py` ✅
+- [x] `agent/chat/content/media_content.py` ✅
+- [x] `agent/chat/content/metadata_content.py` ✅
+- [x] `agent/chat/content/plan_content.py` ✅
+- [x] `agent/chat/content/progress_content.py` ✅
+- [x] `agent/chat/content/skill_content.py` ✅
+- [x] `agent/chat/content/structure_content.py` ✅
+- [x] `agent/chat/content/text_content.py` ✅
+- [x] `agent/chat/content/thinking_content.py` ✅
 - [x] `agent/chat/content/todo_write_content.py` 📋
 - [x] `agent/chat/content/tool_content.py` 📋
 - [x] `agent/chat/content/typing_content.py` 📋
@@ -459,6 +459,7 @@
 | Test File | Source Files Covered |
 |-----------|---------------------|
 | `tests/unit/test_agent/test_chat_content_types.py` | `agent/chat/agent_chat_message.py`, `agent/chat/content/content_status.py`, `agent/chat/content/button_content.py`, `agent/chat/content/code_content.py`, `agent/chat/content/crew_member_activity_content.py`, `agent/chat/content/crew_member_read_content.py`, `agent/chat/content/data_content.py`, `agent/chat/content/error_content.py`, `agent/chat/content/file_content.py`, `agent/chat/agent_chat_types.py` |
+| `tests/unit/test_agent/test_chat_content_types_part2.py` | `agent/chat/content/structure_content.py`, `agent/chat/content/form_content.py`, `agent/chat/content/link_content.py`, `agent/chat/content/llm_output_content.py`, `agent/chat/content/media_content.py`, `agent/chat/content/metadata_content.py`, `agent/chat/content/plan_content.py`, `agent/chat/content/progress_content.py`, `agent/chat/content/skill_content.py`, `agent/chat/content/text_content.py`, `agent/chat/content/thinking_content.py` |
 | `tests/unit/test_agent/test_global_sequence_manager.py` | `agent/chat/history/global_sequence_manager.py` |
 | `tests/unit/test_agent/test_content_factory_and_dispatch.py` | `agent/chat/content/__init__.py` |
 | `tests/unit/test_agent/test_plan_service_unit.py` | `agent/plan/plan_service.py`, `agent/plan/plan_models.py` |
