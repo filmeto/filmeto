@@ -15,11 +15,11 @@
 
 | Category | Specialized Tests | AST-Only | Total |
 |----------|------------------|----------|-------|
-| agent/ | 69 | 56 | 125 |
+| agent/ | 89 | 36 | 125 |
 | app/ | 24 | 231 | 254 |
 | server/ | 6 | 27 | 33 |
 | utils/ | 12 | 12 | 24 |
-| **Total** | **111** | **326** | **436** |
+| **Total** | **131** | **306** | **436** |
 
 ## File Coverage Matrix
 
@@ -60,9 +60,9 @@
 - [x] `agent/chat/history/global_sequence_manager.py` ✅
 - [x] `agent/core/__init__.py` ✅
 - [x] `agent/core/filmeto_constants.py` ✅
-- [x] `agent/core/filmeto_crew.py` 📋
+- [x] `agent/core/filmeto_crew.py` ✅
 - [x] `agent/core/filmeto_instance.py` ✅
-- [x] `agent/core/filmeto_plan.py` 📋
+- [x] `agent/core/filmeto_plan.py` ✅
 - [x] `agent/core/filmeto_routing.py` ✅
 - [x] `agent/core/filmeto_utils.py` ✅
 - [x] `agent/crew/__init__.py` ✅
@@ -77,41 +77,41 @@
 - [x] `agent/plan/plan_models.py` ✅
 - [x] `agent/plan/plan_service.py` ✅
 - [x] `agent/plan/plan_signals.py` ✅
-- [x] `agent/prompt/__init__.py` 📋
+- [x] `agent/prompt/__init__.py` ✅
 - [x] `agent/prompt/prompt_service.py` ✅
 - [x] `agent/react/__init__.py` ✅
 - [x] `agent/react/actions.py` ✅
 - [x] `agent/react/constants.py` ✅
 - [x] `agent/react/json_utils.py` ✅
 - [x] `agent/react/parser.py` ✅
-- [x] `agent/react/react.py` 📋
-- [x] `agent/react/react_service.py` 📋
+- [x] `agent/react/react.py` ✅
+- [x] `agent/react/react_service.py` ✅
 - [x] `agent/react/status.py` ✅
 - [x] `agent/react/todo.py` ✅
 - [x] `agent/react/types.py` ✅
-- [x] `agent/router/__init__.py` 📋
+- [x] `agent/router/__init__.py` ✅
 - [x] `agent/router/message_router_service.py` ✅
 - [x] `agent/router/message_target.py` ✅
-- [x] `agent/skill/__init__.py` 📋
-- [x] `agent/skill/skill_chat.py` 📋
-- [x] `agent/skill/skill_models.py` 📋
+- [x] `agent/skill/__init__.py` ✅
+- [x] `agent/skill/skill_chat.py` ✅
+- [x] `agent/skill/skill_models.py` ✅
 - [x] `agent/skill/skill_service.py` ✅
-- [x] `agent/skill/system/delete_scene/scripts/delete_single_scene.py` 📋
-- [x] `agent/skill/system/delete_screen_play/scripts/delete_screen_play.py` 📋
-- [x] `agent/skill/system/read_scene/scripts/read_single_scene.py` 📋
-- [x] `agent/skill/system/rewrite_screen_play/scripts/rewrite_screenplay.py` 📋
-- [x] `agent/skill/system/write_scene/scripts/write_single_scene.py` 📋
+- [x] `agent/skill/system/delete_scene/scripts/delete_single_scene.py` ✅
+- [x] `agent/skill/system/delete_screen_play/scripts/delete_screen_play.py` ✅
+- [x] `agent/skill/system/read_scene/scripts/read_single_scene.py` ✅
+- [x] `agent/skill/system/rewrite_screen_play/scripts/rewrite_screenplay.py` ✅
+- [x] `agent/skill/system/write_scene/scripts/write_single_scene.py` ✅
 - [x] `agent/soul/__init__.py` ✅
 - [x] `agent/soul/soul.py` ✅
 - [x] `agent/soul/soul_service.py` ✅
-- [x] `agent/soul/system/__init__.py` 📋
+- [x] `agent/soul/system/__init__.py` ✅
 - [x] `agent/tool/__init__.py` ✅
 - [x] `agent/tool/base_tool.py` ✅
-- [x] `agent/tool/system/__init__.py` 📋
-- [x] `agent/tool/system/crew_member/__init__.py` 📋
-- [x] `agent/tool/system/crew_member/crew_member_tool.py` 📋
-- [x] `agent/tool/system/execute_generated_code/__init__.py` 📋
-- [x] `agent/tool/system/execute_generated_code/execute_generated_code.py` 📋
+- [x] `agent/tool/system/__init__.py` ✅
+- [x] `agent/tool/system/crew_member/__init__.py` ✅
+- [x] `agent/tool/system/crew_member/crew_member_tool.py` ✅
+- [x] `agent/tool/system/execute_generated_code/__init__.py` ✅
+- [x] `agent/tool/system/execute_generated_code/execute_generated_code.py` ✅
 - [x] `agent/tool/system/execute_skill/__init__.py` 📋
 - [x] `agent/tool/system/execute_skill/execute_skill.py` 📋
 - [x] `agent/tool/system/execute_skill_script/__init__.py` 📋
@@ -517,6 +517,8 @@
 | `tests/unit/test_agent/test_agent_soul_system.py` | `agent/soul/soul.py`, `agent/soul/soul_service.py`, `agent/soul/__init__.py` |
 | `tests/unit/test_agent/test_agent_plan_prompt.py` | `agent/plan/plan_signals.py`, `agent/prompt/prompt_service.py`, `agent/plan/__init__.py` |
 | `tests/unit/test_agent/test_agent_tool_base.py` | `agent/tool/base_tool.py`, `agent/tool/tool_context.py`, `agent/tool/tool_service.py`, `agent/tool/__init__.py` |
+| `tests/unit/test_agent/test_filmeto_crew_plan_react_skill.py` | `agent/core/filmeto_crew.py`, `agent/core/filmeto_plan.py`, `agent/prompt/__init__.py`, `agent/react/react.py`, `agent/react/react_service.py`, `agent/router/__init__.py`, `agent/skill/__init__.py`, `agent/skill/skill_chat.py`, `agent/skill/skill_models.py`, `agent/skill/system/delete_scene/scripts/delete_single_scene.py` |
+| `tests/unit/test_agent/test_skill_tool_system_scripts.py` | `agent/skill/system/delete_screen_play/scripts/delete_screen_play.py`, `agent/skill/system/read_scene/scripts/read_single_scene.py`, `agent/skill/system/rewrite_screen_play/scripts/rewrite_screenplay.py`, `agent/skill/system/write_scene/scripts/write_single_scene.py`, `agent/soul/system/__init__.py`, `agent/tool/system/__init__.py`, `agent/tool/system/crew_member/__init__.py`, `agent/tool/system/crew_member/crew_member_tool.py`, `agent/tool/system/execute_generated_code/__init__.py`, `agent/tool/system/execute_generated_code/execute_generated_code.py` |
 
 ## Notes
 
