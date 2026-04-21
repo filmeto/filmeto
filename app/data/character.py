@@ -542,7 +542,35 @@ class CharacterManager(AsyncLazyLoadMixin):
         Returns:
             True if successful, False otherwise
         """
-        return self.update_character(old_name, name=new_name)
+        self._ensure_loaded()
+        character = self.get_character(old_name)
+        if not character:
+            logger.error(f"❌ Character '{old_name}' not found")
+            return False
+
+        normalized = (new_name or "").strip()
+        if not normalized:
+            logger.error("❌ Character name cannot be empty")
+            return False
+        if normalized in self._characters and normalized != old_name:
+            logger.error(f"❌ Cannot rename to '{normalized}': already exists")
+            return False
+        if normalized == old_name:
+            return False
+
+        del self._characters[old_name]
+        character.name = normalized
+        character.updated_at = datetime.now().isoformat()
+        self._characters[normalized] = character
+
+        if not self._save_all_characters():
+            del self._characters[normalized]
+            self._characters[old_name] = character
+            return False
+
+        self.character_updated.send(character)
+        logger.info(f"✅ Renamed actor from '{old_name}' to '{normalized}'")
+        return True
     
     def search_characters(self, query: str) -> List[Character]:
         """Search characters by name or description
