@@ -5,7 +5,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 PLAN_PATH = ROOT / "test_plan.md"
-ENTRY_RE = re.compile(r"- \[x\] `([^`]+\.py)` ✅")
+# Match both ✅ (specialized tests) and 📋 (AST-only) markers
+ENTRY_RE = re.compile(r"- \[x\] `([^`]+\.py)` [✅📋]")
 
 
 def _iter_plan_python_files():
