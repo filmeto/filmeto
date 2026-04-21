@@ -15,20 +15,20 @@
 
 | Category | Specialized Tests | AST-Only | Total |
 |----------|------------------|----------|-------|
-| agent/ | 33 | 92 | 125 |
-| app/ | 23 | 231 | 254 |
-| server/ | 5 | 28 | 33 |
-| utils/ | 7 | 17 | 24 |
-| **Total** | **68** | **368** | **436** |
+| agent/ | 46 | 79 | 125 |
+| app/ | 24 | 231 | 254 |
+| server/ | 6 | 27 | 33 |
+| utils/ | 12 | 12 | 24 |
+| **Total** | **88** | **349** | **436** |
 
 ## File Coverage Matrix
 
 ### agent/
 
-- [x] `agent/__init__.py` 📋
-- [x] `agent/chat/__init__.py` 📋
+- [x] `agent/__init__.py` ✅
+- [x] `agent/chat/__init__.py` ✅
 - [x] `agent/chat/agent_chat_message.py` ✅
-- [x] `agent/chat/agent_chat_signals.py` 📋
+- [x] `agent/chat/agent_chat_signals.py` ✅
 - [x] `agent/chat/agent_chat_types.py` ✅
 - [x] `agent/chat/content/__init__.py` ✅
 - [x] `agent/chat/content/button_content.py` ✅
@@ -50,15 +50,15 @@
 - [x] `agent/chat/content/structure_content.py` ✅
 - [x] `agent/chat/content/text_content.py` ✅
 - [x] `agent/chat/content/thinking_content.py` ✅
-- [x] `agent/chat/content/todo_write_content.py` 📋
-- [x] `agent/chat/content/tool_content.py` 📋
-- [x] `agent/chat/content/typing_content.py` 📋
-- [x] `agent/chat/history/__init__.py` 📋
-- [x] `agent/chat/history/agent_chat_history_listener.py` 📋
-- [x] `agent/chat/history/agent_chat_history_service.py` 📋
+- [x] `agent/chat/content/todo_write_content.py` ✅
+- [x] `agent/chat/content/tool_content.py` ✅
+- [x] `agent/chat/content/typing_content.py` ✅
+- [x] `agent/chat/history/__init__.py` ✅
+- [x] `agent/chat/history/agent_chat_history_listener.py` ✅
+- [x] `agent/chat/history/agent_chat_history_service.py` ✅
 - [x] `agent/chat/history/agent_chat_storage.py` ✅
 - [x] `agent/chat/history/global_sequence_manager.py` ✅
-- [x] `agent/core/__init__.py` 📋
+- [x] `agent/core/__init__.py` ✅
 - [x] `agent/core/filmeto_constants.py` 📋
 - [x] `agent/core/filmeto_crew.py` 📋
 - [x] `agent/core/filmeto_instance.py` 📋
@@ -495,6 +495,20 @@
 | `tests/unit/test_server/test_ability_selection_service.py` | `server/service/ability_selection_service.py`, `server/api/types.py` |
 | `tests/unit/test_server/test_ability_service.py` | `server/service/ability_service.py` |
 | `tests/unit/test_server/test_chat_service.py` | `server/service/chat_service.py`, `server/api/chat_types.py` |
+| `tests/unit/test_utils/test_async_queue_utils.py` | `utils/async_queue_utils.py` |
+| `tests/unit/test_utils/test_download_utils.py` | `utils/download_utils.py` |
+| `tests/unit/test_utils/test_ffmpeg_utils.py` | `utils/ffmpeg_utils.py` |
+| `tests/unit/test_utils/test_llm_utils.py` | `utils/llm_utils.py` |
+| `tests/unit/test_utils/test_thread_utils.py` | `utils/thread_utils.py` |
+| `tests/unit/test_agent/test_agent_init_exports.py` | `agent/__init__.py`, `agent/chat/__init__.py`, `agent/chat/history/__init__.py`, `agent/core/__init__.py` |
+| `tests/unit/test_agent/test_todo_tool_typing_content.py` | `agent/chat/content/todo_write_content.py`, `agent/chat/content/tool_content.py`, `agent/chat/content/typing_content.py` |
+| `tests/unit/test_agent/test_agent_chat_signals.py` | `agent/chat/agent_chat_signals.py` |
+| `tests/unit/test_agent/test_agent_chat_history_service_listener.py` | `agent/chat/history/agent_chat_history_listener.py`, `agent/chat/history/agent_chat_history_service.py` |
+| `tests/unit/test_agent/test_agent_chat_storage.py` | `agent/chat/history/agent_chat_storage.py` |
+| `tests/unit/test_agent/test_filmeto_routing.py` | `agent/core/filmeto_routing.py` |
+| `tests/unit/test_agent/test_skill_service.py` | `agent/skill/skill_service.py` |
+| `tests/unit/test_server/test_plugin_manager.py` | `server/plugins/plugin_manager.py` |
+| `tests/unit/test_app_ui/test_event_bus.py` | `app/ui/core/event_bus.py` |
 
 ## Notes
 
@@ -502,12 +516,12 @@
 - Files marked `✅` have dedicated test assertions validating their logic.
 - Global per-file AST coverage test: `tests/unit/test_meta/test_all_source_files_ast.py`
 - Priority candidates for specialized tests (complex logic, 📋 status):
-  - `utils/download_utils.py` - Qt-thread download worker
-  - `utils/ffmpeg_utils.py` - Video processing operations
-  - `utils/thread_utils.py` - Threading utilities
-  - `utils/llm_utils.py` - LLM helper functions
-  - `agent/chat/history/agent_chat_storage.py` - Chat persistence
-  - `agent/core/filmeto_routing.py` - Agent routing logic
-  - `agent/skill/skill_service.py` - Skill management
-  - `server/plugins/plugin_manager.py` - Plugin system
-  - `app/ui/core/event_bus.py` - Event bus system
+  - `utils/download_utils.py` - Qt-thread download worker (✅ covered)
+  - `utils/ffmpeg_utils.py` - Video processing operations (✅ covered)
+  - `utils/thread_utils.py` - Threading utilities (✅ covered)
+  - `utils/llm_utils.py` - LLM helper functions (✅ covered)
+  - `agent/chat/history/agent_chat_storage.py` - Chat persistence (✅ covered)
+  - `agent/core/filmeto_routing.py` - Agent routing logic (✅ covered)
+  - `agent/skill/skill_service.py` - Skill management (✅ covered)
+  - `server/plugins/plugin_manager.py` - Plugin system (✅ covered)
+  - `app/ui/core/event_bus.py` - Event bus system (✅ covered)
