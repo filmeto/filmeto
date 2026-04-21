@@ -196,8 +196,12 @@ class ResourceManager(AsyncLazyLoadMixin):
     
     def _get_media_subdirectory(self, media_type: str) -> str:
         """Get subdirectory name for media type"""
-        if media_type in ['image', 'video', 'audio']:
-            return f"{media_type}s"
+        if media_type == 'image':
+            return 'images'
+        if media_type == 'video':
+            return 'videos'
+        if media_type == 'audio':
+            return 'audio'
         return 'others'
     
     def _generate_unique_name(self, desired_name: str) -> str:
