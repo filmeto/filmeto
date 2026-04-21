@@ -14,6 +14,7 @@ from .types import (
     ErrorAction,
     ReactActionParser,
 )
+from .todo import TodoItem, TodoState, TodoStatus
 from .react_service import ReactService, react_service
 
 __all__ = [
@@ -29,4 +30,7 @@ __all__ = [
     "FinalAction",
     "ErrorAction",
     "ReactActionParser",
+    "TodoItem",
+    "TodoState",
+    "TodoStatus",
 ]
