@@ -1,4 +1,5 @@
 import os
+import logging
 
 from qasync import asyncSlot
 
@@ -6,6 +7,8 @@ from app.spi.tool import BaseTool
 from app.ui.base_widget import BaseTaskWidget
 from utils.i18n_utils import tr
 from utils.opencv_utils import extract_last_frame_opencv
+
+logger = logging.getLogger(__name__)
 
 
 class Image2Video(BaseTool,BaseTaskWidget):
@@ -28,7 +31,6 @@ class Image2Video(BaseTool,BaseTaskWidget):
         input_image_path = timeline_item.get_image_path()
         return {
             "tool":"image2video",
-            "model":"comfy_ui",
             "input_image_path":input_image_path,
             "prompt":self.editor.get_prompt(),
             "start_frame_path": self.start_frame_path,
@@ -139,26 +141,14 @@ class Image2Video(BaseTool,BaseTaskWidget):
             return  # Exit early if this is not an image2video task
 
         try:
-            import logging
-            logger = logging.getLogger(__name__)
             logger.info(f"Processing image2video task with FilmetoApi: {task.options}")
             from server.api import FilmetoApi, FilmetoTask, Ability, ResourceInput, ResourceType
+            from server.api.types import SelectionConfig
             from app.data.task import TaskResult as AppTaskResult, TaskProgress as AppTaskProgress
             from server.api.types import TaskProgress as FilmetoTaskProgress, TaskResult as FilmetoTaskResult
 
             api = FilmetoApi()
             
-            # Find a plugin that supports image2video
-            plugins = api.get_plugins_by_tool(Ability.IMAGE2VIDEO.value)
-            if not plugins:
-                logger.warning("No plugins found for image2video")
-                return
-            
-            # Prefer ComfyUI if available, otherwise use the first one
-            plugin_name = "ComfyUI"
-            if not any(p['name'] == plugin_name for p in plugins):
-                plugin_name = plugins[0]['name']
-
             # Get the timeline
             timeline = self.workspace.get_project().get_timeline()
 
@@ -179,7 +169,7 @@ class Image2Video(BaseTool,BaseTaskWidget):
 
             filmeto_task = FilmetoTask(
                 ability=Ability.IMAGE2VIDEO,
-                server_name=plugin_name,
+                selection=SelectionConfig.auto(),
                 parameters={
                     "prompt": task.options['prompt'],
                     "input_image_path": input_image_path,
@@ -194,6 +184,11 @@ class Image2Video(BaseTool,BaseTaskWidget):
                 if isinstance(update, FilmetoTaskProgress):
                     app_progress.on_progress(int(update.percent), update.message)
                 elif isinstance(update, FilmetoTaskResult):
+                    if update.status == "error":
+                        error_message = update.error_message or "Unknown image2video error"
+                        logger.error("Image2Video task failed: %s", error_message)
+                        app_progress.on_progress(100, error_message)
+
                     # Create a BaseModelResult wrapper for the FilmetoTaskResult
                     class FilmetoResultWrapper:
                         def __init__(self, filmeto_result):
@@ -209,7 +204,7 @@ class Image2Video(BaseTool,BaseTaskWidget):
                     task_result = AppTaskResult(task, result_wrapper)
                     self.workspace.on_task_finished(task_result)
         except Exception as e:
-            logger.error(f"Error in Image2Video.execute: {e}", exc_info=True)
+            logger.error("Error in Image2Video.execute: %s", e, exc_info=True)
 
     async def _get_image(self, task, timeline, current_index):
         # Check if input image exists

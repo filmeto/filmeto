@@ -14,6 +14,7 @@ import time
 import asyncio
 import json
 import logging
+import ssl
 import requests
 from pathlib import Path
 from typing import Dict, Any, Callable, List, Optional
@@ -55,6 +56,32 @@ class BailianServerPlugin(BaseServerPlugin):
             # Fallback to plugin's outputs directory
             self.output_dir = Path(__file__).parent / "outputs"
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self._ssl_context = self._build_ssl_context()
+
+    @staticmethod
+    def _build_ssl_context() -> ssl.SSLContext:
+        """
+        Build SSL context with a reliable CA bundle.
+
+        On some macOS/Python environments, system cert discovery fails and causes:
+        CERTIFICATE_VERIFY_FAILED. Prefer certifi when available.
+        """
+        try:
+            import certifi
+
+            return ssl.create_default_context(cafile=certifi.where())
+        except Exception:
+            logger.warning(
+                "certifi not available for Bailian HTTPS requests, using system CA store"
+            )
+            return ssl.create_default_context()
+
+    def _create_http_session(self, aiohttp_module):
+        """
+        Create aiohttp session with explicit SSL trust store.
+        """
+        connector = aiohttp_module.TCPConnector(ssl=self._ssl_context)
+        return aiohttp_module.ClientSession(connector=connector)
 
     def get_plugin_info(self) -> Dict[str, Any]:
         """Get plugin metadata"""
@@ -1032,7 +1059,7 @@ class BailianServerPlugin(BaseServerPlugin):
 
         progress_callback(20, "Sending request to DashScope...", {})
 
-        async with aiohttp.ClientSession() as session:
+        async with self._create_http_session(aiohttp) as session:
             async with session.post(
                 DASHSCOPE_IMAGE_ENDPOINT,
                 headers=headers,
@@ -1112,10 +1139,7 @@ class BailianServerPlugin(BaseServerPlugin):
         progress_callback(80, "Downloading generated images...", {})
         output_files = []
 
-        # SSL context that skips verification (for development)
-        ssl_context = aiohttp.TCPConnector(ssl=False)
-
-        async with aiohttp.ClientSession(connector=ssl_context) as session:
+        async with self._create_http_session(aiohttp) as session:
             for i, result in enumerate(results):
                 url = result.get("url")
                 if not url:
@@ -1340,7 +1364,7 @@ class BailianServerPlugin(BaseServerPlugin):
 
         progress_callback(20, "Calling DashScope video API...", {})
 
-        async with aiohttp.ClientSession() as session:
+        async with self._create_http_session(aiohttp) as session:
             async with session.post(
                 video_endpoint,
                 headers=headers,
@@ -1451,7 +1475,7 @@ class BailianServerPlugin(BaseServerPlugin):
 
         progress_callback(20, "Calling DashScope video API...", {})
 
-        async with aiohttp.ClientSession() as session:
+        async with self._create_http_session(aiohttp) as session:
             async with session.post(
                 video_endpoint,
                 headers=headers,
@@ -1783,7 +1807,7 @@ class BailianServerPlugin(BaseServerPlugin):
         progress_callback(80, "Downloading synthesized audio...", {})
 
         local_path = self.output_dir / f"{task_id}.wav"
-        async with aiohttp.ClientSession() as session:
+        async with self._create_http_session(aiohttp) as session:
             async with session.get(url) as resp:
                 if resp.status != 200:
                     raise Exception(f"Failed to download audio: HTTP {resp.status}")
@@ -1844,7 +1868,7 @@ class BailianServerPlugin(BaseServerPlugin):
             "Content-Type": "application/json",
         }
 
-        async with aiohttp.ClientSession() as session:
+        async with self._create_http_session(aiohttp) as session:
             async with session.post(url_api, headers=headers, json=body) as response:
                 if response.status != 200:
                     err = await response.text()
@@ -1860,7 +1884,7 @@ class BailianServerPlugin(BaseServerPlugin):
         progress_callback(80, "Downloading CosyVoice audio...", {})
 
         local_path = self.output_dir / f"{task_id}.mp3"
-        async with aiohttp.ClientSession() as session:
+        async with self._create_http_session(aiohttp) as session:
             async with session.get(audio_url) as resp:
                 if resp.status != 200:
                     raise Exception(f"Failed to download audio: HTTP {resp.status}")
@@ -1965,7 +1989,7 @@ class BailianServerPlugin(BaseServerPlugin):
 
         progress_callback(20, "Calling Wan S2V API...", {})
 
-        async with aiohttp.ClientSession() as session:
+        async with self._create_http_session(aiohttp) as session:
             async with session.post(
                 video_endpoint, headers=headers, json=payload
             ) as response:

@@ -269,6 +269,13 @@ class FilmetoService:
                     )
                     metrics.mark("plugin_execution")
                     metrics.finish(status=update.status)
+                    if update.status == "error":
+                        log.error(
+                            "task_execution_error",
+                            error_message=update.error_message or "Unknown plugin error",
+                            metadata=update.metadata or {},
+                            **metrics.to_dict(),
+                        )
                     log.info("task_completed", **metrics.to_dict())
                     yield update
                 elif isinstance(update, dict):
@@ -315,6 +322,13 @@ class FilmetoService:
                         )
                         metrics.mark("plugin_execution")
                         metrics.finish(status=task_result.status)
+                        if task_result.status == "error":
+                            log.error(
+                                "task_execution_error",
+                                error_message=task_result.error_message or "Unknown plugin error",
+                                metadata=task_result.metadata or {},
+                                **metrics.to_dict(),
+                            )
                         log.info("task_completed", **metrics.to_dict())
                         yield task_result
         

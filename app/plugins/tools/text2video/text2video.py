@@ -95,6 +95,11 @@ class Text2Video(BaseTool, BaseTaskWidget):
                 if isinstance(update, FilmetoTaskProgress):
                     app_progress.on_progress(int(update.percent), update.message)
                 elif isinstance(update, FilmetoTaskResult):
+                    if update.status == "error":
+                        error_message = update.error_message or "Unknown text2video error"
+                        logger.error("Text2Video task failed: %s", error_message)
+                        app_progress.on_progress(100, error_message)
+
                     class FilmetoResultWrapper:
                         def __init__(self, filmeto_result):
                             self.filmeto_result = filmeto_result
