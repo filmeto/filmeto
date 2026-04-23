@@ -69,6 +69,17 @@ class Image2Video(BaseTool,BaseTaskWidget):
         # Connect signal for end frame
         self.end_frame_selector.file_selected.connect(self._on_end_frame_selected)
         self.end_frame_selector.file_cleared.connect(self._on_end_frame_cleared)
+
+        # Preload the current timeline image as default reference frame when switching
+        # to image2video, so prompt input keeps the previous behavior.
+        timeline_index = self.workspace.get_project().get_timeline_index()
+        timeline_item = self.workspace.get_project().get_timeline().get_item(timeline_index)
+        current_image_path = timeline_item.get_image_path()
+        if current_image_path and os.path.exists(current_image_path):
+            self.start_frame_selector.set_value(current_image_path)
+            self.start_frame_path = current_image_path
+        else:
+            self.start_frame_path = None
         
         # Add widgets to layout without labels
         layout.addWidget(self.start_frame_selector)
@@ -78,22 +89,22 @@ class Image2Video(BaseTool,BaseTaskWidget):
         # Set the widget in the prompt input's config panel
         main_editor.prompt_input.set_config_panel_widget(panel)
 
-    # def on_timeline_switch(self,item:TimelineItem):
-    #     # For img2video, show the video if exists, otherwise show image
-    #     current_tool = item.get_config_value("current_tool")
-    #     if current_tool != self.get_tool_name():
-    #         return
-    #     if not self.editor:
-    #         return
-    #
-    #     video_path = item.get_video_path()
-    #     if os.path.exists(video_path):
-    #         self.editor.get_canvas_widget().switch_file(video_path)
-    #     else:
-    #         image_path = item.get_image_path()
-    #         if os.path.exists(image_path):
-    #         self.editor.get_canvas_widget().switch_file(image_path)
-    #     return
+    def on_timeline_switch(self, item):
+        """Sync default reference frame with current timeline item in image2video mode."""
+        current_tool = item.get_config_value("current_tool")
+        if current_tool != self.get_tool_name():
+            return
+
+        if not hasattr(self, "start_frame_selector") or self.start_frame_selector is None:
+            return
+
+        image_path = item.get_image_path()
+        if image_path and os.path.exists(image_path):
+            self.start_frame_selector.set_value(image_path)
+            self.start_frame_path = image_path
+        else:
+            self.start_frame_selector.clear()
+            self.start_frame_path = None
     
     @classmethod
     def get_tool_name(cls):
