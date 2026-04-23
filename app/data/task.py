@@ -84,7 +84,8 @@ class Task:
         self.task_id = os.path.basename(path)
         self.title = f'Task {self.task_id}'
         self.tool = self.options.get("tool", "txt2img")
-        self.model = self.options.get("model", "comfyui")
+        # Keep model unspecified unless explicitly provided by task options.
+        self.model = self.options.get("model", "")
         self.percent = self.options.get("percent", 0)
         self.status = self.options.get("status", "running")
         self.log = self.options.get("log", "")
@@ -108,7 +109,8 @@ class Task:
 
             self.title = f'Task {self.task_id}'
             self.tool = config.get("task_type", config.get("tool", "txt2img"))
-            self.model = self.options.get("model", "comfyui")
+            # Keep model unspecified unless explicitly provided by task options.
+            self.model = self.options.get("model", "")
             self.percent = config.get("progress", config.get("percent", 0))
             self.status = config.get("status", "running")
             self.log = config.get("log", "")

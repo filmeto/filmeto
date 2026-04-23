@@ -13,6 +13,7 @@ import tempfile
 import logging
 from pathlib import Path
 from typing import Dict, Any, Callable, List, Optional, Tuple
+from copy import deepcopy
 
 # Import base plugin directly using file path to avoid naming conflicts
 import importlib.util
@@ -401,6 +402,24 @@ class ComfyUiServerPlugin(BaseServerPlugin):
         
         return count
 
+    def _replace_placeholder_values(self, data: Any, replacements: Dict[str, Any]) -> Any:
+        """
+        Recursively replace string placeholders in workflow payload.
+
+        This is a compatibility fallback for workflows that still use template
+        placeholders (e.g. "$prompt", "$inputImage") without filmeto.node_mapping.
+        """
+        if isinstance(data, dict):
+            return {
+                key: self._replace_placeholder_values(value, replacements)
+                for key, value in data.items()
+            }
+        if isinstance(data, list):
+            return [self._replace_placeholder_values(item, replacements) for item in data]
+        if isinstance(data, str) and data in replacements:
+            return replacements[data]
+        return data
+
     async def _execute_text2image(self, client, task_id, parameters, progress_callback, server_config: Optional[Dict[str, Any]] = None):
         prompt_text = parameters.get("prompt", "")
         width = parameters.get("width", 720)
@@ -511,22 +530,42 @@ class ComfyUiServerPlugin(BaseServerPlugin):
         # Apply input image(s) to input node(s) - support multiple input nodes and multiple images
         # Example: ["start_frame_node", "end_frame_node"] with [start_image, end_image]
         input_node = node_mapping.get("input_node")
+        applied_input_count = 0
         if input_node and comfy_filenames:
-            self._apply_input_nodes(prompt_graph, input_node, comfy_filenames, "image")
+            applied_input_count = self._apply_input_nodes(prompt_graph, input_node, comfy_filenames, "image")
         
         # Apply prompt to prompt node (if configured)
         prompt_node = node_mapping.get("prompt_node")
+        prompt_applied = False
         if prompt_node:
             prompt_input_key = node_mapping.get("prompt_input_key", "text")
             # Try to apply with specified key first
-            if not self._apply_node_value(prompt_graph, prompt_node, prompt_input_key, prompt_text):
+            if self._apply_node_value(prompt_graph, prompt_node, prompt_input_key, prompt_text):
+                prompt_applied = True
+            else:
                 # If node exists but key doesn't, try common prompt input keys
                 if prompt_node in prompt_graph:
                     node_inputs = prompt_graph[prompt_node].get("inputs", {})
                     for key in ["text", "positive_prompt", "prompt"]:
                         if key in node_inputs:
                             node_inputs[key] = prompt_text
+                            prompt_applied = True
                             break
+
+        # Fallback: support placeholder-based workflows without filmeto.node_mapping.
+        if (not prompt_applied) or (applied_input_count == 0):
+            placeholder_values = {
+                "$prompt": prompt_text,
+            }
+            if comfy_filenames:
+                placeholder_values["$inputImage"] = comfy_filenames[0]
+                placeholder_values["$startImage"] = comfy_filenames[0]
+            if len(comfy_filenames) > 1:
+                placeholder_values["$endImage"] = comfy_filenames[1]
+            prompt_graph = self._replace_placeholder_values(
+                deepcopy(prompt_graph),
+                placeholder_values
+            )
         
         # Apply random seed to seed node (if configured)
         seed_node = node_mapping.get("seed_node")
