@@ -1,9 +1,10 @@
 """Storyboard timeline: wide scene cards, each containing video-style shot cards."""
 
+import os
 from typing import List, Optional, Tuple
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QKeyEvent
+from PySide6.QtGui import QKeyEvent, QPixmap, QImage
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from app.data.screen_play import ScreenPlayManager, ScreenPlayScene
@@ -13,9 +14,13 @@ from app.ui.base_widget import BaseWidget
 from app.ui.signals import Signals
 from app.ui.timeline.story_board_scene_card import StoryBoardSceneCard
 from app.ui.timeline.story_board_timeline_scroll import StoryBoardTimelineScroll
+from app.ui.workers import AsyncDataLoaderMixin
 from utils import qt_utils
 from utils.i18n_utils import tr, translation_manager
 from utils.qt_utils import ancestor_widget_with_attr, widget_left_x_in_content
+
+
+STORYBOARD_THUMB_DEBOUNCE_MS = 100
 
 
 def _sort_scenes(scenes: List[ScreenPlayScene]) -> List[ScreenPlayScene]:
@@ -34,7 +39,7 @@ def _sort_shot_ids(shot_ids: List[str]) -> List[str]:
     return sorted(shot_ids, key=lambda s: (len(s), s.lower()))
 
 
-class StoryBoardTimeline(BaseWidget):
+class StoryBoardTimeline(BaseWidget, AsyncDataLoaderMixin):
     """Horizontal row of scene container cards, each with an inner strip of shot cards."""
 
     def __init__(self, parent: QWidget, workspace: Workspace):
@@ -51,6 +56,14 @@ class StoryBoardTimeline(BaseWidget):
         self._screenplay_manager: Optional[ScreenPlayManager] = None
         self.story_board_manager: Optional[StoryBoardManager] = None
         self._connected_story_board_manager: Optional[StoryBoardManager] = None
+
+        self.setup_async_loader(
+            loader_func=self._load_shot_thumbnail,
+            on_loaded=self._on_shot_thumbnail_loaded,
+            on_error=self._on_shot_thumbnail_error,
+            debounce_ms=STORYBOARD_THUMB_DEBOUNCE_MS,
+            cache_enabled=True,
+        )
 
         self.scroll_area = StoryBoardTimelineScroll()
         self.scroll_area.setWidgetResizable(True)
@@ -121,9 +134,12 @@ class StoryBoardTimeline(BaseWidget):
     def _on_storyboard_shot_changed(self, sender, params=None, **kwargs) -> None:
         """Debounce shot changes and apply incremental update when possible."""
         p = params or {}
-        action = p.get("action", "")
         scene_id = p.get("scene_id", "")
         shot_id = p.get("shot_id", "")
+
+        if not scene_id or not shot_id:
+            self._rebuild_scene_strip()
+            return
 
         # Coalesce rapid changes: reset debounce timer on each new signal.
         if self._rebuild_debounce_timer is None:
@@ -131,36 +147,43 @@ class StoryBoardTimeline(BaseWidget):
             self._rebuild_debounce_timer.setSingleShot(True)
             self._rebuild_debounce_timer.timeout.connect(self._apply_pending_shot_change)
         self._rebuild_debounce_timer.stop()
-        self._pending_rebuild_params = {"action": action, "scene_id": scene_id, "shot_id": shot_id}
+        key = f"{scene_id}/{shot_id}"
+        # Accumulate actions per scene/shot so no update is lost during debounce window.
+        pending = self._pending_rebuild_params or {}
+        pending[key] = p
+        self._pending_rebuild_params = pending
         self._rebuild_debounce_timer.start(100)
 
     def _apply_pending_shot_change(self) -> None:
-        """Execute the debounced shot change: incremental update or fall back to full rebuild."""
-        if self._pending_rebuild_params is None:
-            self._rebuild_scene_strip()
-            return
-        p = self._pending_rebuild_params
+        """Execute the debounced shot changes: incremental updates or fall back to full rebuild."""
+        pending = self._pending_rebuild_params
         self._pending_rebuild_params = None
-        scene_id = p.get("scene_id", "")
-        shot_id = p.get("shot_id", "")
-        action = p.get("action", "")
-
-        if not scene_id or not shot_id:
+        if not pending:
             self._rebuild_scene_strip()
             return
 
-        card = self._find_scene_card(scene_id)
-        if card is None:
-            # Scene card doesn't exist yet — need full rebuild.
+        # Collect affected scene IDs; if too many, just do a full rebuild.
+        scene_ids = set()
+        for key, p in pending.items():
+            scene_ids.add(p.get("scene_id", ""))
+        if len(scene_ids) > 2:
             self._rebuild_scene_strip()
             return
 
-        if action == "deleted":
-            self._remove_shot_from_scene_card(card, shot_id)
-        elif action == "created":
-            self._rebuild_single_scene_card(card, scene_id)
-        # "updated" (body text) only affects the QML editor via the model's incremental update;
-        # the timeline shot card only shows image + shot number, so no visual change needed.
+        for key, p in pending.items():
+            scene_id = p.get("scene_id", "")
+            shot_id = p.get("shot_id", "")
+            action = p.get("action", "")
+            card = self._find_scene_card(scene_id)
+            if card is None:
+                # Scene card doesn't exist — need full rebuild.
+                self._rebuild_scene_strip()
+                return
+            if action == "deleted":
+                self._remove_shot_from_scene_card(card, shot_id)
+            elif action == "created":
+                self._rebuild_single_scene_card(card, scene_id)
+            # "updated" (body text) only affects QML editor via model; timeline shows image+number.
 
     def _find_scene_card(self, scene_id: str) -> Optional[StoryBoardSceneCard]:
         for card in self.scene_cards:
@@ -204,6 +227,45 @@ class StoryBoardTimeline(BaseWidget):
         filter_host = ancestor_widget_with_attr(self, "_install_event_filters_recursively")
         if filter_host is not None:
             filter_host._install_event_filters_recursively(self)
+        self._schedule_shot_card_loads(card)
+
+    def _schedule_shot_card_loads(self, scene_card: StoryBoardSceneCard) -> None:
+        """Schedule debounced async thumbnail loads for all shot widgets in a scene card."""
+        if not self.story_board_manager:
+            return
+        for sw in scene_card.shot_widgets:
+            km = self.story_board_manager.key_moment_path(scene_card.scene_id, sw.shot_id)
+            if km is not None and km.is_file():
+                key = (scene_card.scene_id, sw.shot_id, str(km))
+                try:
+                    self.schedule_async_load(key, force=False)
+                except Exception:
+                    pass
+
+    def _load_shot_thumbnail(self, key):
+        """Background thread: disk + QImage only (no QPixmap here)."""
+        _scene_id, _shot_id, image_path = key
+        if not image_path or not os.path.isfile(image_path):
+            return None
+        img = QImage(image_path)
+        if img.isNull():
+            return None
+        return img
+
+    def _on_shot_thumbnail_loaded(self, key, image: Optional[QImage]):
+        scene_id = key[0]
+        shot_id = key[1]
+        if image is None or image.isNull():
+            return
+        pixmap = QPixmap.fromImage(image)
+        if pixmap.isNull():
+            return
+        card = self._find_scene_card(scene_id)
+        if card is not None:
+            card.set_card_image(shot_id, pixmap)
+
+    def _on_shot_thumbnail_error(self, key, msg: str):
+        pass
 
     def _retranslate_ui(self) -> None:
         self.setWindowTitle(tr("Storyboard timeline"))
@@ -256,6 +318,9 @@ class StoryBoardTimeline(BaseWidget):
             card = StoryBoardSceneCard(self, scene, shots)
             self._scene_row_layout.addWidget(card, 0, Qt.AlignmentFlag.AlignTop)
             self.scene_cards.append(card)
+
+        for card in self.scene_cards:
+            self._schedule_shot_card_loads(card)
 
         self._scene_row_layout.addStretch()
         restored = False
@@ -419,6 +484,8 @@ class StoryBoardTimeline(BaseWidget):
             )
 
     def on_project_switched(self, project_name: str) -> None:
+        self.cancel_async_pending()
+        self.invalidate_async_cache()
         self.selected_scene_id = None
         self.selected_shot_id = None
         self._rebuild_scene_strip()

@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
-from PySide6.QtCore import Qt, QSize, QPoint
+from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QFrame, QLabel, QSizePolicy, QVBoxLayout
 
@@ -25,10 +25,7 @@ class StoryBoardShotCard(QFrame):
     """
     One shot: key moment image fills the frame; shot id overlays on bottom.
 
-    Simplified layout matching VideoTimelineCard:
-    - Single QLabel for image content, fills entire card
-    - Border radius matches between frame and content (8px)
-    - Overlay label positioned absolutely within card
+    Image is loaded asynchronously by the parent timeline to avoid blocking the UI thread.
     """
 
     def __init__(
@@ -66,20 +63,8 @@ class StoryBoardShotCard(QFrame):
         # Make label transparent to mouse events so clicks pass through to parent card
         self.content_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
 
-        # Load image
-        if key_moment_path is not None and key_moment_path.is_file():
-            pix = QPixmap(str(key_moment_path))
-            if not pix.isNull():
-                scaled = pix.scaled(
-                    QSize(SHOT_W, SHOT_H),
-                    Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-                    Qt.TransformationMode.SmoothTransformation,
-                )
-                self.content_label.setPixmap(scaled)
-            else:
-                self._set_placeholder()
-        else:
-            self._set_placeholder()
+        # Always start with placeholder; image loaded async by parent timeline.
+        self._set_placeholder()
 
         layout.addWidget(self.content_label)
 
@@ -110,6 +95,17 @@ class StoryBoardShotCard(QFrame):
 
         # --- Initial style ---
         self._update_style()
+
+    def set_image(self, pixmap: QPixmap) -> None:
+        """Set the thumbnail image (called from main thread after async load)."""
+        if pixmap.isNull():
+            return
+        scaled = pixmap.scaled(
+            QSize(SHOT_W, SHOT_H),
+            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.content_label.setPixmap(scaled)
 
     def _set_placeholder(self) -> None:
         """Set placeholder style when no image available."""
