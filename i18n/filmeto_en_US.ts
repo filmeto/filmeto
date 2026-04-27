@@ -752,5 +752,79 @@ Instances: {2}</source>
         <translation>Other</translation>
     </message>
 
+    <!-- Update / Upgrade -->
+    <message>
+        <source>发现新版本</source>
+        <translation>Update Available</translation>
+    </message>
+    <message>
+        <source>当前版本</source>
+        <translation>Current Version</translation>
+    </message>
+    <message>
+        <source>最新版本</source>
+        <translation>Latest Version</translation>
+    </message>
+    <message>
+        <source>更新说明</source>
+        <translation>Release Notes</translation>
+    </message>
+    <message>
+        <source>暂无更新说明</source>
+        <translation>No release notes available</translation>
+    </message>
+    <message>
+        <source>立即更新</source>
+        <translation>Update Now</translation>
+    </message>
+    <message>
+        <source>以后再说</source>
+        <translation>Later</translation>
+    </message>
+    <message>
+        <source>跳过此版本</source>
+        <translation>Skip This Version</translation>
+    </message>
+    <message>
+        <source>正在更新</source>
+        <translation>Updating</translation>
+    </message>
+    <message>
+        <source>正在下载更新...</source>
+        <translation>Downloading update...</translation>
+    </message>
+    <message>
+        <source>正在安装更新...</source>
+        <translation>Installing update...</translation>
+    </message>
+    <message>
+        <source>正在取消...</source>
+        <translation>Cancelling...</translation>
+    </message>
+    <message>
+        <source>更新失败</source>
+        <translation>Update Failed</translation>
+    </message>
+    <message>
+        <source>取消</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>下载失败: {}</source>
+        <translation>Download failed: {}</translation>
+    </message>
+    <message>
+        <source>安装失败</source>
+        <translation>Installation failed</translation>
+    </message>
+    <message>
+        <source>版本 {} 已被跳过，将不再提示</source>
+        <translation>Version {} has been skipped and will not be shown again</translation>
+    </message>
+    <message>
+        <source>已是最新版本</source>
+        <translation>You are on the latest version</translation>
+    </message>
+
 </context>
 </TS>

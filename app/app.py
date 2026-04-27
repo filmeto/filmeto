@@ -219,6 +219,10 @@ class App():
                 logger.info("Scheduling post-first-frame bootstrap (server + workspace deferrals)...")
                 QTimer.singleShot(0, self._bootstrap_after_first_frame)
 
+            # Schedule update check 5 seconds after startup (non-blocking)
+            self._app_ref = app
+            QTimer.singleShot(5000, self._check_for_updates)
+
             # Note: Project data loading (_load_project_tasks) is now deferred to on-demand
             # Managers pre-loading has been removed (data loads on first access)
             
@@ -261,6 +265,74 @@ class App():
         self._complete_deferred_init()
         if hasattr(self.server_manager, "_complete_plugin_discovery"):
             self.server_manager._complete_plugin_discovery()
+
+    def _check_for_updates(self):
+        """Check for application updates and show dialog if available."""
+        asyncio.ensure_future(self._do_check_for_updates())
+
+    async def _do_check_for_updates(self):
+        """Async update check and download flow."""
+        try:
+            from app.services.update_service import UpdateService
+            from app.ui.update.update_dialog import UpdateDialog
+            from app.ui.update.update_progress_dialog import UpdateProgressDialog
+            from utils.i18n_utils import tr
+            from PySide6.QtWidgets import QMessageBox
+            from app.version import APP_VERSION
+
+            service = UpdateService()
+            update_info = await service.check_for_update()
+
+            if not update_info:
+                return
+
+            # Find the main window to use as dialog parent
+            parent = None
+            if hasattr(self, "window_manager"):
+                parent = self.window_manager.window() if hasattr(self.window_manager, "window") else None
+
+            dialog = UpdateDialog(update_info, APP_VERSION, parent)
+            result = dialog.exec()
+
+            if result == 2:
+                # User clicked "Skip This Version"
+                logger.info("User skipped version %s", update_info.version)
+                if parent:
+                    QMessageBox.information(
+                        parent, tr("提示"),
+                        tr("版本 {} 已被跳过，将不再提示").format(update_info.version),
+                    )
+                return
+
+            if result != 1:
+                # User clicked "Later" or closed dialog
+                return
+
+            # User clicked "Update Now" — show progress dialog
+            progress_dialog = UpdateProgressDialog(parent)
+            progress_dialog.show()
+
+            file_path = await service.download_update(
+                progress_callback=progress_dialog.update_progress,
+                cancel_flag=progress_dialog.cancel_flag,
+            )
+
+            if not file_path:
+                if not progress_dialog.cancel_flag.is_set:
+                    progress_dialog.set_error(tr("下载失败: {}").format("download cancelled or failed"))
+                else:
+                    progress_dialog.reject()
+                return
+
+            # Start installation
+            progress_dialog.set_installing()
+            success = service.install_update(file_path)
+
+            if not success:
+                progress_dialog.set_error(tr("安装失败"))
+
+        except Exception as e:
+            logger.error("Update check failed: %s", e, exc_info=True)
 
     def _load_project_tasks(self):
         """Load all tasks from all timeline items"""

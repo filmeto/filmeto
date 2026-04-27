@@ -752,5 +752,79 @@ Instances: {2}</translation>
         <translation>其他</translation>
     </message>
 
+    <!-- Update / Upgrade -->
+    <message>
+        <source>发现新版本</source>
+        <translation>发现新版本</translation>
+    </message>
+    <message>
+        <source>当前版本</source>
+        <translation>当前版本</translation>
+    </message>
+    <message>
+        <source>最新版本</source>
+        <translation>最新版本</translation>
+    </message>
+    <message>
+        <source>更新说明</source>
+        <translation>更新说明</translation>
+    </message>
+    <message>
+        <source>暂无更新说明</source>
+        <translation>暂无更新说明</translation>
+    </message>
+    <message>
+        <source>立即更新</source>
+        <translation>立即更新</translation>
+    </message>
+    <message>
+        <source>以后再说</source>
+        <translation>以后再说</translation>
+    </message>
+    <message>
+        <source>跳过此版本</source>
+        <translation>跳过此版本</translation>
+    </message>
+    <message>
+        <source>正在更新</source>
+        <translation>正在更新</translation>
+    </message>
+    <message>
+        <source>正在下载更新...</source>
+        <translation>正在下载更新...</translation>
+    </message>
+    <message>
+        <source>正在安装更新...</source>
+        <translation>正在安装更新...</translation>
+    </message>
+    <message>
+        <source>正在取消...</source>
+        <translation>正在取消...</translation>
+    </message>
+    <message>
+        <source>更新失败</source>
+        <translation>更新失败</translation>
+    </message>
+    <message>
+        <source>取消</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>下载失败: {}</source>
+        <translation>下载失败: {}</translation>
+    </message>
+    <message>
+        <source>安装失败</source>
+        <translation>安装失败</translation>
+    </message>
+    <message>
+        <source>版本 {} 已被跳过，将不再提示</source>
+        <translation>版本 {} 已被跳过，将不再提示</translation>
+    </message>
+    <message>
+        <source>已是最新版本</source>
+        <translation>已是最新版本</translation>
+    </message>
+
 </context>
 </TS>
