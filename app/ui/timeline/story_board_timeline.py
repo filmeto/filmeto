@@ -84,6 +84,8 @@ class StoryBoardTimeline(BaseWidget):
 
         self.scene_cards: List[StoryBoardSceneCard] = []
         self._story_timeline_has_shown = False
+        self._rebuild_debounce_timer: Optional[QTimer] = None
+        self._pending_rebuild_params: Optional[dict] = None
 
         translation_manager.language_changed.connect(self._retranslate_ui)
         self._attach_managers()
@@ -117,8 +119,91 @@ class StoryBoardTimeline(BaseWidget):
             )
 
     def _on_storyboard_shot_changed(self, sender, params=None, **kwargs) -> None:
-        """Refresh timeline immediately when shots are mutated in storyboard editor."""
-        self._rebuild_scene_strip()
+        """Debounce shot changes and apply incremental update when possible."""
+        p = params or {}
+        action = p.get("action", "")
+        scene_id = p.get("scene_id", "")
+        shot_id = p.get("shot_id", "")
+
+        # Coalesce rapid changes: reset debounce timer on each new signal.
+        if self._rebuild_debounce_timer is None:
+            self._rebuild_debounce_timer = QTimer()
+            self._rebuild_debounce_timer.setSingleShot(True)
+            self._rebuild_debounce_timer.timeout.connect(self._apply_pending_shot_change)
+        self._rebuild_debounce_timer.stop()
+        self._pending_rebuild_params = {"action": action, "scene_id": scene_id, "shot_id": shot_id}
+        self._rebuild_debounce_timer.start(100)
+
+    def _apply_pending_shot_change(self) -> None:
+        """Execute the debounced shot change: incremental update or fall back to full rebuild."""
+        if self._pending_rebuild_params is None:
+            self._rebuild_scene_strip()
+            return
+        p = self._pending_rebuild_params
+        self._pending_rebuild_params = None
+        scene_id = p.get("scene_id", "")
+        shot_id = p.get("shot_id", "")
+        action = p.get("action", "")
+
+        if not scene_id or not shot_id:
+            self._rebuild_scene_strip()
+            return
+
+        card = self._find_scene_card(scene_id)
+        if card is None:
+            # Scene card doesn't exist yet — need full rebuild.
+            self._rebuild_scene_strip()
+            return
+
+        if action == "deleted":
+            self._remove_shot_from_scene_card(card, shot_id)
+        elif action == "created":
+            self._rebuild_single_scene_card(card, scene_id)
+        # "updated" (body text) only affects the QML editor via the model's incremental update;
+        # the timeline shot card only shows image + shot number, so no visual change needed.
+
+    def _find_scene_card(self, scene_id: str) -> Optional[StoryBoardSceneCard]:
+        for card in self.scene_cards:
+            if card.scene_id == scene_id:
+                return card
+        return None
+
+    def _remove_shot_from_scene_card(self, card: StoryBoardSceneCard, shot_id: str) -> None:
+        for i, sw in enumerate(card.shot_widgets):
+            if sw.shot_id == shot_id:
+                sw.deleteLater()
+                card.shot_widgets.pop(i)
+                self._apply_shot_selection_highlight()
+                if not card.shot_widgets:
+                    self._rebuild_single_scene_card(card, card.scene_id)
+                return
+
+    def _rebuild_single_scene_card(self, card: StoryBoardSceneCard, scene_id: str) -> None:
+        """Replace one scene card with a fresh copy, preserving selection."""
+        if not self._screenplay_manager or not self.story_board_manager:
+            return
+        scene = self._screenplay_manager.get_scene(scene_id)
+        if scene is None:
+            return
+        ids = _sort_shot_ids(self.story_board_manager.list_shot_ids(scene_id))
+        shots = []
+        for sid in ids:
+            sh = self.story_board_manager.get_shot(scene_id, sid)
+            if sh:
+                shots.append(sh)
+        idx = self._scene_row_layout.indexOf(card)
+        card.deleteLater()
+        self.scene_cards = [c for c in self.scene_cards if c is not card]
+        new_card = StoryBoardSceneCard(self, scene, shots)
+        self._scene_row_layout.insertWidget(idx, new_card, 0, Qt.AlignmentFlag.AlignTop)
+        self.scene_cards.append(new_card)
+        self._apply_shot_selection_highlight()
+        c = ancestor_widget_with_attr(self, "update_unified_scroll_range")
+        if c is not None:
+            c.update_unified_scroll_range()
+        filter_host = ancestor_widget_with_attr(self, "_install_event_filters_recursively")
+        if filter_host is not None:
+            filter_host._install_event_filters_recursively(self)
 
     def _retranslate_ui(self) -> None:
         self.setWindowTitle(tr("Storyboard timeline"))

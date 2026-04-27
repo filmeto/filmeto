@@ -89,6 +89,13 @@ class StoryBoardShotListModel(QAbstractListModel):
             return shot.description or ""
         return None
 
+    def update_row(self, row: int) -> None:
+        """Notify QML that a single row has changed, avoiding full model reset."""
+        if 0 <= row < len(self._rows):
+            idx = self.createIndex(row, 0)
+            self.dataChanged.emit(idx, idx, [self.BodyRole])
+            self.countChanged.emit()
+
     def set_rows(self, scene_id: str, shots: List[StoryBoardShot], image_urls: List[str]) -> None:
         self.beginResetModel()
         self._scene_id = scene_id
@@ -260,6 +267,18 @@ class StoryBoardEditorViewModel(QObject):
             return
         scene_id = self._scene_ids[self._current_index]
         self._storyboard.update_shot(scene_id, shot_id, {"description": body}, content=body)
+        self.update_shot_in_model(scene_id, shot_id, body)
+
+    def update_shot_in_model(self, scene_id: str, shot_id: str, body: str) -> None:
+        """Update a single shot in the model without a full reload."""
+        if scene_id != self.shot_model._scene_id:
+            self.reload_shots_for_current_scene(preserve_shot_id=shot_id)
+            return
+        for i, shot in enumerate(self.shot_model._rows):
+            if shot.shot_id == shot_id:
+                shot.description = body
+                self.shot_model.update_row(i)
+                return
         self.reload_shots_for_current_scene(preserve_shot_id=shot_id)
 
     @Slot(str)
