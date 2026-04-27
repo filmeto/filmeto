@@ -97,10 +97,9 @@ class StoryBoardSceneCard(QFrame):
             empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.shots_row.addWidget(empty)
         else:
-            sb = parent.story_board_manager
+            # Images loaded asynchronously by parent timeline to avoid blocking UI thread.
             for shot in shots:
-                km = sb.key_moment_path(scene.scene_id, shot.shot_id)
-                card = StoryBoardShotCard(parent, scene.scene_id, shot, km)
+                card = StoryBoardShotCard(parent, scene.scene_id, shot, None)
                 self.shot_widgets.append(card)
                 self.shots_row.addWidget(card, 0, Qt.AlignmentFlag.AlignTop)
 
@@ -188,3 +187,10 @@ class StoryBoardSceneCard(QFrame):
         for w in self.shot_widgets:
             w.set_selected(scene_id == self.scene_id and w.shot_id == shot_id)
         self.set_scene_selected(bool(scene_id) and scene_id == self.scene_id)
+
+    def set_card_image(self, shot_id: str, pixmap: "QPixmap") -> None:
+        """Forward async-loaded thumbnail to the matching shot widget."""
+        for sw in self.shot_widgets:
+            if sw.shot_id == shot_id:
+                sw.set_image(pixmap)
+                break

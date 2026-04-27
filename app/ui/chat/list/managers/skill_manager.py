@@ -4,7 +4,7 @@ This module handles skill event processing, including skill lifecycle
 tracking, content merging, and child content management.
 """
 
-import copy
+import json
 import logging
 import uuid
 from typing import Dict, List, Any, Optional, TYPE_CHECKING, Callable
@@ -23,6 +23,11 @@ if TYPE_CHECKING:
     from app.ui.chat.list.agent_chat_list_model import AgentChatListModel
 
 logger = logging.getLogger(__name__)
+
+
+def _deep_copy_json(data: Any) -> Any:
+    """Fast deep copy for JSON-serializable structures (dicts, lists, primitives)."""
+    return json.loads(json.dumps(data))
 
 
 class SkillManager:
@@ -384,7 +389,7 @@ class SkillManager:
                 skill_name = sc_data.get("skill_name", "")
                 if skill_name in self._skill_name_to_message_id:
                     if self._skill_name_to_message_id[skill_name] != message_id:
-                        new_structured.append(copy.deepcopy(sc))
+                        new_structured.append(_deep_copy_json(sc))
                         continue
 
                 # Check for existing tool with same tool_call_id
@@ -407,14 +412,14 @@ class SkillManager:
                     child_contents[existing_tool_index] = merged_tool
                 else:
                     # Add new tool content
-                    child_contents.append(copy.deepcopy(tool_content))
+                    child_contents.append(_deep_copy_json(tool_content))
 
                 # Update skill with merged child contents
-                new_sc = copy.deepcopy(sc)
+                new_sc = _deep_copy_json(sc)
                 new_sc["data"]["child_contents"] = child_contents
                 new_structured.append(new_sc)
             else:
-                new_structured.append(copy.deepcopy(sc))
+                new_structured.append(_deep_copy_json(sc))
 
         self._model.update_item(message_id, {
             self._model.STRUCTURED_CONTENT: new_structured,
@@ -451,17 +456,17 @@ class SkillManager:
         if new_priority >= existing_priority:
             # New state has higher or equal priority, use new content as base
             # but preserve tool_input from existing if new doesn't have it
-            merged_dict = copy.deepcopy(new_content)
+            merged_dict = _deep_copy_json(new_content)
             merged_data = merged_dict.get("data", {})
 
             # Preserve tool_input from existing if new doesn't have it
             if not merged_data.get("tool_input") and existing_data.get("tool_input"):
-                merged_data["tool_input"] = copy.deepcopy(existing_data.get("tool_input", {}))
+                merged_data["tool_input"] = _deep_copy_json(existing_data.get("tool_input", {}))
 
             merged_dict["data"] = merged_data
         else:
             # Existing state has higher priority, keep existing
-            merged_dict = copy.deepcopy(existing_entry)
+            merged_dict = _deep_copy_json(existing_entry)
 
         return merged_dict
 
@@ -592,15 +597,15 @@ class SkillManager:
                 skill_content
             )
             # Deep copy all elements to ensure QML detects the change
-            new_structured = [copy.deepcopy(sc) for sc in current_structured]
+            new_structured = [_deep_copy_json(sc) for sc in current_structured]
             new_structured[existing_skill_index] = merged_entry
         elif create_new:
             # No existing skill and create_new is True - append new
-            new_structured = [copy.deepcopy(sc) for sc in current_structured]
+            new_structured = [_deep_copy_json(sc) for sc in current_structured]
             new_structured.append(skill_content.to_dict())
         else:
             # No existing skill and create_new is False - append anyway
-            new_structured = [copy.deepcopy(sc) for sc in current_structured]
+            new_structured = [_deep_copy_json(sc) for sc in current_structured]
             new_structured.append(skill_content.to_dict())
 
         self._model.update_item(message_id, {
@@ -634,8 +639,8 @@ class SkillManager:
         new_priority = state_priority.get(new_state, 0)
 
         # Get child_contents from both sources (deep copy to avoid reference sharing)
-        existing_children = copy.deepcopy(existing_data.get("child_contents", []))
-        new_children = copy.deepcopy(new_content.child_contents or [])
+        existing_children = _deep_copy_json(existing_data.get("child_contents", []))
+        new_children = _deep_copy_json(new_content.child_contents or [])
 
         # Determine which entry to use as base based on state priority
         if new_priority > existing_priority:
@@ -658,7 +663,7 @@ class SkillManager:
             if (new_state == SkillExecutionState.IN_PROGRESS.value and
                 existing_state == SkillExecutionState.IN_PROGRESS.value):
                 # Both are in_progress, update with latest progress info
-                merged_dict = copy.deepcopy(existing_entry)
+                merged_dict = _deep_copy_json(existing_entry)
                 merged_data = merged_dict.get("data", {})
                 merged_data.update({
                     "progress_text": new_content.progress_text,
@@ -674,7 +679,7 @@ class SkillManager:
                     merged_data["child_contents"] = existing_children
                 merged_dict["data"] = merged_data
             else:
-                merged_dict = copy.deepcopy(existing_entry)
+                merged_dict = _deep_copy_json(existing_entry)
 
         else:
             # Same priority - use the new content as it's more recent
@@ -691,7 +696,7 @@ class SkillManager:
             merged_dict["data"] = merged_data
 
         # Deep copy final result to ensure QML detects the change
-        return copy.deepcopy(merged_dict)
+        return _deep_copy_json(merged_dict)
 
     def add_child_to_skill(
         self,
@@ -725,11 +730,11 @@ class SkillManager:
                 skill_name = sc_data.get("skill_name", "")
                 if skill_name in self._skill_name_to_message_id:
                     if self._skill_name_to_message_id[skill_name] != message_id:
-                        new_structured.append(copy.deepcopy(sc))
+                        new_structured.append(_deep_copy_json(sc))
                         continue
 
                 # Add child content to the skill
-                new_sc = copy.deepcopy(sc)
+                new_sc = _deep_copy_json(sc)
                 sc_data = new_sc.get("data", {})
                 child_contents = list(sc_data.get("child_contents", []))
 
@@ -738,15 +743,15 @@ class SkillManager:
                 if child_id:
                     existing_ids = {c.get("content_id") for c in child_contents if c.get("content_id")}
                     if child_id not in existing_ids:
-                        child_contents.append(copy.deepcopy(child_content))
+                        child_contents.append(_deep_copy_json(child_content))
                 else:
-                    child_contents.append(copy.deepcopy(child_content))
+                    child_contents.append(_deep_copy_json(child_content))
 
                 sc_data["child_contents"] = child_contents
                 new_sc["data"] = sc_data
                 new_structured.append(new_sc)
             else:
-                new_structured.append(copy.deepcopy(sc))
+                new_structured.append(_deep_copy_json(sc))
 
         self._model.update_item(message_id, {
             self._model.STRUCTURED_CONTENT: new_structured,
@@ -782,19 +787,19 @@ class SkillManager:
         all_children = []
         seen_ids = set()
 
-        # Add base children first
+        # Add base children first (caller already deep-copied these)
         for child in base_children:
             child_id = child.get("content_id") if isinstance(child, dict) else None
-            all_children.append(copy.deepcopy(child))
+            all_children.append(child)
             if child_id:
                 seen_ids.add(child_id)
 
-        # Add new children not already present
+        # Add new children not already present (caller already deep-copied these)
         for child in new_children:
             child_id = child.get("content_id") if isinstance(child, dict) else None
             if child_id and child_id in seen_ids:
                 continue
-            all_children.append(copy.deepcopy(child))
+            all_children.append(child)
             if child_id:
                 seen_ids.add(child_id)
 
